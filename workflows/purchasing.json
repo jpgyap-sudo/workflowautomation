@@ -1,0 +1,10 @@
+{
+  "name": "Purchasing - Quotation Intake",
+  "nodes": [
+    {"name":"Telegram Trigger","type":"n8n-nodes-base.telegramTrigger","position":[0,0],"parameters":{"updates":["message"]}},
+    {"name":"Upload to Google Drive","type":"n8n-nodes-base.googleDrive","position":[260,0],"parameters":{"operation":"upload"}},
+    {"name":"Call Quotation Checker","type":"n8n-nodes-base.httpRequest","position":[520,0],"parameters":{"method":"POST","url":"http://api:8080/agents/quotation-checker","sendBody":true,"contentType":"json"}},
+    {"name":"Notify Purchasing Group","type":"n8n-nodes-base.telegram","position":[780,0],"parameters":{"operation":"sendMessage"}}
+  ],
+  "connections": {}
+}

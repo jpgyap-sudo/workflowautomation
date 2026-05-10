@@ -1,0 +1,19 @@
+{
+  "name": "quotation-automation-telegram-bot",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/bot.ts",
+    "start": "node dist/bot.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "telegraf": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

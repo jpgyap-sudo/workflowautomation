@@ -1,0 +1,2 @@
+-- Initial migration mirrors database/schema.sql for first deployment.
+-- Future changes should be added as 002_*.sql, 003_*.sql, etc.

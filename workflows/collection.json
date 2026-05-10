@@ -1,0 +1,10 @@
+{
+  "name": "Collection - Payment Confirmation Tracker",
+  "nodes": [
+    {"name":"Telegram Trigger","type":"n8n-nodes-base.telegramTrigger","position":[0,0],"parameters":{"updates":["message"]}},
+    {"name":"Upload Payment Proof","type":"n8n-nodes-base.googleDrive","position":[260,0],"parameters":{"operation":"upload"}},
+    {"name":"Update Payment Stage","type":"n8n-nodes-base.httpRequest","position":[520,0],"parameters":{"method":"POST","url":"http://api:8080/stage-updates","sendBody":true,"contentType":"json"}},
+    {"name":"Notify Collection Group","type":"n8n-nodes-base.telegram","position":[780,0],"parameters":{"operation":"sendMessage"}}
+  ],
+  "connections": {}
+}
