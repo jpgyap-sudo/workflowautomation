@@ -2,11 +2,67 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { z } from 'zod';
 import { query } from './db.js';
+import { createClient } from 'redis';
+import {
+  uploadToDrive,
+  createDriveFolder,
+  getOrCreateFolder,
+  deleteDriveFile,
+} from './services/googleDrive.js';
+import {
+  processDueReminders,
+  createStageReminder,
+  completeOrderReminders,
+  startReminderScheduler,
+} from './services/reminderScheduler.js';
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
+// ── Redis Cache ──────────────────────────────────────────────────────
+const REDIS_URL = process.env.REDIS_URL ?? 'redis://redis:6379';
+const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS ?? 30);
+
+let cacheClient: Awaited<ReturnType<typeof createClient>> | null = null;
+try {
+  cacheClient = createClient({ url: REDIS_URL });
+  cacheClient.on('error', (err) => console.warn('[cache] Redis error (non-fatal):', err.message));
+  await cacheClient.connect();
+  console.log('[cache] Redis connected');
+} catch (err) {
+  console.warn('[cache] Redis unavailable — running without cache');
+}
+
+async function cacheGet<T>(key: string): Promise<T | null> {
+  if (!cacheClient?.isOpen) return null;
+  try {
+    const raw = await cacheClient.get(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+async function cacheSet(key: string, data: unknown, ttl = CACHE_TTL_SECONDS): Promise<void> {
+  if (!cacheClient?.isOpen) return;
+  try {
+    await cacheClient.setEx(key, ttl, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
+// ── Cache Invalidation Helper ───────────────────────────────────────
+async function invalidateCache(patterns: string[]): Promise<void> {
+  if (!cacheClient?.isOpen) return;
+  try {
+    for (const pattern of patterns) {
+      const keys = await cacheClient.keys(pattern);
+      if (keys.length > 0) await cacheClient.del(keys);
+    }
+  } catch { /* ignore */ }
+}
+
+// ── Health ──────────────────────────────────────────────────────────
 app.get('/health', async () => ({ ok: true, service: 'quotation-automation-api' }));
+
+// ── Orders ──────────────────────────────────────────────────────────
 
 const createOrderSchema = z.object({
   quotation_number: z.string().optional(),
@@ -24,19 +80,58 @@ app.post('/orders', async (request, reply) => {
      RETURNING *`,
     [body.quotation_number ?? null, body.client_name ?? null, body.sales_agent ?? null, body.total_amount ?? null]
   );
+  // Invalidate caches after write
+  await invalidateCache(['dashboard:*', 'orders:*']);
   return reply.send(rows[0]);
 });
 
+app.get('/orders', async () => {
+  const cached = await cacheGet<object[]>('orders:all');
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+     FROM orders ORDER BY created_at DESC LIMIT 100`
+  );
+  await cacheSet('orders:all', rows);
+  return rows;
+});
+
 app.get('/orders/pending', async () => {
-  return query(`SELECT * FROM orders WHERE status='active' ORDER BY created_at DESC LIMIT 50`);
+  const cached = await cacheGet<object[]>('orders:pending');
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+     FROM orders WHERE status='active' ORDER BY created_at DESC LIMIT 50`
+  );
+  await cacheSet('orders:pending', rows);
+  return rows;
+});
+
+app.get('/orders/stage/:stage', async (request, reply) => {
+  const params = z.object({ stage: z.string() }).parse(request.params);
+  const cacheKey = `orders:stage:${params.stage}`;
+  const cached = await cacheGet<object[]>(cacheKey);
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+     FROM orders WHERE current_stage=$1 ORDER BY created_at DESC`, [params.stage]
+  );
+  await cacheSet(cacheKey, rows);
+  return rows;
 });
 
 app.get('/orders/:quotation_number', async (request, reply) => {
   const params = z.object({ quotation_number: z.string() }).parse(request.params);
+  const cacheKey = `order:detail:${params.quotation_number}`;
+  const cached = await cacheGet<object>(cacheKey);
+  if (cached) return cached;
   const rows = await query(`SELECT * FROM orders WHERE quotation_number=$1`, [params.quotation_number]);
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+  await cacheSet(cacheKey, rows[0]);
   return rows[0];
 });
+
+// ── Stage Updates ───────────────────────────────────────────────────
 
 const stageUpdateSchema = z.object({
   quotation_number: z.string(),
@@ -56,11 +151,30 @@ app.post('/stage-updates', async (request, reply) => {
     [orderId, body.stage, body.status, body.remarks ?? null, body.updated_by ?? null]
   );
   await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [body.stage, orderId]);
+  // Invalidate caches after stage update
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
   return { ok: true };
 });
 
+app.get('/orders/:order_id/stage-updates', async (request, reply) => {
+  const params = z.object({ order_id: z.string() }).parse(request.params);
+  return query(`SELECT * FROM stage_updates WHERE order_id=$1 ORDER BY created_at DESC`, [params.order_id]);
+});
+
+// ── Agent Logs ──────────────────────────────────────────────────────
+
+app.get('/agent-logs', async () => {
+  const cached = await cacheGet<object[]>('agent-logs');
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT id, agent_name, status, input, output, error, created_at
+     FROM agent_logs ORDER BY created_at DESC LIMIT 100`
+  );
+  await cacheSet('agent-logs', rows, 15); // shorter TTL for logs
+  return rows;
+});
+
 app.post('/agents/quotation-checker', async (request) => {
-  // Placeholder: replace with real OCR/PDF extraction + math validation.
   const input = request.body as any;
   const output = {
     math_status: 'needs_review',
@@ -76,5 +190,236 @@ app.post('/agents/quotation-checker', async (request) => {
   return output;
 });
 
+// ── Dashboard Stats ─────────────────────────────────────────────────
+
+app.get('/dashboard/stats', async () => {
+  // Try cache first
+  const cached = await cacheGet<object>('dashboard:stats');
+  if (cached) return cached;
+
+  // Single query — all stats in one round-trip
+  const rows = await query(`
+    SELECT
+      (SELECT COUNT(*)::int FROM orders) AS total_orders,
+      (SELECT COUNT(*)::int FROM orders WHERE status='active') AS active_orders,
+      (SELECT COUNT(*)::int FROM orders WHERE current_stage='completed') AS completed_orders,
+      (SELECT COUNT(*)::int FROM orders WHERE current_stage='purchasing_pending') AS pending_purchasing,
+      (SELECT COUNT(*)::int FROM orders WHERE current_stage='delivery_scheduled') AS pending_delivery,
+      (SELECT COUNT(*)::int FROM orders WHERE current_stage IN ('delivered','countered','payment_received')) AS pending_collection,
+      (SELECT COUNT(*)::int FROM reminders WHERE status='active' AND next_run_at < NOW()) AS overdue_reminders
+  `);
+
+  const stageBreakdown = await query(
+    `SELECT current_stage AS stage, COUNT(*)::int AS count FROM orders WHERE status='active' GROUP BY current_stage ORDER BY MIN(created_at)`
+  );
+
+  const recentOrders = await query(
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+     FROM orders ORDER BY created_at DESC LIMIT 10`
+  );
+
+  const result = {
+    total_orders: rows[0].total_orders,
+    active_orders: rows[0].active_orders,
+    completed_orders: rows[0].completed_orders,
+    pending_purchasing: rows[0].pending_purchasing,
+    pending_delivery: rows[0].pending_delivery,
+    pending_collection: rows[0].pending_collection,
+    overdue_reminders: rows[0].overdue_reminders,
+    stage_breakdown: stageBreakdown,
+    recent_orders: recentOrders,
+  };
+
+  // Cache for 30 seconds
+  await cacheSet('dashboard:stats', result);
+  return result;
+});
+
+// ── Google Drive ─────────────────────────────────────────────────────
+
+const fileUploadSchema = z.object({
+  order_id: z.string().uuid().optional(),
+  quotation_number: z.string().optional(),
+  file_type: z.string(),
+  original_filename: z.string(),
+  mime_type: z.string(),
+  file_data: z.string(), // base64-encoded file content
+  folder_id: z.string().optional(), // override parent folder
+});
+
+/**
+ * POST /drive/upload
+ * Upload a file (base64) to Google Drive and store reference in DB.
+ */
+app.post('/drive/upload', async (request, reply) => {
+  const body = fileUploadSchema.parse(request.body);
+  const fileBuffer = Buffer.from(body.file_data, 'base64');
+
+  // Determine target folder: per-order folder or root
+  let targetFolderId = body.folder_id;
+
+  // If quotation_number provided, get or create per-order folder
+  if (body.quotation_number && !targetFolderId) {
+    const orders = await query(
+      `SELECT id, google_drive_folder_id FROM orders WHERE quotation_number=$1`,
+      [body.quotation_number]
+    );
+    if (orders[0]) {
+      if (orders[0].google_drive_folder_id) {
+        targetFolderId = orders[0].google_drive_folder_id;
+      } else {
+        // Create a folder for this order
+        const folder = await createDriveFolder(`Order-${body.quotation_number}`);
+        targetFolderId = folder.id;
+        await query(`UPDATE orders SET google_drive_folder_id=$1 WHERE id=$2`, [
+          folder.id,
+          orders[0].id,
+        ]);
+      }
+    }
+  }
+
+  // Upload to Drive
+  const result = await uploadToDrive(
+    fileBuffer,
+    body.original_filename,
+    body.mime_type,
+    targetFolderId
+  );
+
+  // Store file reference in DB
+  const fileRecord = await query(
+    `INSERT INTO files (order_id, file_type, original_filename, google_drive_file_id, file_url)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [
+      body.order_id ?? null,
+      body.file_type,
+      body.original_filename,
+      result.fileId,
+      result.webViewLink,
+    ]
+  );
+
+  return reply.send({
+    ok: true,
+    file: fileRecord[0],
+    drive: result,
+  });
+});
+
+/**
+ * POST /drive/folder
+ * Create a folder for an order.
+ */
+app.post('/drive/folder', async (request, reply) => {
+  const body = z
+    .object({
+      quotation_number: z.string(),
+      folder_name: z.string().optional(),
+    })
+    .parse(request.body);
+
+  const folderName = body.folder_name ?? `Order-${body.quotation_number}`;
+  const folder = await getOrCreateFolder(folderName);
+
+  // Link folder to order
+  await query(`UPDATE orders SET google_drive_folder_id=$1 WHERE quotation_number=$2`, [
+    folder.id,
+    body.quotation_number,
+  ]);
+
+  return reply.send({ ok: true, folder });
+});
+
+/**
+ * DELETE /drive/files/:fileId
+ * Delete a file from Google Drive and optionally from DB.
+ */
+app.delete('/drive/files/:fileId', async (request, reply) => {
+  const params = z.object({ fileId: z.string() }).parse(request.params);
+  await deleteDriveFile(params.fileId);
+
+  // Also remove from files table if linked
+  await query(`DELETE FROM files WHERE google_drive_file_id=$1`, [params.fileId]);
+
+  return reply.send({ ok: true });
+});
+
+// ── Reminders ────────────────────────────────────────────────────────
+
+/**
+ * GET /reminders
+ * List all active reminders.
+ */
+app.get('/reminders', async () => {
+  return query(
+    `SELECT r.*, o.quotation_number, o.client_name
+     FROM reminders r
+     JOIN orders o ON o.id = r.order_id
+     ORDER BY r.next_run_at ASC
+     LIMIT 100`
+  );
+});
+
+/**
+ * GET /reminders/overdue
+ * List overdue reminders (next_run_at < now).
+ */
+app.get('/reminders/overdue', async () => {
+  return query(
+    `SELECT r.*, o.quotation_number, o.client_name
+     FROM reminders r
+     JOIN orders o ON o.id = r.order_id
+     WHERE r.status = 'active' AND r.next_run_at < NOW()
+     ORDER BY r.next_run_at ASC`
+  );
+});
+
+/**
+ * POST /reminders
+ * Create a new reminder for an order.
+ */
+app.post('/reminders', async (request, reply) => {
+  const body = z
+    .object({
+      order_id: z.string().uuid(),
+      stage: z.string(),
+      group_chat_id: z.string(),
+      message: z.string(),
+      frequency: z.enum(['hourly', 'daily']).default('daily'),
+    })
+    .parse(request.body);
+
+  await createStageReminder(body.order_id, body.stage, body.group_chat_id, body.message, body.frequency);
+  return reply.send({ ok: true });
+});
+
+/**
+ * PATCH /reminders/:id/complete
+ * Mark a reminder as completed.
+ */
+app.patch('/reminders/:id/complete', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  await query(`UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1`, [params.id]);
+  return reply.send({ ok: true });
+});
+
+/**
+ * POST /reminders/process
+ * Manually trigger due reminder processing.
+ */
+app.post('/reminders/process', async () => {
+  const count = await processDueReminders();
+  return { ok: true, sent: count };
+});
+
+// ── Start ───────────────────────────────────────────────────────────
+
 const port = Number(process.env.PORT ?? 8080);
+
+// Start the reminder scheduler (checks every 60 seconds)
+const REMINDER_INTERVAL_MS = Number(process.env.REMINDER_INTERVAL_MS ?? 60_000);
+startReminderScheduler(REMINDER_INTERVAL_MS);
+
 await app.listen({ port, host: '0.0.0.0' });

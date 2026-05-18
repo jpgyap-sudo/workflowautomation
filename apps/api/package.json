@@ -10,7 +10,9 @@
   "dependencies": {
     "@fastify/cors": "latest",
     "fastify": "latest",
+    "googleapis": "^171.4.0",
     "pg": "latest",
+    "redis": "^4.7.0",
     "zod": "latest"
   },
   "devDependencies": {

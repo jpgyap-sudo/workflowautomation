@@ -66,5 +66,10 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
 CREATE INDEX IF NOT EXISTS idx_orders_stage ON orders(current_stage);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_quotation_number ON orders(quotation_number);
+CREATE INDEX IF NOT EXISTS idx_orders_stage_status ON orders(current_stage, status);
 CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_next_run ON reminders(next_run_at, status);
+CREATE INDEX IF NOT EXISTS idx_stage_updates_order_id ON stage_updates(order_id);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_created_at ON agent_logs(created_at DESC);
