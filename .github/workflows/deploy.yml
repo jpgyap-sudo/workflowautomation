@@ -74,23 +74,16 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          audience: ${{ secrets.TS_AUDIENCE }}
-          tags: tag:ci
-
-      - name: Deploy through Tailscale
-        run: |
-          ssh -o StrictHostKeyChecking=accept-new ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          script: |
             set -e
             cd /opt/quotation-automation
 
@@ -105,5 +98,4 @@ jobs:
             # Clean up old images
             docker image prune -f
 
-            echo 'Deployment complete!'
-          "
+            echo "Deployment complete!"
