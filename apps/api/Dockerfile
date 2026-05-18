@@ -4,5 +4,5 @@ COPY package*.json ./
 RUN npm install
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
-CMD ["npm", "start"]
+# Use tsx to run directly — avoids OOM from tsc on low-memory VPS
+CMD ["npx", "tsx", "src/server.ts"]

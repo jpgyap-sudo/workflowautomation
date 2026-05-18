@@ -8,6 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "googleapis": "^171.4.0",
     "telegraf": "latest",
     "zod": "latest"
   },

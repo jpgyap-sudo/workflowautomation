@@ -414,6 +414,83 @@ app.post('/reminders/process', async () => {
   return { ok: true, sent: count };
 });
 
+// ── Calendar Events ─────────────────────────────────────────────────
+
+/**
+ * GET /calendar/events
+ * Aggregate all time-based events across the system.
+ */
+app.get('/calendar/events', async () => {
+  const cached = await cacheGet<object[]>('calendar:events');
+  if (cached) return cached;
+
+  const orderEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'order' AS type,
+       'Order Created' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.created_at AS event_date,
+       o.current_stage AS metadata
+     FROM orders o
+     WHERE o.created_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const stageEvents = await query(
+    `SELECT
+       su.id AS event_id,
+       'stage_update' AS type,
+       'Stage Update' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       su.stage AS subtitle,
+       su.created_at AS event_date,
+       su.status AS metadata
+     FROM stage_updates su
+     JOIN orders o ON o.id = su.order_id
+     WHERE su.created_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const reminderEvents = await query(
+    `SELECT
+       r.id AS event_id,
+       'reminder' AS type,
+       'Reminder' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       r.stage AS subtitle,
+       r.next_run_at AS event_date,
+       r.status AS metadata
+     FROM reminders r
+     JOIN orders o ON o.id = r.order_id
+     WHERE r.next_run_at IS NOT NULL
+       AND r.next_run_at > NOW() - INTERVAL '1 month'
+       AND r.next_run_at < NOW() + INTERVAL '3 months'`
+  );
+
+  const deliveryEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'delivery' AS type,
+       'Delivery Scheduled' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.updated_at AS event_date,
+       o.current_stage AS metadata
+     FROM orders o
+     WHERE o.current_stage = 'delivery_scheduled'`
+  );
+
+  const allEvents = [
+    ...orderEvents.map((e: any) => ({ ...e, color: '#3b82f6' })),      // blue
+    ...stageEvents.map((e: any) => ({ ...e, color: '#8b5cf6' })),      // purple
+    ...reminderEvents.map((e: any) => ({ ...e, color: '#ef4444' })),   // red
+    ...deliveryEvents.map((e: any) => ({ ...e, color: '#f97316' })),   // orange
+  ].sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+
+  await cacheSet('calendar:events', allEvents, 30);
+  return allEvents;
+});
+
 // ── Start ───────────────────────────────────────────────────────────
 
 const port = Number(process.env.PORT ?? 8080);
