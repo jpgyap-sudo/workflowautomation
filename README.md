@@ -68,3 +68,4 @@ or
 ```txt
 ops.homeu.ph
 ```
+"# Hook test - verifying lesson extraction"  
