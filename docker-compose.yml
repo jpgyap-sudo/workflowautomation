@@ -41,6 +41,7 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_RUNNERS_ENABLED: "true"
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_SECURE_COOKIE: "false"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./workflows:/files/workflows
@@ -48,24 +49,27 @@ services:
       - postgres
 
   api:
-    build: ./apps/api
+    image: ghcr.io/jpgyap-sudo/workflowautomation/api:latest
     container_name: qas_api
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials/google-service-account.json
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./credentials:/app/credentials:ro
     depends_on:
       - postgres
       - redis
 
   telegram-bot:
-    build: ./apps/telegram-bot
+    image: ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest
     container_name: qas_telegram_bot
     restart: unless-stopped
     environment:
@@ -75,6 +79,24 @@ services:
       INVENTORY_GROUP_ID: ${INVENTORY_GROUP_ID}
       DELIVERY_GROUP_ID: ${DELIVERY_GROUP_ID}
       COLLECTION_GROUP_ID: ${COLLECTION_GROUP_ID}
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials/google-service-account.json
+    volumes:
+      - ./credentials:/app/credentials:ro
+    depends_on:
+      - api
+
+  dashboard:
+    image: ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest
+    container_name: qas_dashboard
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: /api
+      HOSTNAME: "0.0.0.0"
     depends_on:
       - api
 
