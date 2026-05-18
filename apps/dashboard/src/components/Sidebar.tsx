@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { href: '/stages',      label: 'Stage Pipeline', icon: ClipboardList },
   { href: '/calendar',    label: 'Calendar',       icon: CalendarDays },
   { href: '/logs',        label: 'Agent Logs',     icon: Activity },
+  { href: '/settings',    label: 'Settings',       icon: Settings },
 ];
 
 export default function Sidebar() {

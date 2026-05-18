@@ -1,7 +1,8 @@
 'use client';
 
-import { Bell, Search, RefreshCw } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { Bell, RefreshCw, LogOut } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -17,7 +18,15 @@ const PAGE_TITLES: Record<string, string> = {
 
 export default function Header() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const title = PAGE_TITLES[pathname] ?? 'Dashboard';
+  const initials = user?.email?.charAt(0).toUpperCase() ?? 'A';
+
+  function handleLogout() {
+    logout();
+    router.replace('/login');
+  }
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-6">
@@ -34,10 +43,17 @@ export default function Header() {
         <div className="h-6 w-px bg-gray-200" />
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2490ef] text-xs font-medium text-white">
-            A
+            {initials}
           </div>
-          <span className="text-sm text-gray-600">Admin</span>
+          <span className="text-sm text-gray-600">{user?.email ?? 'Admin'}</span>
         </div>
+        <button
+          onClick={handleLogout}
+          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+          title="Sign out"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </header>
   );
