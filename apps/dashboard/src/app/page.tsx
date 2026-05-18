@@ -1,16 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import {
   FileText,
   ShoppingCart,
-  Package,
-  Truck,
   DollarSign,
-  AlertTriangle,
   TrendingUp,
 } from 'lucide-react';
-import { getDashboardStats, DashboardStats, STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
+import { useDashboardStats, useRealtimeSubscription } from '@/lib/useApi';
+import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import StageBadge from '@/components/StageBadge';
 import OrderTable from '@/components/OrderTable';
@@ -40,27 +37,23 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Subscribe to real-time updates
+  useRealtimeSubscription();
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const statsData = await getDashboardStats();
-        setStats(statsData);
-      } catch (e) {
-        console.error('Failed to load dashboard data', e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
+  const { data: stats, error, isLoading } = useDashboardStats();
 
-  if (loading) {
+  if (isLoading && !stats) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm text-red-500">Failed to load dashboard data. Retrying...</p>
       </div>
     );
   }

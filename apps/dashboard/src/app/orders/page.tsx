@@ -1,24 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Order, getOrders } from '@/lib/api';
+import { useState } from 'react';
+import { useOrders } from '@/lib/useApi';
+import { STAGE_CONFIG } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: orders = [], error, isLoading } = useOrders();
   const [filter, setFilter] = useState<string>('all');
-
-  useEffect(() => {
-    getOrders()
-      .then(setOrders)
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
-  }, []);
 
   const filtered = filter === 'all' ? orders : orders.filter((o) => o.current_stage === filter);
 
-  if (loading) {
+  if (isLoading && orders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />

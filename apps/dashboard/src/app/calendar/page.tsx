@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,7 +11,8 @@ import {
   Bell,
   ArrowRightLeft,
 } from 'lucide-react';
-import { getCalendarEvents, CalendarEvent } from '@/lib/api';
+import { useCalendarEvents } from '@/lib/useApi';
+import { CalendarEvent } from '@/lib/api';
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -59,18 +60,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function CalendarPage() {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: events = [], isLoading } = useCalendarEvents();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    getCalendarEvents()
-      .then(setEvents)
-      .catch((err) => console.error('Failed to load calendar events', err))
-      .finally(() => setLoading(false));
-  }, []);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -166,7 +158,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {loading ? (
+      {isLoading && events.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
           Loading calendar events…
         </div>

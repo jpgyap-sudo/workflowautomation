@@ -1,26 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { OrderDetail, getOrder, STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
+import { useOrder } from '@/lib/useApi';
+import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, Clock, User, DollarSign, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OrderDetailPage() {
   const params = useParams();
   const quotationNumber = params.quotationNumber as string;
-  const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: order, error, isLoading } = useOrder(quotationNumber);
 
-  useEffect(() => {
-    getOrder(quotationNumber)
-      .then(setOrder)
-      .catch(() => setOrder(null))
-      .finally(() => setLoading(false));
-  }, [quotationNumber]);
-
-  if (loading) {
+  if (isLoading && !order) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -28,7 +20,7 @@ export default function OrderDetailPage() {
     );
   }
 
-  if (!order) {
+  if (!order && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <p className="text-lg text-gray-500">Order not found</p>
@@ -38,6 +30,8 @@ export default function OrderDetailPage() {
       </div>
     );
   }
+
+  if (!order) return null;
 
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
 

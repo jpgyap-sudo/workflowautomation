@@ -1,22 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Order, getOrdersByStage } from '@/lib/api';
+import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
-import { Package, AlertTriangle, Calendar } from 'lucide-react';
+import { Package } from 'lucide-react';
 
 export default function InventoryPage() {
-  const [arrivedOrders, setArrivedOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: arrivedOrders = [], isLoading } = useOrdersByStage('inventory_arrived');
 
-  useEffect(() => {
-    getOrdersByStage('inventory_arrived')
-      .catch(() => [])
-      .then(setArrivedOrders)
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading && arrivedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />

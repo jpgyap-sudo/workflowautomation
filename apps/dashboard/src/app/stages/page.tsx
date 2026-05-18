@@ -1,22 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Order, getOrders, STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
+import { useOrders } from '@/lib/useApi';
+import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import { ArrowRight } from 'lucide-react';
 
 export default function StagesPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: orders = [], isLoading } = useOrders();
 
-  useEffect(() => {
-    getOrders()
-      .catch(() => [])
-      .then(setOrders)
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading && orders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -25,7 +17,7 @@ export default function StagesPage() {
   }
 
   // Group orders by stage
-  const stageGroups: Record<string, Order[]> = {};
+  const stageGroups: Record<string, typeof orders> = {};
   STAGE_ORDER.forEach((stage) => {
     stageGroups[stage] = orders.filter((o) => o.current_stage === stage);
   });

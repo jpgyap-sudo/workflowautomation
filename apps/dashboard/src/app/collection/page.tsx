@@ -1,34 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Order, getOrdersByStage } from '@/lib/api';
+import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
 import { DollarSign, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 
 export default function CollectionPage() {
-  const [counteredOrders, setCounteredOrders] = useState<Order[]>([]);
-  const [paymentReceivedOrders, setPaymentReceivedOrders] = useState<Order[]>([]);
-  const [paymentConfirmedOrders, setPaymentConfirmedOrders] = useState<Order[]>([]);
-  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: counteredOrders = [], isLoading: loadingCountered } = useOrdersByStage('countered');
+  const { data: paymentReceivedOrders = [], isLoading: loadingReceived } = useOrdersByStage('payment_received');
+  const { data: paymentConfirmedOrders = [], isLoading: loadingConfirmed } = useOrdersByStage('payment_confirmed');
+  const { data: completedOrders = [], isLoading: loadingCompleted } = useOrdersByStage('completed');
 
-  useEffect(() => {
-    Promise.all([
-      getOrdersByStage('countered').catch(() => []),
-      getOrdersByStage('payment_received').catch(() => []),
-      getOrdersByStage('payment_confirmed').catch(() => []),
-      getOrdersByStage('completed').catch(() => []),
-    ])
-      .then(([countered, received, confirmed, completed]) => {
-        setCounteredOrders(countered);
-        setPaymentReceivedOrders(received);
-        setPaymentConfirmedOrders(confirmed);
-        setCompletedOrders(completed);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const loading = loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted;
 
-  if (loading) {
+  if (loading && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />

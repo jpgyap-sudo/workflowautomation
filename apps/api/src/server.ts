@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { z } from 'zod';
 import { query } from './db.js';
 import { createClient } from 'redis';
+import { randomUUID } from 'crypto';
 import {
   uploadToDrive,
   createDriveFolder,
@@ -21,7 +22,7 @@ await app.register(cors, { origin: true });
 
 // ── Redis Cache ──────────────────────────────────────────────────────
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://redis:6379';
-const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS ?? 30);
+const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS ?? 15); // Reduced from 30 to 15
 
 let cacheClient: Awaited<ReturnType<typeof createClient>> | null = null;
 try {
@@ -48,6 +49,21 @@ async function cacheSet(key: string, data: unknown, ttl = CACHE_TTL_SECONDS): Pr
   } catch { /* ignore */ }
 }
 
+// ── SSE (Server-Sent Events) ────────────────────────────────────────
+// Connected dashboard clients get real-time invalidation events
+const sseClients = new Set<{ id: string; write: (data: string) => void }>();
+
+function broadcastSSE(event: string, data: unknown): void {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(message);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
 // ── Cache Invalidation Helper ───────────────────────────────────────
 async function invalidateCache(patterns: string[]): Promise<void> {
   if (!cacheClient?.isOpen) return;
@@ -57,6 +73,9 @@ async function invalidateCache(patterns: string[]): Promise<void> {
       if (keys.length > 0) await cacheClient.del(keys);
     }
   } catch { /* ignore */ }
+
+  // Also notify SSE clients so they can revalidate SWR caches
+  broadcastSSE('invalidate', { keys: patterns });
 }
 
 // ── Health ──────────────────────────────────────────────────────────
@@ -489,6 +508,45 @@ app.get('/calendar/events', async () => {
 
   await cacheSet('calendar:events', allEvents, 30);
   return allEvents;
+});
+
+// ── SSE Endpoint ────────────────────────────────────────────────────
+// Dashboard clients connect here for real-time cache invalidation events
+app.get('/events', (request, reply) => {
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  const clientId = randomUUID();
+  const client = {
+    id: clientId,
+    write: (data: string) => reply.raw.write(data),
+  };
+
+  sseClients.add(client);
+  console.log(`[sse] Client connected: ${clientId} (total: ${sseClients.size})`);
+
+  // Send initial connected event
+  reply.raw.write(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`);
+
+  // Keep-alive every 30 seconds
+  const keepAlive = setInterval(() => {
+    try {
+      reply.raw.write(':keepalive\n\n');
+    } catch {
+      clearInterval(keepAlive);
+    }
+  }, 30_000);
+
+  // Cleanup on disconnect
+  request.raw.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(client);
+    console.log(`[sse] Client disconnected: ${clientId} (total: ${sseClients.size})`);
+  });
 });
 
 // ── Start ───────────────────────────────────────────────────────────

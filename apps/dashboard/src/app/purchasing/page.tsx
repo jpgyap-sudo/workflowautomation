@@ -1,28 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Order, getOrdersByStage, STAGE_CONFIG } from '@/lib/api';
+import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
-import { ShoppingCart, Factory, Calendar, CheckCircle2, Clock } from 'lucide-react';
+import { ShoppingCart, Factory, Clock } from 'lucide-react';
 
 export default function PurchasingPage() {
-  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
-  const [productionOrders, setProductionOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: pendingOrders = [],
+    isLoading: loadingPending,
+  } = useOrdersByStage('purchasing_pending');
 
-  useEffect(() => {
-    Promise.all([
-      getOrdersByStage('purchasing_pending').catch(() => []),
-      getOrdersByStage('production_confirmed').catch(() => []),
-    ])
-      .then(([pending, production]) => {
-        setPendingOrders(pending);
-        setProductionOrders(production);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const {
+    data: productionOrders = [],
+    isLoading: loadingProduction,
+  } = useOrdersByStage('production_confirmed');
 
-  if (loading) {
+  const loading = loadingPending && loadingProduction;
+
+  if (loading && pendingOrders.length === 0 && productionOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />

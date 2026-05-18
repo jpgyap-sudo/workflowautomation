@@ -1,28 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Order, getOrdersByStage } from '@/lib/api';
+import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
-import { Truck, Calendar, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2 } from 'lucide-react';
 
 export default function DeliveryPage() {
-  const [scheduledOrders, setScheduledOrders] = useState<Order[]>([]);
-  const [deliveredOrders, setDeliveredOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: scheduledOrders = [],
+    isLoading: loadingScheduled,
+  } = useOrdersByStage('delivery_scheduled');
 
-  useEffect(() => {
-    Promise.all([
-      getOrdersByStage('delivery_scheduled').catch(() => []),
-      getOrdersByStage('delivered').catch(() => []),
-    ])
-      .then(([scheduled, delivered]) => {
-        setScheduledOrders(scheduled);
-        setDeliveredOrders(delivered);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const {
+    data: deliveredOrders = [],
+    isLoading: loadingDelivered,
+  } = useOrdersByStage('delivered');
 
-  if (loading) {
+  const loading = loadingScheduled && loadingDelivered;
+
+  if (loading && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
