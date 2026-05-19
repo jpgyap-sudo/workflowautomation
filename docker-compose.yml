@@ -21,6 +21,7 @@ services:
       - "6380:6379"
 
   api:
+    build: ./apps/api
     image: ghcr.io/jpgyap-sudo/workflowautomation/api:latest
     container_name: qas_api
     restart: unless-stopped
