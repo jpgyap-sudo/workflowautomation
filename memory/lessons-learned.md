@@ -326,3 +326,44 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due sec
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+## Auto-extracted from commit d91c21df60cde7120ef286f5b9aa31ab33707c09
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Message:** fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due section
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/page.tsx,apps/dashboard/src/components/OrderTable.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,database/migrations/003_balance_payment.sql,database/schema.sql,docs/workflow.md,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/test-supabase-backup.mjs,scripts/update-supabase-env.mjs
+
+**Indicators matched:** /fix(e[ds])?:?\s+/i
+
+**Lesson:** Review this commit for reusable engineering insights.
+
+#### Lesson Learned
+
+## Auto-extracted from commit d91c21df60cde7120ef286f5b9aa31ab33707c09
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Message:** fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due section
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/page.tsx,apps/dashboard/src/components/OrderTable.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,database/migrations/003_balance_payment.sql,database/schema.sql,docs/workflow.md,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/test-supabase-backup.mjs,scripts/update-supabase-env.mjs
+
+**Indicators matched:** /fix(e[ds])?:?\s+/i
+
+**Lesson:** Review this commit for reusable engineering insights.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
