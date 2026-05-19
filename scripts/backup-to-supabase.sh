@@ -28,7 +28,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Load .env if present
 if [ -f "$PROJECT_DIR/.env" ]; then
   set -a
-  source "$PROJECT_DIR/.env"
+  . "$PROJECT_DIR/.env"
   set +a
 fi
 
