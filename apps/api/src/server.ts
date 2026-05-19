@@ -26,6 +26,7 @@ import {
   startAgentScheduler,
   runAgentByName,
   listAgents,
+  getAgentHealth,
 } from './services/agentScheduler.js';
 
 const app = Fastify({ logger: true });

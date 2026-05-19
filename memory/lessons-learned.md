@@ -1693,3 +1693,51 @@ Performance bottlenecks often stem from missing indexes, lack of caching, and un
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove extra quotes from OAuth env var references (filter-branch regression)
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f2428c10c90377aac565b3f31b5583e2f437f1a2
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f2428c10c90377aac565b3f31b5583e2f437f1a2
+**Files:** apps/api/oauth-finalize.mjs,apps/api/oauth-url.mjs
+
+**Summary:**
+**What was fixed:**  
+Removed extra double quotes around environment variable references (`"$VAR"` → `$VAR`) in OAuth URL and finalize scripts.
+
+**Why it broke:**  
+A `filter-branch` refactor accidentally wrapped env vars in literal quotes, causing the shell to treat the quoted string (including the `$` sign) as a literal value instead of expanding the variable. This broke OAuth token exchange and redirect URL generation.
+
+**Reusable takeaway:**  
+When refactoring shell scripts or template strings, verify that environment variable expansions remain unquoted unless intentional. A `filter-branch` or search-and-replace operation can silently introduce quoting errors that break runtime behavior. Always test variable expansion in the actual execution context.
+
+---
+*Original commit message: fix: remove extra quotes from OAuth env var references (filter-branch regression)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Removed extra double quotes around environment variable references (`"$VAR"` → `$VAR`) in OAuth URL and finalize scripts.
+
+**Why it broke:**  
+A `filter-branch` refactor accidentally wrapped env vars in literal quotes, causing the shell to treat the quoted string (including the `$` sign) as a literal value instead of expanding the variable. This broke OAuth token exchange and redirect URL generation.
+
+**Reusable takeaway:**  
+When refactoring shell scripts or template strings, verify that environment variable expansions remain unquoted unless intentional. A `filter-branch` or search-and-replace operation can silently introduce quoting errors that break runtime behavior. Always test variable expansion in the actual execution context.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
