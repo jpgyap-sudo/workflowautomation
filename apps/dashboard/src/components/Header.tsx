@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, RefreshCw, LogOut } from 'lucide-react';
+import { Bell, RefreshCw, LogOut, Menu } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 
@@ -16,7 +16,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/logs': 'Agent Logs',
 };
 
-export default function Header() {
+export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -29,23 +29,31 @@ export default function Header() {
   }
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold text-gray-800">{title}</h1>
+    <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-gray-200 bg-white px-3 sm:px-4 lg:px-6">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 lg:hidden"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <h1 className="truncate text-base font-semibold text-gray-800 sm:text-lg">{title}</h1>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" title="Refresh">
           <RefreshCw className="h-4 w-4" />
         </button>
-        <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" title="Notifications">
+        <button className="hidden rounded-lg p-2 text-gray-500 hover:bg-gray-100 sm:inline-flex" title="Notifications">
           <Bell className="h-4 w-4" />
         </button>
-        <div className="h-6 w-px bg-gray-200" />
+        <div className="hidden h-6 w-px bg-gray-200 sm:block" />
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2490ef] text-xs font-medium text-white">
             {initials}
           </div>
-          <span className="text-sm text-gray-600">{user?.email ?? 'Admin'}</span>
+          <span className="hidden max-w-[10rem] truncate text-sm text-gray-600 sm:inline">{user?.email ?? 'Admin'}</span>
         </div>
         <button
           onClick={handleLogout}

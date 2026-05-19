@@ -4,6 +4,7 @@ import { runInventoryAgent } from '../agents/inventoryAgent.js';
 import { runDeliveryAgent } from '../agents/deliveryAgent.js';
 import { runCollectionAgent } from '../agents/collectionAgent.js';
 import { runEscalationAgent } from '../agents/escalationAgent.js';
+import { runSupabaseBackup } from '../agents/supabaseBackupAgent.js';
 
 // ── Agent Schedule Configuration ──────────────────────────────────────
 
@@ -50,6 +51,12 @@ const AGENTS: AgentSchedule[] = [
     run: runEscalationAgent,
     intervalMs: 4 * 60 * 60 * 1000, // Every 4 hours
     description: 'Monitors stalled orders and escalates',
+  },
+  {
+    name: 'supabase-backup',
+    run: runSupabaseBackup,
+    intervalMs: 24 * 60 * 60 * 1000, // Every 24 hours
+    description: 'Dumps PostgreSQL database and uploads to Supabase Storage for off-site backup',
   },
 ];
 

@@ -174,3 +174,29 @@ export async function getDriveFileDownloadUrl(fileId: string): Promise<string> {
   });
   return file.data.webContentLink ?? file.data.webViewLink ?? '';
 }
+
+/**
+ * Get or create a month folder (YYYY-MM format) under the root.
+ * E.g. "2026-05" for May 2026.
+ */
+export async function getOrCreateMonthFolder(
+  date: Date = new Date()
+): Promise<{ id: string; webViewLink: string }> {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const folderName = `${year}-${month}`;
+  return getOrCreateFolder(folderName);
+}
+
+/**
+ * Get or create a client/project folder inside a month folder.
+ * Folder name format: "ClientName - QTN-2026-001"
+ */
+export async function getOrCreateClientFolder(
+  clientName: string,
+  quotationNumber: string,
+  monthFolderId: string
+): Promise<{ id: string; webViewLink: string }> {
+  const folderName = `${clientName} - ${quotationNumber}`;
+  return getOrCreateFolder(folderName, monthFolderId);
+}

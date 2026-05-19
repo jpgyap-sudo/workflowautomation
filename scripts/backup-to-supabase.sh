@@ -85,7 +85,7 @@ elif [ "$BUCKET_CHECK" = "404" ]; then
     -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"${SUPABASE_BACKUP_BUCKET}\",\"public\":false}" \
-    "${SUPABASE_URL}/storage/v1/bucket")
+    "${SUPABASE_URL}/storage/v1/buckets")
   echo "Bucket creation response: $CREATE_RESP"
 else
   echo "Warning: Could not verify bucket (HTTP $BUCKET_CHECK). Will attempt upload anyway."

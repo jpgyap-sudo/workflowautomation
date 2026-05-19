@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OrderDetailPage() {
@@ -54,7 +54,20 @@ export default function OrderDetailPage() {
               <h1 className="text-xl font-bold text-gray-900">
                 {order.quotation_number ?? 'Unnamed Order'}
               </h1>
-              <StageBadge stage={order.current_stage} />
+              <div className="flex items-center gap-2">
+                <StageBadge stage={order.current_stage} />
+                {order.google_drive_folder_id && (
+                  <a
+                    href={`https://drive.google.com/drive/folders/${order.google_drive_folder_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:border-[#2490ef] hover:text-[#2490ef]"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Drive Folder
+                  </a>
+                )}
+              </div>
             </div>
             <p className="mt-1 text-sm text-gray-500">
               Created {new Date(order.created_at).toLocaleString()}
@@ -271,7 +284,7 @@ export default function OrderDetailPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 text-base font-semibold text-gray-800">Files</h2>
           <div className="space-y-2">
-            {order.files.map((file: any) => (
+            {order.files.map((file) => (
               <div key={file.id} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
                 <FileText className="h-4 w-4 text-gray-400" />
                 <div className="flex-1">

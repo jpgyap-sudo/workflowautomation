@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
 export interface Account {
   email: string;
   password: string;
@@ -14,7 +16,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: { email: string; name: string; role: string } | null;
   accounts: Account[];
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  sendOtp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  verifyOtp: (email: string, otp: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   createAccount: (account: Omit<Account, 'createdAt'>) => Promise<{ success: boolean; error?: string }>;
   updateAccount: (email: string, updates: Partial<Account>) => Promise<{ success: boolean; error?: string }>;
@@ -60,43 +63,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<{ email: string; name: string; role: string } | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const [, setInitialized] = useState(false);
 
   // Hydrate from localStorage on mount
   useEffect(() => {
-    const accts = getStoredAccounts();
-    setAccounts(accts);
+    queueMicrotask(() => {
+      const accts = getStoredAccounts();
+      setAccounts(accts);
 
-    try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.email) {
-          const match = accts.find((a) => a.email === parsed.email);
-          if (match) {
-            setIsAuthenticated(true);
-            setUser({ email: match.email, name: match.name, role: match.role });
+      try {
+        const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as { email?: string };
+          if (parsed?.email) {
+            const match = accts.find((a) => a.email === parsed.email);
+            if (match) {
+              setIsAuthenticated(true);
+              setUser({ email: match.email, name: match.name, role: match.role });
+            }
           }
         }
+      } catch {
+        // ignore corrupt storage
       }
-    } catch {
-      // ignore corrupt storage
-    }
-    setInitialized(true);
+      setInitialized(true);
+    });
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  // Step 1: validate credentials locally, then ask API to send OTP
+  const sendOtp = useCallback(async (email: string, password: string) => {
     await new Promise((r) => setTimeout(r, 300));
 
     const accts = getStoredAccounts();
     const match = accts.find((a) => a.email.toLowerCase().trim() === email.toLowerCase().trim());
+    if (!match) return { success: false, error: 'Invalid email address' };
+    if (match.password !== password) return { success: false, error: 'Invalid password' };
 
-    if (!match) {
-      return { success: false, error: 'Invalid email address' };
+    try {
+      const res = await fetch(`${API_BASE}/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: match.email }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        return { success: false, error: data.error ?? 'Failed to send OTP' };
+      }
+    } catch {
+      return { success: false, error: 'Could not reach the server. Please try again.' };
     }
-    if (match.password !== password) {
-      return { success: false, error: 'Invalid password' };
+
+    return { success: true };
+  }, []);
+
+  // Step 2: verify OTP with API, then complete login
+  const verifyOtp = useCallback(async (email: string, otp: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: email.toLowerCase().trim(), otp }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        return { success: false, error: data.error ?? 'Invalid OTP' };
+      }
+    } catch {
+      return { success: false, error: 'Could not reach the server. Please try again.' };
     }
+
+    const accts = getStoredAccounts();
+    const match = accts.find((a) => a.email.toLowerCase().trim() === email.toLowerCase().trim());
+    if (!match) return { success: false, error: 'Account not found' };
 
     const userData = { email: match.email, name: match.name, role: match.role };
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
@@ -107,6 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.controller?.postMessage({ type: 'CLEAR_STATIC_CACHE' });
+    }
     setIsAuthenticated(false);
     setUser(null);
   }, []);
@@ -214,7 +255,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         user,
         accounts,
-        login,
+        sendOtp,
+        verifyOtp,
         logout,
         createAccount,
         updateAccount,

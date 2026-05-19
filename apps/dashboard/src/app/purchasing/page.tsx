@@ -1,8 +1,42 @@
 'use client';
 
 import { useOrdersByStage } from '@/lib/useApi';
+import type { Order } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ShoppingCart, Factory, Clock } from 'lucide-react';
+import { ShoppingCart, Factory, Clock, ExternalLink } from 'lucide-react';
+
+function DriveLink({ folderId }: { folderId: string | null }) {
+  if (!folderId) return <span className="text-xs text-gray-400">—</span>;
+  return (
+    <a
+      href={`https://drive.google.com/drive/folders/${folderId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-xs text-[#2490ef] hover:underline"
+    >
+      <ExternalLink className="h-3 w-3" />
+      Open Drive
+    </a>
+  );
+}
+
+function OrderRow({ order }: { order: Order }) {
+  return (
+    <div className="flex items-center justify-between px-6 py-4">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+        <p className="truncate text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+      </div>
+      <div className="flex items-center gap-4">
+        <DriveLink folderId={order.google_drive_folder_id} />
+        <span className="hidden text-xs text-gray-400 sm:inline">
+          {new Date(order.created_at).toLocaleDateString()}
+        </span>
+        <StageBadge stage={order.current_stage} />
+      </div>
+    </div>
+  );
+}
 
 export default function PurchasingPage() {
   const {
@@ -55,18 +89,7 @@ export default function PurchasingPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {pendingOrders.map((order) => (
-              <div key={order.id} className="flex items-center justify-between px-6 py-4">
-                <div>
-                  <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                  <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </span>
-                  <StageBadge stage={order.current_stage} />
-                </div>
-              </div>
+              <OrderRow key={order.id} order={order} />
             ))}
           </div>
         )}
@@ -86,18 +109,7 @@ export default function PurchasingPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {productionOrders.map((order) => (
-              <div key={order.id} className="flex items-center justify-between px-6 py-4">
-                <div>
-                  <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                  <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </span>
-                  <StageBadge stage={order.current_stage} />
-                </div>
-              </div>
+              <OrderRow key={order.id} order={order} />
             ))}
           </div>
         )}

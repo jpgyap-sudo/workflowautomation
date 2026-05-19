@@ -320,13 +320,92 @@ sudo ufw deny 8080         # Block direct API access
 sudo ufw enable
 ```
 
-### 8.3 Set up backups
+### 8.3 Set up local backups
 
 The [`scripts/backup-db.sh`](scripts/backup-db.sh) script can be scheduled via cron:
 
 ```bash
 crontab -e
 # Add: 0 3 * * * /opt/quotation-automation/scripts/backup-db.sh
+```
+
+### 8.4 Set up Supabase cloud backup (recommended)
+
+The system includes a Supabase Storage backup script that uploads your database dump to Supabase for off-site disaster recovery.
+
+**Step 1 — Create a Supabase project**
+
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Note your **Project ID** from the dashboard URL (e.g. `zetmxacmioodgxxmursa`)
+3. Go to **Project Settings → API** and copy:
+   - **Project URL** (e.g. `https://zetmxacmioodgxxmursa.supabase.co`)
+   - **`service_role` key** (NOT the anon/public key)
+
+**Step 2 — Configure `.env`**
+
+Add these to your `.env` file:
+
+```bash
+SUPABASE_URL=https://zetmxacmioodgxxmursa.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+SUPABASE_BACKUP_BUCKET=db-backups
+BACKUP_RETENTION_DAYS=30
+```
+
+**Step 3 — Update VPS `.env` remotely**
+
+If your VPS is already deployed, use the update script:
+
+```bash
+node scripts/update-supabase-env.mjs
+```
+
+This SSHes into the VPS and updates the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+
+**Step 4 — Test the backup**
+
+```bash
+node scripts/test-supabase-backup.mjs
+```
+
+Or run the backup script directly on the VPS:
+
+```bash
+ssh root@your-vps-ip "cd /opt/quotation-automation && sh scripts/backup-to-supabase.sh"
+```
+
+**Step 5 — Schedule automated backups**
+
+Add a cron job to run the Supabase backup daily:
+
+```bash
+crontab -e
+# Add: 0 4 * * * cd /opt/quotation-automation && sh scripts/backup-to-supabase.sh >> logs/supabase-backup.log 2>&1
+```
+
+**How it works**
+
+The [`scripts/backup-to-supabase.sh`](scripts/backup-to-supabase.sh) script:
+1. Dumps the PostgreSQL database via `docker exec` + `pg_dump`
+2. Compresses it with `gzip`
+3. Uploads to Supabase Storage (`db-backups` bucket)
+4. Automatically cleans up backups older than `BACKUP_RETENTION_DAYS` (default: 30)
+5. Uses the `service_role` key for admin-level storage access
+
+**Restoring from a Supabase backup**
+
+```bash
+# List available backups
+curl -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  "https://zetmxacmioodgxxmursa.supabase.co/storage/v1/object/list/db-backups"
+
+# Download a specific backup
+curl -o db_backup.sql.gz \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  "https://zetmxacmioodgxxmursa.supabase.co/storage/v1/object/db-backups/db_20260519_030000.sql.gz"
+
+# Restore to local database
+gunzip -c db_backup.sql.gz | docker exec -i qas_postgres psql -U n8n -d quotation_automation
 ```
 
 ---

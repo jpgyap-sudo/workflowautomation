@@ -120,7 +120,7 @@ export default function SalesPage() {
           <span className="text-xs text-gray-400">{monthly.length} months</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 <th className="px-6 py-3">Month</th>

@@ -3,13 +3,21 @@ import cors from '@fastify/cors';
 import { z } from 'zod';
 import { query } from './db.js';
 import { createClient } from 'redis';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomInt } from 'crypto';
+import nodemailer from 'nodemailer';
 import {
   uploadToDrive,
   createDriveFolder,
   getOrCreateFolder,
+  getOrCreateMonthFolder,
+  getOrCreateClientFolder,
   deleteDriveFile,
 } from './services/googleDrive.js';
+import {
+  autoExtract,
+  extractQuotation,
+  extractPayment,
+} from './services/geminiVision.js';
 import {
   processDueReminders,
   createStageReminder,
@@ -90,6 +98,68 @@ async function invalidateCache(patterns: string[]): Promise<void> {
   broadcastSSE('invalidate', { keys: patterns });
 }
 
+// ── Email (OTP) ──────────────────────────────────────────────────────
+const smtpTransporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+const OTP_TTL = 300; // 5 minutes
+const OTP_MAX_ATTEMPTS = 5;
+
+app.post('/auth/send-otp', async (request, reply) => {
+  const { email } = z.object({ email: z.string().email() }).parse(request.body);
+  const otp = String(randomInt(100000, 999999));
+  const key = `otp:${email.toLowerCase()}`;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'OTP service unavailable' });
+  }
+  await cacheClient.setEx(key, OTP_TTL, JSON.stringify({ otp, attempts: 0 }));
+  try {
+    await smtpTransporter.sendMail({
+      from: `"Quotation System" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: 'Your login OTP',
+      text: `Your one-time login code is: ${otp}\n\nIt expires in 5 minutes.`,
+      html: `<p>Your one-time login code is:</p><h2 style="letter-spacing:4px">${otp}</h2><p>It expires in 5 minutes.</p>`,
+    });
+  } catch (err) {
+    console.error('[otp] Failed to send email:', err);
+    return reply.status(500).send({ error: 'Failed to send OTP email' });
+  }
+  return reply.send({ ok: true });
+});
+
+app.post('/auth/verify-otp', async (request, reply) => {
+  const { email, otp } = z.object({ email: z.string().email(), otp: z.string() }).parse(request.body);
+  const key = `otp:${email.toLowerCase()}`;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'OTP service unavailable' });
+  }
+  const raw = await cacheClient.get(key);
+  if (!raw) {
+    return reply.status(400).send({ error: 'OTP expired or not found' });
+  }
+  const stored = JSON.parse(raw) as { otp: string; attempts: number };
+  if (stored.attempts >= OTP_MAX_ATTEMPTS) {
+    await cacheClient.del(key);
+    return reply.status(400).send({ error: 'Too many attempts. Request a new OTP.' });
+  }
+  if (stored.otp !== otp.trim()) {
+    stored.attempts += 1;
+    const ttl = await cacheClient.ttl(key);
+    await cacheClient.setEx(key, ttl > 0 ? ttl : 1, JSON.stringify(stored));
+    return reply.status(400).send({ error: 'Invalid OTP' });
+  }
+  await cacheClient.del(key);
+  return reply.send({ ok: true });
+});
+
 // ── Health ──────────────────────────────────────────────────────────
 app.get('/health', async () => {
   const agentHealth = getAgentHealth();
@@ -128,7 +198,7 @@ app.get('/orders', async () => {
   const cached = await cacheGet<object[]>('orders:all');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
      FROM orders ORDER BY created_at DESC LIMIT 100`
   );
   await cacheSet('orders:all', rows);
@@ -139,7 +209,7 @@ app.get('/orders/pending', async () => {
   const cached = await cacheGet<object[]>('orders:pending');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
      FROM orders WHERE status='active' ORDER BY created_at DESC LIMIT 50`
   );
   await cacheSet('orders:pending', rows);
@@ -152,7 +222,7 @@ app.get('/orders/stage/:stage', async (request, reply) => {
   const cached = await cacheGet<object[]>(cacheKey);
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
      FROM orders WHERE current_stage=$1 ORDER BY created_at DESC`, [params.stage]
   );
   await cacheSet(cacheKey, rows);
@@ -380,6 +450,203 @@ app.get('/agent-logs', async () => {
   return rows;
 });
 
+// ── Backup Status ───────────────────────────────────────────────────
+
+/**
+ * GET /backups — List Supabase backup files and latest backup log entry
+ * Returns backup files from Supabase Storage + the most recent agent_log
+ * entry for the supabase-backup agent.
+ */
+app.get('/backups', async () => {
+  const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const SUPABASE_BACKUP_BUCKET = process.env.SUPABASE_BACKUP_BUCKET ?? 'db-backups';
+
+  // Get latest backup log from DB
+  const logRows = await query(
+    `SELECT id, agent_name, status, input, output, error, created_at
+     FROM agent_logs
+     WHERE agent_name = 'supabase-backup'
+     ORDER BY created_at DESC LIMIT 1`
+  );
+  const latestLog = logRows[0] ?? null;
+
+  // If no Supabase credentials, return just the log
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { files: [], latestLog };
+  }
+
+  // List backup files from Supabase Storage
+  try {
+    const url = `${SUPABASE_URL}/storage/v1/object/list/${SUPABASE_BACKUP_BUCKET}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prefix: '', sortBy: { column: 'created_at', order: 'desc' } }),
+    });
+
+    if (!res.ok) {
+      return { files: [], latestLog, error: `Supabase API error: ${res.status}` };
+    }
+
+    const data = await res.json();
+    const files = (Array.isArray(data) ? data : [])
+      .filter((f: any) => f.name)
+      .map((f: any) => ({
+        name: f.name,
+        size_bytes: f.metadata?.size ?? f.size ?? 0,
+        created_at: f.created_at,
+        updated_at: f.updated_at,
+      }));
+
+    return { files, latestLog };
+  } catch (err) {
+    return { files: [], latestLog, error: String(err) };
+  }
+});
+
+/**
+ * GET /backups/download/:filename — Proxy download of a backup file from Supabase Storage
+ */
+app.get('/backups/download/:filename', async (request, reply) => {
+  const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const SUPABASE_BACKUP_BUCKET = process.env.SUPABASE_BACKUP_BUCKET ?? 'db-backups';
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return reply.code(400).send({ error: 'Supabase not configured' });
+  }
+
+  const params = z.object({ filename: z.string() }).parse(request.params);
+  const filename = params.filename;
+
+  // Validate filename — only allow .sql.gz files matching our backup pattern
+  // Prevents path traversal attacks (e.g. "../../other-bucket/file")
+  if (!/^db_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.sql\.gz$/.test(filename)) {
+    return reply.code(400).send({ error: 'Invalid backup filename' });
+  }
+
+  try {
+    const url = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BACKUP_BUCKET}/${filename}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+    });
+
+    if (!res.ok) {
+      return reply.code(res.status).send({ error: `Supabase API error: ${res.status}` });
+    }
+
+    const buffer = await res.arrayBuffer();
+    return reply
+      .header('Content-Type', 'application/gzip')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(Buffer.from(buffer));
+  } catch (err) {
+    return reply.code(500).send({ error: String(err) });
+  }
+});
+
+/**
+ * POST /vision/extract — Use Gemini Vision to extract data from an image
+ * Body: { image_base64: string, mime_type: string, mode?: 'auto' | 'quotation' | 'payment' }
+ * Returns extracted fields as JSON.
+ */
+const visionExtractSchema = z.object({
+  image_base64: z.string().min(1, 'image_base64 is required'),
+  mime_type: z.string().default('image/jpeg'),
+  mode: z.enum(['auto', 'quotation', 'payment']).default('auto'),
+});
+
+app.post('/vision/extract', async (request, reply) => {
+  const body = visionExtractSchema.parse(request.body);
+
+  try {
+    let result;
+    switch (body.mode) {
+      case 'quotation':
+        result = await extractQuotation(body.image_base64, body.mime_type);
+        break;
+      case 'payment':
+        result = await extractPayment(body.image_base64, body.mime_type);
+        break;
+      default:
+        result = await autoExtract(body.image_base64, body.mime_type);
+    }
+
+    return reply.send({ ok: true, ...result });
+  } catch (err: any) {
+    console.error('[vision] Extraction error:', err);
+    return reply.code(500).send({
+      ok: false,
+      error: err.message,
+      type: 'unknown',
+      raw_text: '',
+      confidence: 'low',
+    });
+  }
+});
+
+// ── Vision Share Endpoints ──────────────────────────────────────────
+// In-memory store for extracted vision data shared from Telegram bot
+// to the dashboard GUI. Data expires after 30 minutes.
+
+interface VisionShareEntry {
+  image_base64: string;
+  mime_type: string;
+  file_name: string;
+  extracted: Record<string, unknown>;
+  type: 'quotation' | 'payment' | 'unknown';
+  confidence: 'high' | 'medium' | 'low';
+  raw_text: string;
+  created_at: number;
+}
+
+const visionShares = new Map<string, VisionShareEntry>();
+
+const VISION_SHARE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// Periodic cleanup of expired shares
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, entry] of visionShares) {
+    if (now - entry.created_at > VISION_SHARE_TTL) {
+      visionShares.delete(token);
+    }
+  }
+}, 60_000);
+
+const visionShareSchema = z.object({
+  image_base64: z.string().min(1),
+  mime_type: z.string().min(1),
+  file_name: z.string().min(1),
+  extracted: z.record(z.string(), z.unknown()),
+  type: z.enum(['quotation', 'payment', 'unknown']),
+  confidence: z.enum(['high', 'medium', 'low']),
+  raw_text: z.string(),
+});
+
+app.post('/vision/share', async (request, reply) => {
+  const body = visionShareSchema.parse(request.body);
+  const token = randomUUID();
+  visionShares.set(token, {
+    ...body,
+    created_at: Date.now(),
+  });
+  return { ok: true, token };
+});
+
+app.get('/vision/share/:token', async (request, reply) => {
+  const params = z.object({ token: z.string().uuid() }).parse(request.params);
+  const entry = visionShares.get(params.token);
+  if (!entry) {
+    return reply.code(404).send({ ok: false, error: 'Share not found or expired' });
+  }
+  return { ok: true, ...entry };
+});
+
 // ── Agent Endpoints ─────────────────────────────────────────────────
 
 /**
@@ -567,7 +834,7 @@ app.get('/dashboard/stats', async () => {
   );
 
   const recentOrders = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
      FROM orders ORDER BY created_at DESC LIMIT 10`
   );
 
@@ -630,30 +897,41 @@ const fileUploadSchema = z.object({
 
 /**
  * POST /drive/upload
- * Upload a file (base64) to Google Drive and store reference in DB.
+ * Upload a file (base64) to Google Drive using hierarchical folder structure:
+ *   Root → YYYY-MM (month) → ClientName - QTN-XXXX (client/project) → files
+ * Stores reference in DB and links folder to order.
  */
 app.post('/drive/upload', async (request, reply) => {
   const body = fileUploadSchema.parse(request.body);
   const fileBuffer = Buffer.from(body.file_data, 'base64');
 
-  // Determine target folder: per-order folder or root
+  // Determine target folder: explicit folder_id overrides auto-organization
   let targetFolderId = body.folder_id;
 
-  // If quotation_number provided, get or create per-order folder
+  // If quotation_number provided, use hierarchical folder structure
   if (body.quotation_number && !targetFolderId) {
     const orders = await query(
-      `SELECT id, google_drive_folder_id FROM orders WHERE quotation_number=$1`,
+      `SELECT id, client_name, google_drive_folder_id FROM orders WHERE quotation_number=$1`,
       [body.quotation_number]
     );
     if (orders[0]) {
       if (orders[0].google_drive_folder_id) {
+        // Client folder already exists — use it directly
         targetFolderId = orders[0].google_drive_folder_id;
       } else {
-        // Create a folder for this order
-        const folder = await createDriveFolder(`Order-${body.quotation_number}`);
-        targetFolderId = folder.id;
+        // Build hierarchy: Root → YYYY-MM → ClientName - QTN-XXXX
+        const clientName = orders[0].client_name ?? 'Unknown Client';
+        const monthFolder = await getOrCreateMonthFolder();
+        const clientFolder = await getOrCreateClientFolder(
+          clientName,
+          body.quotation_number,
+          monthFolder.id
+        );
+        targetFolderId = clientFolder.id;
+
+        // Store the client folder ID on the order for future uploads
         await query(`UPDATE orders SET google_drive_folder_id=$1 WHERE id=$2`, [
-          folder.id,
+          clientFolder.id,
           orders[0].id,
         ]);
       }
@@ -691,7 +969,8 @@ app.post('/drive/upload', async (request, reply) => {
 
 /**
  * POST /drive/folder
- * Create a folder for an order.
+ * Create a folder for an order using hierarchical structure:
+ *   Root → YYYY-MM (month) → ClientName - QTN-XXXX (client/project)
  */
 app.post('/drive/folder', async (request, reply) => {
   const body = z
@@ -701,16 +980,36 @@ app.post('/drive/folder', async (request, reply) => {
     })
     .parse(request.body);
 
-  const folderName = body.folder_name ?? `Order-${body.quotation_number}`;
-  const folder = await getOrCreateFolder(folderName);
+  // Look up order to get client name
+  const orders = await query(
+    `SELECT id, client_name, google_drive_folder_id FROM orders WHERE quotation_number=$1`,
+    [body.quotation_number]
+  );
+  if (!orders[0]) {
+    return reply.code(404).send({ error: 'Order not found' });
+  }
+
+  // If folder already exists, return it
+  if (orders[0].google_drive_folder_id) {
+    return reply.send({ ok: true, folder: { id: orders[0].google_drive_folder_id } });
+  }
+
+  // Build hierarchy: Root → YYYY-MM → ClientName - QTN-XXXX
+  const clientName = orders[0].client_name ?? 'Unknown Client';
+  const monthFolder = await getOrCreateMonthFolder();
+  const clientFolder = await getOrCreateClientFolder(
+    clientName,
+    body.quotation_number,
+    monthFolder.id
+  );
 
   // Link folder to order
   await query(`UPDATE orders SET google_drive_folder_id=$1 WHERE quotation_number=$2`, [
-    folder.id,
+    clientFolder.id,
     body.quotation_number,
   ]);
 
-  return reply.send({ ok: true, folder });
+  return reply.send({ ok: true, folder: clientFolder });
 });
 
 /**

@@ -160,13 +160,14 @@ export default function AgentsPage() {
 
   // Parse health data — the /health endpoint returns { agents: [...] }
   const healthMap: Record<string, AgentHealth> = {};
-  if (healthData && Array.isArray(healthData)) {
+  const healthPayload = healthData as AgentHealth[] | { agents?: AgentHealth[] } | undefined;
+  if (Array.isArray(healthPayload)) {
     // If /health returns array directly (unlikely but handle)
-    for (const h of healthData as any) {
+    for (const h of healthPayload) {
       if (h.name) healthMap[h.name] = h;
     }
-  } else if (healthData && (healthData as any).agents) {
-    for (const h of (healthData as any).agents) {
+  } else if (healthPayload?.agents) {
+    for (const h of healthPayload.agents) {
       if (h.name) healthMap[h.name] = h;
     }
   }

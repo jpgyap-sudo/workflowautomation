@@ -13,6 +13,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Wait for auth hydration to complete
   useEffect(() => {
@@ -60,10 +61,14 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      <div className="flex min-h-dvh w-full overflow-x-hidden bg-[#f4f5f7]">
+        <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Header onMenuClick={() => setMobileMenuOpen(true)} />
+          <main className="min-w-0 flex-1 overflow-x-hidden p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-4 lg:p-6">
+            {children}
+          </main>
+        </div>
       </div>
     </>
   );

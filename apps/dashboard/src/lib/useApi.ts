@@ -1,15 +1,15 @@
 'use client';
 
 import useSWR, { mutate } from 'swr';
-import useSWRSubscription from 'swr/subscription';
 import { useEffect, useRef } from 'react';
 import {
+  AgentLog,
   DashboardStats,
   Order,
   OrderDetail,
-  StageUpdate,
   CalendarEvent,
   MonthlySales,
+  BackupsResponse,
 } from './api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -79,7 +79,7 @@ export function useOrder(quotationNumber: string | undefined) {
 
 // ── Hook: Agent Logs ─────────────────────────────────────────────────
 export function useAgentLogs() {
-  return useSWR<any[]>('/agent-logs', fetcher, {
+  return useSWR<AgentLog[]>('/agent-logs', fetcher, {
     ...SWR_CONFIG,
     refreshInterval: 10_000, // logs refresh more frequently
   });
@@ -122,6 +122,7 @@ export function useRealtimeSubscription() {
           if (key.includes('/reminders')) swrKeys.push('/reminders');
           if (key.includes('/agent-logs')) swrKeys.push('/agent-logs');
           if (key.includes('/calendar/')) swrKeys.push('/calendar/events');
+          if (key.includes('/backups') || key.includes('supabase-backup')) swrKeys.push('/backups');
         }
 
         // Also revalidate any stage-specific keys
@@ -178,5 +179,13 @@ export function useAgentHealth() {
   return useSWR<AgentHealth[]>('/health', fetcher, {
     ...SWR_CONFIG,
     refreshInterval: 30_000, // health refreshes every 30s
+  });
+}
+
+// ── Hook: Backups ───────────────────────────────────────────────────
+export function useBackups() {
+  return useSWR<BackupsResponse>('/backups', fetcher, {
+    ...SWR_CONFIG,
+    refreshInterval: 30_000, // backups refresh every 30s
   });
 }

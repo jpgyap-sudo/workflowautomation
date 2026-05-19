@@ -58,6 +58,18 @@ Open:
 | n8n | `http://165.22.110.111:5678` |
 | API health | `http://165.22.110.111:8080/health` |
 
+## Automated Database Backup (Supabase)
+
+The database is automatically backed up to **Supabase Storage** every **24 hours** via the `supabase-backup` agent.
+
+- **Backup schedule:** Every 24 hours (runs inside the API process via agent scheduler)
+- **Storage:** Supabase Storage bucket `db-backups`
+- **Retention:** 30 days (old backups are automatically cleaned up)
+- **Manual trigger:** `POST /agents/run/supabase-backup`
+- **Script fallback:** `sh scripts/backup-to-supabase.sh` (runs via shell, useful for cron)
+
+**Supabase project:** [`zetmxacmioodgxxmursa`](https://supabase.com/dashboard/project/zetmxacmioodgxxmursa)
+
 ## MVP flow
 
 1. Sales forwards approved quotation to Purchasing Telegram group.
@@ -66,6 +78,7 @@ Open:
 4. n8n or Telegram bot uploads to Google Drive.
 5. Daily reminders continue until each department replies with status.
 6. Dashboard provides real-time visibility into every stage.
+7. Database is automatically backed up to Supabase Storage every 24 hours.
 
 ## Suggested production domain
 

@@ -409,12 +409,13 @@ export default function WorkflowPage() {
 
   // Parse health data
   const healthMap: Record<string, AgentHealth> = {};
-  if (healthData && Array.isArray(healthData)) {
-    for (const h of healthData as any) {
+  const healthPayload = healthData as AgentHealth[] | { agents?: AgentHealth[] } | undefined;
+  if (Array.isArray(healthPayload)) {
+    for (const h of healthPayload) {
       if (h.name) healthMap[h.name] = h;
     }
-  } else if (healthData && (healthData as any).agents) {
-    for (const h of (healthData as any).agents) {
+  } else if (healthPayload?.agents) {
+    for (const h of healthPayload.agents) {
       if (h.name) healthMap[h.name] = h;
     }
   }

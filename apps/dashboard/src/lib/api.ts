@@ -30,6 +30,15 @@ export interface StageUpdate {
   created_at: string;
 }
 
+export interface OrderFile {
+  id: string;
+  original_filename: string | null;
+  file_type: string | null;
+  google_drive_file_id: string | null;
+  google_drive_url?: string | null;
+  created_at?: string;
+}
+
 export interface DashboardStats {
   total_orders: number;
   active_orders: number;
@@ -57,7 +66,17 @@ export interface MonthlySales {
 
 export interface OrderDetail extends Order {
   stage_updates: StageUpdate[];
-  files: any[];
+  files: OrderFile[];
+}
+
+export interface AgentLog {
+  id: string;
+  agent_name: string;
+  status: string;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -125,6 +144,29 @@ export interface CalendarEvent {
 
 export async function getCalendarEvents(): Promise<CalendarEvent[]> {
   return fetchJson<CalendarEvent[]>('/calendar/events');
+}
+
+export interface BackupFile {
+  name: string;
+  size_bytes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BackupLogEntry {
+  id: string;
+  agent_name: string;
+  status: string;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface BackupsResponse {
+  files: BackupFile[];
+  latestLog: BackupLogEntry | null;
+  error?: string;
 }
 
 export const STAGE_ORDER = [

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Quotation System">
+  <rect width="512" height="512" rx="108" fill="#2490ef"/>
+  <rect x="112" y="92" width="288" height="328" rx="32" fill="#ffffff" opacity="0.96"/>
+  <path d="M176 178h160M176 238h160M176 298h96" stroke="#2490ef" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="336" cy="332" r="42" fill="#10b981"/>
+  <path d="m318 332 14 14 28-34" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

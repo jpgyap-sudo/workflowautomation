@@ -46,7 +46,9 @@ type UserStep =
   | { action: 'awaiting_order_number_for_payment' }
   | { action: 'awaiting_payment_status'; quotationNumber: string }
   | { action: 'awaiting_order_number_for_link' }
-  | { action: 'awaiting_file_upload' };
+  | { action: 'awaiting_file_upload' }
+  | { action: 'awaiting_vision_process'; imageBase64: string; mimeType: string; fileName: string }
+  | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string };
 
 interface UserSession {
   step: UserStep;
@@ -734,8 +736,241 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
   }
 });
 
+// ── Gemini Vision Callback Handlers ──────────────────────────────────
+// Workflow:
+//   1. User sends image/PDF → bot asks "Process this order?" (Yes/No)
+//   2. If Yes → bot asks "Extract info from image/PDF?" (Yes/No)
+//   3. If Yes to extract → Gemini extracts → share link to dashboard GUI
+//   4. If No to extract → upload to Drive
+//   5. If No to process → do nothing
+
+// Step 1: User said Yes to "Process this order?" → ask about extraction
+bot.action('vision:process_yes', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+
+  if (session.step.action !== 'awaiting_vision_process') {
+    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+
+  // Store data for next step
+  setStep(chatId, {
+    action: 'awaiting_vision_extract',
+    imageBase64,
+    mimeType,
+    fileName,
+  });
+
+  await ctx.editMessageText(
+    `📄 *File received:* ${fileName}\n\n` +
+    `Do you want me to extract the information from this image/PDF using AI?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Yes, extract info', 'vision:extract_yes')],
+        [Markup.button.callback('📤 Just upload to Drive', 'vision:upload')],
+        [Markup.button.callback('❌ No, do nothing', 'vision:ignore')],
+      ]),
+    }
+  );
+});
+
+// Step 1: User said No to "Process this order?" → do nothing
+bot.action('vision:process_no', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  resetStep(chatId);
+  await ctx.editMessageText('✅ File ignored. Nothing was uploaded.', {
+    parse_mode: 'Markdown',
+    ...mainMenuKeyboard(),
+  });
+});
+
+// Step 2: User said Yes to extract → call Gemini Vision, share to dashboard
+bot.action('vision:extract_yes', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+
+  if (session.step.action !== 'awaiting_vision_extract') {
+    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+  await ctx.editMessageText(`🤖 Analyzing with AI Vision...`);
+
+  try {
+    // Call the API's vision/extract endpoint
+    const res = await fetch(`${apiBaseUrl}/vision/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: imageBase64,
+        mime_type: mimeType,
+        mode: 'auto',
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Vision API error' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Store the extracted data + image via the share endpoint
+    const shareRes = await fetch(`${apiBaseUrl}/vision/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: imageBase64,
+        mime_type: mimeType,
+        file_name: fileName,
+        extracted: data.quotation || data.payment || {},
+        type: data.type,
+        confidence: data.confidence,
+        raw_text: data.raw_text || '',
+      }),
+    });
+
+    if (!shareRes.ok) {
+      throw new Error('Failed to create share link');
+    }
+
+    const shareData = await shareRes.json();
+    const token = shareData.token;
+
+    // Build dashboard URL
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'http://localhost:3000';
+    const visionUrl = `${dashboardBase}/vision?token=${token}`;
+
+    resetStep(chatId);
+
+    if (data.type === 'quotation' && data.quotation) {
+      const q = data.quotation;
+      const fields = [
+        `📋 *Extracted Quotation Info:*`,
+        q.quotation_number ? `🔢 Number: \`${q.quotation_number}\`` : null,
+        q.client_name ? `👤 Client: ${q.client_name}` : null,
+        q.sales_agent ? `🧑‍💼 Agent: ${q.sales_agent}` : null,
+        q.total_amount ? `💰 Amount: ₱${Number(q.total_amount).toLocaleString()}` : null,
+        `📊 Confidence: ${data.confidence}`,
+      ].filter(Boolean).join('\n');
+
+      await ctx.editMessageText(
+        `${fields}\n\n` +
+        `✅ *Information extracted!*\n\n` +
+        `👉 [Open in Dashboard to review & create order](${visionUrl})\n\n` +
+        `The extracted data has been sent to the dashboard. You can edit the fields and create the order there.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url('🚀 Open in Dashboard', visionUrl)],
+            [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
+          ]),
+        }
+      );
+    } else if (data.type === 'payment' && data.payment) {
+      const p = data.payment;
+      const fields = [
+        `💳 *Extracted Payment Info:*`,
+        p.amount ? `💰 Amount: ₱${Number(p.amount).toLocaleString()}` : null,
+        p.type !== 'unknown' ? `📌 Type: ${p.type}` : null,
+        p.reference_number ? `🔖 Ref: \`${p.reference_number}\`` : null,
+        p.paid_by ? `👤 Paid by: ${p.paid_by}` : null,
+        `📊 Confidence: ${data.confidence}`,
+      ].filter(Boolean).join('\n');
+
+      await ctx.editMessageText(
+        `${fields}\n\n` +
+        `ℹ️ Payment info extracted. To record this payment, use the order status menu in the dashboard.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      await ctx.editMessageText(
+        `🤷 Could not identify this image as a quotation or payment receipt.\nRaw text: ${data.raw_text?.slice(0, 200) || 'none'}`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    }
+  } catch (error: any) {
+    console.error('[vision] Extraction error:', error);
+    resetStep(chatId);
+    await ctx.editMessageText(`❌ Vision analysis failed: ${error.message}`, {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+});
+
+// Fallback: upload to Drive (used from multiple steps)
+bot.action('vision:upload', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+
+  if (session.step.action !== 'awaiting_vision_process' && session.step.action !== 'awaiting_vision_extract') {
+    return ctx.editMessageText('⏳ Session expired.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+  const fileBuffer = Buffer.from(imageBase64, 'base64');
+
+  try {
+    await ctx.editMessageText(`📤 Uploading to Google Drive...`);
+
+    const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
+
+    const payload: Record<string, unknown> = {
+      file_type: mimeType,
+      original_filename: fileName,
+      mime_type: mimeType,
+      file_data: imageBase64,
+      telegram_chat_id: chatId,
+      uploaded_by: ctx.from?.username ?? String(ctx.from?.id),
+    };
+
+    await fetch(`${apiBaseUrl}/drive/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *File uploaded to Google Drive!*\n📄 ${fileName}\n🔗 ${driveResult.webViewLink}`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (error: any) {
+    console.error('[vision] Upload error:', error);
+    resetStep(chatId);
+    await ctx.editMessageText(`❌ Upload failed: ${error.message}`, {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+});
+
+// Do nothing
+bot.action('vision:ignore', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  resetStep(chatId);
+  await ctx.editMessageText('✅ File ignored. Nothing was uploaded.', {
+    parse_mode: 'Markdown',
+    ...mainMenuKeyboard(),
+  });
+});
+
 // ── File Upload Handler ──────────────────────────────────────────────
 // Handles documents (PDFs, images, etc.) and photos sent to the bot.
+// For images, asks the user if they want Gemini Vision to extract data.
 
 bot.on(['document', 'photo'], async (ctx) => {
   const chatId = String(ctx.chat!.id);
@@ -771,35 +1006,53 @@ bot.on(['document', 'photo'], async (ctx) => {
     const response = await fetch(link.href);
     if (!response.ok) throw new Error(`Telegram download failed: ${response.status}`);
     const fileBuffer = Buffer.from(await response.arrayBuffer());
+    const imageBase64 = fileBuffer.toString('base64');
 
-    await ctx.reply(`📤 Uploading to Google Drive...`);
+    // Step 2: Ask user if they want to process this file
+      // For images and PDFs, offer the vision workflow
+      const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
+      if (isProcessable) {
+        setStep(chatId, {
+          action: 'awaiting_vision_process',
+          imageBase64,
+          mimeType,
+          fileName,
+        });
 
-    // Step 2: Upload to Google Drive
-    const quotationNumber = session.linkedOrder;
-    const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
+        await ctx.reply(
+          `📎 *File received:* ${fileName}\n\nDo you want me to process this order?`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('✅ Yes, process this order', 'vision:process_yes')],
+              [Markup.button.callback('❌ No, do nothing', 'vision:process_no')],
+            ]),
+          }
+        );
+      } else {
+        // Non-image/PDF: just upload to Drive as before
+        await ctx.reply(`📤 Uploading to Google Drive...`);
+        const quotationNumber = session.linkedOrder;
+        const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
 
-    // Step 3: Store reference in API database
-    const payload: Record<string, unknown> = {
-      file_type: mimeType,
-      original_filename: fileName,
-      mime_type: mimeType,
-      file_data: fileBuffer.toString('base64'),
-      telegram_chat_id: chatId,
-      telegram_message_id: messageId,
-      uploaded_by: from,
-    };
+        const payload: Record<string, unknown> = {
+          file_type: mimeType,
+          original_filename: fileName,
+          mime_type: mimeType,
+          file_data: imageBase64,
+          telegram_chat_id: chatId,
+          telegram_message_id: messageId,
+          uploaded_by: from,
+        };
+        if (quotationNumber) payload.quotation_number = quotationNumber;
+        await postJson('/drive/upload', payload);
 
-    if (quotationNumber) {
-      payload.quotation_number = quotationNumber;
-    }
-
-    await postJson('/drive/upload', payload);
-
-    await ctx.reply(
-      `✅ *File uploaded to Google Drive!*\n📄 ${fileName}\n🔗 ${driveResult.webViewLink}` +
-        (quotationNumber ? `\n📦 Linked to order: ${quotationNumber}` : ''),
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-    );
+        await ctx.reply(
+          `✅ *File uploaded to Google Drive!*\n📄 ${fileName}\n🔗 ${driveResult.webViewLink}` +
+            (quotationNumber ? `\n📦 Linked to order: ${quotationNumber}` : ''),
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      }
   } catch (error: any) {
     console.error('Upload error:', error);
     await ctx.reply(`❌ Upload failed: ${error.message}`, {

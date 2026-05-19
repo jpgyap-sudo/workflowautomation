@@ -9,8 +9,10 @@
   },
   "dependencies": {
     "@fastify/cors": "latest",
+    "@types/nodemailer": "^8.0.0",
     "fastify": "latest",
     "googleapis": "^171.4.0",
+    "nodemailer": "^8.0.7",
     "pg": "latest",
     "redis": "^4.7.0",
     "zod": "latest"
