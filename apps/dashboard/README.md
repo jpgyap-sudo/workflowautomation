@@ -14,6 +14,11 @@ Next.js dashboard for the Quotation Automation System. ERPNext-inspired UI for t
 | `/delivery` | Delivery scheduling & tracking |
 | `/collection` | Counter & Collection tracking |
 | `/stages` | Full stage pipeline visualization |
+| `/workflow` | Stage pipeline, agent mapping, and working tree (3-tab view) |
+| `/agents` | Agent management with health status and run controls |
+| `/sales` | Monthly sales chart and breakdown |
+| `/calendar` | Calendar view of events and reminders |
+| `/settings` | Account management, notifications, and theme |
 | `/logs` | Agent execution logs |
 
 ## Development

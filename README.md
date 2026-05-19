@@ -30,21 +30,29 @@ The web dashboard provides a full ERPNext-style interface for managing the quota
 | **Stage Pipeline** | Kanban-style pipeline across all 11 stages |
 | **Agent Logs** | Quotation checker & agent execution logs |
 
-## Quick start on VPS
+## VPS
+
+**Production VPS:** `165.22.110.111` (root user, key: `id_ed25519_roo`)
+
+**Repo path on VPS:** `/opt/quotation-automation`
+
+**Deploy:** Push to GitHub → GHCR image auto-builds via GitHub Actions → SSH in and run:
 
 ```bash
-cp .env.example .env
-openssl rand -hex 32
-# paste generated key into N8N_ENCRYPTION_KEY
-
-docker compose up -d --build
+ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111
+cd /opt/quotation-automation
+git fetch origin && git reset --hard origin/master
+docker pull ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest
+docker pull ghcr.io/jpgyap-sudo/workflowautomation/api:latest
+docker pull ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest
+docker-compose down --remove-orphans && docker-compose up -d
 ```
 
 Open:
 
 | Service | URL |
 |---|---|
-| Dashboard | `http://YOUR_VPS_IP:3000` |
+| Dashboard | `https://dev.abcx124.xyz` |
 | n8n | `http://YOUR_VPS_IP:5678` |
 | API health | `http://YOUR_VPS_IP:8080/health` |
 
