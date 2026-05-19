@@ -98,15 +98,18 @@ jobs:
             set -e
             cd /opt/quotation-automation
 
-            # Pull latest images
+            # Pull latest images from GHCR
             docker pull ${{ env.API_IMAGE }}:latest
             docker pull ${{ env.DASHBOARD_IMAGE }}:latest
             docker pull ${{ env.TELEGRAM_BOT_IMAGE }}:latest
 
-            # Restart containers with new images
-            docker-compose up -d --no-deps api dashboard telegram-bot
+            # Sync docker-compose image cache with freshly pulled images
+            docker-compose pull api dashboard telegram-bot
 
-            # Clean up old images
+            # Restart containers with new images
+            docker-compose up -d --no-deps --remove-orphans api dashboard telegram-bot
+
+            # Clean up old dangling images
             docker image prune -f
 
             echo 'Deployment complete!'
