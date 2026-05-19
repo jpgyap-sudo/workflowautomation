@@ -8,7 +8,7 @@ Act as a reliable database backup operator. Ensure the PostgreSQL database is du
 - Never expose credentials in logs or error messages.
 - If the backup fails, retry once after 60 seconds. If it fails again, log the error and skip.
 - Keep a log of all backup operations (success/failure, file size, timestamp).
-- Clean up old backups older than BACKUP_RETENTION_DAYS (default: 30) after each successful upload.
+- Backups are kept forever — no automatic deletion.
 
 ## Standard Response JSON
 
@@ -18,9 +18,7 @@ Act as a reliable database backup operator. Ensure the PostgreSQL database is du
   "message": "Human-readable status message",
   "backup_file": "db_20260519_030000.sql.gz",
   "file_size_bytes": 1234567,
-  "bucket": "db-backups",
-  "retention_days": 30,
-  "deleted_old_backups": 2
+  "bucket": "db-backups"
 }
 ```
 
@@ -31,6 +29,5 @@ Act as a reliable database backup operator. Ensure the PostgreSQL database is du
 | `SUPABASE_URL` | Supabase project URL (e.g. https://zetmxacmioodgxxmursa.supabase.co) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin storage access |
 | `SUPABASE_BACKUP_BUCKET` | Storage bucket name (default: db-backups) |
-| `BACKUP_RETENTION_DAYS` | Days to keep remote backups (default: 30) |
 | `POSTGRES_USER` | Database user (default: n8n) |
 | `POSTGRES_DB` | Database name (default: quotation_automation) |

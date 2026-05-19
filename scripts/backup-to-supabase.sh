@@ -16,7 +16,6 @@ set -eu
 #   SUPABASE_URL             — https://<project>.supabase.co
 #   SUPABASE_SERVICE_ROLE_KEY — service_role key (NOT anon key)
 #   SUPABASE_BACKUP_BUCKET   — bucket name (default: db-backups)
-#   BACKUP_RETENTION_DAYS    — days to keep remote backups (default: 30)
 #   POSTGRES_USER            — DB user (default: from .env or n8n)
 #   POSTGRES_DB              — DB name (default: from .env or quotation_automation)
 #   CONTAINER                — Postgres container name (default: qas_postgres)
@@ -36,7 +35,6 @@ fi
 SUPABASE_URL="${SUPABASE_URL:-}"
 SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}"
 SUPABASE_BACKUP_BUCKET="${SUPABASE_BACKUP_BUCKET:-db-backups}"
-BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 CONTAINER="${CONTAINER:-qas_postgres}"
 DB_USER="${POSTGRES_USER:-n8n}"
 DB_NAME="${POSTGRES_DB:-quotation_automation}"
@@ -61,7 +59,7 @@ echo "=== Supabase Backup started: $(date) ==="
 echo "Container:  $CONTAINER"
 echo "Database:   $DB_NAME"
 echo "Bucket:     $SUPABASE_BACKUP_BUCKET"
-echo "Retention:  $BACKUP_RETENTION_DAYS days"
+echo "Note:       Backups are kept forever — no automatic deletion"
 
 # ── Step 1: Dump database ────────────────────────────────────
 echo ""
@@ -111,46 +109,6 @@ if [ "$VERIFY_CHECK" = "200" ]; then
   echo "✓ Backup uploaded successfully: ${BACKUP_FILENAME}"
 else
   echo "⚠ Upload verification returned HTTP $VERIFY_CHECK"
-fi
-
-# ── Step 4: Cleanup old remote backups ───────────────────────
-echo ""
-echo "── Step 4: Cleaning old backups (older than ${BACKUP_RETENTION_DAYS} days) ──"
-
-# List all objects in the bucket
-LIST_RESP=$(curl -s -X POST \
-  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"prefix\":\"\"}" \
-  "${SUPABASE_URL}/storage/v1/object/list/${SUPABASE_BACKUP_BUCKET}")
-
-# Parse and delete old backups
-CUTOFF=$(date -d "${BACKUP_RETENTION_DAYS} days ago" +%s 2>/dev/null || \
-         date -j -v-${BACKUP_RETENTION_DAYS}d +%s 2>/dev/null || \
-         echo "0")
-
-DELETED=0
-if command -v jq &>/dev/null; then
-  # Use jq if available for proper JSON parsing
-  for row in $(echo "$LIST_RESP" | jq -c '.[] // empty'); do
-    NAME=$(echo "$row" | jq -r '.name // empty')
-    CREATED=$(echo "$row" | jq -r '.created_at // empty')
-    if [ -n "$NAME" ] && [ -n "$CREATED" ] && [ "$CUTOFF" != "0" ]; then
-      CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$CREATED" +%s 2>/dev/null || echo "0")
-      if [ "$CREATED_TS" -lt "$CUTOFF" ] 2>/dev/null; then
-        echo "Deleting old backup: $NAME"
-        curl -s -X DELETE \
-          -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-          "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BACKUP_BUCKET}/${NAME}" > /dev/null
-        DELETED=$((DELETED + 1))
-      fi
-    fi
-  done
-  echo "Deleted $DELETED old backup(s)."
-else
-  echo "jq not found — skipping remote cleanup. Install jq to enable automatic rotation."
-  echo "  apt-get install jq   # Debian/Ubuntu"
-  echo "  brew install jq      # macOS"
 fi
 
 # ── Cleanup temp files ───────────────────────────────────────

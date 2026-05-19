@@ -169,6 +169,61 @@ export interface BackupsResponse {
   error?: string;
 }
 
+export interface SearchResult {
+  orders: Order[];
+}
+
+export async function searchOrders(query: string): Promise<SearchResult> {
+  return fetchJson<SearchResult>(`/search?q=${encodeURIComponent(query)}`);
+}
+
+export interface CalendarNote {
+  id: string;
+  note_date: string;
+  title: string;
+  content: string;
+  color: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getCalendarNotes(): Promise<CalendarNote[]> {
+  return fetchJson<CalendarNote[]>('/calendar/notes');
+}
+
+export async function getCalendarNotesByDate(date: string): Promise<CalendarNote[]> {
+  return fetchJson<CalendarNote[]>(`/calendar/notes/${date}`);
+}
+
+export async function createCalendarNote(note: {
+  note_date: string;
+  title: string;
+  content?: string;
+  color?: string;
+}): Promise<CalendarNote> {
+  return fetchJson<CalendarNote>('/calendar/notes', {
+    method: 'POST',
+    body: JSON.stringify(note),
+  });
+}
+
+export async function updateCalendarNote(
+  id: string,
+  data: { title?: string; content?: string; color?: string }
+): Promise<CalendarNote> {
+  return fetchJson<CalendarNote>(`/calendar/notes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCalendarNote(id: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/calendar/notes/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export const STAGE_ORDER = [
   'order_confirmation_received',
   'math_verified',

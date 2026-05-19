@@ -12,8 +12,6 @@ export interface SupabaseBackupResult {
   backup_file?: string;
   file_size_bytes?: number;
   bucket?: string;
-  retention_days?: number;
-  deleted_old_backups?: number;
 }
 
 // ── Configuration ──────────────────────────────────────────────────────
@@ -21,7 +19,6 @@ export interface SupabaseBackupResult {
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const SUPABASE_BACKUP_BUCKET = process.env.SUPABASE_BACKUP_BUCKET ?? 'db-backups';
-const BACKUP_RETENTION_DAYS = Number(process.env.BACKUP_RETENTION_DAYS ?? 30);
 const CONTAINER = process.env.CONTAINER ?? 'qas_postgres';
 const DB_USER = process.env.POSTGRES_USER ?? 'n8n';
 const DB_NAME = process.env.POSTGRES_DB ?? 'quotation_automation';
@@ -127,42 +124,6 @@ async function uploadBackup(filePath: string, filename: string): Promise<boolean
   }
 }
 
-// ── Helper: Cleanup Old Backups ────────────────────────────────────────
-
-async function cleanupOldBackups(): Promise<number> {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - BACKUP_RETENTION_DAYS);
-
-  // List all objects in the bucket
-  const list = await supabaseRequest(
-    'POST',
-    `/storage/v1/object/list/${SUPABASE_BACKUP_BUCKET}`,
-    JSON.stringify({ prefix: '' }),
-  );
-
-  if (list.status !== 200 || !Array.isArray(list.data)) {
-    return 0;
-  }
-
-  let deleted = 0;
-  for (const obj of list.data) {
-    if (!obj.name || !obj.created_at) continue;
-
-    const created = new Date(obj.created_at);
-    if (created < cutoff) {
-      const del = await supabaseRequest(
-        'DELETE',
-        `/storage/v1/object/${SUPABASE_BACKUP_BUCKET}/${obj.name}`,
-      );
-      if (del.status === 200) {
-        deleted++;
-      }
-    }
-  }
-
-  return deleted;
-}
-
 // ── Main Backup Function ───────────────────────────────────────────────
 
 export async function runSupabaseBackup(): Promise<SupabaseBackupResult[]> {
@@ -221,18 +182,12 @@ export async function runSupabaseBackup(): Promise<SupabaseBackupResult[]> {
 
     console.log(`[SupabaseBackupAgent] Upload successful: ${backupFilename}`);
 
-    // ── Step 4: Cleanup old backups ──────────────────────────────────
-    console.log(`[SupabaseBackupAgent] Cleaning backups older than ${BACKUP_RETENTION_DAYS} days...`);
-    const deletedCount = await cleanupOldBackups();
-
     // ── Success ──────────────────────────────────────────────────────
     result.status = 'ok';
     result.message = `Backup uploaded successfully to ${SUPABASE_BACKUP_BUCKET}/${backupFilename}`;
     result.backup_file = backupFilename;
     result.file_size_bytes = fileSize;
     result.bucket = SUPABASE_BACKUP_BUCKET;
-    result.retention_days = BACKUP_RETENTION_DAYS;
-    result.deleted_old_backups = deletedCount;
 
     await logAgentAction('supabase-backup', { db: DB_NAME, container: CONTAINER }, result, 'ok');
 

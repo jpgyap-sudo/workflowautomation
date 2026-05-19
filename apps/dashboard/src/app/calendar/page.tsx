@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,9 +10,14 @@ import {
   Truck,
   Bell,
   ArrowRightLeft,
+  StickyNote,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { useCalendarEvents } from '@/lib/useApi';
-import { CalendarEvent } from '@/lib/api';
+import { CalendarEvent, CalendarNote, getCalendarNotes, createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/lib/api';
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -59,10 +64,30 @@ const TYPE_LABELS: Record<string, string> = {
   delivery: 'Delivery Scheduled',
 };
 
+const NOTE_COLORS = ['#2490ef', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
 export default function CalendarPage() {
   const { data: events = [], isLoading } = useCalendarEvents();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [notes, setNotes] = useState<CalendarNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(true);
+
+  // Note editor state
+  const [showNoteEditor, setShowNoteEditor] = useState(false);
+  const [editingNote, setEditingNote] = useState<CalendarNote | null>(null);
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [noteColor, setNoteColor] = useState('#2490ef');
+  const [savingNote, setSavingNote] = useState(false);
+
+  // Load notes on mount
+  useEffect(() => {
+    getCalendarNotes()
+      .then((data) => setNotes(data))
+      .catch(() => {})
+      .finally(() => setNotesLoading(false));
+  }, []);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -76,14 +101,23 @@ export default function CalendarPage() {
     return map;
   }, [events]);
 
+  const notesByDay = useMemo(() => {
+    const map = new Map<string, CalendarNote[]>();
+    for (const note of notes) {
+      const key = note.note_date;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(note);
+    }
+    return map;
+  }, [notes]);
+
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
-  const startDay = monthStart.getDay(); // 0 = Sun
+  const startDay = monthStart.getDay();
   const daysInMonth = monthEnd.getDate();
 
   const calendarDays: { date: Date; currentMonth: boolean }[] = [];
 
-  // Previous month padding
   const prevMonthEnd = endOfMonth(addMonths(currentMonth, -1));
   for (let i = startDay - 1; i >= 0; i--) {
     calendarDays.push({
@@ -92,7 +126,6 @@ export default function CalendarPage() {
     });
   }
 
-  // Current month
   for (let i = 1; i <= daysInMonth; i++) {
     calendarDays.push({
       date: new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i),
@@ -100,7 +133,6 @@ export default function CalendarPage() {
     });
   }
 
-  // Next month padding to fill 6 rows (42 cells)
   const remaining = 42 - calendarDays.length;
   for (let i = 1; i <= remaining; i++) {
     calendarDays.push({
@@ -109,11 +141,68 @@ export default function CalendarPage() {
     });
   }
 
-  const selectedEvents = selectedDate
-    ? eventsByDay.get(formatDateKey(selectedDate)) ?? []
-    : [];
+  const selectedDateKey = selectedDate ? formatDateKey(selectedDate) : null;
+  const selectedEvents = selectedDateKey ? eventsByDay.get(selectedDateKey) ?? [] : [];
+  const selectedNotes = selectedDateKey ? notesByDay.get(selectedDateKey) ?? [] : [];
 
   const today = new Date();
+
+  function openNewNote() {
+    setEditingNote(null);
+    setNoteTitle('');
+    setNoteContent('');
+    setNoteColor('#2490ef');
+    setShowNoteEditor(true);
+  }
+
+  function openEditNote(note: CalendarNote) {
+    setEditingNote(note);
+    setNoteTitle(note.title);
+    setNoteContent(note.content);
+    setNoteColor(note.color);
+    setShowNoteEditor(true);
+  }
+
+  async function handleSaveNote() {
+    if (!noteTitle.trim() || !selectedDate) return;
+    setSavingNote(true);
+    try {
+      const dateKey = formatDateKey(selectedDate);
+      if (editingNote) {
+        const updated = await updateCalendarNote(editingNote.id, {
+          title: noteTitle.trim(),
+          content: noteContent,
+          color: noteColor,
+        });
+        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+      } else {
+        const created = await createCalendarNote({
+          note_date: dateKey,
+          title: noteTitle.trim(),
+          content: noteContent,
+          color: noteColor,
+        });
+        setNotes((prev) => [...prev, created]);
+      }
+      setShowNoteEditor(false);
+    } catch (e) {
+      console.error('Failed to save note', e);
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function handleDeleteNote(noteId: string) {
+    try {
+      await deleteCalendarNote(noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      if (editingNote?.id === noteId) {
+        setShowNoteEditor(false);
+      }
+    } catch (e) {
+      console.error('Failed to delete note', e);
+    }
+  }
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
@@ -125,7 +214,7 @@ export default function CalendarPage() {
             System Calendar
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Synced events from orders, stage updates, reminders & deliveries
+            Synced events from orders, stage updates, reminders, deliveries & manual notes
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -158,9 +247,9 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {isLoading && events.length === 0 ? (
+      {isLoading && events.length === 0 && notesLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-gray-500">
-          Loading calendar events…
+          Loading calendar…
         </div>
       ) : (
         <div className="flex flex-1 gap-4 overflow-hidden">
@@ -183,6 +272,7 @@ export default function CalendarPage() {
               {calendarDays.map(({ date, currentMonth: inMonth }, idx) => {
                 const key = formatDateKey(date);
                 const dayEvents = eventsByDay.get(key) ?? [];
+                const dayNotes = notesByDay.get(key) ?? [];
                 const isToday = isSameDay(date, today);
                 const isSelected = selectedDate && isSameDay(date, selectedDate);
 
@@ -206,19 +296,31 @@ export default function CalendarPage() {
                       {date.getDate()}
                     </span>
 
-                    {/* Event dots */}
-                    {dayEvents.length > 0 && (
+                    {/* Event dots + Note dots */}
+                    {(dayEvents.length > 0 || dayNotes.length > 0) && (
                       <div className="mt-auto flex w-full flex-wrap gap-1 pt-1">
-                        {dayEvents.slice(0, 4).map((e, i) => (
+                        {/* Note dots (shown as small squares) */}
+                        {dayNotes.slice(0, 2).map((n, i) => (
                           <span
-                            key={i}
+                            key={`note-${i}`}
+                            className="inline-block h-1.5 w-1.5 rounded-sm"
+                            style={{ backgroundColor: n.color }}
+                            title={`Note: ${n.title}`}
+                          />
+                        ))}
+                        {/* Event dots (shown as circles) */}
+                        {dayEvents.slice(0, Math.max(0, 4 - dayNotes.length)).map((e, i) => (
+                          <span
+                            key={`evt-${i}`}
                             className="inline-block h-1.5 w-1.5 rounded-full"
                             style={{ backgroundColor: e.color }}
                             title={e.category}
                           />
                         ))}
-                        {dayEvents.length > 4 && (
-                          <span className="text-[10px] leading-3 text-gray-400">+{dayEvents.length - 4}</span>
+                        {(dayEvents.length + dayNotes.length) > 4 && (
+                          <span className="text-[10px] leading-3 text-gray-400">
+                            +{dayEvents.length + dayNotes.length - 4}
+                          </span>
                         )}
                       </div>
                     )}
@@ -231,61 +333,138 @@ export default function CalendarPage() {
           {/* Event Detail Sidebar */}
           <div className="flex w-80 flex-col rounded-xl border border-gray-200 bg-white">
             <div className="border-b border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-800">
-                {selectedDate
-                  ? selectedDate.toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })
-                  : 'Select a date'}
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {selectedEvents.length} event{selectedEvents.length !== 1 ? 's' : ''}
-              </p>
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-gray-800 truncate">
+                    {selectedDate
+                      ? selectedDate.toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })
+                      : 'Select a date'}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {selectedEvents.length + selectedNotes.length} item{selectedEvents.length + selectedNotes.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                {selectedDate && (
+                  <button
+                    onClick={openNewNote}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                    title="Add note"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {selectedEvents.length === 0 && (
+              {selectedEvents.length === 0 && selectedNotes.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-10 text-gray-400">
                   <CalendarIcon className="h-8 w-8 mb-2 opacity-50" />
                   <p className="text-sm">No events for this day</p>
+                  {selectedDate && (
+                    <button
+                      onClick={openNewNote}
+                      className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add a note
+                    </button>
+                  )}
                 </div>
               )}
 
-              {selectedEvents.map((event) => (
-                <div
-                  key={`${event.type}-${event.event_id}`}
-                  className="rounded-lg border border-gray-100 bg-gray-50 p-3"
-                >
-                  <div className="flex items-start gap-2">
+              {/* Notes section */}
+              {selectedNotes.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-1">
+                    Notes ({selectedNotes.length})
+                  </p>
+                  {selectedNotes.map((note) => (
                     <div
-                      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white"
-                      style={{ backgroundColor: event.color }}
+                      key={note.id}
+                      className="group rounded-lg border border-gray-100 p-3 hover:border-gray-200"
+                      style={{ borderLeftColor: note.color, borderLeftWidth: 3 }}
                     >
-                      {TYPE_ICONS[event.type] ?? <Clock className="h-3.5 w-3.5" />}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-800 truncate">{note.title}</p>
+                          {note.content && (
+                            <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap line-clamp-3">{note.content}</p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openEditNote(note)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                            title="Edit note"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteNote(note.id)}
+                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                            title="Delete note"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1.5">
+                        <StickyNote className="h-3 w-3 inline mr-0.5" />
+                        Manual note
+                      </p>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-800 truncate">
-                        {event.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {TYPE_LABELS[event.type] ?? event.category}
-                        {event.subtitle ? ` • ${event.subtitle}` : ''}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(event.event_date).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                        {event.metadata ? ` • ${event.metadata}` : ''}
-                      </p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* Events section */}
+              {selectedEvents.length > 0 && (
+                <div className="space-y-1.5">
+                  {selectedNotes.length > 0 && (
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-1 pt-2">
+                      System Events ({selectedEvents.length})
+                    </p>
+                  )}
+                  {selectedEvents.map((event) => (
+                    <div
+                      key={`${event.type}-${event.event_id}`}
+                      className="rounded-lg border border-gray-100 bg-gray-50 p-3"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div
+                          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white"
+                          style={{ backgroundColor: event.color }}
+                        >
+                          {TYPE_ICONS[event.type] ?? <Clock className="h-3.5 w-3.5" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-800 truncate">
+                            {event.title}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {TYPE_LABELS[event.type] ?? event.category}
+                            {event.subtitle ? ` • ${event.subtitle}` : ''}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(event.event_date).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                            {event.metadata ? ` • ${event.metadata}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Legend */}
@@ -297,15 +476,125 @@ export default function CalendarPage() {
                   { type: 'stage_update', label: 'Stage Update', color: '#8b5cf6' },
                   { type: 'reminder', label: 'Reminder', color: '#ef4444' },
                   { type: 'delivery', label: 'Delivery', color: '#f97316' },
+                  { type: 'note', label: 'Manual Note', color: '#10b981' },
                 ].map((item) => (
                   <div key={item.type} className="flex items-center gap-1.5">
                     <span
-                      className="inline-block h-2 w-2 rounded-full"
+                      className={`inline-block h-2 w-2 ${item.type === 'note' ? 'rounded-sm' : 'rounded-full'}`}
                       style={{ backgroundColor: item.color }}
                     />
                     <span className="text-[11px] text-gray-600">{item.label}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Note Editor Modal */}
+      {showNoteEditor && selectedDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h3 className="text-sm font-semibold text-gray-800">
+                {editingNote ? 'Edit Note' : 'Add Note'}
+              </h3>
+              <button
+                onClick={() => setShowNoteEditor(false)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                <p className="text-sm text-gray-800">
+                  {selectedDate.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="note-title" className="block text-xs font-medium text-gray-600 mb-1">
+                  Title *
+                </label>
+                <input
+                  id="note-title"
+                  type="text"
+                  value={noteTitle}
+                  onChange={(e) => setNoteTitle(e.target.value)}
+                  placeholder="e.g., Client follow-up"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  maxLength={200}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="note-content" className="block text-xs font-medium text-gray-600 mb-1">
+                  Content (optional)
+                </label>
+                <textarea
+                  id="note-content"
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  placeholder="Add details about this note..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  rows={3}
+                  maxLength={2000}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Color</label>
+                <div className="flex flex-wrap gap-2">
+                  {NOTE_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setNoteColor(c)}
+                      className={`h-7 w-7 rounded-lg transition-transform ${
+                        noteColor === c ? 'scale-110 ring-2 ring-offset-1 ring-gray-400' : 'hover:scale-105'
+                      }`}
+                      style={{ backgroundColor: c }}
+                      title={c}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-gray-200 px-5 py-3">
+              {editingNote ? (
+                <button
+                  onClick={() => handleDeleteNote(editingNote.id)}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowNoteEditor(false)}
+                  className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveNote}
+                  disabled={!noteTitle.trim() || savingNote}
+                  className="rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingNote ? 'Saving…' : editingNote ? 'Update' : 'Save'}
+                </button>
               </div>
             </div>
           </div>

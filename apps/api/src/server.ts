@@ -1171,6 +1171,107 @@ app.get('/calendar/events', async () => {
   return allEvents;
 });
 
+// ── Search ──────────────────────────────────────────────────────────
+app.get('/search', async (request) => {
+  const query_params = z.object({ q: z.string().min(1).max(100) }).parse(request.query);
+  const q = `%${query_params.q}%`;
+
+  const orders = await query(
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount,
+            math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid,
+            google_drive_folder_id, created_at, updated_at
+     FROM orders
+     WHERE quotation_number ILIKE $1
+        OR client_name ILIKE $1
+        OR sales_agent ILIKE $1
+     ORDER BY created_at DESC
+     LIMIT 20`,
+    [q]
+  );
+
+  return { orders };
+});
+
+// ── Calendar Notes ──────────────────────────────────────────────────
+app.get('/calendar/notes', async () => {
+  const rows = await query(
+    `SELECT id, note_date, title, content, color, created_by, created_at, updated_at
+     FROM calendar_notes
+     ORDER BY note_date DESC, created_at DESC
+     LIMIT 200`
+  );
+  return rows;
+});
+
+app.get('/calendar/notes/:date', async (request, reply) => {
+  const params = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(request.params);
+  const rows = await query(
+    `SELECT id, note_date, title, content, color, created_by, created_at, updated_at
+     FROM calendar_notes
+     WHERE note_date = $1::date
+     ORDER BY created_at DESC`,
+    [params.date]
+  );
+  return rows;
+});
+
+const createNoteSchema = z.object({
+  note_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  title: z.string().min(1).max(200),
+  content: z.string().max(2000).default(''),
+  color: z.string().default('#2490ef'),
+});
+
+app.post('/calendar/notes', async (request, reply) => {
+  const body = createNoteSchema.parse(request.body);
+  const rows = await query(
+    `INSERT INTO calendar_notes (note_date, title, content, color)
+     VALUES ($1::date, $2, $3, $4)
+     RETURNING *`,
+    [body.note_date, body.title, body.content, body.color]
+  );
+  await invalidateCache(['calendar:*']);
+  return reply.send(rows[0]);
+});
+
+const updateNoteSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().max(2000).optional(),
+  color: z.string().optional(),
+});
+
+app.patch('/calendar/notes/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = updateNoteSchema.parse(request.body);
+
+  const sets: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (body.title !== undefined) { sets.push(`title = $${idx++}`); values.push(body.title); }
+  if (body.content !== undefined) { sets.push(`content = $${idx++}`); values.push(body.content); }
+  if (body.color !== undefined) { sets.push(`color = $${idx++}`); values.push(body.color); }
+  sets.push(`updated_at = NOW()`);
+
+  if (sets.length === 1) return reply.code(400).send({ error: 'No fields to update' });
+
+  values.push(params.id);
+  const rows = await query(
+    `UPDATE calendar_notes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Note not found' });
+  await invalidateCache(['calendar:*']);
+  return reply.send(rows[0]);
+});
+
+app.delete('/calendar/notes/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const rows = await query(`DELETE FROM calendar_notes WHERE id = $1 RETURNING id`, [params.id]);
+  if (!rows[0]) return reply.code(404).send({ error: 'Note not found' });
+  await invalidateCache(['calendar:*']);
+  return reply.send({ ok: true });
+});
+
 // ── SSE Endpoint ────────────────────────────────────────────────────
 // Dashboard clients connect here for real-time cache invalidation events
 app.get('/events', (request, reply) => {

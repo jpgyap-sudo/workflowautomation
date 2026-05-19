@@ -2029,3 +2029,124 @@ When adding PWA support, always include: (1) a `manifest.webmanifest` with icons
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] Revert "fix: comprehensive PHT timezone alignment + gap fixes"
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 78d65d3e3ca2976b6097cdd5210dd90458afc09a
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 78d65d3e3ca2976b6097cdd5210dd90458afc09a
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Reverted a previous fix that attempted to align PHT timezone handling and fix gap issues in workflow automation.
+
+**Why it broke:**  
+The original fix introduced unintended side effects—likely incorrect timezone conversions or logic errors in handling time gaps (e.g., DST transitions or scheduling boundaries). The reversion indicates the fix was not robust or introduced new bugs.
+
+**Reusable takeaway:**  
+Timezone and gap fixes are high-risk because they affect scheduling logic globally. Always:  
+1. Isolate timezone logic into a single, well-tested module.  
+2. Use explicit UTC storage and convert only at display/input boundaries.  
+3. Add unit tests for edge cases (DST, midnight rollover, leap days) before deploying fixes.  
+4. Prefer incremental, test-covered changes over sweeping "comprehensive" patches.
+
+---
+*Original commit message: Revert "fix: comprehensive PHT timezone alignment + gap fixes"*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Reverted a previous fix that attempted to align PHT timezone handling and fix gap issues in workflow automation.
+
+**Why it broke:**  
+The original fix introduced unintended side effects—likely incorrect timezone conversions or logic errors in handling time gaps (e.g., DST transitions or scheduling boundaries). The reversion indicates the fix was not robust or introduced new bugs.
+
+**Reusable takeaway:**  
+Timezone and gap fixes are high-risk because they affect scheduling logic globally. Always:  
+1. Isolate timezone logic into a single, well-tested module.  
+2. Use explicit UTC storage and convert only at display/input boundaries.  
+3. Add unit tests for edge cases (DST, midnight rollover, leap days) before deploying fixes.  
+4. Prefer incremental, test-covered changes over sweeping "comprehensive" patches.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Telegram Markdown filename escaping
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Telegram Markdown parse errors can be triggered by uploaded filenames like photo_123.jpg when interpolated into messages with parse_mode Markdown. Escape user/file/API dynamic text before using Markdown, or omit parse_mode for error messages that include raw exception text.
+
+#### Lesson Learned
+
+Telegram Markdown parse errors can be triggered by uploaded filenames like photo_123.jpg when interpolated into messages with parse_mode Markdown. Escape user/file/API dynamic text before using Markdown, or omit parse_mode for error messages that include raw exception text.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] Fix Telegram upload filename Markdown escaping
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8b4978a2811e9f7d9048bd9cf64196f5009776e9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8b4978a2811e9f7d9048bd9cf64196f5009776e9
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**Fix:** Telegram upload filenames were not escaping Markdown special characters (e.g., `_`, `*`, `[`), causing broken or malformed messages.
+
+**Root Cause:** Filenames containing Markdown syntax were passed directly into Telegram message text without escaping. Telegram’s Markdown parser interpreted these characters as formatting, breaking the display.
+
+**Reusable Takeaway:** Always escape user-generated or dynamic content before inserting it into Markdown/HTML formatted messages. Use a dedicated escaping function (e.g., `escapeMarkdown()`) to neutralize special characters (`_`, `*`, `~`, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!`). This prevents injection-like formatting errors and ensures consistent message rendering across platforms.
+
+---
+*Original commit message: Fix Telegram upload filename Markdown escaping*
+
+#### Lesson Learned
+
+**Fix:** Telegram upload filenames were not escaping Markdown special characters (e.g., `_`, `*`, `[`), causing broken or malformed messages.
+
+**Root Cause:** Filenames containing Markdown syntax were passed directly into Telegram message text without escaping. Telegram’s Markdown parser interpreted these characters as formatting, breaking the display.
+
+**Reusable Takeaway:** Always escape user-generated or dynamic content before inserting it into Markdown/HTML formatted messages. Use a dedicated escaping function (e.g., `escapeMarkdown()`) to neutralize special characters (`_`, `*`, `~`, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!`). This prevents injection-like formatting errors and ensures consistent message rendering across platforms.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

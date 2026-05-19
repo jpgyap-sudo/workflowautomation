@@ -1,8 +1,11 @@
 'use client';
 
-import { Bell, RefreshCw, LogOut, Menu } from 'lucide-react';
+import { Bell, RefreshCw, LogOut, Menu, Search, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useState, useRef, useEffect } from 'react';
+import { searchOrders, Order } from '@/lib/api';
+import Link from 'next/link';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -23,9 +26,66 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const title = PAGE_TITLES[pathname] ?? 'Dashboard';
   const initials = user?.email?.charAt(0).toUpperCase() ?? 'A';
 
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Order[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
   function handleLogout() {
     logout();
     router.replace('/login');
+  }
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+        setSearchQuery('');
+        setSearchResults([]);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (searchOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [searchOpen]);
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (value.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const result = await searchOrders(value.trim());
+        setSearchResults(result.orders);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }
+
+  function handleSelectOrder(quotationNumber: string | null) {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    if (quotationNumber) {
+      router.push(`/orders/${encodeURIComponent(quotationNumber)}`);
+    }
   }
 
   return (
@@ -42,7 +102,78 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
         <h1 className="truncate text-base font-semibold text-gray-800 sm:text-lg">{title}</h1>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-3">
-        <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" title="Refresh">
+        {/* Search */}
+        <div ref={searchRef} className="relative">
+          <button
+            onClick={() => setSearchOpen(!searchOpen)}
+            className={`rounded-lg p-2 transition-colors ${
+              searchOpen ? 'bg-[#e8f4fd] text-[#2490ef]' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+            title="Search orders"
+          >
+            {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+          </button>
+
+          {searchOpen && (
+            <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-gray-200 bg-white shadow-lg">
+              <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+                <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Search by client, order #, agent..."
+                  className="w-full bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+                />
+                {searching && (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                )}
+              </div>
+
+              {searchResults.length > 0 && (
+                <div className="max-h-64 overflow-y-auto p-1">
+                  {searchResults.map((order) => (
+                    <button
+                      key={order.id}
+                      onClick={() => handleSelectOrder(order.quotation_number)}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-medium text-gray-600">
+                        {order.client_name?.charAt(0) ?? '?'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-gray-800">
+                          {order.client_name ?? 'Unknown Client'}
+                        </p>
+                        <p className="truncate text-xs text-gray-500">
+                          {order.quotation_number ?? 'No order #'} • {order.sales_agent ?? 'N/A'}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-gray-400">
+                        {order.current_stage.replace(/_/g, ' ')}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {searchQuery.trim().length >= 2 && searchResults.length === 0 && !searching && (
+                <div className="px-3 py-6 text-center text-sm text-gray-400">
+                  No orders found for "{searchQuery}"
+                </div>
+              )}
+
+              {searchQuery.trim().length < 2 && (
+                <div className="px-3 py-6 text-center text-sm text-gray-400">
+                  Type at least 2 characters to search
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" title="Refresh" onClick={() => router.refresh()}>
           <RefreshCw className="h-4 w-4" />
         </button>
         <button className="hidden rounded-lg p-2 text-gray-500 hover:bg-gray-100 sm:inline-flex" title="Notifications">

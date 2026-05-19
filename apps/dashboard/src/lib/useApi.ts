@@ -121,7 +121,10 @@ export function useRealtimeSubscription() {
           if (key.includes('/sales/')) swrKeys.push('/sales/monthly');
           if (key.includes('/reminders')) swrKeys.push('/reminders');
           if (key.includes('/agent-logs')) swrKeys.push('/agent-logs');
-          if (key.includes('/calendar/')) swrKeys.push('/calendar/events');
+          if (key.includes('/calendar/')) {
+            swrKeys.push('/calendar/events');
+            swrKeys.push('/calendar/notes');
+          }
           if (key.includes('/backups') || key.includes('supabase-backup')) swrKeys.push('/backups');
         }
 
