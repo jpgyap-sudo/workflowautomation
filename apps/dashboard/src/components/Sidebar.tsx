@@ -51,8 +51,8 @@ function SidebarBrand({ collapsed = false, onClose }: { collapsed?: boolean; onC
   return (
     <div className="flex h-14 items-center justify-between border-b border-gray-200 px-4">
       <div className="flex items-center gap-2 overflow-hidden">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2490ef] text-sm font-bold text-white">
-          Q
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2490ef] p-1">
+          <img src="/icons/icon.svg" alt="Logo" className="h-full w-full" />
         </div>
         <span
           className={`whitespace-nowrap text-sm font-semibold text-gray-800 transition-opacity ${

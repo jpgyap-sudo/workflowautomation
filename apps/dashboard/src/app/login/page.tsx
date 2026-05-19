@@ -3,7 +3,7 @@
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { Eye, EyeOff, LogIn, FileText, Mail, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, LogIn, Mail, RotateCcw } from 'lucide-react';
 
 type Step = 'credentials' | 'otp';
 
@@ -109,8 +109,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo / Branding */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#2490ef] shadow-lg shadow-[#2490ef]/20">
-            <FileText className="h-7 w-7 text-white" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#2490ef] p-2.5 shadow-lg shadow-[#2490ef]/20">
+            <img src="/icons/icon.svg" alt="Logo" className="h-full w-full" />
           </div>
           <h1 className="text-xl font-bold text-gray-900">Quotation Automation System</h1>
           <p className="mt-1 text-sm text-gray-500">Sign in to access the dashboard</p>
