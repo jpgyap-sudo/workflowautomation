@@ -20,34 +20,6 @@ services:
     ports:
       - "6380:6379"
 
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:stable
-    container_name: qas_n8n
-    restart: unless-stopped
-    ports:
-      - "5678:5678"
-    environment:
-      DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
-      DB_POSTGRESDB_USER: ${POSTGRES_USER}
-      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
-      N8N_HOST: ${N8N_HOST}
-      N8N_PROTOCOL: ${N8N_PROTOCOL}
-      WEBHOOK_URL: ${WEBHOOK_URL}
-      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
-      TZ: ${TZ}
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
-      N8N_RUNNERS_ENABLED: "true"
-      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
-      N8N_SECURE_COOKIE: "false"
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./workflows:/files/workflows
-    depends_on:
-      - postgres
-
   api:
     image: ghcr.io/jpgyap-sudo/workflowautomation/api:latest
     container_name: qas_api
@@ -109,4 +81,3 @@ services:
 
 volumes:
   postgres_data:
-  n8n_data:

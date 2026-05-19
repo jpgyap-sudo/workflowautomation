@@ -119,14 +119,14 @@ function syncCredentials() {
         sshCmd(`mkdir -p ${CONFIG.vpsPath}/credentials`));
 
       // Copy individual files (not the directory itself) to avoid nested credentials/credentials/
-      const credFiles = files.split('\n').filter(Boolean);
+      // Split by newline and trim \r characters (Windows cmd.exe outputs \r\n)
+      const credFiles = files.split('\n').map(f => f.trim()).filter(Boolean);
       for (const file of credFiles) {
         const localFile = resolve(credsDir, file);
         const scpCmd =
           `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${localFile}" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/credentials/"`;
         run(`Copying ${file} via SCP`, scpCmd, { timeout: 30_000 });
       }
-      run('Copying credentials via SCP', scpCmd, { timeout: 60_000 });
       console.log('✓ Credentials synced');
     } else {
       console.log('⚠  No credential files found, skipping');
