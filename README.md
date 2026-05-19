@@ -32,9 +32,11 @@ The web dashboard provides a full ERPNext-style interface for managing the quota
 
 ## VPS
 
-**Production VPS:** `165.22.110.111` (root user, key: `id_ed25519_roo`)
+**Production VPS:** `165.22.110.111` (root user, SSH key: `id_ed25519_roo`)
 
 **Repo path on VPS:** `/opt/quotation-automation`
+
+**Website:** `https://track.abcx124.xyz`
 
 **Deploy:** Push to GitHub → GHCR image auto-builds via GitHub Actions → SSH in and run:
 
@@ -52,9 +54,9 @@ Open:
 
 | Service | URL |
 |---|---|
-| Dashboard | `https://dev.abcx124.xyz` |
-| n8n | `http://YOUR_VPS_IP:5678` |
-| API health | `http://YOUR_VPS_IP:8080/health` |
+| Dashboard | `https://track.abcx124.xyz` |
+| n8n | `http://165.22.110.111:5678` |
+| API health | `http://165.22.110.111:8080/health` |
 
 ## MVP flow
 
