@@ -69,7 +69,7 @@ export async function processDueReminders(): Promise<number> {
     const client = reminder.client_name ? ` (${reminder.client_name})` : '';
 
     const stageLabels: Record<string, string> = {
-      quotation_received: '📄 Quotation Received',
+      order_confirmation_received: '📄 Order Confirmation Received',
       math_verified: '✅ Math Verified',
       purchasing_pending: '🛒 Purchasing Pending',
       production_confirmed: '🏭 Production Confirmed',

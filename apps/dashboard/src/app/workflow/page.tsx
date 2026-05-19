@@ -44,10 +44,10 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     color: 'border-blue-200 bg-blue-50',
     headingColor: 'text-blue-700',
     description: 'Verifies quotation math and checks for discrepancies',
-    monitors: ['quotation_received'],
+    monitors: ['order_confirmation_received'],
     triggers: [
-      { from: 'quotation_received', to: 'math_verified', condition: 'Math matches (auto)' },
-      { from: 'quotation_received', to: 'purchasing_pending', condition: 'Math verified → auto-advance' },
+      { from: 'order_confirmation_received', to: 'math_verified', condition: 'Math matches (auto)' },
+      { from: 'order_confirmation_received', to: 'purchasing_pending', condition: 'Math verified → auto-advance' },
     ],
     notificationGroup: 'Sales / Purchasing',
   },
@@ -153,8 +153,8 @@ interface StageInfo {
 }
 
 const STAGE_INFO: Record<string, StageInfo> = {
-  quotation_received: {
-    stage: 'quotation_received',
+  order_confirmation_received: {
+    stage: 'order_confirmation_received',
     entryAction: 'Sales forwards approved quotation to Purchasing group',
     exitCondition: 'Quotation math verified (auto)',
     triggeredBy: 'Telegram Bot / Sales',

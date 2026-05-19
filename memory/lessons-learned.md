@@ -1770,22 +1770,124 @@ The original domain was either a typo or an outdated staging/test domain that wa
 **Reusable takeaway:**  
 Always verify external URLs in documentation against the production environment before committing. Use environment variables or a single source of truth (e.g., a config file) for domain names to avoid hardcoding errors. Automate link checking in CI/CD to catch stale or incorrect URLs early.
 
----
-*Original commit message: docs: fix README to use correct domain track.abcx124.xyz*
+### Lesson: [quotation-automation] fix: deploy to wrong VPS — Tailscale IP routes to wrong server
+
+Date: 2026-05-19
+Source: manual (Roo incident)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: learningworkflow.md, README.md, deploy-agent.mjs, ops/nginx/track.abcx124.xyz.conf
+Tags: vps, deployment, ssh, tailscale
+
+#### Task Summary
+
+Deployed the workflow page to the wrong VPS (104.248.225.250 / SuperRoo Cloud Dashboard) instead of the correct project VPS (165.22.110.111 / track.abcx124.xyz). The root cause was using the Tailscale IP (100.64.175.88) which routes to the SuperRoo VPS, not this project's VPS.
 
 #### Lesson Learned
 
-**What was fixed:**  
-Corrected the domain in the README from an incorrect placeholder to `track.abcx124.xyz`.
+**What went wrong:**
+- Used Tailscale IP `100.64.175.88` to SSH into the VPS, which routes to the SuperRoo Cloud Dashboard VPS (104.248.225.250) instead of this project's VPS (165.22.110.111)
+- Changed nginx configs on the wrong VPS, proxying to port 3004 (a quarantine container) instead of port 3001
+- Ran `docker-compose down --remove-orphans && docker-compose up -d` in a quarantine directory, which caused the SuperRoo Cloud Dashboard container to restart (side effect of `--remove-orphans`)
 
-**Why it broke:**  
-The original domain was either a typo or an outdated staging/test domain that was never updated before release. This caused broken links for users trying to access the tracking service.
+**Why it happened:**
+- No single source of truth for VPS connection details existed in the project root
+- The Tailscale IP was ambiguous — it could route to any server in the Tailscale mesh network
+- `docker-compose down --remove-orphans` in any directory can affect containers from other Docker Compose projects on the same host
 
-**Reusable takeaway:**  
-Always verify external URLs in documentation against the production environment before committing. Use environment variables or a single source of truth (e.g., a config file) for domain names to avoid hardcoding errors. Automate link checking in CI/CD to catch stale or incorrect URLs early.
+**What was fixed:**
+- Created [`learningworkflow.md`](learningworkflow.md) at the project root with VPS IP (165.22.110.111), SSH user (root), SSH key (id_ed25519_roo), repo path (/opt/quotation-automation), website (track.abcx124.xyz), and wrong VPS info to avoid
+- Updated [`README.md`](README.md) with correct VPS IP, domain, and deploy commands
+- Updated [`deploy-agent.mjs`](deploy-agent.mjs) banner with a clear ASCII box showing VPS IP, website, repo path, and SSH credentials
+- Reverted nginx on the wrong VPS back to port 3001 and removed the quarantine container
+
+**Reusable takeaway:**
+1. **Always verify VPS IP before connecting** — check `learningworkflow.md` or README.md for the canonical VPS address
+2. **Never use Tailscale IP for SSH** when the project has a direct public IP — Tailscale IPs are ambiguous across projects
+3. **`docker-compose down --remove-orphans` is dangerous** in shared environments — it can restart containers from unrelated Docker Compose projects
+4. **Create a `learningworkflow.md`** at the project root with critical infrastructure details as a first-line safeguard
+5. **Add visual banners** to deploy scripts that clearly identify the target VPS before any commands execute
 
 #### Tags
 
-cross-project, local-fallback
+vps, deployment, ssh, tailscale, docker-compose, infrastructure
 
 ---
+
+### Lesson: [quotation-automation] fix: docker-compose --remove-orphans side effect restarts unrelated containers
+
+Date: 2026-05-19
+Source: manual (Roo incident)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: docker-compose.yml
+Tags: docker, docker-compose, deployment
+
+#### Task Summary
+
+Running `docker-compose down --remove-orphans && docker-compose up -d` in a quarantine directory (`/opt/qas_dashboard`) caused the SuperRoo Cloud Dashboard container (`docker-superroo-dashboard-1`) to be stopped and re-created. Docker daemon logs confirmed the container was restarted at 14:20:35 UTC during this command.
+
+#### Lesson Learned
+
+**What went wrong:**
+- The `--remove-orphans` flag in Docker Compose v1 removes containers that are not defined in the current project's `docker-compose.yml`
+- Running this command in the quarantine directory caused Docker to detect the SuperRoo Cloud Dashboard container as an "orphan" and remove it
+- The container was then re-created by the quarantine project's `docker-compose up -d`, effectively restarting a production service from a different project
+
+**Why it happened:**
+- Docker Compose v1 uses the project directory name as the default project name (or `COMPOSE_PROJECT_NAME`)
+- `--remove-orphans` operates on ALL containers on the host, not just those in the current project
+- The quarantine directory's `docker-compose.yml` had different service names, so the SuperRoo Dashboard container appeared as an orphan
+
+**Reusable takeaway:**
+1. **Never use `--remove-orphans`** on a shared Docker host where multiple projects run
+2. **Always specify `COMPOSE_PROJECT_NAME`** explicitly in `.env` files to prevent accidental cross-project interference
+3. **Use `docker-compose down` without `--remove-orphans`** when working in non-production directories on a shared host
+4. **Check running containers** with `docker ps` before and after any docker-compose operation on a shared host
+
+#### Tags
+
+docker, docker-compose, deployment, infrastructure
+
+---
+
+### Lesson: [quotation-automation] feat: add learningworkflow.md as VPS deployment safeguard
+
+Date: 2026-05-19
+Source: manual (Roo incident)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: learningworkflow.md, README.md, deploy-agent.mjs
+Tags: documentation, deployment, vps, safeguard
+
+#### Task Summary
+
+Created a root-level [`learningworkflow.md`](learningworkflow.md) file containing critical VPS infrastructure details to prevent future wrong-VPS deployments. The file includes the correct VPS IP (165.22.110.111), SSH user (root), SSH key (id_ed25519_roo), repo path (/opt/quotation-automation), website (track.abcx124.xyz), and explicitly lists the wrong VPS (104.248.225.250) to avoid.
+
+#### Lesson Learned
+
+**What was created:**
+- [`learningworkflow.md`](learningworkflow.md) at the project root with:
+  - Correct VPS IP: `165.22.110.111`
+  - SSH user: `root`
+  - SSH key: `id_ed25519_roo`
+  - Repo path: `/opt/quotation-automation`
+  - Website: `https://track.abcx124.xyz`
+  - Wrong VPS to avoid: `104.248.225.250` (SuperRoo Cloud Dashboard)
+  - Nginx config path: `/etc/nginx/sites-enabled/`
+  - Deploy steps: pull, build, restart
+
+**Why it was needed:**
+- No single source of truth existed for VPS connection details
+- The Tailscale IP was ambiguous and led to deploying on the wrong server
+- Future AI agents and developers need immediate access to correct infrastructure info without guessing
+
+**Reusable takeaway:**
+1. **Every project should have a learningworkflow.md** at the root with critical infrastructure details
+2. **Include both correct AND incorrect values** (e.g., "use this VPS, NOT that VPS") to prevent confusion
+3. **Update learningworkflow.md proactively** whenever infrastructure changes
+4. **Reference learningworkflow.md from deploy scripts** as a pre-flight check before any SSH connection
+
+#### Tags
+
+documentation, deployment, vps, safeguard, infrastructure

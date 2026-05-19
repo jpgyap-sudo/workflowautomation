@@ -25,7 +25,7 @@ import {
 } from 'recharts';
 
 const STAGE_COLORS: Record<string, string> = {
-  quotation_received: '#3b82f6',
+  order_confirmation_received: '#3b82f6',
   math_verified: '#14b8a6',
   purchasing_pending: '#f59e0b',
   production_confirmed: '#6366f1',

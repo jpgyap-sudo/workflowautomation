@@ -22,8 +22,8 @@ import {
 export async function runQuotationChecker(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // Find orders at quotation_received stage that haven't been math-checked yet
-  const orders = await getActiveOrdersByStage('quotation_received');
+  // Find orders at order_confirmation_received stage that haven't been math-checked yet
+  const orders = await getActiveOrdersByStage('order_confirmation_received');
 
   for (const order of orders) {
     const result = await checkQuotation(order);
@@ -31,7 +31,7 @@ export async function runQuotationChecker(): Promise<AgentResult[]> {
     if (result.reminder_needed) {
       const groupChatId = getGroupChatId('quotation-checker');
       if (groupChatId) {
-        await createReminder(order.id, 'quotation_received', groupChatId, result.message);
+        await createReminder(order.id, 'order_confirmation_received', groupChatId, result.message);
         await notifyQuotationCheck(groupChatId, order, result);
       }
     }

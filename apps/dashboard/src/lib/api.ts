@@ -97,7 +97,7 @@ export async function getStageUpdates(orderId: string): Promise<StageUpdate[]> {
 
 // Stage display configuration
 export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  quotation_received:    { label: 'Quotation Received',    color: 'bg-blue-100 text-blue-800',       icon: '📄' },
+  order_confirmation_received: { label: 'Order Confirmation Received', color: 'bg-blue-100 text-blue-800', icon: '📄' },
   math_verified:         { label: 'Math Verified',         color: 'bg-teal-100 text-teal-800',       icon: '✅' },
   purchasing_pending:    { label: 'Purchasing Pending',    color: 'bg-amber-100 text-amber-800',     icon: '🛒' },
   production_confirmed:  { label: 'Production Confirmed',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
@@ -128,7 +128,7 @@ export async function getCalendarEvents(): Promise<CalendarEvent[]> {
 }
 
 export const STAGE_ORDER = [
-  'quotation_received',
+  'order_confirmation_received',
   'math_verified',
   'purchasing_pending',
   'production_confirmed',

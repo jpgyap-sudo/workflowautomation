@@ -43,7 +43,7 @@ export interface ReminderRow {
 // ── Stage Labels ───────────────────────────────────────────────────────
 
 export const STAGE_LABELS: Record<string, string> = {
-  quotation_received: '📄 Quotation Received',
+  order_confirmation_received: '📄 Order Confirmation Received',
   math_verified: '✅ Math Verified',
   purchasing_pending: '🛒 Purchasing Pending',
   production_confirmed: '🏭 Production Confirmed',

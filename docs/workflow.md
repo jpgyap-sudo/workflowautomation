@@ -9,7 +9,7 @@ The system automates the full order lifecycle from quotation to payment collecti
 - **Dashboard** — Web UI for real-time order tracking
 - **Built-in Reminder Scheduler** — Sends automatic daily reminders (no n8n required)
 
-## 1. Quotation Received
+## 1. Order Confirmation Received
 
 Sales forwards approved quotation to Purchasing Telegram group.
 
@@ -139,7 +139,7 @@ If a stage is not updated after multiple reminders, the scheduler auto-escalates
 ## Stages
 
 ```txt
-quotation_received → math_verified → purchasing_pending →
+order_confirmation_received → math_verified → purchasing_pending →
 production_confirmed → deposit_pending → inventory_arrived →
 balance_due → delivery_scheduled → delivered → countered →
 payment_received → payment_confirmed → completed

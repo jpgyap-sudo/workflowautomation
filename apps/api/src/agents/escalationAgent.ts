@@ -29,7 +29,7 @@ export async function runEscalationAgent(): Promise<AgentResult[]> {
 
   // Check ALL active orders across all non-terminal stages
   const stages = [
-    'quotation_received',
+    'order_confirmation_received',
     'math_verified',
     'purchasing_pending',
     'production_confirmed',

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS orders (
   total_amount NUMERIC(14,2),
   computed_amount NUMERIC(14,2),
   math_status TEXT DEFAULT 'pending',
-  current_stage TEXT DEFAULT 'quotation_received',
+  current_stage TEXT DEFAULT 'order_confirmation_received',
   status TEXT DEFAULT 'active',
   google_drive_folder_id TEXT,
   deposit_paid BOOLEAN DEFAULT FALSE,
