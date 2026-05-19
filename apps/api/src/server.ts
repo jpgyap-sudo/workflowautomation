@@ -254,6 +254,32 @@ app.get('/dashboard/stats', async () => {
   return result;
 });
 
+// ── Sales: Monthly Summary ────────────────────────────────────────────
+
+app.get('/sales/monthly', async () => {
+  const cached = await cacheGet<object>('sales:monthly');
+  if (cached) return cached;
+
+  const rows = await query(`
+    SELECT
+      TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+      COUNT(*)::int AS order_count,
+      SUM(total_amount)::numeric(14,2) AS total_sales,
+      SUM(computed_amount)::numeric(14,2) AS computed_sales
+    FROM orders
+    WHERE status = 'active'
+      AND total_amount IS NOT NULL
+    GROUP BY DATE_TRUNC('month', created_at)
+    ORDER BY month DESC
+    LIMIT 24
+  `);
+
+  const result = { monthly: rows };
+
+  await cacheSet('sales:monthly', result);
+  return result;
+});
+
 // ── Google Drive ─────────────────────────────────────────────────────
 
 const fileUploadSchema = z.object({

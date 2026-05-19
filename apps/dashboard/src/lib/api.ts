@@ -37,6 +37,17 @@ export interface DashboardStats {
   recent_orders: Order[];
 }
 
+export interface MonthlySalesRow {
+  month: string;
+  order_count: number;
+  total_sales: number;
+  computed_sales: number;
+}
+
+export interface MonthlySales {
+  monthly: MonthlySalesRow[];
+}
+
 export interface OrderDetail extends Order {
   stage_updates: StageUpdate[];
   files: any[];

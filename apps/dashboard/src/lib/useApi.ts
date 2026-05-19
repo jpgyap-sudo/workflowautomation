@@ -9,6 +9,7 @@ import {
   OrderDetail,
   StageUpdate,
   CalendarEvent,
+  MonthlySales,
 } from './api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -129,4 +130,9 @@ export function useRealtimeSubscription() {
       eventSourceRef.current = null;
     };
   }, []);
+}
+
+// ── Hook: Monthly Sales ──────────────────────────────────────────────
+export function useMonthlySales() {
+  return useSWR<MonthlySales>('/sales/monthly', fetcher, SWR_CONFIG);
 }
