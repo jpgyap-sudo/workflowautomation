@@ -367,3 +367,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add build context to telegram-bot service so docker-compose builds from source on VPS
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 042d2474f74d1935ea3fd5f6a362f524d3e95603
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 042d2474f74d1935ea3fd5f6a362f524d3e95603
+**Files:** docker-compose.yml
+
+**Summary:**
+**What was fixed**  
+The `telegram-bot` service in `docker-compose.yml` was missing a `build` context, causing Docker Compose to fail when building from source on a VPS.
+
+**Why it broke**  
+Without an explicit build context, Docker Compose defaults to the current directory or uses a prebuilt image. On a VPS where no prebuilt image exists and the source code is in a subdirectory, the build step fails because Docker cannot locate the Dockerfile or source files.
+
+**Reusable takeaway**  
+Always specify a `build` context in `docker-compose.yml` for services that need to be built from source, especially in CI/CD or VPS deployments. Use `build: ./path/to/service` to ensure Docker finds the correct Dockerfile and source code, avoiding reliance on default contexts or prebuilt images.
+
+---
+*Original commit message: fix: add build context to telegram-bot service so docker-compose builds from source on VPS*
+
+#### Lesson Learned
+
+**What was fixed**  
+The `telegram-bot` service in `docker-compose.yml` was missing a `build` context, causing Docker Compose to fail when building from source on a VPS.
+
+**Why it broke**  
+Without an explicit build context, Docker Compose defaults to the current directory or uses a prebuilt image. On a VPS where no prebuilt image exists and the source code is in a subdirectory, the build step fails because Docker cannot locate the Dockerfile or source files.
+
+**Reusable takeaway**  
+Always specify a `build` context in `docker-compose.yml` for services that need to be built from source, especially in CI/CD or VPS deployments. Use `build: ./path/to/service` to ensure Docker finds the correct Dockerfile and source code, avoiding reliance on default contexts or prebuilt images.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

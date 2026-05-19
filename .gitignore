@@ -7,3 +7,4 @@ credentials/
 apps/**/.env
 backups/
 logs/
+*.json
