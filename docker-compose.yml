@@ -66,6 +66,7 @@ services:
       - api
 
   dashboard:
+    build: ./apps/dashboard
     image: ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest
     container_name: qas_dashboard
     restart: unless-stopped
