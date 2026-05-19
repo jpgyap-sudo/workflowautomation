@@ -69,6 +69,7 @@ services:
       - redis
 
   telegram-bot:
+    build: ./apps/telegram-bot
     image: ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest
     container_name: qas_telegram_bot
     restart: unless-stopped
