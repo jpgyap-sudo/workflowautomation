@@ -84,7 +84,7 @@ elif [ "$BUCKET_CHECK" = "404" ]; then
   CREATE_RESP=$(curl -s -X POST \
     -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
     -H "Content-Type: application/json" \
-    -d "{\"name\":\"${SUPABASE_BACKUP_BUCKET}\",\"public\":false,\"file_size_limit\":104857600}" \
+    -d "{\"name\":\"${SUPABASE_BACKUP_BUCKET}\",\"public\":false}" \
     "${SUPABASE_URL}/storage/v1/bucket")
   echo "Bucket creation response: $CREATE_RESP"
 else
