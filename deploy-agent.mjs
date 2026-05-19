@@ -118,8 +118,14 @@ function syncCredentials() {
       run('Creating credentials directory on VPS',
         sshCmd(`mkdir -p ${CONFIG.vpsPath}/credentials`));
 
-      const scpCmd =
-        `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -r "${credsDir}/" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/credentials/"`;
+      // Copy individual files (not the directory itself) to avoid nested credentials/credentials/
+      const credFiles = files.split('\n').filter(Boolean);
+      for (const file of credFiles) {
+        const localFile = resolve(credsDir, file);
+        const scpCmd =
+          `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${localFile}" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/credentials/"`;
+        run(`Copying ${file} via SCP`, scpCmd, { timeout: 30_000 });
+      }
       run('Copying credentials via SCP', scpCmd, { timeout: 60_000 });
       console.log('✓ Credentials synced');
     } else {

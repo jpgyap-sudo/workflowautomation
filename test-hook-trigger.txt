@@ -1,3 +1,0 @@
-"test-hook-commit"  
-"test-fix-2"  
-"test-fix-3"  

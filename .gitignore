@@ -8,3 +8,6 @@ apps/**/.env
 backups/
 logs/
 *.json
+*.jsonl
+test-*.txt
+console.log*
