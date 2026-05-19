@@ -75,7 +75,7 @@ echo ""
 echo "── Step 2: Ensuring bucket exists ──"
 BUCKET_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  "${SUPABASE_URL}/storage/v1/bucket/${SUPABASE_BACKUP_BUCKET}" 2>/dev/null || echo "000")
+  "${SUPABASE_URL}/storage/v1/buckets/${SUPABASE_BACKUP_BUCKET}" 2>/dev/null || echo "000")
 
 if [ "$BUCKET_CHECK" = "200" ]; then
   echo "Bucket '$SUPABASE_BACKUP_BUCKET' already exists."
