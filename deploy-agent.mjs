@@ -3,8 +3,12 @@
 /**
  * Deploy Agent — Quotation Automation System
  *
- * Deploys the project to the VPS at 165.22.110.111 via Tailscale SSH.
- * Uses Tailscale IP (100.86.182.7) to bypass firewall restrictions.
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║  VPS: 165.22.110.111  (Tailscale: 100.86.182.7)            ║
+ * ║  Website: https://track.abcx124.xyz                        ║
+ * ║  Repo: /opt/quotation-automation                           ║
+ * ║  SSH: root@165.22.110.111 (key: id_ed25519_roo)            ║
+ * ╚══════════════════════════════════════════════════════════════╝
  *
  * Usage:
  *   node deploy-agent.mjs              # Full deploy (sync + build + up)

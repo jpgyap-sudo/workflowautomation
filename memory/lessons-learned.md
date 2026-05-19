@@ -1741,3 +1741,51 @@ When refactoring shell scripts or template strings, verify that environment vari
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: fix README to use correct domain track.abcx124.xyz
+
+Date: 2026-05-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ec0479c51d379df6444b50bb737991efc252815d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ec0479c51d379df6444b50bb737991efc252815d
+**Files:** README.md
+
+**Summary:**
+**What was fixed:**  
+Corrected the domain in the README from an incorrect placeholder to `track.abcx124.xyz`.
+
+**Why it broke:**  
+The original domain was either a typo or an outdated staging/test domain that was never updated before release. This caused broken links for users trying to access the tracking service.
+
+**Reusable takeaway:**  
+Always verify external URLs in documentation against the production environment before committing. Use environment variables or a single source of truth (e.g., a config file) for domain names to avoid hardcoding errors. Automate link checking in CI/CD to catch stale or incorrect URLs early.
+
+---
+*Original commit message: docs: fix README to use correct domain track.abcx124.xyz*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Corrected the domain in the README from an incorrect placeholder to `track.abcx124.xyz`.
+
+**Why it broke:**  
+The original domain was either a typo or an outdated staging/test domain that was never updated before release. This caused broken links for users trying to access the tracking service.
+
+**Reusable takeaway:**  
+Always verify external URLs in documentation against the production environment before committing. Use environment variables or a single source of truth (e.g., a config file) for domain names to avoid hardcoding errors. Automate link checking in CI/CD to catch stale or incorrect URLs early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
