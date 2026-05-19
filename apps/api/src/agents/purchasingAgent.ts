@@ -7,6 +7,8 @@ import {
   createReminder,
   getActiveOrdersByStage,
   getEscalationLevel,
+  daysSince,
+  getGroupChatId,
 } from '../services/agentRunner.js';
 
 /**
@@ -25,6 +27,14 @@ export async function runPurchasingAgent(): Promise<AgentResult[]> {
 
   for (const order of orders) {
     const result = await checkPurchasing(order);
+    // Create reminder if needed
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('purchasing-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'purchasing_pending', groupChatId, result.message);
+        await notifyPurchasing(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 
@@ -94,10 +104,4 @@ export async function notifyPurchasing(
     result.escalation_level,
   );
   await sendTelegramMessage(groupChatId, msg);
-}
-
-function daysSince(dateStr: string): number {
-  const created = new Date(dateStr);
-  const now = new Date();
-  return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
 }

@@ -4,8 +4,11 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  createReminder,
   getActiveOrdersByStages,
   getEscalationLevel,
+  daysSince,
+  getGroupChatId,
 } from '../services/agentRunner.js';
 
 /**
@@ -18,11 +21,13 @@ import {
  * specific stages. It looks for orders where:
  * 1. Escalation level >= 3 (3+ reminders sent with no update)
  * 2. Order has been in the same stage for > 7 days
+ *
+ * Excludes terminal stages: payment_received, payment_confirmed, completed
  */
 export async function runEscalationAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // Check ALL active orders across all stages
+  // Check ALL active orders across all non-terminal stages
   const stages = [
     'quotation_received',
     'math_verified',
@@ -40,6 +45,13 @@ export async function runEscalationAgent(): Promise<AgentResult[]> {
 
   for (const order of orders) {
     const result = await checkEscalation(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('escalation-agent');
+      if (groupChatId) {
+        await createReminder(order.id, order.current_stage, groupChatId, result.message);
+        await notifyEscalation(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 
@@ -110,12 +122,6 @@ export async function checkEscalation(order: OrderRow): Promise<AgentResult> {
     await logAgentAction('escalation-agent', input, result, 'error', order.id, errorMsg);
     return result;
   }
-}
-
-function daysSince(dateStr: string): number {
-  const date = new Date(dateStr);
-  const now = new Date();
-  return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export async function notifyEscalation(

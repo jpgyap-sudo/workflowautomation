@@ -1,6 +1,6 @@
 'use client';
 
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import useSWRSubscription from 'swr/subscription';
 import { useEffect, useRef } from 'react';
 import {
@@ -111,11 +111,29 @@ export function useRealtimeSubscription() {
       try {
         const { keys } = JSON.parse(event.data);
         console.log('[realtime] Invalidation event:', keys);
-        // The global mutate from SWR will be used by the pages
-        // We dispatch a custom event that pages can listen to
-        window.dispatchEvent(
-          new CustomEvent('swr:invalidate', { detail: { keys } })
-        );
+
+        // Map API path patterns to SWR cache keys and revalidate them
+        const swrKeys: string[] = [];
+        for (const key of keys) {
+          if (key.includes('dashboard/stats')) swrKeys.push('/dashboard/stats');
+          if (key.includes('/orders/')) swrKeys.push('/orders');
+          if (key.includes('/orders')) swrKeys.push('/orders');
+          if (key.includes('/sales/')) swrKeys.push('/sales/monthly');
+          if (key.includes('/reminders')) swrKeys.push('/reminders');
+          if (key.includes('/agent-logs')) swrKeys.push('/agent-logs');
+          if (key.includes('/calendar/')) swrKeys.push('/calendar/events');
+        }
+
+        // Also revalidate any stage-specific keys
+        const stageMatch = keys.find((k: string) => k.includes('/orders/stage/'));
+        if (stageMatch) {
+          swrKeys.push(stageMatch);
+        }
+
+        // Trigger SWR revalidation for all matched keys
+        for (const swrKey of swrKeys) {
+          mutate(swrKey);
+        }
       } catch (e) {
         console.error('[realtime] Failed to parse invalidation event', e);
       }
@@ -135,4 +153,30 @@ export function useRealtimeSubscription() {
 // ── Hook: Monthly Sales ──────────────────────────────────────────────
 export function useMonthlySales() {
   return useSWR<MonthlySales>('/sales/monthly', fetcher, SWR_CONFIG);
+}
+
+// ── Hook: Agent List ─────────────────────────────────────────────────
+export interface AgentInfo {
+  name: string;
+  description: string;
+  intervalMs: number;
+}
+
+export function useAgents() {
+  return useSWR<AgentInfo[]>('/agents', fetcher, SWR_CONFIG);
+}
+
+// ── Hook: Agent Health ───────────────────────────────────────────────
+export interface AgentHealth {
+  name: string;
+  lastRun: number;
+  consecutiveErrors: number;
+  healthy: boolean;
+}
+
+export function useAgentHealth() {
+  return useSWR<AgentHealth[]>('/health', fetcher, {
+    ...SWR_CONFIG,
+    refreshInterval: 30_000, // health refreshes every 30s
+  });
 }

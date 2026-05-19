@@ -57,6 +57,30 @@ export const STAGE_LABELS: Record<string, string> = {
   payment_confirmed: '💵 Payment Confirmed',
 };
 
+// ── Group Chat IDs (from env vars) ─────────────────────────────────────
+
+export function getGroupChatId(agentName: string): string | null {
+  const envMap: Record<string, string> = {
+    'quotation-checker': 'QUOTATION_GROUP_CHAT_ID',
+    'purchasing-agent': 'PURCHASING_GROUP_CHAT_ID',
+    'inventory-agent': 'INVENTORY_GROUP_CHAT_ID',
+    'delivery-agent': 'DELIVERY_GROUP_CHAT_ID',
+    'collection-agent': 'COLLECTION_GROUP_CHAT_ID',
+    'escalation-agent': 'ESCALATION_GROUP_CHAT_ID',
+  };
+  const envKey = envMap[agentName];
+  if (!envKey) return null;
+  return process.env[envKey] ?? null;
+}
+
+// ── Date Helpers ───────────────────────────────────────────────────────
+
+export function daysSince(dateStr: string): number {
+  const date = new Date(dateStr);
+  const now = new Date();
+  return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 // ── Agent Logging ──────────────────────────────────────────────────────
 
 export async function logAgentAction(

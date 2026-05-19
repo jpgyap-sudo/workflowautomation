@@ -56,6 +56,7 @@ const AGENTS: AgentSchedule[] = [
 // ── Scheduler State ───────────────────────────────────────────────────
 
 const lastRun: Record<string, number> = {};
+const consecutiveErrors: Record<string, number> = {};
 let schedulerTimer: NodeJS.Timeout | null = null;
 
 // ── Run All Agents ────────────────────────────────────────────────────
@@ -67,6 +68,9 @@ async function runAgent(agent: AgentSchedule): Promise<void> {
     const results = await agent.run();
     const duration = Date.now() - start;
 
+    // Reset consecutive errors on success
+    consecutiveErrors[agent.name] = 0;
+
     const okCount = results.filter((r) => r.status === 'ok' || r.status === 'complete').length;
     const reviewCount = results.filter((r) => r.status === 'needs_review').length;
     const blockedCount = results.filter((r) => r.status === 'blocked').length;
@@ -77,7 +81,16 @@ async function runAgent(agent: AgentSchedule): Promise<void> {
       `${results.length} orders: ${okCount} ok, ${reviewCount} needs_review, ${blockedCount} blocked, ${errorCount} errors`,
     );
   } catch (err) {
-    console.error(`[AgentScheduler] ${agent.name} failed:`, err);
+    consecutiveErrors[agent.name] = (consecutiveErrors[agent.name] ?? 0) + 1;
+    const errCount = consecutiveErrors[agent.name];
+    console.error(`[AgentScheduler] ${agent.name} failed (${errCount}x consecutive):`, err);
+
+    // Exponential backoff: skip next run if too many consecutive errors
+    if (errCount >= 5) {
+      console.warn(`[AgentScheduler] ${agent.name} has ${errCount} consecutive errors — extending interval by ${Math.min(errCount, 10)}x`);
+      // Reset lastRun to now so it won't retry for a longer period
+      lastRun[agent.name] = Date.now();
+    }
   }
 }
 
@@ -86,7 +99,15 @@ function checkAndRunAgents(): void {
 
   for (const agent of AGENTS) {
     const last = lastRun[agent.name] ?? 0;
-    if (now - last >= agent.intervalMs) {
+    const errCount = consecutiveErrors[agent.name] ?? 0;
+
+    // Apply exponential backoff multiplier for agents with errors
+    let effectiveInterval = agent.intervalMs;
+    if (errCount >= 5) {
+      effectiveInterval = agent.intervalMs * Math.min(errCount, 10);
+    }
+
+    if (now - last >= effectiveInterval) {
       lastRun[agent.name] = now;
       // Run asynchronously — don't block the scheduler loop
       runAgent(agent);
@@ -131,6 +152,7 @@ export async function runAgentByName(name: string): Promise<{ ok: boolean; messa
   }
 
   lastRun[agent.name] = Date.now();
+  consecutiveErrors[agent.name] = 0; // Reset errors on manual trigger
   try {
     const results = await agent.run();
     return {
@@ -151,5 +173,16 @@ export function listAgents(): { name: string; description: string; intervalMs: n
     name: a.name,
     description: a.description,
     intervalMs: a.intervalMs,
+  }));
+}
+
+// ── Agent Health ──────────────────────────────────────────────────────
+
+export function getAgentHealth(): { name: string; lastRun: number; consecutiveErrors: number; healthy: boolean }[] {
+  return AGENTS.map((a) => ({
+    name: a.name,
+    lastRun: lastRun[a.name] ?? 0,
+    consecutiveErrors: consecutiveErrors[a.name] ?? 0,
+    healthy: (consecutiveErrors[a.name] ?? 0) < 5,
   }));
 }

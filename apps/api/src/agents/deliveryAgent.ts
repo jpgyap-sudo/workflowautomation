@@ -4,9 +4,12 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  createReminder,
   getActiveOrdersByStage,
   getEscalationLevel,
+  getGroupChatId,
 } from '../services/agentRunner.js';
+import { query } from '../db.js';
 
 /**
  * delivery-agent
@@ -22,6 +25,13 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
   const scheduledOrders = await getActiveOrdersByStage('delivery_scheduled');
   for (const order of scheduledOrders) {
     const result = await checkScheduledDelivery(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('delivery-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'delivery_scheduled', groupChatId, result.message);
+        await notifyDelivery(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 
@@ -29,6 +39,13 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
   const deliveredOrders = await getActiveOrdersByStage('delivered');
   for (const order of deliveredOrders) {
     const result = await checkDelivered(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('delivery-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'delivered', groupChatId, result.message);
+        await notifyDelivery(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 
@@ -138,7 +155,6 @@ export async function checkDelivered(order: OrderRow): Promise<AgentResult> {
 }
 
 async function getStageUpdates(orderId: string, stage: string): Promise<any[]> {
-  const { query } = await import('../db.js');
   return query(
     `SELECT remarks, created_at FROM stage_updates
      WHERE order_id = $1 AND stage = $2

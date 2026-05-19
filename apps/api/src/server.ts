@@ -90,7 +90,15 @@ async function invalidateCache(patterns: string[]): Promise<void> {
 }
 
 // ── Health ──────────────────────────────────────────────────────────
-app.get('/health', async () => ({ ok: true, service: 'quotation-automation-api' }));
+app.get('/health', async () => {
+  const agentHealth = getAgentHealth();
+  const allHealthy = agentHealth.every((a) => a.healthy);
+  return {
+    ok: allHealthy,
+    service: 'quotation-automation-api',
+    agents: agentHealth,
+  };
+});
 
 // ── Orders ──────────────────────────────────────────────────────────
 

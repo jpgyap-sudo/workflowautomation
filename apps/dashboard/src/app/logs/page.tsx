@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Activity, Search, Filter, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { useAgentLogs } from '@/lib/useApi';
 
 interface AgentLog {
   id: string;
@@ -26,31 +27,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AgentLogsPage() {
-  const [logs, setLogs] = useState<AgentLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: logs = [], error, isLoading, mutate } = useAgentLogs();
   const [search, setSearch] = useState('');
   const [filterAgent, setFilterAgent] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  async function fetchLogs() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/agent-logs');
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch agent logs:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchLogs();
-  }, []);
 
   const agents = [...new Set(logs.map((l) => l.agent_name))].sort();
 
@@ -99,11 +80,11 @@ export default function AgentLogsPage() {
           </p>
         </div>
         <button
-          onClick={fetchLogs}
-          disabled={loading}
+          onClick={() => mutate()}
+          disabled={isLoading}
           className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
@@ -154,7 +135,7 @@ export default function AgentLogsPage() {
       </div>
 
       {/* Logs List */}
-      {loading && logs.length === 0 ? (
+      {isLoading && logs.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <RefreshCw className="h-8 w-8 animate-spin text-gray-300" />
         </div>

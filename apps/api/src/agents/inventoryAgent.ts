@@ -4,9 +4,13 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  createReminder,
+  advanceStage,
   getActiveOrdersByStage,
   getEscalationLevel,
+  getGroupChatId,
 } from '../services/agentRunner.js';
+import { query } from '../db.js';
 
 /**
  * inventory-agent
@@ -15,6 +19,7 @@ import {
  * - Checks if inventory photos/files have been uploaded
  * - Sends reminders if inventory hasn't arrived yet
  * - Escalates after repeated reminders
+ * - Auto-advances to balance_due when inventory files are uploaded
  */
 export async function runInventoryAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
@@ -24,6 +29,14 @@ export async function runInventoryAgent(): Promise<AgentResult[]> {
 
   for (const order of orders) {
     const result = await checkInventory(order);
+    // Create reminder if needed
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('inventory-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'inventory_arrived', groupChatId, result.message);
+        await notifyInventory(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 
@@ -43,12 +56,18 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
     const files = await getOrderFiles(order.id, 'inventory');
 
     if (files.length > 0) {
-      // Inventory has arrived — check if it can auto-advance
-      // (balance_due stage is handled by the deposit flow, not here)
+      // Inventory has arrived — auto-advance to balance_due
+      await advanceStage(
+        order.id,
+        'balance_due',
+        order.quotation_number ?? order.id,
+        `Inventory arrived — ${files.length} file(s) uploaded. Auto-advanced to balance due.`,
+      );
+
       const result: AgentResult = {
         status: 'ok',
-        message: `📦 Inventory arrived — ${files.length} file(s) uploaded. Ready for next stage.`,
-        next_stage: null,
+        message: `📦 Inventory arrived — ${files.length} file(s) uploaded. Auto-advanced to balance due stage.`,
+        next_stage: 'balance_due',
         reminder_needed: false,
         escalation_level: 0,
       };
@@ -97,7 +116,6 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
 }
 
 async function getOrderFiles(orderId: string, fileType: string): Promise<any[]> {
-  const { query } = await import('../db.js');
   return query(
     `SELECT id, original_filename, google_drive_file_id, created_at
      FROM files WHERE order_id = $1 AND file_type = $2

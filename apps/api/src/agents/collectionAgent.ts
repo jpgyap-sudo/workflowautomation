@@ -4,8 +4,10 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  createReminder,
   getActiveOrdersByStages,
   getEscalationLevel,
+  getGroupChatId,
 } from '../services/agentRunner.js';
 
 /**
@@ -24,6 +26,13 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
 
   for (const order of orders) {
     const result = await checkCollection(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('collection-agent');
+      if (groupChatId) {
+        await createReminder(order.id, order.current_stage, groupChatId, result.message);
+        await notifyCollection(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 

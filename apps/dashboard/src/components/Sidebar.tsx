@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings,
+  Bot,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
   { href: '/collection',  label: 'Collection',     icon: DollarSign },
   { href: '/stages',      label: 'Stage Pipeline', icon: ClipboardList },
   { href: '/calendar',    label: 'Calendar',       icon: CalendarDays },
+  { href: '/agents',      label: 'Agents',         icon: Bot },
   { href: '/logs',        label: 'Agent Logs',     icon: Activity },
   { href: '/settings',    label: 'Settings',       icon: Settings },
 ];

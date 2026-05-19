@@ -6,7 +6,9 @@ import {
   sendTelegramMessage,
   buildAgentMessage,
   advanceStage,
+  createReminder,
   getActiveOrdersByStage,
+  getGroupChatId,
 } from '../services/agentRunner.js';
 
 /**
@@ -15,7 +17,7 @@ import {
  * Role: Checks quotation math when a new order is created.
  * Compares total_amount (quoted) vs computed_amount (computed from line items).
  * If they match → auto-advance to math_verified.
- * If they differ → flag for human review.
+ * If they differ → flag for human review and create a reminder.
  */
 export async function runQuotationChecker(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
@@ -25,6 +27,14 @@ export async function runQuotationChecker(): Promise<AgentResult[]> {
 
   for (const order of orders) {
     const result = await checkQuotation(order);
+    // Create reminder if math needs review
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('quotation-checker');
+      if (groupChatId) {
+        await createReminder(order.id, 'quotation_received', groupChatId, result.message);
+        await notifyQuotationCheck(groupChatId, order, result);
+      }
+    }
     results.push(result);
   }
 
