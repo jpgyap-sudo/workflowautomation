@@ -16,8 +16,8 @@ const TOKEN_PATH = resolve(__dirname, '..', '..', 'credentials', 'oauth-token.js
 
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
-const CLIENT_ID = 'process.env.GOOGLE_DRIVE_CLIENT_ID';
-const CLIENT_SECRET = 'process.env.GOOGLE_DRIVE_CLIENT_SECRET';
+const CLIENT_ID = process.env.GOOGLE_DRIVE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
 
 const oauth2Client = new google.auth.OAuth2(
   CLIENT_ID,

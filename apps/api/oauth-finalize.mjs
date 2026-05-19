@@ -12,8 +12,8 @@ import { Readable } from 'stream';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOKEN_PATH = resolve(__dirname, '..', '..', 'credentials', 'oauth-token.json');
 
-const CLIENT_ID = 'process.env.GOOGLE_DRIVE_CLIENT_ID';
-const CLIENT_SECRET = 'process.env.GOOGLE_DRIVE_CLIENT_SECRET';
+const CLIENT_ID = process.env.GOOGLE_DRIVE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
 
 const code = process.argv[2];
 if (!code) {
