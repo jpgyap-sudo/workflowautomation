@@ -4,7 +4,6 @@ import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import { ShoppingCart, Factory, Clock, ExternalLink } from 'lucide-react';
-import { formatPHTDate } from '@/lib/date';
 
 function DriveLink({ folderId }: { folderId: string | null }) {
   if (!folderId) return <span className="text-xs text-gray-400">—</span>;
@@ -31,7 +30,7 @@ function OrderRow({ order }: { order: Order }) {
       <div className="flex items-center gap-4">
         <DriveLink folderId={order.google_drive_folder_id} />
         <span className="hidden text-xs text-gray-400 sm:inline">
-          {formatPHTDate(order.created_at)}
+          {new Date(order.created_at).toLocaleDateString()}
         </span>
         <StageBadge stage={order.current_stage} />
       </div>

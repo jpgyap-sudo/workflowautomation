@@ -48,11 +48,7 @@ type UserStep =
   | { action: 'awaiting_order_number_for_link' }
   | { action: 'awaiting_file_upload' }
   | { action: 'awaiting_vision_process'; imageBase64: string; mimeType: string; fileName: string }
-  | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string }
-  // Reminder flow: bot is tagged → user types reminder message
-  | { action: 'awaiting_reminder_message'; imageBase64?: string; mimeType?: string; fileName?: string }
-  // Reminder flow: bot is tagged with image → extract order number → create reminder
-  | { action: 'awaiting_reminder_confirm'; imageBase64: string; mimeType: string; fileName: string };
+  | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string };
 
 interface UserSession {
   step: UserStep;
@@ -290,80 +286,6 @@ bot.on(message('text'), async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const text = ctx.message.text.trim();
   const session = getSession(chatId);
-
-  // ── Bot Mention Detection ──────────────────────────────────────────
-  // If the bot is tagged in a group chat, start the reminder flow
-  const botUsername = ctx.botInfo?.username;
-  const isGroupChat = ctx.chat!.type === 'group' || ctx.chat!.type === 'supergroup';
-  const isMentioned = botUsername && new RegExp(`@${botUsername}`, 'i').test(text);
-
-  if (isGroupChat && isMentioned && session.step.action === 'idle') {
-    // Check if there's a reply to a message with a photo/document
-    const replyTo = ctx.message.reply_to_message;
-    const hasImage = replyTo && (
-      (replyTo as any).photo ||
-      ((replyTo as any).document && /^image\//.test((replyTo as any).document?.mime_type || ''))
-    );
-
-    if (hasImage) {
-      // Bot was tagged replying to an image — extract order number from it
-      const replyMsg = replyTo as any;
-      let fileId: string;
-      let fileName: string;
-      let mimeType: string;
-
-      if (replyMsg.photo) {
-        const photo = replyMsg.photo[replyMsg.photo.length - 1];
-        fileId = photo.file_id;
-        fileName = `photo_${Date.now()}.jpg`;
-        mimeType = 'image/jpeg';
-      } else {
-        fileId = replyMsg.document.file_id;
-        fileName = replyMsg.document.file_name ?? `document_${Date.now()}`;
-        mimeType = replyMsg.document.mime_type ?? 'image/jpeg';
-      }
-
-      // Download the image
-      await ctx.reply(`📎 Downloading image for order number extraction...`);
-      try {
-        const link = await ctx.telegram.getFileLink(fileId);
-        const response = await fetch(link.href);
-        const fileBuffer = Buffer.from(await response.arrayBuffer());
-        const imageBase64 = fileBuffer.toString('base64');
-
-        setStep(chatId, {
-          action: 'awaiting_reminder_confirm',
-          imageBase64,
-          mimeType,
-          fileName,
-        });
-
-        await ctx.reply(
-          `📎 *Image received!*\n\n` +
-          `Now, type the reminder message for this order.\n\n` +
-          `Example: \`Follow up on delivery schedule\`\n\n` +
-          `The bot will extract the order number from the image and create a reminder.`,
-          { parse_mode: 'Markdown', ...cancelButton() }
-        );
-      } catch (err: any) {
-        await ctx.reply(`❌ Failed to download image: ${err.message}`, { parse_mode: 'Markdown' });
-      }
-      return;
-    }
-
-    // No image — just ask for the reminder message
-    setStep(chatId, { action: 'awaiting_reminder_message' });
-    await ctx.reply(
-      `📝 *Add a Reminder*\n\n` +
-      `Please type the reminder message for this order.\n\n` +
-      `Example: \`Follow up on delivery for QTN-2025-0001\`\n\n` +
-      `If you have an order number, include it in the message. ` +
-      `If you're replying to an image with the order details, ` +
-      `reply to the image and tag me (@${botUsername}).`,
-      { parse_mode: 'Markdown', ...cancelButton() }
-    );
-    return;
-  }
 
   // If idle, show main menu
   if (session.step.action === 'idle') {
@@ -744,121 +666,6 @@ bot.on(message('text'), async (ctx) => {
           parse_mode: 'Markdown',
           ...cancelButton(),
         });
-      }
-      break;
-    }
-
-    // ── Reminder: user types message after bot was tagged ────────────
-    case 'awaiting_reminder_message': {
-      const reminderMessage = text;
-
-      // Try to extract order number from the message text
-      const orderMatch = reminderMessage.match(/(QTN[-\s]?\d+[-\s]?\d+|REF[-\s]?\d+[-\s]?\w+|[A-Z]+[-\s]?\d+[-\s]?\d+)/i);
-      const orderNumber = orderMatch ? orderMatch[1].replace(/[\s-]+/g, '-') : null;
-
-      try {
-        // First, try to find an existing order by the extracted number
-        let orderId: string | null = null;
-        if (orderNumber) {
-          try {
-            const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderNumber)}`);
-            if (orderRes.ok) {
-              const orderData: any = await orderRes.json();
-              orderId = orderData.id;
-            }
-          } catch {
-            // Order not found — will create a reference order
-          }
-        }
-
-        // If no order found, create a reference order via the API
-        if (!orderId) {
-          const refNumber = orderNumber || `REF-${Date.now().toString(36).toUpperCase()}`;
-          const createRes = await fetch(`${apiBaseUrl}/orders`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              quotation_number: refNumber,
-              client_name: 'Unknown (from reminder)',
-            }),
-          });
-          if (createRes.ok) {
-            const created: any = await createRes.json();
-            orderId = created.id;
-          }
-        }
-
-        if (!orderId) {
-          throw new Error('Could not create or find an order for this reminder');
-        }
-
-        // Create reminder via API
-        await postJson('/reminders', {
-          order_id: orderId,
-          stage: 'order_confirmation_received',
-          group_chat_id: chatId,
-          message: reminderMessage,
-          frequency: 'daily',
-        });
-
-        resetStep(chatId);
-
-        let replyText = `✅ *Reminder Created!*\n\n📝 ${reminderMessage}\n\n`;
-        if (orderNumber) {
-          replyText += `🔢 Order: \`${orderNumber}\`\n`;
-        }
-        replyText += `⏰ Frequency: Daily\n\n`;
-        replyText += `_Tip: You can also reply to an image with @${ctx.botInfo?.username || 'bot'} to extract the order number automatically._`;
-
-        await ctx.reply(replyText, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
-      } catch (err: any) {
-        await ctx.reply(`❌ Failed to create reminder: ${err.message}`, {
-          parse_mode: 'Markdown',
-          ...cancelButton(),
-        });
-      }
-      break;
-    }
-
-    // ── Reminder: bot was tagged replying to an image ────────────────
-    case 'awaiting_reminder_confirm': {
-      const { imageBase64, mimeType, fileName } = session.step;
-      const reminderMessage = text;
-
-      await ctx.reply(`🤖 Analyzing image to extract order number...`);
-
-      try {
-        // Call the API to extract order number from image and create reminder
-        const result: any = await postJson('/reminders/from-image', {
-          image_base64: imageBase64,
-          mime_type: mimeType,
-          group_chat_id: chatId,
-          message: reminderMessage,
-          frequency: 'daily',
-          updated_by: ctx.from?.username ?? String(ctx.from?.id),
-        });
-
-        resetStep(chatId);
-
-        const orderRef = result.order_number || `REF-${result.order_id?.slice(0, 8)}`;
-        let replyText = `✅ *Reminder Created!*\n\n`;
-        replyText += `📝 ${reminderMessage}\n\n`;
-        replyText += `🔢 Order: \`${orderRef}\`\n`;
-        if (result.client_name) {
-          replyText += `👤 Client: ${result.client_name}\n`;
-        }
-        replyText += `⏰ Frequency: Daily\n\n`;
-        replyText += `_The order number was extracted from the image._`;
-
-        await ctx.reply(replyText, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
-      } catch (err: any) {
-        console.error('[reminder] Error:', err);
-        resetStep(chatId);
-        await ctx.reply(
-          `❌ Failed to create reminder: ${err.message}\n\n` +
-          `You can still type the reminder manually with the order number.`,
-          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-        );
       }
       break;
     }
@@ -1270,17 +1077,11 @@ bot.command('help', async (ctx) => {
     '✅ *Mark as Delivered* — Confirm delivery with remarks\n' +
     '💵 *Record Payment* — Log payment received or confirmed\n' +
     '🔗 *Link Order* — Associate an order for file uploads\n' +
-    '📎 *Upload File* — Send a document/photo linked to an order\n' +
-    '⏰ *Add Reminder* — Tag the bot in a group chat to add a reminder for an order\n\n' +
-    '📸 *Vision AI* — Send a quotation image/PDF to extract order info automatically\n\n' +
+    '📎 *Upload File* — Send a document/photo linked to an order\n\n' +
     'Available commands:\n' +
     '/start — Show main menu\n' +
     '/help — Show this message\n' +
     '/unlink — Clear linked order for uploads\n\n' +
-    '_💡 How to add a reminder:_\n' +
-    '1. In a group chat, tag the bot (`@' + (ctx.botInfo?.username || 'bot') + '`) and type your reminder message\n' +
-    '2. Or reply to an image with `@' + (ctx.botInfo?.username || 'bot') + '` — the bot will extract the order number from the image\n' +
-    '3. The bot will create a daily reminder for that order\n\n' +
     '_Tip: You can also send a file anytime — if an order is linked, it will be uploaded automatically._',
     { parse_mode: 'Markdown', ...mainMenuKeyboard() }
   );

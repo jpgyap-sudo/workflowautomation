@@ -2,7 +2,6 @@
 
 import { useOrders, useAgents, useAgentHealth, type AgentInfo, type AgentHealth } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
-import { formatPHTDate } from '@/lib/date';
 import {
   ArrowRight,
   Bot,
@@ -700,7 +699,10 @@ export default function WorkflowPage() {
                         <div className="mt-1 flex items-center gap-2 text-[9px] text-gray-400">
                           <Clock className="h-3 w-3" />
                           <span>
-                            {formatPHTDate(order.created_at)}
+                            {new Date(order.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
                           </span>
                         </div>
                       </a>

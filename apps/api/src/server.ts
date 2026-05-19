@@ -17,7 +17,6 @@ import {
   autoExtract,
   extractQuotation,
   extractPayment,
-  extractOrderNumber,
 } from './services/geminiVision.js';
 import {
   processDueReminders,
@@ -1093,75 +1092,6 @@ app.patch('/reminders/:id/complete', async (request, reply) => {
 app.post('/reminders/process', async () => {
   const count = await processDueReminders();
   return { ok: true, sent: count };
-});
-
-/**
- * POST /reminders/from-image
- * Accept an image, extract order number via Gemini Vision,
- * look up or create a reference order, and create a reminder.
- * Used when the bot is tagged in a group chat with an image.
- */
-app.post('/reminders/from-image', async (request, reply) => {
-  const body = z
-    .object({
-      image_base64: z.string(),
-      mime_type: z.string(),
-      group_chat_id: z.string(),
-      message: z.string(),
-      frequency: z.enum(['hourly', 'daily']).default('daily'),
-      updated_by: z.string().optional(),
-    })
-    .parse(request.body);
-
-  // Step 1: Extract order number from image using Gemini Vision
-  let orderNumber: string | null = null;
-  let clientName: string | null = null;
-  try {
-    const extracted = await extractOrderNumber(body.image_base64, body.mime_type);
-    orderNumber = extracted.order_number;
-    clientName = extracted.client_name;
-  } catch (err) {
-    console.warn('[reminders/from-image] Gemini extraction failed:', err);
-    // Continue with generated reference
-  }
-
-  // Step 2: Try to find existing order by quotation number
-  let orderId: string | null = null;
-  if (orderNumber) {
-    const existing = await query(`SELECT id, quotation_number, client_name FROM orders WHERE quotation_number = $1`, [orderNumber]);
-    if (existing && existing.length > 0) {
-      orderId = existing[0].id;
-      clientName = clientName || existing[0].client_name;
-    }
-  }
-
-  // Step 3: If no order found, create a reference order with generated number
-  if (!orderId) {
-    const refNumber = orderNumber || `REF-${randomInt(10000, 99999)}-${Date.now().toString(36).toUpperCase()}`;
-    const rows = await query(
-      `INSERT INTO orders (quotation_number, client_name, status, current_stage)
-       VALUES ($1, $2, 'active', 'order_confirmation_received')
-       ON CONFLICT (quotation_number) DO UPDATE SET updated_at = NOW()
-       RETURNING id`,
-      [refNumber, clientName || 'Unknown (from image)']
-    );
-    orderId = rows[0].id;
-    orderNumber = refNumber;
-  }
-
-  // Step 4: Create the reminder (orderId is guaranteed to be set by this point)
-  await createStageReminder(orderId!, 'order_confirmation_received', body.group_chat_id, body.message, body.frequency);
-
-  // Step 5: Invalidate caches
-  await invalidateCache(['reminders:*', 'orders:*']);
-
-  return reply.send({
-    ok: true,
-    order_id: orderId,
-    order_number: orderNumber,
-    client_name: clientName,
-    message: body.message,
-  });
 });
 
 // ── Calendar Events ─────────────────────────────────────────────────

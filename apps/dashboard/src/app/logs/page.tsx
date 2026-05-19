@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Activity, Search, Filter, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { useAgentLogs } from '@/lib/useApi';
-import { formatPHTFull } from '@/lib/date';
 
 interface AgentLog {
   id: string;
@@ -53,7 +52,16 @@ export default function AgentLogsPage() {
   });
 
   function formatTime(iso: string) {
-    return formatPHTFull(iso);
+    const d = new Date(iso);
+    return d.toLocaleString('en-SG', {
+      timeZone: 'Asia/Singapore',
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
   }
 
   function truncate(obj: unknown, max = 120): string {

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useAgents, useAgentHealth, type AgentInfo, type AgentHealth } from '@/lib/useApi';
-import { timeAgoPHT } from '@/lib/date';
 import {
   Activity,
   Play,
@@ -56,8 +55,11 @@ function formatInterval(ms: number): string {
 
 function formatLastRun(ts: number): string {
   if (!ts) return 'Never';
-  // ts is a Unix timestamp (ms), convert to ISO string for PHT formatting
-  return timeAgoPHT(new Date(ts).toISOString());
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'Just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hour${Math.floor(diff / 3_600_000) > 1 ? 's' : ''} ago`;
+  return `${Math.floor(diff / 86_400_000)} day${Math.floor(diff / 86_400_000) > 1 ? 's' : ''} ago`;
 }
 
 function AgentCard({
