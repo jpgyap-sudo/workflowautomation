@@ -809,6 +809,31 @@ bot.on(['document', 'photo'], async (ctx) => {
   }
 });
 
+// ── Help Command ──────────────────────────────────────────────────────
+bot.command('help', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  resetStep(chatId);
+  await ctx.reply(
+    '📖 *Quotation Automation Bot — Help*\n\n' +
+    'This bot uses *buttons*, not commands. Just tap and follow the prompts.\n\n' +
+    '🔍 *Check Order Status* — View current stage, deposit, balance, delivery info\n' +
+    '🏭 *Purchasing/Production* — Mark items as purchased or in production\n' +
+    '💰 *Record Deposit* — Log a deposit payment\n' +
+    '💳 *Pay Balance* — Record balance payment before delivery\n' +
+    '📅 *Schedule Delivery* — Set a delivery date (balance must be paid first)\n' +
+    '✅ *Mark as Delivered* — Confirm delivery with remarks\n' +
+    '💵 *Record Payment* — Log payment received or confirmed\n' +
+    '🔗 *Link Order* — Associate an order for file uploads\n' +
+    '📎 *Upload File* — Send a document/photo linked to an order\n\n' +
+    'Available commands:\n' +
+    '/start — Show main menu\n' +
+    '/help — Show this message\n' +
+    '/unlink — Clear linked order for uploads\n\n' +
+    '_Tip: You can also send a file anytime — if an order is linked, it will be uploaded automatically._',
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
+});
+
 // ── Unlink Command (keep for power users) ─────────────────────────────
 bot.command('unlink', async (ctx) => {
   const chatId = String(ctx.chat!.id);
