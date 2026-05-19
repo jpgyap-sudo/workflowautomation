@@ -1,0 +1,133 @@
+import {
+  type AgentResult,
+  type OrderRow,
+  logAgentAction,
+  sendTelegramMessage,
+  buildAgentMessage,
+  getActiveOrdersByStages,
+  getEscalationLevel,
+} from '../services/agentRunner.js';
+
+/**
+ * escalation-agent
+ *
+ * Role: Monitors all active orders for stalled stages and escalates when
+ * reminders have been ignored for too long.
+ *
+ * This agent runs independently and checks ALL active orders, not just
+ * specific stages. It looks for orders where:
+ * 1. Escalation level >= 3 (3+ reminders sent with no update)
+ * 2. Order has been in the same stage for > 7 days
+ */
+export async function runEscalationAgent(): Promise<AgentResult[]> {
+  const results: AgentResult[] = [];
+
+  // Check ALL active orders across all stages
+  const stages = [
+    'quotation_received',
+    'math_verified',
+    'purchasing_pending',
+    'production_confirmed',
+    'deposit_pending',
+    'inventory_arrived',
+    'balance_due',
+    'delivery_scheduled',
+    'delivered',
+    'countered',
+  ];
+
+  const orders = await getActiveOrdersByStages(stages);
+
+  for (const order of orders) {
+    const result = await checkEscalation(order);
+    results.push(result);
+  }
+
+  return results;
+}
+
+export async function checkEscalation(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+    days_in_stage: daysSince(order.updated_at),
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, order.current_stage);
+    const daysInStage = daysSince(order.updated_at);
+
+    // Check if order has been stuck for too long
+    if (daysInStage >= 7 && escalationLevel >= 3) {
+      // Critical escalation — notify manager
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🚨 *CRITICAL ESCALATION* — Order has been at "${order.current_stage}" for ${daysInStage} days with ${escalationLevel} reminders sent. Immediate manager attention required!`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('escalation-agent', input, result, 'blocked', order.id);
+      return result;
+    }
+
+    // Check if order has been stuck for a while but not yet escalated
+    if (daysInStage >= 5 && escalationLevel < 3) {
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `⚠️ Order has been at "${order.current_stage}" for ${daysInStage} days. Please provide an update or escalate if blocked.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('escalation-agent', input, result, 'needs_review', order.id);
+      return result;
+    }
+
+    // Everything is within normal bounds
+    const result: AgentResult = {
+      status: 'ok',
+      message: `Order progressing normally at "${order.current_stage}" (${daysInStage} days). No escalation needed.`,
+      next_stage: null,
+      reminder_needed: false,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('escalation-agent', input, result, 'success', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking escalation for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('escalation-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+function daysSince(dateStr: string): number {
+  const date = new Date(dateStr);
+  const now = new Date();
+  return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export async function notifyEscalation(
+  groupChatId: string,
+  order: OrderRow,
+  result: AgentResult,
+): Promise<void> {
+  const msg = buildAgentMessage(
+    'Escalation Agent',
+    order,
+    result.message,
+    result.escalation_level,
+  );
+  await sendTelegramMessage(groupChatId, msg);
+}

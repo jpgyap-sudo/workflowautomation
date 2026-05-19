@@ -16,6 +16,17 @@ import {
   completeOrderReminders,
   startReminderScheduler,
 } from './services/reminderScheduler.js';
+import { checkQuotation } from './agents/quotationChecker.js';
+import { checkPurchasing } from './agents/purchasingAgent.js';
+import { checkInventory } from './agents/inventoryAgent.js';
+import { checkScheduledDelivery, checkDelivered } from './agents/deliveryAgent.js';
+import { checkCollection } from './agents/collectionAgent.js';
+import { checkEscalation } from './agents/escalationAgent.js';
+import {
+  startAgentScheduler,
+  runAgentByName,
+  listAgents,
+} from './services/agentScheduler.js';
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
@@ -360,20 +371,165 @@ app.get('/agent-logs', async () => {
   return rows;
 });
 
-app.post('/agents/quotation-checker', async (request) => {
-  const input = request.body as any;
-  const output = {
-    math_status: 'needs_review',
-    quoted_total: input?.quoted_total ?? null,
-    computed_total: input?.computed_total ?? null,
-    difference: null,
-    message: 'Quotation received. OCR/math checker placeholder ran successfully.'
-  };
-  await query(
-    `INSERT INTO agent_logs (agent_name, input, output, status) VALUES ($1,$2,$3,$4)`,
-    ['quotation-checker', input, output, 'success']
+// ── Agent Endpoints ─────────────────────────────────────────────────
+
+/**
+ * GET /agents — List all available agents and their schedules
+ */
+app.get('/agents', async () => {
+  return listAgents();
+});
+
+/**
+ * POST /agents/run/:name — Manually trigger a specific agent
+ */
+app.post('/agents/run/:name', async (request, reply) => {
+  const params = z.object({ name: z.string() }).parse(request.params);
+  const result = await runAgentByName(params.name);
+  if (!result.ok) return reply.code(400).send(result);
+  return result;
+});
+
+/**
+ * POST /agents/quotation-checker — Check quotation math for an order
+ * Can be called on-demand when a new order is created or file uploaded.
+ * Body: { quotation_number, total_amount, computed_amount }
+ */
+app.post('/agents/quotation-checker', async (request, reply) => {
+  const body = request.body as any;
+  const quotationNumber = body?.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  // Fetch the order from DB
+  const orders = await query(
+    `SELECT * FROM orders WHERE quotation_number = $1`,
+    [quotationNumber]
   );
-  return output;
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const result = await checkQuotation(orders[0]);
+  return result;
+});
+
+/**
+ * POST /agents/purchasing — Check purchasing status for an order
+ * Body: { quotation_number }
+ */
+app.post('/agents/purchasing', async (request, reply) => {
+  const body = request.body as any;
+  const quotationNumber = body?.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  const orders = await query(
+    `SELECT * FROM orders WHERE quotation_number = $1`,
+    [quotationNumber]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const result = await checkPurchasing(orders[0]);
+  return result;
+});
+
+/**
+ * POST /agents/inventory — Check inventory status for an order
+ * Body: { quotation_number }
+ */
+app.post('/agents/inventory', async (request, reply) => {
+  const body = request.body as any;
+  const quotationNumber = body?.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  const orders = await query(
+    `SELECT * FROM orders WHERE quotation_number = $1`,
+    [quotationNumber]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const result = await checkInventory(orders[0]);
+  return result;
+});
+
+/**
+ * POST /agents/delivery — Check delivery status for an order
+ * Body: { quotation_number }
+ */
+app.post('/agents/delivery', async (request, reply) => {
+  const body = request.body as any;
+  const quotationNumber = body?.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  const orders = await query(
+    `SELECT * FROM orders WHERE quotation_number = $1`,
+    [quotationNumber]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+  let result;
+  if (order.current_stage === 'delivery_scheduled') {
+    result = await checkScheduledDelivery(order);
+  } else if (order.current_stage === 'delivered') {
+    result = await checkDelivered(order);
+  } else {
+    result = await checkScheduledDelivery(order);
+  }
+  return result;
+});
+
+/**
+ * POST /agents/collection — Check collection status for an order
+ * Body: { quotation_number }
+ */
+app.post('/agents/collection', async (request, reply) => {
+  const body = request.body as any;
+  const quotationNumber = body?.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  const orders = await query(
+    `SELECT * FROM orders WHERE quotation_number = $1`,
+    [quotationNumber]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const result = await checkCollection(orders[0]);
+  return result;
+});
+
+/**
+ * POST /agents/escalation — Check escalation status for an order
+ * Body: { quotation_number }
+ */
+app.post('/agents/escalation', async (request, reply) => {
+  const body = request.body as any;
+  const quotationNumber = body?.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  const orders = await query(
+    `SELECT * FROM orders WHERE quotation_number = $1`,
+    [quotationNumber]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const result = await checkEscalation(orders[0]);
+  return result;
 });
 
 // ── Dashboard Stats ─────────────────────────────────────────────────
@@ -753,5 +909,9 @@ const port = Number(process.env.PORT ?? 8080);
 // Start the reminder scheduler (checks every 60 seconds)
 const REMINDER_INTERVAL_MS = Number(process.env.REMINDER_INTERVAL_MS ?? 60_000);
 startReminderScheduler(REMINDER_INTERVAL_MS);
+
+// Start the agent scheduler (checks every 60 seconds for due agents)
+const AGENT_CHECK_INTERVAL_MS = Number(process.env.AGENT_CHECK_INTERVAL_MS ?? 60_000);
+startAgentScheduler(AGENT_CHECK_INTERVAL_MS);
 
 await app.listen({ port, host: '0.0.0.0' });

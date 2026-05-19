@@ -1,0 +1,103 @@
+import {
+  type AgentResult,
+  type OrderRow,
+  logAgentAction,
+  sendTelegramMessage,
+  buildAgentMessage,
+  createReminder,
+  getActiveOrdersByStage,
+  getEscalationLevel,
+} from '../services/agentRunner.js';
+
+/**
+ * purchasing-agent
+ *
+ * Role: Tracks purchasing/production status for orders at purchasing_pending stage.
+ * - Sends daily reminders to the purchasing group
+ * - Escalates after 3 reminders with no update
+ * - Auto-advances when team confirms via /produce command (handled by bot.ts)
+ */
+export async function runPurchasingAgent(): Promise<AgentResult[]> {
+  const results: AgentResult[] = [];
+
+  // Check orders stuck at purchasing_pending
+  const orders = await getActiveOrdersByStage('purchasing_pending');
+
+  for (const order of orders) {
+    const result = await checkPurchasing(order);
+    results.push(result);
+  }
+
+  return results;
+}
+
+export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+    days_since_creation: daysSince(order.created_at),
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'purchasing_pending');
+    const daysWaiting = daysSince(order.created_at);
+
+    // If escalated 3+ times, flag for manager attention
+    if (escalationLevel >= 3) {
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🔴 Order stuck at purchasing for ${daysWaiting} days with ${escalationLevel} reminders sent. Manager intervention required.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('purchasing-agent', input, result, 'blocked', order.id);
+      return result;
+    }
+
+    // Normal reminder
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Has production or purchasing started for this order? It's been ${daysWaiting} days since creation.`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('purchasing-agent', input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking purchasing for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('purchasing-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+export async function notifyPurchasing(
+  groupChatId: string,
+  order: OrderRow,
+  result: AgentResult,
+): Promise<void> {
+  const msg = buildAgentMessage(
+    'Purchasing Agent',
+    order,
+    result.message,
+    result.escalation_level,
+  );
+  await sendTelegramMessage(groupChatId, msg);
+}
+
+function daysSince(dateStr: string): number {
+  const created = new Date(dateStr);
+  const now = new Date();
+  return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+}
