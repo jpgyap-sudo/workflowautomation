@@ -7,8 +7,11 @@
  */
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.0-flash-001';
 const MODEL = 'gemini-2.0-flash';
 const API_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}`;
+const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -44,7 +47,17 @@ interface GeminiResponse {
   }[];
 }
 
-async function callGemini(
+interface OpenRouterResponse {
+  choices?: {
+    message?: {
+      content?: OpenRouterContent;
+    };
+  }[];
+}
+
+type OpenRouterContent = string | { type?: string; text?: string }[];
+
+async function callGeminiDirect(
   imageBase64: string,
   mimeType: string,
   prompt: string
@@ -92,6 +105,96 @@ async function callGemini(
     throw new Error('Gemini returned empty response');
   }
   return text;
+}
+
+function openRouterTextContent(content: OpenRouterContent | undefined): string | undefined {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (part.type === 'text' || !part.type ? part.text ?? '' : ''))
+      .join('')
+      .trim();
+  }
+  return undefined;
+}
+
+async function callOpenRouter(
+  imageBase64: string,
+  mimeType: string,
+  prompt: string
+): Promise<string> {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY is not configured');
+  }
+
+  const body = {
+    model: OPENROUTER_MODEL,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${imageBase64}`,
+            },
+          },
+        ],
+      },
+    ],
+    temperature: 0.1,
+    max_tokens: 1024,
+  };
+
+  const res = await fetch(OPENROUTER_API_BASE, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz',
+      'X-Title': 'Quotation Automation System',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'unknown error');
+    throw new Error(`OpenRouter API error ${res.status}: ${errText}`);
+  }
+
+  const data = (await res.json()) as OpenRouterResponse;
+  const text = openRouterTextContent(data.choices?.[0]?.message?.content);
+  if (!text) {
+    throw new Error('OpenRouter returned empty response');
+  }
+  return text;
+}
+
+async function callGemini(
+  imageBase64: string,
+  mimeType: string,
+  prompt: string
+): Promise<string> {
+  const errors: string[] = [];
+
+  if (GEMINI_API_KEY) {
+    try {
+      return await callGeminiDirect(imageBase64, mimeType, prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(message);
+      console.warn('[vision] Gemini failed; trying OpenRouter fallback:', message);
+    }
+  } else {
+    errors.push('GEMINI_API_KEY is not configured');
+  }
+
+  if (OPENROUTER_API_KEY) {
+    return callOpenRouter(imageBase64, mimeType, prompt);
+  }
+
+  throw new Error(`No vision AI provider available. ${errors.join(' | ')}`);
 }
 
 // ── Extract JSON from Gemini text response ───────────────────────────────
