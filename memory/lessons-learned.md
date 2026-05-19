@@ -1891,3 +1891,22 @@ Created a root-level [`learningworkflow.md`](learningworkflow.md) file containin
 #### Tags
 
 documentation, deployment, vps, safeguard, infrastructure
+
+### Lesson: [quotation-automation] refactor: rename stage quotation_received to order_confirmation_received across full stack
+
+#### Task Summary
+Renamed the first stage of the order lifecycle from "Quotation Received" (`quotation_received`) to "Order Confirmation Received" (`order_confirmation_received`) across the entire system — database, API, agents, dashboard, and documentation.
+
+#### Lesson Learned
+1. **Stage keys are deeply embedded** — The stage key `quotation_received` appears in 10+ source files across 4 layers (DB schema, API services, API agents, dashboard frontend). A simple label change requires touching every layer.
+2. **Shared config pattern works** — The dashboard's `STAGE_CONFIG` in `api.ts` is the single source of truth for display labels. Updating it there automatically propagates to `StageBadge`, stage pages, and the workflow page. No component-level changes needed.
+3. **CSS classes need manual update** — The `.stage-quotation_received` CSS class in `globals.css` is not derived from `STAGE_CONFIG` and must be renamed separately.
+4. **CI/CD pipeline** — The deploy flow is: commit → push to master → GitHub Actions builds Docker images → SSH into VPS → `git pull` + `docker pull` + `docker-compose down --remove-orphans` + `docker-compose up -d`. All 5 containers restart cleanly.
+
+#### Reusable Takeaways
+- When renaming a stage key, always check: DB schema (DEFAULT values), API services (STAGE_LABELS, stageLabels), API agents (stage strings in queries), dashboard (STAGE_CONFIG, STAGE_ORDER, STAGE_COLORS, CSS classes), and docs.
+- Use `search_files` with regex across all file types to find every reference before starting.
+- The `StageBadge` component reads from `STAGE_CONFIG` — no changes needed there when only the key changes.
+
+#### Tags
+refactor, stage, rename, quotation, order-confirmation, full-stack, deployment
