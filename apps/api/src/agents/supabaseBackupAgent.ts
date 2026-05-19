@@ -129,8 +129,13 @@ async function uploadBackup(filePath: string, filename: string): Promise<boolean
 
 // ── Helper: Cleanup Old Backups ────────────────────────────────────────
 
+function getPHTDate(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+}
+
 async function cleanupOldBackups(): Promise<number> {
-  const cutoff = new Date();
+  const phtNow = getPHTDate();
+  const cutoff = new Date(phtNow);
   cutoff.setDate(cutoff.getDate() - BACKUP_RETENTION_DAYS);
 
   // List all objects in the bucket
@@ -180,7 +185,8 @@ export async function runSupabaseBackup(): Promise<SupabaseBackupResult[]> {
   }
 
   // ── Step 1: Dump database (pipe directly to gzip) ──────────────────
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const phtNow = getPHTDate();
+  const stamp = phtNow.toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const backupFilename = `db_${stamp}.sql.gz`;
   const tempDir = mkdtempSync(join(tmpdir(), 'supabase-backup-'));
   const tempBackupPath = join(tempDir, backupFilename);

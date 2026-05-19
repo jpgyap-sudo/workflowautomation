@@ -6,6 +6,7 @@ import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
+import { formatPHT, formatPHTFull } from '@/lib/date';
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -70,7 +71,7 @@ export default function OrderDetailPage() {
               </div>
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              Created {new Date(order.created_at).toLocaleString()}
+              Created {formatPHTFull(order.created_at)}
             </p>
           </div>
           <span
@@ -268,7 +269,7 @@ export default function OrderDetailPage() {
                       </p>
                       <p className="mt-0.5 text-[10px] text-gray-400">
                         by {stageUpdate.updated_by ?? 'system'} on{' '}
-                        {new Date(stageUpdate.created_at).toLocaleString()}
+                        {formatPHT(stageUpdate.created_at)}
                       </p>
                     </div>
                   )}

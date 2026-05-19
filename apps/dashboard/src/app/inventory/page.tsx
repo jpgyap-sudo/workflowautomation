@@ -3,6 +3,7 @@
 import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
 import { Package } from 'lucide-react';
+import { formatPHTDate } from '@/lib/date';
 
 export default function InventoryPage() {
   const { data: arrivedOrders = [], isLoading } = useOrdersByStage('inventory_arrived');
@@ -53,7 +54,7 @@ export default function InventoryPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-400">
-                    {new Date(order.created_at).toLocaleDateString()}
+                    {formatPHTDate(order.created_at)}
                   </span>
                   <StageBadge stage={order.current_stage} />
                 </div>

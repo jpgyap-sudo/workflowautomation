@@ -3,6 +3,7 @@
 import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
 import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle } from 'lucide-react';
+import { formatPHTDate } from '@/lib/date';
 
 export default function DeliveryPage() {
   const {
@@ -116,7 +117,7 @@ export default function DeliveryPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-gray-400">
-                      {new Date(order.created_at).toLocaleDateString()}
+                      {formatPHTDate(order.created_at)}
                     </span>
                     <StageBadge stage={order.current_stage} />
                   </div>
@@ -148,7 +149,7 @@ export default function DeliveryPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-400">
-                    {new Date(order.created_at).toLocaleDateString()}
+                    {formatPHTDate(order.created_at)}
                   </span>
                   <StageBadge stage={order.current_stage} />
                 </div>

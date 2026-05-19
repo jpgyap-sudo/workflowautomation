@@ -75,9 +75,13 @@ export function getGroupChatId(agentName: string): string | null {
 
 // ── Date Helpers ───────────────────────────────────────────────────────
 
+function getPHTDate(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+}
+
 export function daysSince(dateStr: string): number {
   const date = new Date(dateStr);
-  const now = new Date();
+  const now = getPHTDate();
   return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 }
 
@@ -130,7 +134,7 @@ export async function createReminder(
   message: string,
   frequency: string = 'daily',
 ): Promise<void> {
-  const now = new Date();
+  const now = getPHTDate();
   const firstRun = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
 
   await query(

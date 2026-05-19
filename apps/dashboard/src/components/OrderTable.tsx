@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Order } from '@/lib/api';
 import StageBadge from './StageBadge';
+import { formatPHTDate } from '@/lib/date';
 
 interface OrderTableProps {
   orders: Order[];
@@ -121,7 +122,7 @@ export default function OrderTable({
                 </div>
                 <div>
                   <dt className="text-gray-400">Created</dt>
-                  <dd className="font-medium text-gray-700">{new Date(order.created_at).toLocaleDateString()}</dd>
+                  <dd className="font-medium text-gray-700">{formatPHTDate(order.created_at)}</dd>
                 </div>
               </dl>
 
@@ -199,7 +200,7 @@ export default function OrderTable({
                     {order.math_status}
                   </StatusPill>
                 </td>
-                <td className="px-4 py-3 text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-xs text-gray-500">{formatPHTDate(order.created_at)}</td>
                 <td className="px-4 py-3">
                   <Link href={`/orders/${order.quotation_number ?? order.id}`} className="text-xs font-medium text-[#2490ef] hover:underline">
                     View

@@ -1,4 +1,5 @@
 'use client';
+import { formatPHT, timeAgoPHT } from '@/lib/date';
 
 import { useBackups } from '@/lib/useApi';
 import {
@@ -24,24 +25,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return 'Just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
 
 function formatLogPayload(payload: Record<string, unknown> | null): string {
   if (!payload) return '';
@@ -185,8 +168,8 @@ export default function BackupPage() {
             <StatCard
               icon={CalendarDays}
               label="Last Backup"
-              value={lastBackupTime ? timeAgo(lastBackupTime) : 'Never'}
-              sub={lastBackupTime ? formatDate(lastBackupTime) : undefined}
+              value={lastBackupTime ? timeAgoPHT(lastBackupTime) : 'Never'}
+              sub={lastBackupTime ? formatPHT(lastBackupTime) : undefined}
               color="text-emerald-700"
             />
             <StatCard
@@ -209,7 +192,7 @@ export default function BackupPage() {
                 </div>
                 <div>
                   <span className="font-medium text-gray-600">Time:</span>{' '}
-                  <span className="text-gray-800">{formatDate(latestLog.created_at)}</span>
+                  <span className="text-gray-800">{formatPHT(latestLog.created_at)}</span>
                 </div>
                 {latestLog.output && (
                   <div>
@@ -270,10 +253,10 @@ export default function BackupPage() {
                           {formatBytes(file.size_bytes)}
                         </td>
                         <td className="px-5 py-3 text-gray-600">
-                          {formatDate(file.created_at)}
+                          {formatPHT(file.created_at)}
                         </td>
                         <td className="px-5 py-3 text-gray-500">
-                          {timeAgo(file.created_at)}
+                          {timeAgoPHT(file.created_at)}
                         </td>
                         <td className="px-5 py-3 text-right">
                           <a

@@ -178,12 +178,15 @@ export async function getDriveFileDownloadUrl(fileId: string): Promise<string> {
 /**
  * Get or create a month folder (YYYY-MM format) under the root.
  * E.g. "2026-05" for May 2026.
+ * Uses Philippines timezone (Asia/Manila) so month folders align with PHT.
  */
 export async function getOrCreateMonthFolder(
   date: Date = new Date()
 ): Promise<{ id: string; webViewLink: string }> {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  // Convert to Philippines timezone for consistent month folder naming
+  const pht = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const year = pht.getFullYear();
+  const month = String(pht.getMonth() + 1).padStart(2, '0');
   const folderName = `${year}-${month}`;
   return getOrCreateFolder(folderName);
 }

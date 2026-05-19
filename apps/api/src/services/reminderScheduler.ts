@@ -1,5 +1,9 @@
 import { query } from '../db.js';
 
+function getPHTDate(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+}
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
@@ -103,7 +107,7 @@ export async function processDueReminders(): Promise<number> {
       sent++;
 
       // Calculate next run time based on frequency
-      const nextRun = new Date();
+      const nextRun = getPHTDate();
       switch (reminder.frequency) {
         case 'hourly':
           nextRun.setHours(nextRun.getHours() + 1);
@@ -141,7 +145,7 @@ export async function createStageReminder(
   message: string,
   frequency: string = 'daily'
 ): Promise<void> {
-  const now = new Date();
+  const now = getPHTDate();
 
   // Start first reminder 1 hour from now (give time for manual update)
   const firstRun = new Date(now.getTime() + 60 * 60 * 1000);

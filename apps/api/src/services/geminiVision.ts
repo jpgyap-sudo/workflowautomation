@@ -411,3 +411,37 @@ export async function autoExtract(
     confidence,
   };
 }
+
+// ── Extract Order Number (for reminders) ─────────────────────────────────
+
+const ORDER_NUMBER_PROMPT = `You are a data extraction assistant. Analyze the image and extract any order number, quotation number, purchase order number, or reference number visible in the image.
+
+Return ONLY valid JSON:
+{
+  "order_number": "string or null — the order/quotation/PO number found in the image",
+  "client_name": "string or null — the client or customer name if visible",
+  "has_number": true or false — whether a number was found
+}
+
+Rules:
+- Return ONLY valid JSON, no extra text.
+- If no order number is visible, set order_number to null and has_number to false.
+- Look for patterns like QTN-2025-XXXX, PO-XXXX, INV-XXXX, or any numeric reference.`;
+
+export async function extractOrderNumber(
+  imageBase64: string,
+  mimeType: string
+): Promise<{ order_number: string | null; client_name: string | null; has_number: boolean }> {
+  const rawText = await callGemini(imageBase64, mimeType, ORDER_NUMBER_PROMPT);
+  const parsed = extractJson(rawText);
+
+  if (!parsed) {
+    return { order_number: null, client_name: null, has_number: false };
+  }
+
+  return {
+    order_number: typeof parsed.order_number === 'string' && parsed.order_number ? parsed.order_number : null,
+    client_name: typeof parsed.client_name === 'string' && parsed.client_name ? parsed.client_name : null,
+    has_number: parsed.has_number === true,
+  };
+}

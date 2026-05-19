@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { formatPHT, formatPHTFull } from '@/lib/date';
 import {
   ChevronLeft,
   ChevronRight,
@@ -137,7 +138,7 @@ export default function CalendarPage() {
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="min-w-[140px] text-center text-sm font-medium text-gray-800">
-            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            {formatPHTFull(currentMonth.toISOString())}
           </span>
           <button
             onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
@@ -233,12 +234,7 @@ export default function CalendarPage() {
             <div className="border-b border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-800">
                 {selectedDate
-                  ? selectedDate.toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })
+                  ? formatPHTFull(selectedDate.toISOString())
                   : 'Select a date'}
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
@@ -276,10 +272,7 @@ export default function CalendarPage() {
                       </p>
                       <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(event.event_date).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatPHT(event.event_date)}
                         {event.metadata ? ` • ${event.metadata}` : ''}
                       </p>
                     </div>
