@@ -36,9 +36,18 @@ bot.command('status', async (ctx) => {
   const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
   if (!res.ok) return ctx.reply('Order not found.');
   const order: any = await res.json();
-  return ctx.reply(
-    `Order ${order.quotation_number}\nStage: ${order.current_stage}\nStatus: ${order.status}\nMath: ${order.math_status}`
-  );
+  const totalAmount = Number(order.total_amount ?? 0);
+  const depositAmount = Number(order.deposit_amount ?? 0);
+  const balance = totalAmount - depositAmount;
+  let msg =
+    `📋 *${order.quotation_number}*\n` +
+    `Stage: ${order.current_stage}\n` +
+    `Status: ${order.status}\n` +
+    `Math: ${order.math_status}\n` +
+    `Total: ₱${totalAmount.toLocaleString()}\n` +
+    `Deposit: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
+    `Balance: ${order.balance_paid ? '✅ Paid' : `⏳ ₱${balance.toLocaleString()}`}`;
+  return ctx.reply(msg);
 });
 
 bot.command('produce', async (ctx) => {
@@ -59,6 +68,36 @@ bot.command('deliverydate', async (ctx) => {
   const [, quotation_number, ...dateParts] = ctx.message.text.split(' ');
   if (!quotation_number || dateParts.length === 0)
     return ctx.reply('Usage: /deliverydate QTN-2026-001 May 22 2026');
+
+  // Check if balance is paid before allowing delivery scheduling
+  try {
+    const order: any = await getJson(`/orders/${encodeURIComponent(quotation_number)}`);
+    const totalAmount = Number(order.total_amount ?? 0);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const balance = totalAmount - depositAmount;
+
+    if (order.total_amount == null) {
+      return ctx.reply(
+        `❌ *Total amount not set for ${quotation_number}*\n\n` +
+        `Please set the total amount before scheduling delivery.`
+      );
+    }
+
+    if (!order.balance_paid && balance > 0) {
+      return ctx.reply(
+        `❌ *Balance not yet paid for ${quotation_number}*\n\n` +
+        `Total Amount: ₱${totalAmount.toLocaleString()}\n` +
+        `Deposit Paid: ₱${depositAmount.toLocaleString()}\n` +
+        `Balance Due: ₱${balance.toLocaleString()}\n\n` +
+        `Please record the balance payment first using:\n` +
+        `/paybalance ${quotation_number} [amount]\n\n` +
+        `Delivery scheduling is blocked until the balance is fully paid.`
+      );
+    }
+  } catch {
+    return ctx.reply(`Order ${quotation_number} not found.`);
+  }
+
   await postJson('/stage-updates', {
     quotation_number,
     stage: 'delivery_scheduled',
@@ -92,6 +131,77 @@ bot.command('payment', async (ctx) => {
     updated_by: ctx.from?.username ?? String(ctx.from?.id),
   });
   return ctx.reply(`💰 Payment update saved for ${quotation_number}.`);
+});
+
+/**
+ * /deposit QTN-2026-001 5000
+ * Record a deposit payment for an order.
+ * Marks deposit_paid=TRUE and records the deposit amount.
+ * Optionally attach a deposit slip image before or after using /link.
+ */
+bot.command('deposit', async (ctx) => {
+  const [, quotation_number, amountStr, ...remarks] = ctx.message.text.split(' ');
+  if (!quotation_number || !amountStr) {
+    return ctx.reply(
+      'Usage: /deposit QTN-2026-001 5000 [optional remarks]\n\n' +
+      'You can also send a deposit slip image after linking the order with /link.'
+    );
+  }
+  const amount = parseFloat(amountStr);
+  if (isNaN(amount) || amount <= 0) {
+    return ctx.reply('❌ Invalid amount. Please provide a positive number.');
+  }
+  await postJson('/deposits', {
+    quotation_number,
+    amount,
+    updated_by: ctx.from?.username ?? String(ctx.from?.id),
+  });
+  return ctx.reply(`✅ Deposit of ₱${amount.toLocaleString()} recorded for ${quotation_number}. Production can now proceed.`);
+});
+
+/**
+ * /paybalance QTN-2026-001 15000
+ * Record the balance payment (total_amount - deposit_amount) for an order.
+ * Marks balance_paid=TRUE and records the payment timestamp.
+ * Delivery scheduling (/deliverydate) is blocked until balance is paid.
+ */
+bot.command('paybalance', async (ctx) => {
+  const [, quotation_number, amountStr, ...remarks] = ctx.message.text.split(' ');
+  if (!quotation_number || !amountStr) {
+    return ctx.reply(
+      'Usage: /paybalance QTN-2026-001 15000 [optional remarks]\n\n' +
+      'Records the remaining balance payment before delivery can be scheduled.'
+    );
+  }
+  const amount = parseFloat(amountStr);
+  if (isNaN(amount) || amount <= 0) {
+    return ctx.reply('❌ Invalid amount. Please provide a positive number.');
+  }
+  try {
+    const result: any = await postJson('/pay-balance', {
+      quotation_number,
+      amount,
+      updated_by: ctx.from?.username ?? String(ctx.from?.id),
+    });
+    let msg = `✅ Balance payment of ₱${amount.toLocaleString()} recorded for ${quotation_number}.`;
+    if (result.overpayment > 0) {
+      msg += `\n⚠️ Overpayment of ₱${result.overpayment.toLocaleString()}.`;
+    }
+    msg += `\n🚚 You can now schedule delivery using /deliverydate.`;
+    return ctx.reply(msg);
+  } catch (err: any) {
+    const errorData = err?.response?.data;
+    if (errorData?.lacking_amount) {
+      return ctx.reply(
+        `❌ Insufficient payment for ${quotation_number}\n\n` +
+        `Expected balance: ₱${Number(errorData.expected_balance).toLocaleString()}\n` +
+        `Received: ₱${amount.toLocaleString()}\n` +
+        `Still lacking: ₱${Number(errorData.lacking_amount).toLocaleString()}\n\n` +
+        `Please pay the full remaining balance.`
+      );
+    }
+    return ctx.reply(`❌ Error recording balance payment: ${errorData?.error ?? 'Unknown error'}`);
+  }
 });
 
 /**

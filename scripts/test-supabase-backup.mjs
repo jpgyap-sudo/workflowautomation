@@ -11,7 +11,7 @@ const SSH_HOST = '100.86.182.7';
 const SSH_USER = 'root';
 
 function runRemote(cmd) {
-  const fullCmd = `ssh -i "${SSH_KEY}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${SSH_USER}@${SSH_HOST} '${cmd}'`;
+  const fullCmd = `ssh -i "${SSH_KEY}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${SSH_USER}@${SSH_HOST} "${cmd}"`;
   console.log(`$ ${fullCmd}`);
   const out = execSync(fullCmd, { stdio: 'inherit', timeout: 120000 });
   return out?.toString().trim();

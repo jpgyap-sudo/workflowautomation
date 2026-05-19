@@ -7,9 +7,11 @@ interface OrderTableProps {
   showClient?: boolean;
   showAgent?: boolean;
   showAmount?: boolean;
+  showDeposit?: boolean;
+  showBalance?: boolean;
 }
 
-export default function OrderTable({ orders, showClient = true, showAgent = true, showAmount = true }: OrderTableProps) {
+export default function OrderTable({ orders, showClient = true, showAgent = true, showAmount = true, showDeposit = true, showBalance = true }: OrderTableProps) {
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-gray-400">
@@ -29,6 +31,8 @@ export default function OrderTable({ orders, showClient = true, showAgent = true
             {showAgent && <th className="px-4 py-3">Sales Agent</th>}
             <th className="px-4 py-3">Current Stage</th>
             {showAmount && <th className="px-4 py-3 text-right">Amount</th>}
+            {showDeposit && <th className="px-4 py-3">Deposit</th>}
+            {showBalance && <th className="px-4 py-3">Balance</th>}
             <th className="px-4 py-3">Math</th>
             <th className="px-4 py-3">Created</th>
             <th className="px-4 py-3">Actions</th>
@@ -48,6 +52,40 @@ export default function OrderTable({ orders, showClient = true, showAgent = true
               {showAmount && (
                 <td className="px-4 py-3 text-right text-gray-600">
                   {order.total_amount != null ? `₱${Number(order.total_amount).toLocaleString()}` : '—'}
+                </td>
+              )}
+              {showDeposit && (
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      order.deposit_paid
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}
+                  >
+                    {order.deposit_paid
+                      ? `✅ ₱${order.deposit_amount != null ? Number(order.deposit_amount).toLocaleString() : 'Paid'}`
+                      : '⏳ Pending'}
+                  </span>
+                </td>
+              )}
+              {showBalance && (
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      order.balance_paid
+                        ? 'bg-green-100 text-green-700'
+                        : order.deposit_paid && order.total_amount != null
+                        ? 'bg-violet-100 text-violet-700'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {order.balance_paid
+                      ? '✅ Paid'
+                      : order.deposit_paid && order.total_amount != null
+                      ? `₱${(Number(order.total_amount) - Number(order.deposit_amount ?? 0)).toLocaleString()}`
+                      : '—'}
+                  </span>
                 </td>
               )}
               <td className="px-4 py-3">

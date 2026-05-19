@@ -2,9 +2,14 @@
 
 import { useOrdersByStage } from '@/lib/useApi';
 import StageBadge from '@/components/StageBadge';
-import { Truck, Calendar, CheckCircle2 } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle } from 'lucide-react';
 
 export default function DeliveryPage() {
+  const {
+    data: balanceDueOrders = [],
+    isLoading: loadingBalanceDue,
+  } = useOrdersByStage('balance_due');
+
   const {
     data: scheduledOrders = [],
     isLoading: loadingScheduled,
@@ -15,9 +20,9 @@ export default function DeliveryPage() {
     isLoading: loadingDelivered,
   } = useOrdersByStage('delivered');
 
-  const loading = loadingScheduled && loadingDelivered;
+  const loading = loadingBalanceDue && loadingScheduled && loadingDelivered;
 
-  if (loading && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
+  if (loading && balanceDueOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -34,12 +39,51 @@ export default function DeliveryPage() {
           <div>
             <h3 className="text-sm font-semibold text-purple-800">Delivery Workflow</h3>
             <p className="mt-1 text-xs text-purple-700">
-              Delivery team sends delivery photos/DR → Updates via{' '}
+              Balance must be paid before delivery can be scheduled → Team records payment via{' '}
+              <code className="rounded bg-purple-100 px-1">/paybalance QTN-2026-001 15000</code>
+              {' '}→ Then schedules delivery via{' '}
+              <code className="rounded bg-purple-100 px-1">/deliverydate QTN-2026-001 May 22 2026</code>
+              {' '}→ Delivery team sends photos/DR → Updates via{' '}
               <code className="rounded bg-purple-100 px-1">/delivered QTN-2026-001 yes countered</code>
-              {' '}→ If not countered, reminders continue → Issues tracked if any
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Balance Due (blocked until paid) */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <Scale className="h-4 w-4 text-violet-500" />
+          <h2 className="text-base font-semibold text-gray-800">Balance Due (Awaiting Payment)</h2>
+          <span className="ml-auto rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+            {balanceDueOrders.length}
+          </span>
+        </div>
+        {balanceDueOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders awaiting balance payment</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {balanceDueOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id} className="flex items-center justify-between px-6 py-4">
+                  <div>
+                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-violet-600">
+                      ₱{balance.toLocaleString()} due
+                    </span>
+                    <StageBadge stage={order.current_stage} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Scheduled Deliveries */}
@@ -55,20 +99,30 @@ export default function DeliveryPage() {
           <div className="py-12 text-center text-sm text-gray-400">No scheduled deliveries</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {scheduledOrders.map((order) => (
-              <div key={order.id} className="flex items-center justify-between px-6 py-4">
-                <div>
-                  <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                  <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+            {scheduledOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id} className="flex items-center justify-between px-6 py-4">
+                  <div>
+                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                    {order.total_amount != null && (
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </span>
+                    <StageBadge stage={order.current_stage} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </span>
-                  <StageBadge stage={order.current_stage} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

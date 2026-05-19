@@ -35,11 +35,64 @@ Team replies:
 
 Stage moves to `production_confirmed`. Reminders for this stage are completed.
 
-## 3. Inventory Arrival
+## 3. Deposit Payment
+
+Before production can proceed, a deposit payment is required.
+
+Built-in reminder scheduler sends daily message to the group:
+
+> ⏰ *Reminder* — *QTN-2026-001* (Client Name)
+> Stage: 💳 Deposit Pending
+> Deposit payment required before production can continue.
+
+Team records the deposit:
+
+```txt
+/deposit QTN-2026-001 5000
+```
+
+Or sends a deposit slip image (photo/document) after linking the order:
+
+```txt
+/link QTN-2026-001
+```
+*(then send the deposit slip image)*
+
+Stage moves to `deposit_pending` → deposit recorded. Reminders for this stage are completed. The dashboard shows deposit status (paid/pending) and amount.
+
+## 4. Inventory Arrival
 
 Inventory sends arrival photos/files to the bot.
 
 Bot asks which order it belongs to.
+
+### 4a. Balance Payment (Before Delivery)
+
+Before delivery can be scheduled, the remaining balance must be paid.
+
+Built-in reminder scheduler sends daily message to the group:
+
+> ⏰ *Reminder* — *QTN-2026-001* (Client Name)
+> Stage: ⚖️ Balance Due
+> The remaining balance is due before delivery can proceed.
+
+The system computes the balance automatically:
+
+```
+balance = total_amount - deposit_amount
+```
+
+Team records the balance payment:
+
+```txt
+/paybalance QTN-2026-001 15000
+```
+
+The system validates that the amount covers the full balance. If insufficient, it rejects with the lacking amount.
+
+Once balance is paid, delivery can be scheduled.
+
+### 4b. Schedule Delivery
 
 Team replies with delivery date:
 
@@ -47,9 +100,11 @@ Team replies with delivery date:
 /deliverydate QTN-2026-001 May 22 2026
 ```
 
+The bot first checks if the balance has been paid. If not, it blocks delivery scheduling and shows the lacking amount.
+
 Stage moves to `delivery_scheduled`. A new daily reminder starts for the delivery team.
 
-## 4. Delivery
+## 5. Delivery
 
 Delivery team sends delivery photos/delivery receipt.
 
@@ -60,7 +115,7 @@ Delivery team sends delivery photos/delivery receipt.
 - If **countered**: stage moves to `countered`, collection reminder starts
 - If **not countered**: reminders continue until countered
 
-## 5. Collection
+## 6. Collection
 
 Collection team sends deposit slip/proof of payment.
 
@@ -85,8 +140,9 @@ If a stage is not updated after multiple reminders, the scheduler auto-escalates
 
 ```txt
 quotation_received → math_verified → purchasing_pending →
-production_confirmed → inventory_arrived → delivery_scheduled →
-delivered → countered → payment_received → payment_confirmed → completed
+production_confirmed → deposit_pending → inventory_arrived →
+balance_due → delivery_scheduled → delivered → countered →
+payment_received → payment_confirmed → completed
 ```
 
 ## Automation Summary

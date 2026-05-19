@@ -11,6 +11,11 @@ export interface Order {
   current_stage: string;
   status: string;
   google_drive_folder_id: string | null;
+  deposit_paid: boolean;
+  deposit_amount: number | null;
+  deposit_image_url: string | null;
+  balance_paid: boolean;
+  balance_paid_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +37,8 @@ export interface DashboardStats {
   pending_purchasing: number;
   pending_delivery: number;
   pending_collection: number;
+  pending_deposit: number;
+  pending_balance: number;
   overdue_reminders: number;
   stage_breakdown: { stage: string; count: number }[];
   recent_orders: Order[];
@@ -94,7 +101,9 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   math_verified:         { label: 'Math Verified',         color: 'bg-teal-100 text-teal-800',       icon: '✅' },
   purchasing_pending:    { label: 'Purchasing Pending',    color: 'bg-amber-100 text-amber-800',     icon: '🛒' },
   production_confirmed:  { label: 'Production Confirmed',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
+  deposit_pending:       { label: 'Deposit Pending',       color: 'bg-pink-100 text-pink-800',       icon: '💳' },
   inventory_arrived:     { label: 'Inventory Arrived',     color: 'bg-cyan-100 text-cyan-800',       icon: '📦' },
+  balance_due:           { label: 'Balance Due',            color: 'bg-violet-100 text-violet-800',   icon: '⚖️' },
   delivery_scheduled:    { label: 'Delivery Scheduled',    color: 'bg-purple-100 text-purple-800',   icon: '📅' },
   delivered:             { label: 'Delivered',              color: 'bg-orange-100 text-orange-800',   icon: '🚚' },
   countered:             { label: 'Countered',              color: 'bg-rose-100 text-rose-800',       icon: '📋' },
@@ -123,7 +132,9 @@ export const STAGE_ORDER = [
   'math_verified',
   'purchasing_pending',
   'production_confirmed',
+  'deposit_pending',
   'inventory_arrived',
+  'balance_due',
   'delivery_scheduled',
   'delivered',
   'countered',

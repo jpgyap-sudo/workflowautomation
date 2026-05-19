@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OrderDetailPage() {
@@ -121,6 +121,83 @@ export default function OrderDetailPage() {
             </span>
           )}
         </div>
+      </div>
+
+      {/* Deposit status */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+          <CreditCard className="h-4 w-4" />
+          Deposit Payment
+        </div>
+        <div className="mt-2 flex items-center gap-3">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              order.deposit_paid
+                ? 'bg-green-100 text-green-700'
+                : 'bg-yellow-100 text-yellow-700'
+            }`}
+          >
+            {order.deposit_paid ? '✅ Paid' : '⏳ Pending'}
+          </span>
+          {order.deposit_amount != null && (
+            <span className="text-sm text-gray-600">
+              Amount: ₱{Number(order.deposit_amount).toLocaleString()}
+            </span>
+          )}
+          {order.deposit_image_url && (
+            <a
+              href={order.deposit_image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-[#2490ef] hover:underline"
+            >
+              View Deposit Slip
+            </a>
+          )}
+        </div>
+        {!order.deposit_paid && (
+          <p className="mt-2 text-xs text-amber-600">
+            Deposit required before production can proceed. Use /deposit in Telegram to record payment.
+          </p>
+        )}
+      </div>
+
+      {/* Balance status */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+          <Scale className="h-4 w-4" />
+          Balance Payment
+        </div>
+        <div className="mt-2 flex items-center gap-3">
+          {order.total_amount != null && order.deposit_amount != null ? (
+            <>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  order.balance_paid
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-violet-100 text-violet-700'
+                }`}
+              >
+                {order.balance_paid ? '✅ Paid' : '⏳ Pending'}
+              </span>
+              <span className="text-sm text-gray-600">
+                Balance: ₱{(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}
+              </span>
+              <span className="text-sm text-gray-400">
+                (Total: ₱{Number(order.total_amount).toLocaleString()} − Deposit: ₱{Number(order.deposit_amount).toLocaleString()})
+              </span>
+            </>
+          ) : (
+            <span className="text-sm text-gray-400">
+              {order.total_amount == null ? 'Total amount not set yet' : 'Deposit not recorded yet'}
+            </span>
+          )}
+        </div>
+        {!order.balance_paid && order.deposit_paid && order.total_amount != null && (
+          <p className="mt-2 text-xs text-violet-600">
+            Balance must be paid before delivery can be scheduled. Use /paybalance in Telegram to record payment.
+          </p>
+        )}
       </div>
 
       {/* Stage progress */}

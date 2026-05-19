@@ -108,7 +108,7 @@ app.get('/orders', async () => {
   const cached = await cacheGet<object[]>('orders:all');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
      FROM orders ORDER BY created_at DESC LIMIT 100`
   );
   await cacheSet('orders:all', rows);
@@ -119,7 +119,7 @@ app.get('/orders/pending', async () => {
   const cached = await cacheGet<object[]>('orders:pending');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
      FROM orders WHERE status='active' ORDER BY created_at DESC LIMIT 50`
   );
   await cacheSet('orders:pending', rows);
@@ -132,7 +132,7 @@ app.get('/orders/stage/:stage', async (request, reply) => {
   const cached = await cacheGet<object[]>(cacheKey);
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
      FROM orders WHERE current_stage=$1 ORDER BY created_at DESC`, [params.stage]
   );
   await cacheSet(cacheKey, rows);
@@ -162,17 +162,184 @@ const stageUpdateSchema = z.object({
 
 app.post('/stage-updates', async (request, reply) => {
   const body = stageUpdateSchema.parse(request.body);
-  const orders = await query(`SELECT id FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
+  const orders = await query(`SELECT id, total_amount, deposit_amount, balance_paid, current_stage FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
-  const orderId = orders[0].id;
+
+  const order = orders[0];
+
+  // Guard: Block delivery_scheduled if balance is not paid
+  if (body.stage === 'delivery_scheduled' && !order.balance_paid) {
+    if (order.total_amount == null) {
+      return reply.code(400).send({
+        error: 'Cannot schedule delivery: total amount not set for this order. Please set the total amount first.',
+      });
+    }
+    const totalAmount = Number(order.total_amount);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const balance = totalAmount - depositAmount;
+    return reply.code(400).send({
+      error: `Cannot schedule delivery: balance not yet paid. Balance due: ₱${balance.toLocaleString()}`,
+      balance_due: balance,
+    });
+  }
+
+  const orderId = order.id;
+  const previousStage = order.current_stage;
+
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1,$2,$3,$4,$5)`,
     [orderId, body.stage, body.status, body.remarks ?? null, body.updated_by ?? null]
   );
   await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [body.stage, orderId]);
+
+  // Auto-complete reminders for the previous stage when moving forward
+  if (previousStage && previousStage !== body.stage) {
+    await query(
+      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage=$2 AND status='active'`,
+      [orderId, previousStage]
+    );
+  }
+
   // Invalidate caches after stage update
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
   return { ok: true };
+});
+
+// ── Deposits ──────────────────────────────────────────────────────────
+
+const depositSchema = z.object({
+  quotation_number: z.string(),
+  amount: z.number().positive(),
+  image_url: z.string().optional(),
+  updated_by: z.string().optional(),
+});
+
+/**
+ * POST /deposits
+ * Record a deposit payment for an order.
+ * Updates deposit_paid, deposit_amount, deposit_image_url on the order
+ * and creates a stage update for deposit_pending → deposit_paid.
+ */
+app.post('/deposits', async (request, reply) => {
+  const body = depositSchema.parse(request.body);
+  const orders = await query(`SELECT id, current_stage, quotation_number FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const orderId = orders[0].id;
+  const quotationNumber = orders[0].quotation_number;
+
+  // Update deposit fields on the order
+  await query(
+    `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), updated_at=NOW() WHERE id=$3`,
+    [body.amount, body.image_url ?? null, orderId]
+  );
+
+  // Record stage update for deposit_pending → deposit_paid
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
+    [orderId, 'deposit_pending', 'deposit_paid', `Deposit of ₱${body.amount} recorded`, body.updated_by ?? null]
+  );
+
+  // Complete any deposit reminders for this order
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+    [orderId]
+  );
+
+  // Auto-create a balance_due reminder since balance is now due
+  await query(
+    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+     SELECT $1, 'balance_due', r.group_chat_id,
+            'The remaining balance is due before delivery can proceed.',
+            'daily', NOW() + INTERVAL '1 hour', 'active'
+     FROM reminders r
+     WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
+     LIMIT 1
+     ON CONFLICT DO NOTHING`,
+    [orderId]
+  );
+
+  // Invalidate caches
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
+
+  return reply.send({ ok: true, quotation_number: body.quotation_number, amount: body.amount });
+});
+
+// ── Pay Balance ──────────────────────────────────────────────────────
+
+const payBalanceSchema = z.object({
+  quotation_number: z.string(),
+  amount: z.number().positive(),
+  updated_by: z.string().optional(),
+});
+
+app.post('/pay-balance', async (request, reply) => {
+  const body = payBalanceSchema.parse(request.body);
+  const orders = await query(
+    `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid FROM orders WHERE quotation_number=$1`,
+    [body.quotation_number]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+  if (order.balance_paid) {
+    return reply.code(400).send({ error: 'Balance already paid for this order' });
+  }
+
+  if (!order.deposit_paid) {
+    return reply.code(400).send({ error: 'Deposit must be paid before balance payment can be processed. Please record the deposit first using /deposit.' });
+  }
+
+  if (order.total_amount == null) {
+    return reply.code(400).send({ error: 'Total amount not set for this order. Cannot compute balance.' });
+  }
+
+  const totalAmount = Number(order.total_amount);
+  const depositAmount = Number(order.deposit_amount ?? 0);
+  const expectedBalance = totalAmount - depositAmount;
+
+  if (body.amount < expectedBalance) {
+    return reply.code(400).send({
+      error: `Insufficient payment. Expected balance: ₱${expectedBalance.toLocaleString()}, received: ₱${body.amount.toLocaleString()}`,
+      expected_balance: expectedBalance,
+      lacking_amount: expectedBalance - body.amount,
+    });
+  }
+
+  const orderId = order.id;
+  const overpayment = body.amount - expectedBalance;
+
+  // Update balance fields on the order
+  await query(
+    `UPDATE orders SET balance_paid=TRUE, balance_paid_at=NOW(), updated_at=NOW() WHERE id=$1`,
+    [orderId]
+  );
+
+  // Record stage update
+  const remarks = overpayment > 0
+    ? `Balance of ₱${body.amount.toLocaleString()} paid (overpayment of ₱${overpayment.toLocaleString()})`
+    : `Balance of ₱${body.amount.toLocaleString()} paid`;
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
+    [orderId, 'balance_due', 'balance_paid', remarks, body.updated_by ?? null]
+  );
+
+  // Complete any balance reminders for this order
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='balance_due' AND status='active'`,
+    [orderId]
+  );
+
+  // Invalidate caches
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
+
+  return reply.send({
+    ok: true,
+    quotation_number: body.quotation_number,
+    amount: body.amount,
+    expected_balance: expectedBalance,
+    overpayment: overpayment,
+  });
 });
 
 app.get('/orders/:order_id/stage-updates', async (request, reply) => {
@@ -225,7 +392,9 @@ app.get('/dashboard/stats', async () => {
       (SELECT COUNT(*)::int FROM orders WHERE current_stage='purchasing_pending') AS pending_purchasing,
       (SELECT COUNT(*)::int FROM orders WHERE current_stage='delivery_scheduled') AS pending_delivery,
       (SELECT COUNT(*)::int FROM orders WHERE current_stage IN ('delivered','countered','payment_received')) AS pending_collection,
-      (SELECT COUNT(*)::int FROM reminders WHERE status='active' AND next_run_at < NOW()) AS overdue_reminders
+      (SELECT COUNT(*)::int FROM reminders WHERE status='active' AND next_run_at < NOW()) AS overdue_reminders,
+      (SELECT COUNT(*)::int FROM orders WHERE status='active' AND deposit_paid=FALSE AND current_stage NOT IN ('completed','payment_confirmed')) AS pending_deposit,
+      (SELECT COUNT(*)::int FROM orders WHERE status='active' AND balance_paid=FALSE AND deposit_paid=TRUE AND total_amount IS NOT NULL AND current_stage NOT IN ('completed','payment_confirmed')) AS pending_balance
   `);
 
   const stageBreakdown = await query(
@@ -233,7 +402,7 @@ app.get('/dashboard/stats', async () => {
   );
 
   const recentOrders = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, created_at, updated_at
      FROM orders ORDER BY created_at DESC LIMIT 10`
   );
 
@@ -244,6 +413,8 @@ app.get('/dashboard/stats', async () => {
     pending_purchasing: rows[0].pending_purchasing,
     pending_delivery: rows[0].pending_delivery,
     pending_collection: rows[0].pending_collection,
+    pending_deposit: rows[0].pending_deposit,
+    pending_balance: rows[0].pending_balance,
     overdue_reminders: rows[0].overdue_reminders,
     stage_breakdown: stageBreakdown,
     recent_orders: recentOrders,

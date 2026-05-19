@@ -5,6 +5,8 @@ import {
   ShoppingCart,
   DollarSign,
   TrendingUp,
+  CreditCard,
+  Scale,
 } from 'lucide-react';
 import { useDashboardStats, useRealtimeSubscription } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
@@ -27,7 +29,9 @@ const STAGE_COLORS: Record<string, string> = {
   math_verified: '#14b8a6',
   purchasing_pending: '#f59e0b',
   production_confirmed: '#6366f1',
+  deposit_pending: '#ec4899',
   inventory_arrived: '#06b6d4',
+  balance_due: '#8b5cf6',
   delivery_scheduled: '#a855f7',
   delivered: '#f97316',
   countered: '#e11d48',
@@ -70,7 +74,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           title="Total Orders"
           value={stats?.total_orders ?? 0}
@@ -82,6 +86,18 @@ export default function DashboardPage() {
           value={stats?.active_orders ?? 0}
           icon={TrendingUp}
           color="bg-green-100 text-green-600"
+        />
+        <StatCard
+          title="Pending Deposit"
+          value={stats?.pending_deposit ?? 0}
+          icon={CreditCard}
+          color="bg-pink-100 text-pink-600"
+        />
+        <StatCard
+          title="Pending Balance"
+          value={stats?.pending_balance ?? 0}
+          icon={Scale}
+          color="bg-violet-100 text-violet-600"
         />
         <StatCard
           title="Pending Purchasing"

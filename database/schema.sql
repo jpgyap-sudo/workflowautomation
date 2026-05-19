@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS orders (
   current_stage TEXT DEFAULT 'quotation_received',
   status TEXT DEFAULT 'active',
   google_drive_folder_id TEXT,
+  deposit_paid BOOLEAN DEFAULT FALSE,
+  deposit_amount NUMERIC(14,2),
+  deposit_image_url TEXT,
+  balance_paid BOOLEAN DEFAULT FALSE,
+  balance_paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
