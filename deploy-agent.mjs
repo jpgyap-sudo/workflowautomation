@@ -103,35 +103,42 @@ function syncFiles() {
 
 function syncCredentials() {
   console.log('\n═══════════════════════════════════════════');
-  console.log('  Step 2: Sync credentials');
+  console.log('  Step 2: Sync credentials & .env');
   console.log('═══════════════════════════════════════════');
 
   const credsDir = resolve(CONFIG.projectRoot, 'credentials');
-  if (!existsSync(credsDir)) {
+  if (existsSync(credsDir)) {
+    const files = execSync(`dir "${credsDir}" /b 2>nul || ls -1 "${credsDir}" 2>/dev/null`, {
+      cwd: CONFIG.projectRoot,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    }).trim();
+
+    if (files) {
+      run('Creating credentials directory on VPS',
+        sshCmd(`mkdir -p ${CONFIG.vpsPath}/credentials`));
+
+      const scpCmd =
+        `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -r "${credsDir}/" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/credentials/"`;
+      run('Copying credentials via SCP', scpCmd, { timeout: 60_000 });
+      console.log('✓ Credentials synced');
+    } else {
+      console.log('⚠  No credential files found, skipping');
+    }
+  } else {
     console.log('⚠  No credentials directory found locally, skipping');
-    return;
   }
 
-  const files = execSync(`dir "${credsDir}" /b 2>nul || ls -1 "${credsDir}" 2>/dev/null`, {
-    cwd: CONFIG.projectRoot,
-    encoding: 'utf-8',
-    stdio: 'pipe',
-  }).trim();
-
-  if (!files) {
-    console.log('⚠  No credential files found, skipping');
-    return;
+  // Sync .env file (gitignored, so not in git archive)
+  const envPath = resolve(CONFIG.projectRoot, '.env');
+  if (existsSync(envPath)) {
+    const scpEnvCmd =
+      `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${envPath}" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/.env"`;
+    run('Copying .env via SCP', scpEnvCmd, { timeout: 30_000 });
+    console.log('✓ .env synced');
+  } else {
+    console.log('⚠  No .env file found locally, skipping');
   }
-
-  // Create credentials dir on VPS and copy files
-  run('Creating credentials directory on VPS',
-    sshCmd(`mkdir -p ${CONFIG.vpsPath}/credentials`));
-
-  // Use scp to copy credential files
-  const scpCmd =
-    `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -r "${credsDir}/" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/credentials/"`;
-  run('Copying credentials via SCP', scpCmd, { timeout: 60_000 });
-  console.log('✓ Credentials synced');
 }
 
 function deployContainers() {
