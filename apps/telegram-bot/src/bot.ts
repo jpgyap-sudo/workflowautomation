@@ -76,6 +76,10 @@ function resetStep(chatId: string) {
   session.step = { action: 'idle' };
 }
 
+function escapeMarkdown(value: unknown): string {
+  return String(value ?? '').replace(/([_*`[\]\\])/g, '\\$1');
+}
+
 // ── Inline Keyboard Builders ───────────────────────────────────────────
 
 function mainMenuKeyboard() {
@@ -767,7 +771,7 @@ bot.action('vision:process_yes', async (ctx) => {
   });
 
   await ctx.editMessageText(
-    `📄 *File received:* ${fileName}\n\n` +
+    `📄 *File received:* ${escapeMarkdown(fileName)}\n\n` +
     `Do you want me to extract the information from this image/PDF using AI?`,
     {
       parse_mode: 'Markdown',
@@ -945,14 +949,13 @@ bot.action('vision:upload', async (ctx) => {
 
     resetStep(chatId);
     await ctx.editMessageText(
-      `✅ *File uploaded to Google Drive!*\n📄 ${fileName}\n🔗 ${driveResult.webViewLink}`,
+      `✅ *File uploaded to Google Drive!*\n📄 ${escapeMarkdown(fileName)}\n🔗 ${escapeMarkdown(driveResult.webViewLink)}`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (error: any) {
     console.error('[vision] Upload error:', error);
     resetStep(chatId);
-    await ctx.editMessageText(`❌ Upload failed: ${error.message}`, {
-      parse_mode: 'Markdown',
+    await ctx.editMessageText(`❌ Upload failed: ${String(error.message ?? error)}`, {
       ...mainMenuKeyboard(),
     });
   }
@@ -1020,7 +1023,7 @@ bot.on(['document', 'photo'], async (ctx) => {
         });
 
         await ctx.reply(
-          `📎 *File received:* ${fileName}\n\nDo you want me to process this order?`,
+          `📎 *File received:* ${escapeMarkdown(fileName)}\n\nDo you want me to process this order?`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
@@ -1048,15 +1051,14 @@ bot.on(['document', 'photo'], async (ctx) => {
         await postJson('/drive/upload', payload);
 
         await ctx.reply(
-          `✅ *File uploaded to Google Drive!*\n📄 ${fileName}\n🔗 ${driveResult.webViewLink}` +
-            (quotationNumber ? `\n📦 Linked to order: ${quotationNumber}` : ''),
+          `✅ *File uploaded to Google Drive!*\n📄 ${escapeMarkdown(fileName)}\n🔗 ${escapeMarkdown(driveResult.webViewLink)}` +
+            (quotationNumber ? `\n📦 Linked to order: ${escapeMarkdown(quotationNumber)}` : ''),
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       }
-  } catch (error: any) {
+    } catch (error: any) {
     console.error('Upload error:', error);
-    await ctx.reply(`❌ Upload failed: ${error.message}`, {
-      parse_mode: 'Markdown',
+    await ctx.reply(`❌ Upload failed: ${String(error.message ?? error)}`, {
       ...cancelButton(),
     });
   }
