@@ -33,10 +33,17 @@ const ACCOUNTS_STORAGE_KEY = 'qas_accounts';
 const DEFAULT_ACCOUNTS: Account[] = [
   {
     email: 'jpgyap@gmail.com',
-    password: 'Tracking888',
+    password: 'Purchasing888',
     name: 'Admin',
     role: 'admin',
     createdAt: new Date('2025-01-01').toISOString(),
+  },
+  {
+    email: 'maiquocquynh2506@gmail.com',
+    password: 'Purchasing888',
+    name: 'Quynh Mai',
+    role: 'editor',
+    createdAt: new Date('2026-05-20').toISOString(),
   },
 ];
 
