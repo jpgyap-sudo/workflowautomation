@@ -198,11 +198,11 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
-      {/* Deposit status */}
+      {/* Downpayment status */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
           <CreditCard className="h-4 w-4" />
-          Deposit Payment
+          Downpayment
         </div>
         <div className="mt-2 flex items-center gap-3">
           <span
@@ -232,7 +232,7 @@ export default function OrderDetailPage() {
         </div>
         {!order.deposit_paid && (
           <p className="mt-2 text-xs text-amber-600">
-            Deposit required before production can proceed. Use /deposit in Telegram to record payment.
+            Downpayment required before production can proceed. Use /deposit in Telegram to record payment.
           </p>
         )}
       </div>
@@ -259,12 +259,12 @@ export default function OrderDetailPage() {
                 Balance: ₱{(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}
               </span>
               <span className="text-sm text-gray-400">
-                (Total: ₱{Number(order.total_amount).toLocaleString()} − Deposit: ₱{Number(order.deposit_amount).toLocaleString()})
+                (Total: ₱{Number(order.total_amount).toLocaleString()} − Downpayment: ₱{Number(order.deposit_amount).toLocaleString()})
               </span>
             </>
           ) : (
             <span className="text-sm text-gray-400">
-              {order.total_amount == null ? 'Total amount not set yet' : 'Deposit not recorded yet'}
+              {order.total_amount == null ? 'Total amount not set yet' : 'Downpayment not recorded yet'}
             </span>
           )}
         </div>

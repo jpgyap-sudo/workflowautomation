@@ -303,7 +303,9 @@ type UserStep =
   // Delivery schedule confirmation flow
   | { action: 'awaiting_delivery_schedule'; orderId: string; quotationNumber: string }
   // Delivery day check flow
-  | { action: 'awaiting_delivery_day_check'; orderId: string; quotationNumber: string };
+  | { action: 'awaiting_delivery_day_check'; orderId: string; quotationNumber: string }
+  // Collection group deposit slip photo upload
+  | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -420,7 +422,7 @@ function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('📋 Check Order Status', 'menu:status')],
     [Markup.button.callback('🛒 Purchasing / Production', 'menu:produce')],
-    [Markup.button.callback('💳 Record Deposit', 'menu:deposit')],
+    [Markup.button.callback('💳 Record Downpayment', 'menu:deposit')],
     [Markup.button.callback('💰 Pay Balance', 'menu:paybalance')],
     [Markup.button.callback('🚚 Schedule Delivery', 'menu:deliverydate')],
     [Markup.button.callback('✅ Mark as Delivered', 'menu:delivered')],
@@ -534,11 +536,11 @@ bot.action(/^menu:(.+)$/, async (ctx) => {
     case 'deposit':
       setStep(chatId, { action: 'awaiting_order_number_for_deposit' });
       await ctx.editMessageText(
-        '💳 *Record Deposit*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
+        '💳 *Record Downpayment*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
         { parse_mode: 'Markdown', ...cancelButton() }
       ).catch(() =>
         ctx.reply(
-          '💳 *Record Deposit*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
+          '💳 *Record Downpayment*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
           { parse_mode: 'Markdown', ...cancelButton() }
         )
       );
@@ -708,7 +710,7 @@ bot.on(message('text'), async (ctx) => {
           `Status: ${order.status}\n` +
           `Math: ${order.math_status}\n` +
           `Total: ₱${totalAmount.toLocaleString()}\n` +
-          `Deposit: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
+          `Downpayment: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
           `Balance: ${order.balance_paid ? '✅ Paid' : `⏳ ₱${balance.toLocaleString()}`}`;
 
         // Auto-detect client delivery info
@@ -829,7 +831,7 @@ Midpoint and due reminders are now scheduled.`,
       }
       setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
       await ctx.reply(
-        `💳 *Deposit for ${quotationNumber}*\n\nEnter the deposit amount in PHP:\n\nExample: \`5000\``,
+        `💳 *Downpayment for ${quotationNumber}*\n\nEnter the downpayment amount in PHP:\n\nExample: \`5000\``,
         { parse_mode: 'Markdown', ...cancelButton() }
       );
       break;
@@ -853,11 +855,11 @@ Midpoint and due reminders are now scheduled.`,
         });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Deposit Recorded*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}\n\nProduction can now proceed.`,
+          `✅ *Downpayment Recorded*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}\n\nProduction can now proceed.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
-        await ctx.reply(`❌ Error recording deposit: ${err.message}`, {
+        await ctx.reply(`❌ Error recording downpayment: ${err.message}`, {
           parse_mode: 'Markdown',
           ...cancelButton(),
         });
@@ -1191,12 +1193,12 @@ Midpoint and due reminders are now scheduled.`,
         });
 
         const successMsg =
-          `✅ *Deposit Recorded Successfully!*\n\n` +
+          `✅ *Downpayment Recorded Successfully!*\n\n` +
           `👤 Client: *${escapeMarkdown(data.client_name)}*\n` +
           `📋 Order: *${data.quotation_number}*\n` +
           `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
           (data.expected_deposit
-            ? `💵 Expected Deposit (50%): ₱${Number(data.expected_deposit).toLocaleString()}\n`
+            ? `💵 Expected Downpayment (50%): ₱${Number(data.expected_deposit).toLocaleString()}\n`
             : '') +
           (depositImageUrl ? `🔗 [View Deposit Slip](${depositImageUrl})\n` : '') +
           `\nProduction can now proceed.`;
@@ -2386,30 +2388,124 @@ bot.action('vision:extract_yes', async (ctx) => {
               }
             );
           } else {
-            // No close match found — ask user to type client name
-            setStep(chatId, {
-              action: 'awaiting_deposit_client_name',
-              imageBase64,
-              mimeType,
-              fileName,
-              depositAmount,
-              paymentDate,
-            });
+            // No deposit match found — try balance matching instead
+            try {
+              const balanceRes = await fetch(`${apiBaseUrl}/deposits/match-balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: depositAmount }),
+              });
+              const balanceData = await balanceRes.json();
 
-            const otherCandidates = matchData.candidates && matchData.candidates.length > 0
-              ? matchData.candidates.map((c: any) =>
-                  `• ${c.client_name} (${c.quotation_number}) — expected deposit: ₱${c.expected_deposit.toLocaleString()}`
-                ).join('\n')
-              : '';
+              if (balanceData.ok && balanceData.matched && balanceData.candidates && balanceData.candidates.length > 0) {
+                // Balance match found!
+                const best = balanceData.candidates[0];
 
-            await ctx.editMessageText(
-              `${fields}\n\n` +
-              `🔍 *Deposit Matching*\n\n` +
-              `This deposit amount (₱${depositAmount.toLocaleString()}) does not closely match any order.\n\n` +
-              (otherCandidates ? `*Possible orders:*\n${otherCandidates}\n\n` : '') +
-              `Please type the *client name* this deposit is for, or type *cancel* to skip.`,
-              { parse_mode: 'Markdown', ...cancelButton() }
-            );
+                setStep(chatId, {
+                  action: 'awaiting_deposit_confirmation',
+                  imageBase64,
+                  mimeType,
+                  fileName,
+                  depositAmount,
+                  candidates: balanceData.candidates.map((c: any) => ({
+                    quotation_number: c.quotation_number,
+                    client_name: c.client_name,
+                    total_amount: c.total_amount,
+                    expected_deposit: c.expected_balance,
+                    discrepancy: c.discrepancy,
+                  })),
+                  paymentDate,
+                });
+
+                const buttons: any[][] = [];
+                for (const c of balanceData.candidates) {
+                  const expectedPct = Math.round((1 - c.discrepancy / 100) * 100);
+                  buttons.push([
+                    Markup.button.callback(
+                      `✅ Yes — ${c.client_name} (${c.quotation_number}) ${expectedPct}% match`,
+                      `balance:confirm_yes:${c.quotation_number}`
+                    ),
+                  ]);
+                }
+                buttons.push([Markup.button.callback('❌ No — different client', 'deposit:confirm_no')]);
+
+                await ctx.editMessageText(
+                  `${fields}\n\n` +
+                  `🔍 *Balance Payment Matching*\n\n` +
+                  `This amount matches a *balance payment* for an order where deposit was already paid.\n\n` +
+                  `*Best Match:*\n` +
+                  `👤 Client: ${best.client_name}\n` +
+                  `📋 Order: ${best.quotation_number}\n` +
+                  `💰 Total: ₱${best.total_amount.toLocaleString()}\n` +
+                  `💵 Deposit Paid: ₱${best.deposit_amount.toLocaleString()}\n` +
+                  `⚖️ Expected Balance: ₱${best.expected_balance.toLocaleString()}\n` +
+                  `📊 Match: ${Math.round((1 - best.discrepancy / 100) * 100)}%\n\n` +
+                  `Is this the balance payment for *${best.client_name}*?`,
+                  {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard(buttons),
+                  }
+                );
+              } else {
+                // No balance match either — ask user to type client name
+                setStep(chatId, {
+                  action: 'awaiting_deposit_client_name',
+                  imageBase64,
+                  mimeType,
+                  fileName,
+                  depositAmount,
+                  paymentDate,
+                });
+
+                const otherCandidates = matchData.candidates && matchData.candidates.length > 0
+                  ? matchData.candidates.map((c: any) =>
+                      `• ${c.client_name} (${c.quotation_number}) — expected deposit: ₱${c.expected_deposit.toLocaleString()}`
+                    ).join('\n')
+                  : '';
+
+                const balanceCandidatesText = balanceData.candidates && balanceData.candidates.length > 0
+                  ? balanceData.candidates.map((c: any) =>
+                      `• ${c.client_name} (${c.quotation_number}) — expected balance: ₱${c.expected_balance.toLocaleString()}`
+                    ).join('\n')
+                  : '';
+
+                await ctx.editMessageText(
+                  `${fields}\n\n` +
+                  `🔍 *Payment Matching*\n\n` +
+                  `This amount (₱${depositAmount.toLocaleString()}) does not closely match any deposit or balance.\n\n` +
+                  (otherCandidates ? `*Possible deposit orders:*\n${otherCandidates}\n\n` : '') +
+                  (balanceCandidatesText ? `*Possible balance orders:*\n${balanceCandidatesText}\n\n` : '') +
+                  `Please type the *client name* this payment is for, or type *cancel* to skip.`,
+                  { parse_mode: 'Markdown', ...cancelButton() }
+                );
+              }
+            } catch (balanceErr: any) {
+              console.error('[balance] Match error:', balanceErr);
+              // Fall back to asking for client name
+              setStep(chatId, {
+                action: 'awaiting_deposit_client_name',
+                imageBase64,
+                mimeType,
+                fileName,
+                depositAmount,
+                paymentDate,
+              });
+
+              const otherCandidates = matchData.candidates && matchData.candidates.length > 0
+                ? matchData.candidates.map((c: any) =>
+                    `• ${c.client_name} (${c.quotation_number}) — expected deposit: ₱${c.expected_deposit.toLocaleString()}`
+                  ).join('\n')
+                : '';
+
+              await ctx.editMessageText(
+                `${fields}\n\n` +
+                `🔍 *Deposit Matching*\n\n` +
+                `This deposit amount (₱${depositAmount.toLocaleString()}) does not closely match any order.\n\n` +
+                (otherCandidates ? `*Possible orders:*\n${otherCandidates}\n\n` : '') +
+                `Please type the *client name* this deposit is for, or type *cancel* to skip.`,
+                { parse_mode: 'Markdown', ...cancelButton() }
+              );
+            }
           }
         } catch (err: any) {
           console.error('[deposit] Match error:', err);
@@ -2459,6 +2555,41 @@ Tap Retry to try again, or Cancel to go back.`, {
       ]),
     });
   }
+});
+
+// ── Collection Group Deposit Handlers ────────────────────────────────
+
+// User clicked "Yes, Upload Deposit Slip" from deposit_pending reminder
+bot.action(/^deposit:yes:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  await ctx.editMessageText(
+    `📸 *Deposit Slip Upload*\n\n` +
+    `Please upload a photo of the deposit slip for *${quotationNumber}*.\n\n` +
+    `The bot will automatically extract the payment information and match it to the order.`,
+    { parse_mode: 'Markdown' }
+  );
+
+  // Set session to expect a deposit slip image
+  setStep(chatId, {
+    action: 'awaiting_deposit_slip_photo',
+    orderId,
+    quotationNumber,
+  });
+});
+
+// User clicked "Not Yet" from deposit_pending reminder
+bot.action(/^deposit:no:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[2];
+
+  await ctx.editMessageText(
+    `⏳ No problem! I'll check again tomorrow.\n\n` +
+    `When the deposit for *${quotationNumber}* is ready, just upload the deposit slip photo here.`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
 // ── Deposit Confirmation Handlers ────────────────────────────────────
@@ -2556,6 +2687,102 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
     });
     await ctx.editMessageText(
       `❌ Failed to record deposit: ${error.message}\n\nYou can try again from the main menu.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
+});
+
+// ── Balance Payment Confirmation Handler ────────────────────────────
+
+// User confirmed Yes for balance payment — record the balance via /pay-balance
+bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const quotationNumber = ctx.match[1];
+
+  if (session.step.action !== 'awaiting_deposit_confirmation') {
+    return ctx.editMessageText('⏳ This session has expired. Please upload the payment slip again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { depositAmount, imageBase64, mimeType, fileName } = session.step;
+
+  await ctx.editMessageText(`⚖️ Recording balance payment of ₱${depositAmount.toLocaleString()} for *${quotationNumber}*...`, {
+    parse_mode: 'Markdown',
+  });
+
+  try {
+    // Step 1: Upload payment proof to Google Drive
+    let paymentImageUrl: string | null = null;
+    try {
+      const fileBuffer = Buffer.from(imageBase64, 'base64');
+      const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
+      paymentImageUrl = driveResult.webViewLink;
+
+      postJson('/drive/upload', {
+        quotation_number: quotationNumber,
+        file_type: mimeType,
+        original_filename: `balance_${fileName}`,
+        mime_type: mimeType,
+        file_data: imageBase64,
+        uploaded_by: username ?? userId,
+      }).catch(() => {});
+    } catch (driveErr) {
+      console.error('[balance] Drive upload error (non-fatal):', driveErr);
+    }
+
+    // Step 2: Record the balance payment via /pay-balance
+    const balanceRes = await fetch(`${apiBaseUrl}/pay-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quotation_number: quotationNumber,
+        amount: depositAmount,
+        updated_by: username ?? userId,
+      }),
+    });
+
+    if (!balanceRes.ok) {
+      const err = await balanceRes.json().catch(() => ({ error: 'Balance API error' }));
+      throw new Error(err.error || `HTTP ${balanceRes.status}`);
+    }
+
+    resetStep(chatId);
+
+    botLog({
+      chatId, userId, username,
+      messageType: 'balance',
+      content: `balance_recorded: ${quotationNumber} ₱${depositAmount}`,
+      metadata: { quotationNumber, amount: depositAmount, driveLink: paymentImageUrl },
+      status: 'success',
+    });
+
+    const successMsg =
+      `✅ *Balance Payment Recorded Successfully!*\n\n` +
+      `📋 Order: *${quotationNumber}*\n` +
+      `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+      (paymentImageUrl ? `🔗 [View Payment Proof](${paymentImageUrl})\n` : '') +
+      `\nDelivery can now proceed.`;
+
+    await ctx.editMessageText(successMsg, {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  } catch (error: any) {
+    console.error('[balance] Record error:', error);
+    botLog({
+      chatId, userId, username,
+      messageType: 'balance',
+      content: `balance_error: ${quotationNumber}`,
+      metadata: { quotationNumber, amount: depositAmount, errorMessage: String(error.message ?? error) },
+      status: 'error',
+    });
+    await ctx.editMessageText(
+      `❌ Failed to record balance payment: ${error.message}\n\nYou can try again from the main menu.`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   }
@@ -3078,6 +3305,168 @@ bot.on(['document', 'photo'], async (ctx) => {
         // Non-image file sent as proof — ask for image
         await ctx.reply(
           `❌ Please send a **photo** of the deposit slip or proof of payment (JPEG/PNG).`,
+          { parse_mode: 'Markdown', ...cancelButton() }
+        );
+      }
+      return;
+    }
+
+    // Check if user is in deposit slip photo flow (from collection group)
+    if (session.step.action === 'awaiting_deposit_slip_photo') {
+      const { orderId, quotationNumber } = session.step;
+
+      // For images, call vision API to extract payment details
+      const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
+      if (isProcessable) {
+        await ctx.reply(`🔍 Scanning deposit slip for *${quotationNumber}*...`, { parse_mode: 'Markdown' });
+
+        try {
+          // Call vision API to extract payment info
+          const visionResult: any = await postJson('/vision/extract', {
+            image_base64: imageBase64,
+            mime_type: mimeType,
+            mode: 'payment',
+          });
+
+          const depositAmount = visionResult?.payment?.amount;
+          const paymentDate = visionResult?.payment?.payment_date;
+
+          if (depositAmount && depositAmount > 0) {
+            // Try to match this deposit to the specific order
+            try {
+              const matchRes = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: depositAmount, quotation_number: quotationNumber }),
+              });
+              const matchData = await matchRes.json();
+
+              if (matchData.ok && matchData.matched) {
+                // Deposit recorded successfully
+                resetStep(chatId);
+
+                let msg = `✅ *Deposit Recorded!*\n\n`;
+                msg += `Order: *${quotationNumber}*\n`;
+                msg += `Amount: ₱${Number(depositAmount).toLocaleString()}`;
+                if (paymentDate) {
+                  msg += `\nDate: ${paymentDate}`;
+                }
+                msg += `\n\nThank you! The deposit has been recorded and the order will proceed.`;
+
+                await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+                return;
+              }
+            } catch (err: any) {
+              console.error('[deposit-slip] Match error:', err);
+            }
+
+            // No deposit match found — try balance matching
+            try {
+              const balanceRes = await fetch(`${apiBaseUrl}/deposits/match-balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: depositAmount, quotation_number: quotationNumber }),
+              });
+              const balanceData = await balanceRes.json();
+
+              if (balanceData.ok && balanceData.matched && balanceData.candidates && balanceData.candidates.length > 0) {
+                // Balance match found!
+                const best = balanceData.candidates[0];
+
+                setStep(chatId, {
+                  action: 'awaiting_deposit_confirmation',
+                  imageBase64,
+                  mimeType,
+                  fileName,
+                  depositAmount,
+                  candidates: balanceData.candidates.map((c: any) => ({
+                    quotation_number: c.quotation_number,
+                    client_name: c.client_name,
+                    total_amount: c.total_amount,
+                    expected_deposit: c.expected_balance,
+                    discrepancy: c.discrepancy,
+                  })),
+                  paymentDate,
+                });
+
+                const buttons: any[][] = [];
+                for (const c of balanceData.candidates) {
+                  const expectedPct = Math.round((1 - c.discrepancy / 100) * 100);
+                  buttons.push([
+                    Markup.button.callback(
+                      `✅ Yes — ${c.client_name} (${c.quotation_number}) ${expectedPct}% match`,
+                      `balance:confirm_yes:${c.quotation_number}`
+                    ),
+                  ]);
+                }
+                buttons.push([Markup.button.callback('❌ No — different client', 'deposit:confirm_no')]);
+
+                await ctx.reply(
+                  `💳 *Extracted Payment Info:*\n` +
+                  `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+                  (paymentDate ? `📅 Date: ${paymentDate}\n` : '') +
+                  `\n🔍 *Balance Payment Matching*\n\n` +
+                  `This amount matches a *balance payment* for an order where deposit was already paid.\n\n` +
+                  `*Best Match:*\n` +
+                  `👤 Client: ${best.client_name}\n` +
+                  `📋 Order: ${best.quotation_number}\n` +
+                  `💰 Total: ₱${best.total_amount.toLocaleString()}\n` +
+                  `💵 Deposit Paid: ₱${best.deposit_amount.toLocaleString()}\n` +
+                  `⚖️ Expected Balance: ₱${best.expected_balance.toLocaleString()}\n` +
+                  `📊 Match: ${Math.round((1 - best.discrepancy / 100) * 100)}%\n\n` +
+                  `Is this the balance payment for *${best.client_name}*?`,
+                  {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard(buttons),
+                  }
+                );
+                return;
+              }
+            } catch (balanceErr: any) {
+              console.error('[deposit-slip] Balance match error:', balanceErr);
+            }
+
+            // No balance match either — ask user to enter client name
+            setStep(chatId, {
+              action: 'awaiting_deposit_client_name',
+              imageBase64,
+              mimeType,
+              fileName,
+              depositAmount,
+              paymentDate,
+            });
+
+            await ctx.reply(
+              `💳 *Extracted Payment Info:*\n` +
+              `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+              (paymentDate ? `📅 Date: ${paymentDate}\n` : '') +
+              `\n🔍 *Payment Matching*\n\n` +
+              `This amount (₱${depositAmount.toLocaleString()}) does not closely match any deposit or balance.\n\n` +
+              `Please type the *client name* this payment is for, or type *cancel* to skip.`,
+              { parse_mode: 'Markdown', ...cancelButton() }
+            );
+          } else {
+            // Vision couldn't extract amount — ask user to enter manually
+            setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
+            await ctx.reply(
+              `⚠️ Could not automatically detect the deposit amount from the image.\n\n` +
+              `💰 Please enter the deposit amount in PHP manually:\n\nExample: \`15000\``,
+              { parse_mode: 'Markdown', ...cancelButton() }
+            );
+          }
+        } catch (err: any) {
+          // Vision API failed — fall back to manual entry
+          setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
+          await ctx.reply(
+            `⚠️ Could not process the image: ${err.message}\n\n` +
+            `💰 Please enter the deposit amount in PHP manually:\n\nExample: \`15000\``,
+            { parse_mode: 'Markdown', ...cancelButton() }
+          );
+        }
+      } else {
+        // Non-image file sent as deposit slip — ask for image
+        await ctx.reply(
+          `❌ Please send a **photo** of the deposit slip (JPEG/PNG).`,
           { parse_mode: 'Markdown', ...cancelButton() }
         );
       }

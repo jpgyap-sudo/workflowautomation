@@ -89,7 +89,7 @@ export default function DashboardPage() {
           color="bg-green-100 text-green-600"
         />
         <StatCard
-          title="Pending Deposit"
+          title="Pending Downpayment"
           value={stats?.pending_deposit ?? 0}
           icon={CreditCard}
           color="bg-pink-100 text-pink-600"

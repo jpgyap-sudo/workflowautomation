@@ -283,7 +283,7 @@ function OrderRow({ order, onEdit, onDelete, onReportOnTime, onReportDelayed, on
               </button>
             )}
             <span className="self-center text-xs text-gray-500">
-              Deposit: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
+              Downpayment: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
               {' · '}
               Balance: {order.balance_paid ? 'Paid' : 'Pending'}
             </span>

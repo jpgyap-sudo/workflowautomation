@@ -5,7 +5,6 @@ import {
   sendTelegramMessage,
   buildAgentMessage,
   createReminder,
-  advanceStage,
   getActiveOrdersByStage,
   getEscalationLevel,
   getGroupChatId,
@@ -18,8 +17,9 @@ import { query } from '../db.js';
  * Role: Tracks inventory arrival for orders at inventory_arrived stage.
  * - Checks if inventory photos/files have been uploaded
  * - Sends reminders if inventory hasn't arrived yet
+ * - When files are uploaded, reminds inventory group to verify all products arrived
+ * - Inventory group confirms via "Ready for Delivery" button (advances to balance_due)
  * - Escalates after repeated reminders
- * - Auto-advances to balance_due when inventory files are uploaded
  */
 export async function runInventoryAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
@@ -56,23 +56,33 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
     const files = await getOrderFiles(order.id, 'inventory');
 
     if (files.length > 0) {
-      // Inventory has arrived — auto-advance to balance_due
-      await advanceStage(
-        order.id,
-        'balance_due',
-        order.quotation_number ?? order.id,
-        `Inventory arrived — ${files.length} file(s) uploaded. Auto-advanced to balance due.`,
-      );
+      // Inventory files have been uploaded — do NOT auto-advance.
+      // Instead, remind the inventory group to verify all products arrived
+      // and confirm via the "Ready for Delivery" button.
+      // The bot's inline keyboard handler (inventory:ready) will advance to balance_due.
+
+      if (escalationLevel >= 3) {
+        const result: AgentResult = {
+          status: 'blocked',
+          message: `🔴 Inventory photos uploaded but not yet confirmed ready after ${escalationLevel} reminders. Manager intervention required. Please verify all products have arrived and click ✅ Ready for Delivery.`,
+          next_stage: null,
+          reminder_needed: true,
+          escalation_level: escalationLevel,
+        };
+
+        await logAgentAction('inventory-agent', input, result, 'blocked', order.id);
+        return result;
+      }
 
       const result: AgentResult = {
-        status: 'ok',
-        message: `📦 Inventory arrived — ${files.length} file(s) uploaded. Auto-advanced to balance due stage.`,
-        next_stage: 'balance_due',
-        reminder_needed: false,
-        escalation_level: 0,
+        status: 'needs_review',
+        message: `📦 Inventory photos uploaded (${files.length} file(s)) for quotation #${order.quotation_number ?? 'unknown'}. Please verify all products have arrived. Once confirmed, click ✅ Ready for Delivery to proceed to balance payment.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
       };
 
-      await logAgentAction('inventory-agent', input, result, 'success', order.id);
+      await logAgentAction('inventory-agent', input, result, 'needs_review', order.id);
       return result;
     }
 

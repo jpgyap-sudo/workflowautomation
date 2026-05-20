@@ -64,10 +64,10 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
     setLoading(true);
     try {
       await recordDeposit({ quotation_number: qn.trim(), amount: amt, deposit_paid_at: date || undefined });
-      onResult({ ok: true, message: `Deposit of ₱${amt.toLocaleString()} recorded for ${qn.trim()}.` });
+      onResult({ ok: true, message: `Downpayment of ₱${amt.toLocaleString()} recorded for ${qn.trim()}.` });
       setQn(''); setAmount(''); setDate('');
     } catch (err: any) {
-      onResult({ ok: false, message: err.message ?? 'Failed to record deposit.' });
+      onResult({ ok: false, message: err.message ?? 'Failed to record downpayment.' });
     } finally {
       setLoading(false);
     }
@@ -78,7 +78,7 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
       <Field label="Quotation Number">
         <input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} />
       </Field>
-      <Field label="Deposit Amount (₱)">
+      <Field label="Downpayment Amount (₱)">
         <input className={inputCls} placeholder="5000" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
       </Field>
       <Field label="Payment Date (optional)">
@@ -86,7 +86,7 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
       </Field>
       <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50">
         {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        Record Deposit
+        Record Downpayment
       </button>
     </form>
   );
@@ -224,14 +224,14 @@ export default function ActionsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Quick Actions</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Record deposits, payments, and delivery updates directly — no Telegram required.
+          Record downpayments, balance payments, and delivery updates directly — no Telegram required.
         </p>
       </div>
 
       <ResultBanner result={result} onDismiss={() => setResult(null)} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ActionCard title="Record Deposit" icon={CreditCard} color="bg-pink-100 text-pink-600">
+        <ActionCard title="Record Downpayment" icon={CreditCard} color="bg-pink-100 text-pink-600">
           <DepositForm onResult={setResult} />
         </ActionCard>
 

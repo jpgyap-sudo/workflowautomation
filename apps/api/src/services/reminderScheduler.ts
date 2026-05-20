@@ -172,6 +172,14 @@ export async function processDueReminders(): Promise<number> {
           { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId}:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'deposit_pending') {
+      // Deposit pending: ask if deposit has been collected
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Yes, Upload Deposit Slip', callback_data: `deposit:yes:${orderId}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `deposit:no:${orderId}:${quotationNumber}` },
+        ],
+      ]);
     } else if (reminder.stage === 'inventory_arrived') {
       // Inventory arrived: ask if ready for delivery / balance payment
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [

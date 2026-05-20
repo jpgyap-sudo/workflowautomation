@@ -196,7 +196,7 @@ const STAGE_INFO: Record<string, StageInfo> = {
   production_confirmed: {
     stage: 'production_confirmed',
     entryAction: 'Production timeline recorded',
-    exitCondition: 'Deposit payment recorded (/deposit)',
+    exitCondition: 'Downpayment recorded (/deposit)',
     triggeredBy: 'Team',
     responsibleParty: 'Purchasing Team',
     autoAdvance: false,
@@ -211,8 +211,8 @@ const STAGE_INFO: Record<string, StageInfo> = {
   },
   deposit_pending: {
     stage: 'deposit_pending',
-    entryAction: 'Reminder sent for deposit payment',
-    exitCondition: 'Deposit amount recorded via bot or image upload',
+    entryAction: 'Reminder sent for downpayment',
+    exitCondition: 'Downpayment amount recorded via bot or image upload',
     triggeredBy: 'Team / Telegram Bot',
     responsibleParty: 'Sales / Finance',
     autoAdvance: false,

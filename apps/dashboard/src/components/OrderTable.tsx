@@ -96,7 +96,7 @@ export default function OrderTable({
                 )}
                 {showDeposit && (
                   <div>
-                    <dt className="text-gray-400">Deposit</dt>
+                    <dt className="text-gray-400">Downpayment</dt>
                     <dd className="mt-1">
                       <StatusPill className={order.deposit_paid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
                         {order.deposit_paid ? `Paid ${money(order.deposit_amount)}` : 'Pending'}
@@ -150,7 +150,7 @@ export default function OrderTable({
                 )}
                 {showDepositDate && (
                   <div>
-                    <dt className="text-gray-400">Deposit Date</dt>
+                    <dt className="text-gray-400">Downpayment Date</dt>
                     <dd className="font-medium text-gray-700">{formatDate(order.deposit_paid_at)}</dd>
                   </div>
                 )}
@@ -200,10 +200,10 @@ export default function OrderTable({
               {showAgent && <th className="px-4 py-3">Sales Agent</th>}
               <th className="px-4 py-3">Current Stage</th>
               {showAmount && <th className="px-4 py-3 text-right">Amount</th>}
-              {showDeposit && <th className="px-4 py-3">Deposit</th>}
+              {showDeposit && <th className="px-4 py-3">Downpayment</th>}
               {showBalance && <th className="px-4 py-3">Balance</th>}
               {showOrderDate && <th className="px-4 py-3">Order Date</th>}
-              {showDepositDate && <th className="px-4 py-3">Deposit Date</th>}
+              {showDepositDate && <th className="px-4 py-3">Downpayment Date</th>}
               <th className="px-4 py-3">Math</th>
               <th className="px-4 py-3">Created</th>
               <th className="px-4 py-3">Actions</th>

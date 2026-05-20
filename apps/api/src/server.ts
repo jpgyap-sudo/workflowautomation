@@ -946,7 +946,7 @@ app.post('/deposits', async (request, reply) => {
   // Record stage update for deposit_pending → deposit_paid
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-    [orderId, 'deposit_pending', 'deposit_paid', `Deposit of ₱${body.amount} recorded`, body.updated_by ?? null]
+    [orderId, 'deposit_pending', 'deposit_paid', `Downpayment of ₱${body.amount} recorded`, body.updated_by ?? null]
   );
 
   // Complete any deposit reminders for this order
@@ -1043,7 +1043,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
        VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
-      [order.id, `Deposit of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+      [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
     );
 
     // Complete any deposit reminders
@@ -1151,6 +1151,146 @@ app.post('/deposits/match-and-record', async (request, reply) => {
     candidates: matches,
     deposit_amount: depositAmount,
     message: `Found ${matches.length} order(s) matching deposit of ₱${depositAmount.toLocaleString()}.`,
+  });
+});
+
+// ── Balance Payment Matching ─────────────────────────────────────────
+
+/**
+ * POST /deposits/match-balance
+ *
+ * Called when a deposit slip image is sent but the deposit is already paid.
+ * Detects if this is a BALANCE payment instead.
+ * 1. Finds all orders where deposit IS paid but balance is NOT paid
+ * 2. Computes expected balance = total_amount - deposit_amount
+ * 3. Matches the extracted amount against expected balance with 20-30% tolerance
+ * 4. Returns the best matching candidate(s)
+ */
+const matchBalanceSchema = z.object({
+  amount: z.number().positive(),
+  client_name: z.string().optional(),
+});
+
+app.post('/deposits/match-balance', async (request, reply) => {
+  const body = matchBalanceSchema.parse(request.body);
+
+  // If client_name is provided, find order by client name and record balance
+  if (body.client_name) {
+    const orders = await query<any>(
+      `SELECT id, quotation_number, client_name, total_amount, deposit_amount, current_stage
+       FROM orders
+       WHERE client_name ILIKE $1 AND deposit_paid = TRUE AND balance_paid = FALSE AND status = 'active'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [`%${body.client_name}%`]
+    );
+
+    if (orders.length === 0) {
+      return reply.code(404).send({
+        ok: false,
+        error: `No active order found for client "${body.client_name}" with deposit paid but balance pending.`,
+      });
+    }
+
+    const order = orders[0];
+    const totalAmount = Number(order.total_amount ?? 0);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const expectedBalance = totalAmount - depositAmount;
+
+    return reply.send({
+      ok: true,
+      matched: true,
+      quotation_number: order.quotation_number,
+      client_name: order.client_name,
+      amount: body.amount,
+      expected_balance: expectedBalance,
+      payment_type: 'balance',
+    });
+  }
+
+  // No client_name — find candidate orders with deposit paid but balance NOT paid
+  const candidates = await query<any>(
+    `SELECT id, quotation_number, client_name, total_amount, deposit_amount, current_stage
+     FROM orders
+     WHERE deposit_paid = TRUE AND balance_paid = FALSE AND status = 'active' AND total_amount IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 50`
+  );
+
+  if (candidates.length === 0) {
+    return reply.send({
+      ok: true,
+      matched: false,
+      candidates: [],
+      message: 'No active orders found with deposit paid but balance pending.',
+    });
+  }
+
+  // Compute expected balance and check match with 30% tolerance
+  const DISCREPANCY_RANGE = 0.30;
+  const paymentAmount = body.amount;
+
+  const scored = candidates
+    .map((o: any) => {
+      const total = Number(o.total_amount);
+      const deposit = Number(o.deposit_amount ?? 0);
+      const expectedBalance = total - deposit;
+      const diff = Math.abs(paymentAmount - expectedBalance);
+      const discrepancy = expectedBalance > 0 ? diff / expectedBalance : 999;
+
+      return {
+        id: o.id,
+        quotation_number: o.quotation_number,
+        client_name: o.client_name,
+        total_amount: total,
+        deposit_amount: deposit,
+        expected_balance: expectedBalance,
+        discrepancy,
+        within_range: discrepancy <= DISCREPANCY_RANGE,
+      };
+    })
+    .filter((o: any) => o.within_range)
+    .sort((a: any, b: any) => a.discrepancy - b.discrepancy);
+
+  if (scored.length === 0) {
+    // No close match found — return top candidates anyway
+    const topCandidates = candidates.slice(0, 5).map((o: any) => {
+      const total = Number(o.total_amount);
+      const deposit = Number(o.deposit_amount ?? 0);
+      return {
+        quotation_number: o.quotation_number,
+        client_name: o.client_name,
+        total_amount: total,
+        deposit_amount: deposit,
+        expected_balance: total - deposit,
+      };
+    });
+
+    return reply.send({
+      ok: true,
+      matched: false,
+      candidates: topCandidates,
+      message: `Payment amount ₱${paymentAmount.toLocaleString()} does not closely match any balance due. Please specify the client name.`,
+    });
+  }
+
+  // Return best match(es) — top 3 within range
+  const matches = scored.slice(0, 3).map((o: any) => ({
+    quotation_number: o.quotation_number,
+    client_name: o.client_name,
+    total_amount: o.total_amount,
+    deposit_amount: o.deposit_amount,
+    expected_balance: o.expected_balance,
+    discrepancy: Math.round(o.discrepancy * 100),
+  }));
+
+  return reply.send({
+    ok: true,
+    matched: true,
+    candidates: matches,
+    payment_amount: paymentAmount,
+    payment_type: 'balance',
+    message: `Found ${matches.length} order(s) matching balance payment of ₱${paymentAmount.toLocaleString()}.`,
   });
 });
 

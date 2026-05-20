@@ -88,7 +88,7 @@ function OrderPaymentInfo({ order }: { order: Order }) {
         <span>Total: ₱{totalAmount.toLocaleString()}</span>
       )}
       {order.deposit_amount != null && (
-        <span>Deposit: ₱{depositAmount.toLocaleString()}</span>
+        <span>Downpayment: ₱{depositAmount.toLocaleString()}</span>
       )}
       {order.total_amount != null && (
         <span className={balance > 0 ? 'font-medium text-violet-600' : 'text-green-600'}>
@@ -582,7 +582,7 @@ export default function CollectionPage() {
                 <span className="font-medium">₱{Number(paymentModal.order.total_amount ?? 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span>Deposit Paid:</span>
+                <span>Downpayment Paid:</span>
                 <span className="font-medium">₱{Number(paymentModal.order.deposit_amount ?? 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-violet-700">

@@ -6,6 +6,7 @@ import {
   buildAgentMessage,
   createReminder,
   getActiveOrdersByStages,
+  getActiveOrdersByStage,
   getEscalationLevel,
   getGroupChatId,
 } from '../services/agentRunner.js';
@@ -13,18 +14,36 @@ import {
 /**
  * collection-agent
  *
- * Role: Tracks payment collection for delivered/countered orders.
+ * Role: Tracks payment collection for all stages.
+ * - Checks orders at purchasing_pending stage where deposit hasn't been paid
+ *   → Sends reminders to the collection group to collect deposit
  * - Checks orders at delivered or countered stage where payment hasn't been received
- * - Sends reminders to collect payment
+ *   → Sends reminders to collect final payment
  * - Escalates after repeated reminders
  */
 export async function runCollectionAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // Check orders at delivered or countered stage (payment pending)
-  const orders = await getActiveOrdersByStages(['delivered', 'countered']);
+  // ── Phase 1: Deposit Collection (purchasing_pending without deposit) ──
+  const depositOrders = await getActiveOrdersByStage('purchasing_pending');
+  for (const order of depositOrders) {
+    // Only process orders that haven't paid deposit yet
+    if (order.deposit_paid) continue;
 
-  for (const order of orders) {
+    const result = await checkDepositCollection(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('collection-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'deposit_pending', groupChatId, result.message);
+        await notifyCollection(groupChatId, order, result);
+      }
+    }
+    results.push(result);
+  }
+
+  // ── Phase 2: Final Payment Collection (delivered/countered) ──
+  const paymentOrders = await getActiveOrdersByStages(['delivered', 'countered']);
+  for (const order of paymentOrders) {
     const result = await checkCollection(order);
     if (result.reminder_needed) {
       const groupChatId = getGroupChatId('collection-agent');
@@ -37,6 +56,65 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
   }
 
   return results;
+}
+
+/**
+ * Check an order at purchasing_pending stage for deposit collection.
+ * Sends a reminder asking if the deposit has been collected.
+ */
+export async function checkDepositCollection(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+    total_amount: order.total_amount,
+    deposit_paid: order.deposit_paid,
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'deposit_pending');
+    const total = order.total_amount ? Number(order.total_amount) : null;
+    const expectedDeposit = total !== null ? total / 2 : null;
+
+    if (escalationLevel >= 3) {
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🔴 Downpayment not yet collected after ${escalationLevel} reminders. Manager intervention required. Expected downpayment: ${expectedDeposit !== null ? `₱${expectedDeposit.toLocaleString()}` : 'N/A'}.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('collection-agent', input, result, 'blocked', order.id);
+      return result;
+    }
+
+    const depositInfo = expectedDeposit !== null
+      ? `Expected downpayment (50%): ₱${expectedDeposit.toLocaleString()}`
+      : 'Total amount not yet set';
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Downpayment collection pending. ${depositInfo}. Please upload the deposit slip to record payment.`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('collection-agent', input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking deposit collection for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('collection-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
 }
 
 export async function checkCollection(order: OrderRow): Promise<AgentResult> {

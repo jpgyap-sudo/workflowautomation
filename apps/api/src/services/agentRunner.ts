@@ -58,7 +58,7 @@ export const STAGE_LABELS: Record<string, string> = {
   math_verified: '✅ Math Verified',
   purchasing_pending: '🛒 Purchasing Pending',
   production_confirmed: '🏭 Production Confirmed',
-  deposit_pending: '💳 Deposit Pending',
+  deposit_pending: '💳 Downpayment Pending',
   en_route: '🚚 En Route',
   inventory_arrived: '📦 Inventory Arrived',
   balance_due: '⚖️ Balance Due',
