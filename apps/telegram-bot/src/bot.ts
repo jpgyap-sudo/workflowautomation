@@ -2471,14 +2471,35 @@ bot.command('unlink', async (ctx) => {
 // ── Start ─────────────────────────────────────────────────────────────
 
 /**
+ * Reset Telegram polling state by calling getUpdates with offset=-1.
+ *
+ * When a container restarts abruptly, Telegram's server may still consider
+ * the previous long-polling getUpdates connection active, causing a 409
+ * Conflict on the next launch. Calling getUpdates with offset=-1
+ * acknowledges all pending updates and effectively resets the polling lock.
+ */
+async function resetPollingLock(): Promise<void> {
+  try {
+    await bot.telegram.callApi('getUpdates', {
+      offset: -1,
+      timeout: 1,
+      allowed_updates: [],
+    });
+  } catch {
+    // Non-fatal — the retry loop below will handle 409s
+  }
+}
+
+/**
  * Launch the bot with retry logic for 409 Conflict and 429 rate-limit errors.
  *
- * When a container restarts, Telegram's polling lock from the previous
- * instance may still be active. deleteWebhook does NOT clear polling locks,
- * so we attempt to call the Telegram Bot API `close` method to terminate
- * any existing session before launching (non-fatal if it fails).
+ * Strategy (in order):
+ *   1. deleteWebhook — clears any lingering webhook URL
+ *   2. getUpdates offset=-1 — resets the polling lock by acknowledging
+ *      all pending updates (more reliable than `close` for this purpose)
+ *   3. bot.launch() — starts long-polling
  *
- * If a 409 still occurs, we retry with exponential backoff (capped at 60s)
+ * If a 409 still occurs, retry with exponential backoff (capped at 60s)
  * up to 12 times (~5 minutes total). 429 rate-limit errors also trigger
  * a retry using the recommended retry_after value.
  */
@@ -2487,9 +2508,8 @@ async function launchWithRetry(maxRetries = 12, baseDelayMs = 5000): Promise<voi
     try {
       // 1) Clear any lingering webhook
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
-      // 2) Attempt to close any existing bot session (releases polling lock).
-      //    This may fail with 429 if rate-limited — that's non-fatal.
-      await bot.telegram.callApi('close', {}).catch(() => {});
+      // 2) Reset polling lock by acknowledging all pending updates
+      await resetPollingLock();
       // 3) Launch
       await bot.launch();
       console.log(`[bot] Launched successfully on attempt ${attempt}`);
