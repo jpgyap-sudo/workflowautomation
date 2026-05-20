@@ -152,6 +152,7 @@ async function uploadFileAndRecord(params: {
   uploadedBy?: string;
 }) {
   const fileBuffer = Buffer.from(params.imageBase64, 'base64');
+  // uploadToDrive now has internal withRetry (3 attempts with exponential backoff)
   const driveResult = await uploadToDrive(fileBuffer, params.fileName, params.mimeType);
 
   const payload: Record<string, unknown> = {

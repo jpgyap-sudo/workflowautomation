@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 let driveClient: drive_v3.Drive | null = null;
+let driveAuth: any = null;
 
 function getDriveClient(): drive_v3.Drive {
   if (driveClient) return driveClient;
@@ -29,6 +30,7 @@ function getDriveClient(): drive_v3.Drive {
       }
     });
 
+    driveAuth = auth;
     driveClient = google.drive({ version: 'v3', auth });
     return driveClient;
   }
@@ -54,8 +56,65 @@ function getDriveClient(): drive_v3.Drive {
     scopes: SCOPES,
   });
 
+  driveAuth = auth;
   driveClient = google.drive({ version: 'v3', auth });
   return driveClient;
+}
+
+/**
+ * Refresh the OAuth2 access token if it's expired.
+ * Call this before each Drive operation to prevent token expiry errors.
+ */
+async function ensureFreshToken(): Promise<void> {
+  if (!driveAuth) return;
+  try {
+    // Only OAuth2 has refreshAccessToken; JWT handles it internally
+    if (driveAuth.refreshAccessToken) {
+      const tokenInfo = await driveAuth.getAccessToken();
+      if (!tokenInfo.token) {
+        await driveAuth.refreshAccessToken();
+      }
+    }
+  } catch {
+    // If refresh fails, the next Drive call will throw a clearer error
+  }
+}
+
+/**
+ * Retry wrapper for transient Google Drive API errors.
+ * Retries on: 429 (rate limit), 5xx (server errors), network/timeout errors.
+ * Does NOT retry on: 4xx client errors (except 429).
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Refresh token before each attempt
+      await ensureFreshToken();
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const status = error?.response?.status;
+      const isTransient =
+        status === 429 || // rate limit
+        (status >= 500 && status < 600) || // server error
+        status === undefined || // network error (no response)
+        error?.code === 'ECONNRESET' ||
+        error?.code === 'ETIMEDOUT' ||
+        error?.message?.includes('timeout') ||
+        error?.message?.includes('rateLimit') ||
+        error?.message?.includes('quota');
+
+      if (!isTransient || attempt >= maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 4000);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
 }
 
 export interface UploadResult {
@@ -92,14 +151,15 @@ export async function uploadToDrive(
     body: Readable.from(fileBuffer),
   };
 
-  const response = await drive.files.create({
-    requestBody,
-    media,
-    fields: 'id,webViewLink,name,mimeType,size',
-    supportsAllDrives: true,
+  return withRetry(async () => {
+    const response = await drive.files.create({
+      requestBody,
+      media,
+      fields: 'id,webViewLink,name,mimeType,size',
+      supportsAllDrives: true,
+    });
+    return response.data as unknown as UploadResult;
   });
-
-  return response.data as unknown as UploadResult;
 }
 
 /**
@@ -112,17 +172,18 @@ export async function createDriveFolder(
   const drive = getDriveClient();
   const folderId = parentFolderId ?? process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
 
-  const response = await drive.files.create({
-    requestBody: {
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: folderId ? [folderId] : [],
-    },
-    fields: 'id,webViewLink',
-    supportsAllDrives: true,
+  return withRetry(async () => {
+    const response = await drive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: folderId ? [folderId] : [],
+      },
+      fields: 'id,webViewLink',
+      supportsAllDrives: true,
+    });
+    return response.data as { id: string; webViewLink: string };
   });
-
-  return response.data as { id: string; webViewLink: string };
 }
 
 /**
@@ -138,17 +199,19 @@ export async function getOrCreateFolder(
 
   // Search for existing folder with this name
   const query = `name='${folderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${folderId}' in parents and trashed=false`;
-  const res = await drive.files.list({
-    q: query,
-    fields: 'files(id,webViewLink)',
-    pageSize: 1,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
+
+  const existing = await withRetry(async () => {
+    const res = await drive.files.list({
+      q: query,
+      fields: 'files(id,webViewLink)',
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    return res.data.files?.[0] as { id: string; webViewLink: string } | undefined;
   });
 
-  if (res.data.files && res.data.files.length > 0) {
-    return res.data.files[0] as { id: string; webViewLink: string };
-  }
+  if (existing) return existing;
 
   // Create if not found
   return createDriveFolder(folderName, parentFolderId);
@@ -159,7 +222,9 @@ export async function getOrCreateFolder(
  */
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const drive = getDriveClient();
-  await drive.files.delete({ fileId, supportsAllDrives: true });
+  await withRetry(async () => {
+    await drive.files.delete({ fileId, supportsAllDrives: true });
+  });
 }
 
 /**
@@ -167,12 +232,14 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
  */
 export async function getDriveFileDownloadUrl(fileId: string): Promise<string> {
   const drive = getDriveClient();
-  const file = await drive.files.get({
-    fileId,
-    fields: 'webContentLink,webViewLink',
-    supportsAllDrives: true,
+  return withRetry(async () => {
+    const file = await drive.files.get({
+      fileId,
+      fields: 'webContentLink,webViewLink',
+      supportsAllDrives: true,
+    });
+    return file.data.webContentLink ?? file.data.webViewLink ?? '';
   });
-  return file.data.webContentLink ?? file.data.webViewLink ?? '';
 }
 
 /**

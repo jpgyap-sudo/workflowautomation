@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 let driveClient: drive_v3.Drive | null = null;
+let driveAuth: any = null;
 
 function getDriveClient(): drive_v3.Drive {
   if (driveClient) return driveClient;
@@ -29,6 +30,7 @@ function getDriveClient(): drive_v3.Drive {
       }
     });
 
+    driveAuth = auth;
     driveClient = google.drive({ version: 'v3', auth });
     return driveClient;
   }
@@ -54,8 +56,65 @@ function getDriveClient(): drive_v3.Drive {
     scopes: SCOPES,
   });
 
+  driveAuth = auth;
   driveClient = google.drive({ version: 'v3', auth });
   return driveClient;
+}
+
+/**
+ * Refresh the OAuth2 access token if it's expired.
+ * Call this before each Drive operation to prevent token expiry errors.
+ */
+async function ensureFreshToken(): Promise<void> {
+  if (!driveAuth) return;
+  try {
+    // Only OAuth2 has refreshAccessToken; JWT handles it internally
+    if (driveAuth.refreshAccessToken) {
+      const tokenInfo = await driveAuth.getAccessToken();
+      if (!tokenInfo.token) {
+        await driveAuth.refreshAccessToken();
+      }
+    }
+  } catch {
+    // If refresh fails, the next Drive call will throw a clearer error
+  }
+}
+
+/**
+ * Retry wrapper for transient Google Drive API errors.
+ * Retries on: 429 (rate limit), 5xx (server errors), network/timeout errors.
+ * Does NOT retry on: 4xx client errors (except 429).
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Refresh token before each attempt
+      await ensureFreshToken();
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const status = error?.response?.status;
+      const isTransient =
+        status === 429 || // rate limit
+        (status >= 500 && status < 600) || // server error
+        status === undefined || // network error (no response)
+        error?.code === 'ECONNRESET' ||
+        error?.code === 'ETIMEDOUT' ||
+        error?.message?.includes('timeout') ||
+        error?.message?.includes('rateLimit') ||
+        error?.message?.includes('quota');
+
+      if (!isTransient || attempt >= maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 4000);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
 }
 
 export interface UploadResult {
@@ -88,12 +147,13 @@ export async function uploadToDrive(
     body: Readable.from(fileBuffer),
   };
 
-  const response = await drive.files.create({
-    requestBody,
-    media,
-    fields: 'id,webViewLink,name,mimeType,size',
-    supportsAllDrives: true,
+  return withRetry(async () => {
+    const response = await drive.files.create({
+      requestBody,
+      media,
+      fields: 'id,webViewLink,name,mimeType,size',
+      supportsAllDrives: true,
+    });
+    return response.data as unknown as UploadResult;
   });
-
-  return response.data as unknown as UploadResult;
 }
