@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, uploadToDrive } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2 } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -133,6 +133,21 @@ export default function CollectionPage() {
     granting: boolean;
   }>({ open: false, order: null, notes: '', granting: false });
 
+  // Payment confirmation modal state
+  const [paymentModal, setPaymentModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    uploading: boolean;
+    error: string | null;
+  }>({ open: false, order: null, uploading: false, error: null });
+  const [depositSlipFile, setDepositSlipFile] = useState<{
+    name: string;
+    data: string; // base64
+    mime: string;
+    preview: string; // data URL for preview
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   function handleEdit(order: Order) {
     setEditingOrder(order);
   }
@@ -244,6 +259,80 @@ export default function CollectionPage() {
     }
   }
 
+  // ── Payment Confirmation with Deposit Slip Upload ──────────────────────
+
+  function handlePaymentConfirmClick(order: Order) {
+    setPaymentModal({ open: true, order, uploading: false, error: null });
+    setDepositSlipFile(null);
+  }
+
+  function handleDepositSlipFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      // result is a data URL like "data:image/png;base64,iVBOR..."
+      const commaIndex = result.indexOf(',');
+      const base64 = commaIndex !== -1 ? result.substring(commaIndex + 1) : result;
+      setDepositSlipFile({
+        name: file.name,
+        data: base64,
+        mime: file.type || 'image/jpeg',
+        preview: result, // full data URL for preview
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleConfirmPayment() {
+    const order = paymentModal.order;
+    if (!order || !depositSlipFile) return;
+
+    setPaymentModal((prev) => ({ ...prev, uploading: true, error: null }));
+    try {
+      // Step 1: Upload deposit slip to Google Drive
+      const driveResult = await uploadToDrive({
+        quotation_number: order.quotation_number ?? '',
+        file_type: 'deposit_slip',
+        original_filename: depositSlipFile.name,
+        mime_type: depositSlipFile.mime,
+        file_data: depositSlipFile.data,
+      });
+
+      // Step 2: Record stage update — payment confirmed
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'payment_confirmed',
+        status: 'confirmed',
+        remarks: `Payment confirmed via dashboard. Deposit slip uploaded to Google Drive.`,
+        updated_by: 'dashboard',
+      });
+
+      // Close modal and refresh
+      setPaymentModal({ open: false, order: null, uploading: false, error: null });
+      setDepositSlipFile(null);
+      mutateArrived();
+      mutateBalanceDue();
+      mutateCountered();
+      mutateReceived();
+      mutateConfirmed();
+      mutateCompleted();
+    } catch (err: any) {
+      setPaymentModal((prev) => ({
+        ...prev,
+        uploading: false,
+        error: err.message ?? 'Failed to confirm payment. Please try again.',
+      }));
+    }
+  }
+
+  function closePaymentModal() {
+    setPaymentModal({ open: false, order: null, uploading: false, error: null });
+    setDepositSlipFile(null);
+  }
+
   if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -285,6 +374,16 @@ export default function CollectionPage() {
           <div className="flex items-center gap-3">
             <StageBadge stage={order.current_stage} />
             <div className="flex items-center gap-1">
+              {/* Payment Confirmed button — only for inventory_arrived / balance_due */}
+              {(order.current_stage === 'inventory_arrived' || order.current_stage === 'balance_due') && (
+                <button
+                  onClick={() => handlePaymentConfirmClick(order)}
+                  className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  title="Confirm payment — upload deposit slip to Google Drive"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </button>
+              )}
               {/* Special Case button */}
               {!hasException && (
                 <button
@@ -461,6 +560,120 @@ export default function CollectionPage() {
           </div>
         )}
       </div>
+
+      {/* Payment Confirmation Modal — Upload Deposit Slip */}
+      {paymentModal.open && paymentModal.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center gap-3">
+              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Confirm Payment</h3>
+                <p className="text-xs text-gray-500">
+                  {paymentModal.order.quotation_number ?? '—'} — {paymentModal.order.client_name ?? 'Unknown'}
+                </p>
+              </div>
+            </div>
+
+            {/* Order payment summary */}
+            <div className="mb-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+              <div className="flex justify-between">
+                <span>Total Amount:</span>
+                <span className="font-medium">₱{Number(paymentModal.order.total_amount ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Deposit Paid:</span>
+                <span className="font-medium">₱{Number(paymentModal.order.deposit_amount ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-violet-700">
+                <span>Balance Due:</span>
+                <span className="font-medium">
+                  ₱{(Number(paymentModal.order.total_amount ?? 0) - Number(paymentModal.order.deposit_amount ?? 0)).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <p className="mb-3 text-sm text-gray-600">
+              Upload the <strong>deposit slip</strong> or proof of balance payment. The file will be
+              automatically saved to the client's Google Drive folder.
+            </p>
+
+            {/* File upload area */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className={`mb-4 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
+                depositSlipFile
+                  ? 'border-emerald-300 bg-emerald-50'
+                  : 'border-gray-300 bg-gray-50 hover:border-emerald-300 hover:bg-emerald-50'
+              }`}
+            >
+              {depositSlipFile ? (
+                <div className="flex flex-col items-center gap-2">
+                  {depositSlipFile.mime.startsWith('image/') ? (
+                    <img
+                      src={depositSlipFile.preview}
+                      alt="Deposit slip preview"
+                      className="max-h-32 max-w-full rounded-lg object-contain"
+                    />
+                  ) : (
+                    <FileText className="h-10 w-10 text-emerald-500" />
+                  )}
+                  <span className="text-xs font-medium text-emerald-700">{depositSlipFile.name}</span>
+                  <span className="text-[10px] text-emerald-500">Click to change file</span>
+                </div>
+              ) : (
+                <>
+                  <Upload className="mb-2 h-8 w-8 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-600">Click to upload deposit slip</span>
+                  <span className="mt-1 text-[11px] text-gray-400">PNG, JPG, or PDF accepted</span>
+                </>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleDepositSlipFileSelect}
+              />
+            </div>
+
+            {/* Error message */}
+            {paymentModal.error && (
+              <div className="mb-4 rounded-lg bg-red-50 p-3 text-xs text-red-700">
+                {paymentModal.error}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closePaymentModal}
+                disabled={paymentModal.uploading}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPayment}
+                disabled={paymentModal.uploading || !depositSlipFile}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {paymentModal.uploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirm Payment
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Special Case Exception Modal */}
       {exceptionModal.open && exceptionModal.order && (
