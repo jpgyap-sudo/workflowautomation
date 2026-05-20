@@ -297,7 +297,13 @@ type UserStep =
   | { action: 'awaiting_client_search' }
   // Partial production flow
   | { action: 'awaiting_partial_missing_items'; orderId: string; quotationNumber: string }
-  | { action: 'awaiting_partial_items_update'; orderId: string; quotationNumber: string; remainingItems: string[] };
+  | { action: 'awaiting_partial_items_update'; orderId: string; quotationNumber: string; remainingItems: string[] }
+  // Balance payment proof photo flow
+  | { action: 'awaiting_balance_proof_photo'; orderId: string; quotationNumber: string }
+  // Delivery schedule confirmation flow
+  | { action: 'awaiting_delivery_schedule'; orderId: string; quotationNumber: string }
+  // Delivery day check flow
+  | { action: 'awaiting_delivery_day_check'; orderId: string; quotationNumber: string };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -1861,6 +1867,131 @@ bot.action(/^en_route:arrival_custom:(.+):(.+)$/, async (ctx) => {
   await ctx.editMessageText(
     `📦 *Custom Arrival Days* — ${quotationNumber}\n\nEnter the number of days estimated for inventory to arrive:`,
     { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
+// ── Inventory Arrived Callback Handlers ──────────────────────────────
+
+// User confirmed inventory is ready for delivery → advance to balance_due stage
+bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inventory:ready:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Advance to balance_due stage
+    await postJson('/stage-updates', {
+      order_id: orderId,
+      stage: 'balance_due',
+      status: 'auto_advanced',
+      remarks: 'Inventory arrived — ready for delivery, balance payment required',
+      updated_by: 'delivery-agent',
+    });
+
+    // Update order stage
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (res.ok) {
+      await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ current_stage: 'balance_due' }),
+      });
+    }
+
+    await ctx.editMessageText(
+      `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
+      `Stage advanced to ⚖️ *Balance Due*.\n\n` +
+      `Please ask the client for the balance payment. ` +
+      `You can use /paybalance command or send a photo of the deposit slip.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(
+      `❌ Error updating order: ${err.message}`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+});
+
+// User said inventory is still waiting
+bot.action(/^inventory:waiting:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inventory:waiting:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(
+    `⏳ *Still Waiting* — ${quotationNumber}\n\n` +
+    `Noted. The bot will ask again tomorrow. ` +
+    `Please update once the inventory is ready for delivery.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// ── Balance Payment Callback Handlers ────────────────────────────────
+
+// User confirmed client paid the balance → ask for proof of payment photo
+bot.action(/^balance:paid:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `balance:paid:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  setStep(chatId, { action: 'awaiting_balance_proof_photo', orderId, quotationNumber });
+
+  await ctx.editMessageText(
+    `📸 *Balance Payment Proof Required* — ${quotationNumber}\n\n` +
+    `Please send a **photo of the deposit slip or proof of payment** so we can record the amount and date of the balance payment.\n\n` +
+    `The AI will scan the image to extract the payment details automatically.`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
+// User said client has NOT paid yet
+bot.action(/^balance:not_paid:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `balance:not_paid:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(
+    `⏳ *Payment Pending* — ${quotationNumber}\n\n` +
+    `Noted. The bot will ask again tomorrow. ` +
+    `Please remind the client about the balance payment.`,
+    { parse_mode: 'Markdown' }
   );
 });
 

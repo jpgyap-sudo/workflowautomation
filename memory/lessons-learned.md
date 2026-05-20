@@ -1079,3 +1079,45 @@ Created `shared-context.json` (git-ignored) and `scripts/query-context.mjs` for 
 
 #### Tags
 cross-tool, shared-context, json, query-script, learning-layer, gitignore
+
+### Lesson: [workflowautomation] fix: extract Date.now from render into DaysAgo component (production page lint)
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e88d280c48db161e0c4e9483b5c823be447a9b7c
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** e88d280c48db161e0c4e9483b5c823be447a9b7c
+**Files:** 
+
+**Summary:**
+**What was fixed:** A `Date.now()` call was moved out of the render path into a `DaysAgo` component to resolve a production page lint error.
+
+**Why it broke:** Calling `Date.now()` directly inside a React component's render function creates a non-deterministic value that changes on every render. This violates React's purity expectations and can cause linting rules (e.g., `no-date-in-render`) to flag it, as it may lead to inconsistent UI or unnecessary re-renders.
+
+**Reusable takeaway:** Extract dynamic time calculations (e.g., `Date.now()`, `new Date()`) into a dedicated component or hook that manages the value as state or a memoized constant. This keeps render functions pure, avoids lint violations, and ensures predictable UI updates.
+
+---
+*Original commit message: fix: extract Date.now from render into DaysAgo component (production page lint)*
+
+#### Lesson Learned
+
+**What was fixed:** A `Date.now()` call was moved out of the render path into a `DaysAgo` component to resolve a production page lint error.
+
+**Why it broke:** Calling `Date.now()` directly inside a React component's render function creates a non-deterministic value that changes on every render. This violates React's purity expectations and can cause linting rules (e.g., `no-date-in-render`) to flag it, as it may lead to inconsistent UI or unnecessary re-renders.
+
+**Reusable takeaway:** Extract dynamic time calculations (e.g., `Date.now()`, `new Date()`) into a dedicated component or hook that manages the value as state or a memoized constant. This keeps render functions pure, avoids lint violations, and ensures predictable UI updates.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
