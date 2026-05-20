@@ -7,6 +7,13 @@ import StageBadge from '@/components/StageBadge';
 import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
+function DaysInStage({ updatedAt }: { updatedAt: string }) {
+  const days = Math.floor((new Date().getTime() - new Date(updatedAt).getTime()) / 86_400_000);
+  if (days <= 0) return null;
+  const cls = days >= 7 ? 'text-red-600 font-semibold' : days >= 3 ? 'text-amber-500' : 'text-gray-400';
+  return <span className={`text-xs ${cls}`}>{days}d in stage</span>;
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const quotationNumber = params.quotationNumber as string;
@@ -34,7 +41,6 @@ export default function OrderDetailPage() {
   if (!order) return null;
 
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
-  const daysInStage = Math.floor((Date.now() - new Date(order.updated_at).getTime()) / 86_400_000);
   const escalation = order.escalation_level ?? 0;
 
   return (
@@ -75,9 +81,9 @@ export default function OrderDetailPage() {
               <span className="text-sm text-gray-500">
                 Created {new Date(order.created_at).toLocaleString()}
               </span>
-              <span className={`flex items-center gap-1 text-xs font-medium ${daysInStage >= 7 ? 'text-red-500' : daysInStage >= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-400">
                 <Clock className="h-3.5 w-3.5" />
-                {daysInStage === 0 ? 'Updated today' : `${daysInStage}d in current stage`}
+                <DaysInStage updatedAt={order.updated_at} />
               </span>
               {escalation > 0 && (
                 <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
