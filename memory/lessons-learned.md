@@ -827,3 +827,45 @@ When managing a list with client-side search, always synchronize the search stat
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: auto-update lesson index and lessons-learned
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 880e7fe1e6ab45b5cec5cb15481a08449357d119
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 880e7fe1e6ab45b5cec5cb15481a08449357d119
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Fix:** Auto-updated lesson index and lessons-learned documentation to stay in sync with new lessons.
+
+**Root Cause:** The lesson index and lessons-learned file were manually maintained, causing them to fall out of sync when new lessons were added or existing ones updated. This led to stale or missing references in the documentation.
+
+**Reusable Takeaway:** Automate the synchronization of documentation indexes and summaries with the source of truth (e.g., lesson files). Use a script or CI step to regenerate the index and summary file whenever lessons are added or modified, ensuring documentation always reflects the current state without manual overhead.
+
+---
+*Original commit message: docs: auto-update lesson index and lessons-learned*
+
+#### Lesson Learned
+
+**Fix:** Auto-updated lesson index and lessons-learned documentation to stay in sync with new lessons.
+
+**Root Cause:** The lesson index and lessons-learned file were manually maintained, causing them to fall out of sync when new lessons were added or existing ones updated. This led to stale or missing references in the documentation.
+
+**Reusable Takeaway:** Automate the synchronization of documentation indexes and summaries with the source of truth (e.g., lesson files). Use a script or CI step to regenerate the index and summary file whenever lessons are added or modified, ensuring documentation always reflects the current state without manual overhead.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

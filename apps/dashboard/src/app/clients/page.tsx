@@ -254,8 +254,9 @@ export default function ClientsPage() {
           <Users className="h-5 w-5 text-[#2490ef]" />
           <h1 className="text-lg font-semibold text-gray-900">Client Database</h1>
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-            {clients.length}
+            {searchResults ? filtered.length : clients.length}
           </span>
+          {searching && <span className="text-xs text-gray-400">Searching...</span>}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
