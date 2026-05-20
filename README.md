@@ -38,16 +38,46 @@ The web dashboard provides a full ERPNext-style interface for managing the quota
 
 **Website:** `https://track.abcx124.xyz`
 
-**Deploy:** Push to GitHub → GHCR image auto-builds via GitHub Actions → SSH in and run:
+## Single-Builder Deployment
+
+This repo may be edited by multiple AI coding apps, but production deploys must go through **one builder agent** to avoid mixed Docker image/container state.
+
+Use this from the repo root after code is committed and pushed:
+
+```powershell
+node scripts/single-builder-deploy.mjs
+```
+
+Deploy a specific commit SHA:
+
+```powershell
+node scripts/single-builder-deploy.mjs --sha <commit-sha>
+```
+
+Only sync `.env` and credentials when those secrets actually changed:
+
+```powershell
+node scripts/single-builder-deploy.mjs --sync-secrets
+```
+
+The builder agent enforces:
+
+- clean local git worktree
+- commit exists on a remote branch
+- remote deployment lock at `/opt/quotation-automation/.deploy.lock`
+- exact git archive of the target SHA
+- one-service-at-a-time rebuild/recreate for `api`, `dashboard`, and `telegram-bot`
+- API/dashboard/container health verification
+
+Full details: [`docs/deployment-builder.md`](docs/deployment-builder.md)
+
+**Deprecated manual deploy:** Use only for emergency investigation; do not use when multiple agents are active.
 
 ```bash
 ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111
 cd /opt/quotation-automation
 git fetch origin && git reset --hard origin/master
-docker pull ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest
-docker pull ghcr.io/jpgyap-sudo/workflowautomation/api:latest
-docker pull ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest
-docker-compose down --remove-orphans && docker-compose up -d
+docker-compose ps
 ```
 
 Open:

@@ -26,15 +26,39 @@ ssh -i ~/.ssh/id_ed25519_roo root@100.86.182.7
 
 ### Deploy Steps
 
+**Single-builder rule:** multiple AI coding apps may edit code, but only one builder/deploy agent may release production. Do not run ad-hoc `docker-compose up --build` on the VPS while other agents are active.
+
+Preferred deploy from repo root after the target commit is pushed:
+
+```powershell
+node scripts/single-builder-deploy.mjs
+```
+
+Deploy a specific SHA:
+
+```powershell
+node scripts/single-builder-deploy.mjs --sha <commit-sha>
+```
+
+If secrets changed:
+
+```powershell
+node scripts/single-builder-deploy.mjs --sync-secrets
+```
+
+The builder script deploys an exact git SHA, takes `/opt/quotation-automation/.deploy.lock`, rebuilds/recreates `api`, `dashboard`, and `telegram-bot` one at a time, tags images with the SHA, then verifies API health and dashboard availability.
+
+Manual SSH is for inspection only:
+
 ```bash
 ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111
 cd /opt/quotation-automation
-git fetch origin && git reset --hard origin/master
-docker pull ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest
-docker pull ghcr.io/jpgyap-sudo/workflowautomation/api:latest
-docker pull ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest
-docker-compose down --remove-orphans && docker-compose up -d
+cat .deployed-sha
+docker-compose ps
+curl -fsS http://127.0.0.1:8080/health
 ```
+
+See [`docs/deployment-builder.md`](docs/deployment-builder.md).
 
 ### Wrong VPS (DO NOT USE)
 
