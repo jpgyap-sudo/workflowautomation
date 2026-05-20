@@ -46,11 +46,39 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
     quotation_number: order.quotation_number,
     current_stage: order.current_stage,
     days_since_creation: daysSince(order.created_at),
+    production_started: order.production_started,
+    estimated_production_days: order.estimated_production_days,
   };
 
   try {
     const escalationLevel = await getEscalationLevel(order.id, 'purchasing_pending');
     const daysWaiting = daysSince(order.created_at);
+
+    // If production_started is true and estimated_production_days is set → production is fully tracked, stop reminding
+    if (order.production_started === true && order.estimated_production_days != null) {
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ Production for #${order.quotation_number ?? 'unknown'} has started and estimated at ${order.estimated_production_days} days. No reminder needed.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('purchasing-agent', input, result, 'complete', order.id);
+      return result;
+    }
+
+    // If production_started is true but estimated_production_days is not set → ask about duration
+    if (order.production_started === true && order.estimated_production_days == null) {
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `🏭 Production has started for this order. How long is the estimated production time? (Standard: 4 weeks, or enter custom days)`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('purchasing-agent', input, result, 'needs_review', order.id);
+      return result;
+    }
 
     // If escalated 3+ times, flag for manager attention
     if (escalationLevel >= 3) {
@@ -66,10 +94,10 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
       return result;
     }
 
-    // Normal reminder
+    // production_started is false or null → keep reminding daily
     const result: AgentResult = {
       status: 'needs_review',
-      message: `Has production or purchasing started for this order? It's been ${daysWaiting} days since creation.`,
+      message: `Has production started for this order? It's been ${daysWaiting} days since creation. Please confirm Yes or No.`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,
