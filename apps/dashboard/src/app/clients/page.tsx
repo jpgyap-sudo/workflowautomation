@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useClients } from '@/lib/useApi';
 import type { Client } from '@/lib/api';
 import { createClient, updateClient, deleteClient, searchClients, getClientOrders } from '@/lib/api';
@@ -187,7 +187,15 @@ export default function ClientsPage() {
     }
   }
 
-  async function handleAdd(data: Parameters<typeof createClient>[0]) {
+  async function handleAdd(data: {
+    client_name: string;
+    delivery_address?: string | null;
+    contact_number?: string | null;
+    authorized_receiver_name?: string | null;
+    authorized_receiver_contact?: string | null;
+    notes?: string | null;
+    propagate_to_orders?: boolean;
+  }) {
     setSaving(true);
     try {
       await createClient(data);
@@ -202,7 +210,15 @@ export default function ClientsPage() {
     }
   }
 
-  async function handleEditSave(data: Parameters<typeof updateClient>[1]) {
+  async function handleEditSave(data: {
+    client_name: string;
+    delivery_address?: string | null;
+    contact_number?: string | null;
+    authorized_receiver_name?: string | null;
+    authorized_receiver_contact?: string | null;
+    notes?: string | null;
+    propagate_to_orders?: boolean;
+  }) {
     if (!editingClient) return;
     setSaving(true);
     try {
@@ -313,56 +329,129 @@ export default function ClientsPage() {
                   <th className="px-6 py-3 font-medium text-gray-600">Contact</th>
                   <th className="px-6 py-3 font-medium text-gray-600">Authorized Receiver</th>
                   <th className="px-6 py-3 font-medium text-gray-600">Receiver Contact</th>
+                  <th className="px-6 py-3 font-medium text-gray-600">Orders</th>
                   <th className="px-6 py-3 text-right font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((client) => (
-                  <tr key={client.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">{client.client_name}</td>
-                    <td className="px-6 py-4 text-gray-600">
-                      <div className="flex items-start gap-1.5">
-                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
-                        <span className="max-w-xs truncate">{client.delivery_address ?? '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="h-3.5 w-3.5 text-gray-400" />
-                        <span>{client.contact_number ?? '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      <div className="flex items-center gap-1.5">
-                        <UserCheck className="h-3.5 w-3.5 text-gray-400" />
-                        <span>{client.authorized_receiver_name ?? '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {client.authorized_receiver_contact ?? '—'}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                  <Fragment key={client.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-gray-900">
                         <button
-                          onClick={() => {
-                            setShowForm(false);
-                            setEditingClient(client);
-                          }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                          title="Edit client"
+                          onClick={() => toggleExpanded(client)}
+                          className="mr-2 inline-flex rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                          title="Show details and linked orders"
                         >
-                          <Pencil className="h-4 w-4" />
+                          {expandedClientId === client.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                         </button>
-                        <button
-                          onClick={() => setDeletingClient(client)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                          title="Delete client"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                        {client.client_name}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        <div className="flex items-start gap-1.5">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                          <span className="max-w-xs truncate">{client.delivery_address ?? '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="h-3.5 w-3.5 text-gray-400" />
+                          <span>{client.contact_number ?? '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        <div className="flex items-center gap-1.5">
+                          <UserCheck className="h-3.5 w-3.5 text-gray-400" />
+                          <span>{client.authorized_receiver_name ?? '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {client.authorized_receiver_contact ?? '-'}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        <div className="text-xs">
+                          <span className="font-medium text-gray-800">{client.order_count ?? 0}</span>
+                          <span className="text-gray-400"> total</span>
+                          {(client.active_order_count ?? 0) > 0 && (
+                            <span className="ml-1 rounded-full bg-green-50 px-1.5 py-0.5 text-green-700">
+                              {client.active_order_count} active
+                            </span>
+                          )}
+                          {client.latest_order_at && (
+                            <div className="mt-0.5 text-gray-400">
+                              Last {new Date(client.latest_order_at).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              setShowForm(false);
+                              setEditingClient(client);
+                            }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                            title="Edit client"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setForceDelete(false);
+                              setDeletingClient(client);
+                            }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                            title="Delete client"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedClientId === client.id && (
+                      <tr className="bg-gray-50/60">
+                        <td colSpan={7} className="px-6 py-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</h4>
+                              <p className="rounded-lg bg-white p-3 text-sm text-gray-600">
+                                {client.notes || 'No notes recorded.'}
+                              </p>
+                            </div>
+                            <div>
+                              <h4 className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <FileText className="h-3.5 w-3.5" />
+                                Linked Orders
+                              </h4>
+                              {loadingOrders[client.id] ? (
+                                <p className="rounded-lg bg-white p-3 text-sm text-gray-400">Loading orders...</p>
+                              ) : (clientOrders[client.id]?.length ?? 0) === 0 ? (
+                                <p className="rounded-lg bg-white p-3 text-sm text-gray-400">No linked orders found.</p>
+                              ) : (
+                                <div className="max-h-48 overflow-auto rounded-lg bg-white">
+                                  {clientOrders[client.id].map((order) => (
+                                    <div key={order.id} className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs last:border-0">
+                                      <div>
+                                        <p className="font-medium text-gray-800">{order.quotation_number ?? '-'}</p>
+                                        <p className="text-gray-400">{order.current_stage}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-gray-600">{order.status}</p>
+                                        {order.total_amount != null && (
+                                          <p className="text-gray-400">PHP {Number(order.total_amount).toLocaleString()}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -378,16 +467,33 @@ export default function ClientsPage() {
             <p className="mt-2 text-sm text-gray-600">
               Are you sure you want to delete <strong>{deletingClient.client_name}</strong>? This cannot be undone.
             </p>
+            {(deletingClient.active_order_count ?? 0) > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                This client has <strong>{deletingClient.active_order_count}</strong> active linked order(s).
+                Deleting will unlink the client profile from those orders, while preserving the copied delivery details on each order.
+                <label className="mt-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={forceDelete}
+                    onChange={(e) => setForceDelete(e.target.checked)}
+                  />
+                  I understand — unlink active orders and delete this client.
+                </label>
+              </div>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <button
-                onClick={() => setDeletingClient(null)}
+                onClick={() => {
+                  setForceDelete(false);
+                  setDeletingClient(null);
+                }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                disabled={saving}
+                disabled={saving || ((deletingClient.active_order_count ?? 0) > 0 && !forceDelete)}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {saving ? 'Deleting...' : 'Delete'}
