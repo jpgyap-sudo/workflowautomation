@@ -110,6 +110,33 @@ export async function getOrdersByStage(stage: string): Promise<Order[]> {
   return fetchJson<Order[]>(`/orders/stage/${encodeURIComponent(stage)}`);
 }
 
+export async function updateOrder(id: string, data: {
+  client_name?: string;
+  sales_agent?: string;
+  total_amount?: number;
+  quotation_number?: string;
+  action_token: string;
+}): Promise<Order> {
+  return fetchJson<Order>(`/orders/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteOrder(id: string, actionToken: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/orders/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ action_token: actionToken }),
+  });
+}
+
+export async function verifyOtpForAction(email: string, otp: string): Promise<{ ok: boolean; actionToken: string }> {
+  return fetchJson<{ ok: boolean; actionToken: string }>('/auth/verify-otp-for-action', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
 export async function getStageUpdates(orderId: string): Promise<StageUpdate[]> {
   return fetchJson<StageUpdate[]>(`/orders/${orderId}/stage-updates`);
 }

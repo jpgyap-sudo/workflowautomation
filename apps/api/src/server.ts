@@ -160,6 +160,36 @@ app.post('/auth/verify-otp', async (request, reply) => {
   return reply.send({ ok: true });
 });
 
+// ── OTP for destructive actions (edit/delete) ───────────────────────
+// Verifies OTP and returns a short-lived action token
+app.post('/auth/verify-otp-for-action', async (request, reply) => {
+  const { email, otp } = z.object({ email: z.string().email(), otp: z.string() }).parse(request.body);
+  const key = `otp:${email.toLowerCase()}`;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'OTP service unavailable' });
+  }
+  const raw = await cacheClient.get(key);
+  if (!raw) {
+    return reply.status(400).send({ error: 'OTP expired or not found' });
+  }
+  const stored = JSON.parse(raw) as { otp: string; attempts: number };
+  if (stored.attempts >= OTP_MAX_ATTEMPTS) {
+    await cacheClient.del(key);
+    return reply.status(400).send({ error: 'Too many attempts. Request a new OTP.' });
+  }
+  if (stored.otp !== otp.trim()) {
+    stored.attempts += 1;
+    const ttl = await cacheClient.ttl(key);
+    await cacheClient.setEx(key, ttl > 0 ? ttl : 1, JSON.stringify(stored));
+    return reply.status(400).send({ error: 'Invalid OTP' });
+  }
+  await cacheClient.del(key);
+  // Generate a short-lived action token (valid for 2 minutes)
+  const actionToken = randomUUID();
+  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), verified: true }));
+  return reply.send({ ok: true, actionToken });
+});
+
 // ── Health ──────────────────────────────────────────────────────────
 app.get('/health', async () => {
   const agentHealth = getAgentHealth();
@@ -237,7 +267,87 @@ app.get('/orders/:quotation_number', async (request, reply) => {
   const rows = await query(`SELECT * FROM orders WHERE quotation_number=$1`, [params.quotation_number]);
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
   await cacheSet(cacheKey, rows[0]);
-  return rows[0];
+});
+
+// ── Update Order (requires action token) ────────────────────────────
+const updateOrderSchema = z.object({
+  client_name: z.string().optional(),
+  sales_agent: z.string().optional(),
+  total_amount: z.number().optional(),
+  quotation_number: z.string().optional(),
+  action_token: z.string(),
+});
+
+app.patch('/orders/:id', async (request, reply) => {
+  const params = z.object({ id: z.string() }).parse(request.params);
+  const body = updateOrderSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
+  // Build SET clause dynamically
+  const fields: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (body.client_name !== undefined) { fields.push(`client_name=$${idx++}`); values.push(body.client_name); }
+  if (body.sales_agent !== undefined) { fields.push(`sales_agent=$${idx++}`); values.push(body.sales_agent); }
+  if (body.total_amount !== undefined) { fields.push(`total_amount=$${idx++}`); values.push(body.total_amount); }
+  if (body.quotation_number !== undefined) { fields.push(`quotation_number=$${idx++}`); values.push(body.quotation_number); }
+
+  if (fields.length === 0) {
+    return reply.status(400).send({ error: 'No fields to update' });
+  }
+
+  fields.push(`updated_at=NOW()`);
+  values.push(params.id);
+
+  const rows = await query(
+    `UPDATE orders SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`,
+    values
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  broadcastSSE('order_updated', { id: params.id });
+  return reply.send(rows[0]);
+});
+
+// ── Delete Order (requires action token) ────────────────────────────
+app.delete('/orders/:id', async (request, reply) => {
+  const params = z.object({ id: z.string() }).parse(request.params);
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
+  // Delete related records first
+  await query(`DELETE FROM stage_updates WHERE order_id=$1`, [params.id]);
+  await query(`DELETE FROM order_files WHERE order_id=$1`, [params.id]);
+  await query(`DELETE FROM reminders WHERE order_id=$1`, [params.id]);
+  const rows = await query(`DELETE FROM orders WHERE id=$1 RETURNING *`, [params.id]);
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  broadcastSSE('order_deleted', { id: params.id });
+  return reply.send({ ok: true, deleted: rows[0] });
 });
 
 // ── Stage Updates ───────────────────────────────────────────────────
