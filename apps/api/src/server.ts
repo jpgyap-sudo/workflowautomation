@@ -1814,7 +1814,10 @@ const clientSchema = z.object({
 
 async function autoLinkClientToOrder(orderId: string, clientName: string | null) {
   if (!clientName) return;
-  const clients = await query(`SELECT id FROM clients WHERE client_name ILIKE $1 LIMIT 1`, [clientName.trim()]);
+  const clients = await query(
+    `SELECT id, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact FROM clients WHERE client_name ILIKE $1 LIMIT 1`,
+    [clientName.trim()]
+  );
   if (clients[0]) {
     const client = clients[0];
     await query(

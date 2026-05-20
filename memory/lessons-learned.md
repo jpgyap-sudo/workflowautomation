@@ -158,3 +158,397 @@ When modeling state transitions in workflow automation, always use explicit, sem
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: update lesson index
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d93f89e9af48cdb68076e054a54d77e4fe27f57d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d93f89e9af48cdb68076e054a54d77e4fe27f57d
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The lesson index and lessons-learned documentation were updated to reflect new engineering insights.
+
+**Why it broke:**  
+The previous index was incomplete or outdated, likely missing recent lessons or failing to categorize them properly, which could lead to repeated mistakes or missed learning opportunities.
+
+**Reusable takeaway:**  
+Maintain a living, version-controlled lesson index alongside your codebase. Update it immediately after debugging or completing a feature, not as an afterthought. This prevents knowledge silos and ensures the whole team benefits from hard-won insights.
+
+---
+*Original commit message: docs: update lesson index*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The lesson index and lessons-learned documentation were updated to reflect new engineering insights.
+
+**Why it broke:**  
+The previous index was incomplete or outdated, likely missing recent lessons or failing to categorize them properly, which could lead to repeated mistakes or missed learning opportunities.
+
+**Reusable takeaway:**  
+Maintain a living, version-controlled lesson index alongside your codebase. Update it immediately after debugging or completing a feature, not as an afterthought. This prevents knowledge silos and ensures the whole team benefits from hard-won insights.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: reduce npm memory usage in dashboard Dockerfile — max-old-space-size, maxsockets, prefer-offline
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 185c6f0f3f23f1c8887912d8688451d8298c6e84
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 185c6f0f3f23f1c8887912d8688451d8298c6e84
+**Files:** apps/dashboard/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+Reduced excessive npm memory usage during Docker build of the dashboard app, preventing out-of-memory (OOM) crashes.
+
+**Why it broke:**  
+The default npm behavior in a containerized build environment allowed too many concurrent network sockets and kept aggressive caching, causing memory spikes beyond the container’s limit.
+
+**Reusable takeaway:**  
+For npm installs in Docker builds, explicitly set:  
+- `NODE_OPTIONS="--max-old-space-size=2048"` to cap Node.js heap  
+- `npm config set maxsockets 3` to limit parallel network requests  
+- `--prefer-offline` to reduce network overhead  
+
+This pattern prevents OOM failures in resource-constrained CI/CD or Docker build environments.
+
+---
+*Original commit message: fix: reduce npm memory usage in dashboard Dockerfile — max-old-space-size, maxsockets, prefer-offline*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Reduced excessive npm memory usage during Docker build of the dashboard app, preventing out-of-memory (OOM) crashes.
+
+**Why it broke:**  
+The default npm behavior in a containerized build environment allowed too many concurrent network sockets and kept aggressive caching, causing memory spikes beyond the container’s limit.
+
+**Reusable takeaway:**  
+For npm installs in Docker builds, explicitly set:  
+- `NODE_OPTIONS="--max-old-space-size=2048"` to cap Node.js heap  
+- `npm config set maxsockets 3` to limit parallel network requests  
+- `--prefer-offline` to reduce network overhead  
+
+This pattern prevents OOM failures in resource-constrained CI/CD or Docker build environments.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: use npm install instead of npm ci to reduce memory usage during Docker build
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 214d454148b39ae250b68c118509fd59dcdf654e
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 214d454148b39ae250b68c118509fd59dcdf654e
+**Files:** apps/dashboard/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+Replaced `npm ci` with `npm install` in the Dockerfile to reduce memory usage during the build process.
+
+**Why it broke:**  
+`npm ci` performs a clean, deterministic install that re-downloads all dependencies from scratch, consuming significantly more memory (especially in memory-constrained Docker build environments). This caused out-of-memory (OOM) failures or excessive build times.
+
+**Reusable takeaway:**  
+In Docker builds with limited memory, prefer `npm install` over `npm ci`. While `npm ci` is faster and stricter for CI/CD, `npm install` reuses cached dependencies and uses less memory. Use `npm ci` only when memory is not a constraint or when absolute dependency integrity is required.
+
+---
+*Original commit message: fix: use npm install instead of npm ci to reduce memory usage during Docker build*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Replaced `npm ci` with `npm install` in the Dockerfile to reduce memory usage during the build process.
+
+**Why it broke:**  
+`npm ci` performs a clean, deterministic install that re-downloads all dependencies from scratch, consuming significantly more memory (especially in memory-constrained Docker build environments). This caused out-of-memory (OOM) failures or excessive build times.
+
+**Reusable takeaway:**  
+In Docker builds with limited memory, prefer `npm install` over `npm ci`. While `npm ci` is faster and stricter for CI/CD, `npm install` reuses cached dependencies and uses less memory. Use `npm ci` only when memory is not a constraint or when absolute dependency integrity is required.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add deleteWebhook before bot.launch to prevent 409 Conflict on restart
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 40c0c4f7a26bb4cbc245f3caeb714ab91bfbdfbd
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 40c0c4f7a26bb4cbc245f3caeb714ab91bfbdfbd
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+A 409 Conflict error on bot restart caused by an existing webhook not being deleted before `bot.launch()`.
+
+**Why it broke:**  
+Telegram enforces that only one webhook can be active per bot at a time. On restart, the previous webhook was still registered, so calling `bot.launch()` (which sets a new webhook) triggered a conflict.
+
+**Reusable takeaway:**  
+When initializing a Telegram bot (or any service with exclusive webhook registration), always call `deleteWebhook()` before `bot.launch()` to clear any stale webhook from a previous session. This ensures idempotent restarts and prevents 409 conflicts.
+
+---
+*Original commit message: fix: add deleteWebhook before bot.launch to prevent 409 Conflict on restart*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A 409 Conflict error on bot restart caused by an existing webhook not being deleted before `bot.launch()`.
+
+**Why it broke:**  
+Telegram enforces that only one webhook can be active per bot at a time. On restart, the previous webhook was still registered, so calling `bot.launch()` (which sets a new webhook) triggered a conflict.
+
+**Reusable takeaway:**  
+When initializing a Telegram bot (or any service with exclusive webhook registration), always call `deleteWebhook()` before `bot.launch()` to clear any stale webhook from a previous session. This ensures idempotent restarts and prevents 409 conflicts.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add retry logic with exponential backoff for telegram bot 409 Conflict on launch
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3a27bdca674e14f6daa82017ca08ed7d97ca98b9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3a27bdca674e14f6daa82017ca08ed7d97ca98b9
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Added retry logic with exponential backoff to handle Telegram Bot API 409 Conflict errors during bot launch.
+
+**Why it broke:**  
+When multiple instances of the bot tried to start simultaneously (e.g., during deployment or restart), Telegram’s API rejected the second connection with a 409 Conflict, causing the bot to fail to start.
+
+**Reusable takeaway:**  
+For any service that uses an API with idempotency or session-based conflicts (like Telegram Bot API), implement retry logic with exponential backoff on startup. This prevents transient conflicts from causing permanent failures, especially in distributed or auto-scaled environments.
+
+---
+*Original commit message: fix: add retry logic with exponential backoff for telegram bot 409 Conflict on launch*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added retry logic with exponential backoff to handle Telegram Bot API 409 Conflict errors during bot launch.
+
+**Why it broke:**  
+When multiple instances of the bot tried to start simultaneously (e.g., during deployment or restart), Telegram’s API rejected the second connection with a 409 Conflict, causing the bot to fail to start.
+
+**Reusable takeaway:**  
+For any service that uses an API with idempotency or session-based conflicts (like Telegram Bot API), implement retry logic with exponential backoff on startup. This prevents transient conflicts from causing permanent failures, especially in distributed or auto-scaled environments.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add bot.telegram.callApi('close') before launch to release Telegram polling lock
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8d1d3ee7e9f92c053c418acbf68ce263372a8a68
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8d1d3ee7e9f92c053c418acbf68ce263372a8a68
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Added `bot.telegram.callApi('close')` before bot launch to release the Telegram polling lock.
+
+**Why it broke:**  
+When the bot restarted, the previous polling session’s lock remained active on Telegram’s server. The new instance tried to start polling while the old lock was still held, causing a conflict that prevented the bot from connecting.
+
+**Reusable takeaway:**  
+Before reinitializing a long-polling service (especially with Telegram bots), explicitly close the previous polling session to release server-side locks. This prevents connection conflicts during restarts. Always clean up resources (e.g., close, disconnect, or stop) before re-launching to ensure a fresh, conflict-free state.
+
+---
+*Original commit message: fix: add bot.telegram.callApi('close') before launch to release Telegram polling lock*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added `bot.telegram.callApi('close')` before bot launch to release the Telegram polling lock.
+
+**Why it broke:**  
+When the bot restarted, the previous polling session’s lock remained active on Telegram’s server. The new instance tried to start polling while the old lock was still held, causing a conflict that prevented the bot from connecting.
+
+**Reusable takeaway:**  
+Before reinitializing a long-polling service (especially with Telegram bots), explicitly close the previous polling session to release server-side locks. This prevents connection conflicts during restarts. Always clean up resources (e.g., close, disconnect, or stop) before re-launching to ensure a fresh, conflict-free state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: handle 429 rate-limit in bot launch retry, make close() non-fatal
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b11d9b9fa16de27fb01daf05837acfc78fa4e83f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b11d9b9fa16de27fb01daf05837acfc78fa4e83f
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+The bot launch retry logic now handles HTTP 429 (rate-limit) errors gracefully, and a `close()` failure no longer crashes the bot.
+
+**Why it broke:**  
+The original code treated all launch errors as fatal, including transient 429 responses from Telegram's API. Additionally, `close()` was assumed to always succeed, causing unhandled rejections when it failed (e.g., due to network issues).
+
+**Reusable takeaway:**  
+When implementing retry logic for external API calls, always distinguish between transient errors (e.g., 429, 5xx) and permanent failures. Use exponential backoff for rate-limited responses. For cleanup operations like `close()`, wrap them in try-catch or use `.catch()` to prevent unhandled rejections from crashing the process. This pattern applies to any service with rate limits or unreliable teardown steps.
+
+---
+*Original commit message: fix: handle 429 rate-limit in bot launch retry, make close() non-fatal*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The bot launch retry logic now handles HTTP 429 (rate-limit) errors gracefully, and a `close()` failure no longer crashes the bot.
+
+**Why it broke:**  
+The original code treated all launch errors as fatal, including transient 429 responses from Telegram's API. Additionally, `close()` was assumed to always succeed, causing unhandled rejections when it failed (e.g., due to network issues).
+
+**Reusable takeaway:**  
+When implementing retry logic for external API calls, always distinguish between transient errors (e.g., 429, 5xx) and permanent failures. Use exponential backoff for rate-limited responses. For cleanup operations like `close()`, wrap them in try-catch or use `.catch()` to prevent unhandled rejections from crashing the process. This pattern applies to any service with rate limits or unreliable teardown steps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: use getUpdates offset=-1 to reset Telegram polling lock instead of close
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 38db4952395dda30fa429617ec3d91fb5eda6c57
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 38db4952395dda30fa429617ec3d91fb5eda6c57
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Replaced `bot.close()` with `bot.getUpdates({ offset: -1 })` to reset the Telegram polling lock.
+
+**Why it broke:**  
+Calling `close()` terminated the bot instance entirely, requiring a full re-initialization and losing the polling state. This caused race conditions and prevented clean reconnection.
+
+**Reusable takeaway:**  
+To reset a long-polling connection without destroying the client, use `getUpdates({ offset: -1 })`. This acknowledges all pending updates and resets the server-side offset, effectively clearing the lock without terminating the session. Avoid `close()` unless you intend to permanently shut down the connection.
+
+---
+*Original commit message: fix: use getUpdates offset=-1 to reset Telegram polling lock instead of close*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Replaced `bot.close()` with `bot.getUpdates({ offset: -1 })` to reset the Telegram polling lock.
+
+**Why it broke:**  
+Calling `close()` terminated the bot instance entirely, requiring a full re-initialization and losing the polling state. This caused race conditions and prevented clean reconnection.
+
+**Reusable takeaway:**  
+To reset a long-polling connection without destroying the client, use `getUpdates({ offset: -1 })`. This acknowledges all pending updates and resets the server-side offset, effectively clearing the lock without terminating the session. Avoid `close()` unless you intend to permanently shut down the connection.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
