@@ -1280,3 +1280,51 @@ When using `/stage-updates` API endpoint, always pass `quotation_number` (not `o
 bot-automation, gap-fix, stage-advance, delivery-flow, callback-handler
 
 ---
+
+### Lesson: [workflowautomation] feat: delivery page gap fixes + delivery_date column + SuperRoo sync
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2294c51d6608913f481fba0db0bb34f0250df766
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 2294c51d6608913f481fba0db0bb34f0250df766
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A gap in the delivery page logic was resolved, a new `delivery_date` column was added to the database, and synchronization with the SuperRoo system was implemented.
+
+**Why it broke:**  
+The delivery page previously lacked a dedicated `delivery_date` field, causing inconsistencies when syncing delivery statuses with SuperRoo. The missing column led to data mismatches and unreliable state transitions.
+
+**Reusable takeaway:**  
+When integrating external systems, ensure all shared data fields (e.g., timestamps, status flags) are explicitly modeled in your database schema. A missing column can silently break sync logic. Always align schema changes with API contract updates before deployment.
+
+---
+*Original commit message: feat: delivery page gap fixes + delivery_date column + SuperRoo sync*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A gap in the delivery page logic was resolved, a new `delivery_date` column was added to the database, and synchronization with the SuperRoo system was implemented.
+
+**Why it broke:**  
+The delivery page previously lacked a dedicated `delivery_date` field, causing inconsistencies when syncing delivery statuses with SuperRoo. The missing column led to data mismatches and unreliable state transitions.
+
+**Reusable takeaway:**  
+When integrating external systems, ensure all shared data fields (e.g., timestamps, status flags) are explicitly modeled in your database schema. A missing column can silently break sync logic. Always align schema changes with API contract updates before deployment.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
