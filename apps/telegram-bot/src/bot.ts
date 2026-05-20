@@ -960,6 +960,19 @@ bot.action('vision:extract_yes', async (ctx) => {
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
+
+  // Show the image back to the user so they can see what's being analyzed
+  try {
+    const imgBuffer = Buffer.from(imageBase64, 'base64');
+    if (/^image\//.test(mimeType)) {
+      await ctx.replyWithPhoto({ source: imgBuffer, filename: fileName });
+    } else {
+      await ctx.replyWithDocument({ source: imgBuffer, filename: fileName });
+    }
+  } catch {
+    // If sending the image fails (e.g., too large), just proceed with text
+  }
+
   await ctx.editMessageText(`🤖 Analyzing with AI Vision...`);
 
   botLog({
@@ -1290,6 +1303,19 @@ bot.action('vision:retry_extract', async (ctx) => {
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
+
+  // Show the image back to the user so they can see what's being re-analyzed
+  try {
+    const imgBuffer = Buffer.from(imageBase64, 'base64');
+    if (/^image\//.test(mimeType)) {
+      await ctx.replyWithPhoto({ source: imgBuffer, filename: fileName });
+    } else {
+      await ctx.replyWithDocument({ source: imgBuffer, filename: fileName });
+    }
+  } catch {
+    // If sending the image fails (e.g., too large), just proceed with text
+  }
+
   await ctx.editMessageText(`🤖 Retrying AI Vision analysis...`);
 
   botLog({
