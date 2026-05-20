@@ -1121,3 +1121,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: add inventory_arrived and balance_due callback handlers + lesson updates
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3986b65b4454ccba2a55fbb61f489ca632908265
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 3986b65b4454ccba2a55fbb61f489ca632908265
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Added two new callback handlers (`inventory_arrived`, `balance_due`) to the workflow automation system, enabling automated responses to inventory receipt and payment-due events.
+
+**Why it broke:**  
+The system previously lacked handlers for these two critical business events. Without them, workflows would stall when inventory arrived or a balance became due, requiring manual intervention or causing missed deadlines.
+
+**Reusable takeaway:**  
+When designing event-driven workflows, anticipate and implement handlers for all lifecycle events—not just the starting or ending ones. Missing mid-process events (like inventory arrival or payment due) creates silent failures that break automation reliability. Always map the full event chain before coding handlers.
+
+---
+*Original commit message: feat: add inventory_arrived and balance_due callback handlers + lesson updates*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added two new callback handlers (`inventory_arrived`, `balance_due`) to the workflow automation system, enabling automated responses to inventory receipt and payment-due events.
+
+**Why it broke:**  
+The system previously lacked handlers for these two critical business events. Without them, workflows would stall when inventory arrived or a balance became due, requiring manual intervention or causing missed deadlines.
+
+**Reusable takeaway:**  
+When designing event-driven workflows, anticipate and implement handlers for all lifecycle events—not just the starting or ending ones. Missing mid-process events (like inventory arrival or payment due) creates silent failures that break automation reliability. Always map the full event chain before coding handlers.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
