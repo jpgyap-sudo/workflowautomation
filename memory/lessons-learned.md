@@ -612,3 +612,99 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: auto-generated lesson for telegram bot 409 fix v6 (30 retries, no resetPollingLock)
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 460096953e80cfe360bd333da97a9bd82246972b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 460096953e80cfe360bd333da97a9bd82246972b
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A Telegram bot that previously failed after 30 retries due to a `409 Conflict` error (likely from duplicate webhook/polling conflicts). The fix added 30 retries and explicitly disabled `resetPollingLock` to avoid re-triggering the conflict.
+
+**Why it broke:**  
+The bot’s polling mechanism was resetting its lock on each retry, causing Telegram to reject the connection as a duplicate session (409 error). The lock reset created a race condition where multiple polling instances competed.
+
+**Reusable takeaway:**  
+When handling Telegram bot retries for 409 errors, **disable `resetPollingLock`** to prevent re-initializing the polling session on each retry. Instead, rely on a fixed number of retries (e.g., 30) without resetting the lock, allowing the existing session to recover gracefully. This avoids the conflict loop and ensures stable reconnection.
+
+---
+*Original commit message: docs: auto-generated lesson for telegram bot 409 fix v6 (30 retries, no resetPollingLock)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A Telegram bot that previously failed after 30 retries due to a `409 Conflict` error (likely from duplicate webhook/polling conflicts). The fix added 30 retries and explicitly disabled `resetPollingLock` to avoid re-triggering the conflict.
+
+**Why it broke:**  
+The bot’s polling mechanism was resetting its lock on each retry, causing Telegram to reject the connection as a duplicate session (409 error). The lock reset created a race condition where multiple polling instances competed.
+
+**Reusable takeaway:**  
+When handling Telegram bot retries for 409 errors, **disable `resetPollingLock`** to prevent re-initializing the polling session on each retry. Instead, rely on a fixed number of retries (e.g., 30) without resetting the lock, allowing the existing session to recover gracefully. This avoids the conflict loop and ensures stable reconnection.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add bot.telegram.callApi('close') before launch to release Telegram polling lock
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f811128b071c49fd4a133c03b7d18658f9767878
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f811128b071c49fd4a133c03b7d18658f9767878
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Added `bot.telegram.callApi('close')` before launching the bot to release the Telegram polling lock.
+
+**Why it broke:**  
+When the bot restarted (e.g., after a crash or deployment), the previous polling session was not properly closed. Telegram’s server still held the lock for the previous session, causing the new bot instance to fail to start polling — leading to startup hangs or connection errors.
+
+**Reusable takeaway:**  
+Always explicitly close or release long-lived external connections (like Telegram polling locks, WebSocket sessions, or database listeners) before reinitializing. This prevents resource contention and ensures clean state on restart. In Telegram bots, call `bot.telegram.callApi('close')` before `bot.launch()` to avoid polling lock conflicts.
+
+---
+*Original commit message: fix: add bot.telegram.callApi('close') before launch to release Telegram polling lock*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added `bot.telegram.callApi('close')` before launching the bot to release the Telegram polling lock.
+
+**Why it broke:**  
+When the bot restarted (e.g., after a crash or deployment), the previous polling session was not properly closed. Telegram’s server still held the lock for the previous session, causing the new bot instance to fail to start polling — leading to startup hangs or connection errors.
+
+**Reusable takeaway:**  
+Always explicitly close or release long-lived external connections (like Telegram polling locks, WebSocket sessions, or database listeners) before reinitializing. This prevents resource contention and ensures clean state on restart. In Telegram bots, call `bot.telegram.callApi('close')` before `bot.launch()` to avoid polling lock conflicts.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
