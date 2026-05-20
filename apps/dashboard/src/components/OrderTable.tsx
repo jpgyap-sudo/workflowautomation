@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Order } from '@/lib/api';
 import StageBadge from './StageBadge';
+import { Pencil, Trash2 } from 'lucide-react';
 
 interface OrderTableProps {
   orders: Order[];
@@ -10,6 +11,8 @@ interface OrderTableProps {
   showAmount?: boolean;
   showDeposit?: boolean;
   showBalance?: boolean;
+  onEdit?: (order: Order) => void;
+  onDelete?: (order: Order) => void;
 }
 
 function money(value: unknown) {
@@ -31,6 +34,8 @@ export default function OrderTable({
   showAmount = true,
   showDeposit = true,
   showBalance = true,
+  onEdit,
+  onDelete,
 }: OrderTableProps) {
   if (orders.length === 0) {
     return (
@@ -134,12 +139,32 @@ export default function OrderTable({
                 </div>
               </dl>
 
-              <Link
-                href={detailHref}
-                className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-[#2490ef] px-3 py-2 text-sm font-medium text-[#2490ef]"
-              >
-                View details
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={detailHref}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-[#2490ef] px-3 py-2 text-sm font-medium text-[#2490ef]"
+                >
+                  View details
+                </Link>
+                {onEdit && (
+                  <button
+                    onClick={() => onEdit(order)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-[#2490ef]"
+                    title="Edit order"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    onClick={() => onDelete(order)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-red-50 hover:text-red-500"
+                    title="Delete order"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </article>
           );
         })}
@@ -223,9 +248,29 @@ export default function OrderTable({
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
-                  <Link href={`/orders/${order.quotation_number ?? order.id}`} className="text-xs font-medium text-[#2490ef] hover:underline">
-                    View
-                  </Link>
+                  <div className="flex items-center gap-1">
+                    <Link href={`/orders/${order.quotation_number ?? order.id}`} className="text-xs font-medium text-[#2490ef] hover:underline">
+                      View
+                    </Link>
+                    {onEdit && (
+                      <button
+                        onClick={() => onEdit(order)}
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                        title="Edit order"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button
+                        onClick={() => onDelete(order)}
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                        title="Delete order"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
