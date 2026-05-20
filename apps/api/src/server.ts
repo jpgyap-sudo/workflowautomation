@@ -466,6 +466,159 @@ app.post('/deposits', async (request, reply) => {
   return reply.send({ ok: true, quotation_number: body.quotation_number, amount: body.amount });
 });
 
+// ── Deposit Slip Matching ────────────────────────────────────────────
+
+/**
+ * POST /deposits/match-and-record
+ *
+ * Called when a deposit slip image is sent to the Telegram bot.
+ * 1. Extracts the deposit amount from the image (already done by vision)
+ * 2. Finds all orders that have NO deposit yet (deposit_paid = FALSE)
+ * 3. For each order, computes expected deposit = 50% of total_amount
+ * 4. Matches the extracted amount against expected deposits with 20-30% tolerance
+ * 5. Returns the best matching candidate(s) so the bot can ask for confirmation
+ *
+ * If a client_name is provided (user typed it after saying No), it looks up
+ * the order by client name and records the deposit directly.
+ */
+const matchDepositSchema = z.object({
+  amount: z.number().positive(),
+  client_name: z.string().optional(),
+});
+
+app.post('/deposits/match-and-record', async (request, reply) => {
+  const body = matchDepositSchema.parse(request.body);
+
+  // If client_name is provided, find order by client name and record deposit
+  if (body.client_name) {
+    const orders = await query<any>(
+      `SELECT id, quotation_number, client_name, total_amount, current_stage
+       FROM orders
+       WHERE client_name ILIKE $1 AND deposit_paid = FALSE AND status = 'active'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [`%${body.client_name}%`]
+    );
+
+    if (orders.length === 0) {
+      return reply.code(404).send({
+        ok: false,
+        error: `No active order found for client "${body.client_name}" without a deposit.`,
+      });
+    }
+
+    const order = orders[0];
+    const expectedDeposit = order.total_amount != null
+      ? Number(order.total_amount) / 2
+      : null;
+
+    // Record the deposit
+    await query(
+      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, updated_at=NOW() WHERE id=$2`,
+      [body.amount, order.id]
+    );
+
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
+      [order.id, `Deposit of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+    );
+
+    // Complete any deposit reminders
+    await query(
+      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+      [order.id]
+    );
+
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+
+    return reply.send({
+      ok: true,
+      matched: true,
+      quotation_number: order.quotation_number,
+      client_name: order.client_name,
+      amount: body.amount,
+      expected_deposit: expectedDeposit,
+    });
+  }
+
+  // No client_name — find candidate orders without deposit
+  const candidates = await query<any>(
+    `SELECT id, quotation_number, client_name, total_amount, current_stage
+     FROM orders
+     WHERE deposit_paid = FALSE AND status = 'active' AND total_amount IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 50`
+  );
+
+  if (candidates.length === 0) {
+    return reply.send({
+      ok: true,
+      matched: false,
+      candidates: [],
+      message: 'No active orders found without a deposit.',
+    });
+  }
+
+  // Compute expected deposit (50% of total) and check match with 20-30% tolerance
+  const DISCREPANCY_RANGE = 0.30; // 30% tolerance
+  const depositAmount = body.amount;
+
+  const scored = candidates
+    .map((o: any) => {
+      const total = Number(o.total_amount);
+      const expectedDeposit = total / 2;
+      const diff = Math.abs(depositAmount - expectedDeposit);
+      const discrepancy = diff / expectedDeposit; // 0.0 = perfect, 1.0 = 100% off
+
+      return {
+        id: o.id,
+        quotation_number: o.quotation_number,
+        client_name: o.client_name,
+        total_amount: total,
+        expected_deposit: expectedDeposit,
+        discrepancy,
+        within_range: discrepancy <= DISCREPANCY_RANGE,
+      };
+    })
+    .filter((o: any) => o.within_range)
+    .sort((a: any, b: any) => a.discrepancy - b.discrepancy); // best match first
+
+  if (scored.length === 0) {
+    // No close match found — return top candidates anyway so user can pick
+    const topCandidates = candidates.slice(0, 5).map((o: any) => ({
+      quotation_number: o.quotation_number,
+      client_name: o.client_name,
+      total_amount: Number(o.total_amount),
+      expected_deposit: Number(o.total_amount) / 2,
+    }));
+
+    return reply.send({
+      ok: true,
+      matched: false,
+      candidates: topCandidates,
+      message: `Deposit amount ₱${depositAmount.toLocaleString()} does not closely match any order. Please specify the client name.`,
+    });
+  }
+
+  // Return best match(es) — top 3 within range
+  const matches = scored.slice(0, 3).map((o: any) => ({
+    quotation_number: o.quotation_number,
+    client_name: o.client_name,
+    total_amount: o.total_amount,
+    expected_deposit: o.expected_deposit,
+    discrepancy: Math.round(o.discrepancy * 100),
+  }));
+
+  return reply.send({
+    ok: true,
+    matched: true,
+    candidates: matches,
+    deposit_amount: depositAmount,
+    message: `Found ${matches.length} order(s) matching deposit of ₱${depositAmount.toLocaleString()}.`,
+  });
+});
+
 // ── Pay Balance ──────────────────────────────────────────────────────
 
 const payBalanceSchema = z.object({
