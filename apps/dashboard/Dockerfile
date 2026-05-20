@@ -3,8 +3,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 COPY package*.json ./
-RUN npm ci
+RUN npm config set maxsockets 2 && npm ci --prefer-offline
 COPY . .
 RUN npm run build
 
