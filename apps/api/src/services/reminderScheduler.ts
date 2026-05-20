@@ -172,6 +172,22 @@ export async function processDueReminders(): Promise<number> {
           { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId}:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'inventory_arrived') {
+      // Inventory arrived: ask if ready for delivery / balance payment
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${orderId}:${quotationNumber}` },
+          { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'balance_due') {
+      // Balance due: ask if client has paid
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Yes, Client Paid', callback_data: `balance:paid:${orderId}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `balance:not_paid:${orderId}:${quotationNumber}` },
+        ],
+      ]);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);
