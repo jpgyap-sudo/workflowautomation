@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -77,13 +77,37 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   );
 }
 
+function OrderPaymentInfo({ order }: { order: Order }) {
+  const totalAmount = Number(order.total_amount ?? 0);
+  const depositAmount = Number(order.deposit_amount ?? 0);
+  const balance = totalAmount - depositAmount;
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+      {order.total_amount != null && (
+        <span>Total: ₱{totalAmount.toLocaleString()}</span>
+      )}
+      {order.deposit_amount != null && (
+        <span>Deposit: ₱{depositAmount.toLocaleString()}</span>
+      )}
+      {order.total_amount != null && (
+        <span className={balance > 0 ? 'font-medium text-violet-600' : 'text-green-600'}>
+          Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()} due`}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function CollectionPage() {
+  const { data: inventoryArrivedOrders = [], isLoading: loadingArrived, mutate: mutateArrived } = useOrdersByStage('inventory_arrived');
+  const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
   const { data: counteredOrders = [], isLoading: loadingCountered, mutate: mutateCountered } = useOrdersByStage('countered');
   const { data: paymentReceivedOrders = [], isLoading: loadingReceived, mutate: mutateReceived } = useOrdersByStage('payment_received');
   const { data: paymentConfirmedOrders = [], isLoading: loadingConfirmed, mutate: mutateConfirmed } = useOrdersByStage('payment_confirmed');
   const { data: completedOrders = [], isLoading: loadingCompleted, mutate: mutateCompleted } = useOrdersByStage('completed');
 
-  const loading = loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted;
+  const loading = loadingArrived && loadingBalanceDue && loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted;
 
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -100,6 +124,14 @@ export default function CollectionPage() {
     description: string;
     pendingAction: 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  // Special case (delivery exception) state
+  const [exceptionModal, setExceptionModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    notes: string;
+    granting: boolean;
+  }>({ open: false, order: null, notes: '', granting: false });
 
   function handleEdit(order: Order) {
     setEditingOrder(order);
@@ -127,6 +159,8 @@ export default function CollectionPage() {
     try {
       await updateOrder(pending.orderId, { ...pending.data, action_token: actionToken });
       setEditingOrder(null);
+      mutateArrived();
+      mutateBalanceDue();
       mutateCountered();
       mutateReceived();
       mutateConfirmed();
@@ -155,6 +189,8 @@ export default function CollectionPage() {
     try {
       await deleteOrder(deletingOrder.id, actionToken);
       setDeletingOrder(null);
+      mutateArrived();
+      mutateBalanceDue();
       mutateCountered();
       mutateReceived();
       mutateConfirmed();
@@ -174,10 +210,125 @@ export default function CollectionPage() {
     }
   }
 
-  if (loading && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0) {
+  // Special case handlers
+  function openExceptionModal(order: Order) {
+    setExceptionModal({ open: true, order, notes: order.delivery_exception_notes ?? '', granting: false });
+  }
+
+  function openRevokeExceptionModal(order: Order) {
+    setExceptionModal({ open: true, order, notes: '', granting: false });
+  }
+
+  async function handleGrantException() {
+    if (!exceptionModal.order) return;
+    setExceptionModal((prev) => ({ ...prev, granting: true }));
+    try {
+      await grantDeliveryException(exceptionModal.order.id, exceptionModal.notes || undefined);
+      setExceptionModal({ open: false, order: null, notes: '', granting: false });
+      mutateArrived();
+      mutateBalanceDue();
+    } catch (err: any) {
+      alert('Failed to grant delivery exception: ' + (err.message ?? 'Unknown error'));
+      setExceptionModal((prev) => ({ ...prev, granting: false }));
+    }
+  }
+
+  async function handleRevokeException(order: Order) {
+    try {
+      await revokeDeliveryException(order.id);
+      mutateArrived();
+      mutateBalanceDue();
+      mutateCountered();
+    } catch (err: any) {
+      alert('Failed to revoke delivery exception: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+      </div>
+    );
+  }
+
+  function renderOrderRow(order: Order, mutates: (() => void)[]) {
+    const totalAmount = Number(order.total_amount ?? 0);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const balance = totalAmount - depositAmount;
+    const hasException = order.delivery_exception === true;
+
+    return (
+      <div key={order.id}>
+        <div className="flex items-center justify-between px-6 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+              {hasException && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                  <ShieldAlert className="h-3 w-3" />
+                  Special Case
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+            {order.sales_agent && (
+              <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+            )}
+            <OrderPaymentInfo order={order} />
+            {hasException && order.delivery_exception_notes && (
+              <p className="mt-1 text-[11px] italic text-amber-600">
+                Note: {order.delivery_exception_notes}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <StageBadge stage={order.current_stage} />
+            <div className="flex items-center gap-1">
+              {/* Special Case button */}
+              {!hasException && (
+                <button
+                  onClick={() => openExceptionModal(order)}
+                  className="rounded-lg p-1.5 text-amber-400 hover:bg-amber-50 hover:text-amber-600"
+                  title="Grant delivery exception (special case)"
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                </button>
+              )}
+              {hasException && (
+                <button
+                  onClick={() => handleRevokeException(order)}
+                  className="rounded-lg p-1.5 text-green-500 hover:bg-green-50 hover:text-green-700"
+                  title="Revoke delivery exception"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                onClick={() => handleEdit(order)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                title="Edit order"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => handleDeleteClick(order)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                title="Delete order"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+        {editingOrder?.id === order.id && (
+          <EditForm
+            order={order}
+            onSave={handleEditSave}
+            onCancel={handleCancelEdit}
+            saving={saving}
+          />
+        )}
       </div>
     );
   }
@@ -191,12 +342,52 @@ export default function CollectionPage() {
           <div>
             <h3 className="text-sm font-semibold text-emerald-800">Counter & Collection Workflow</h3>
             <p className="mt-1 text-xs text-emerald-700">
+              <strong>Policy:</strong> Payment is required <em>before</em> delivery, unless a Special Case exception is granted.
               Collection team sends deposit slip/proof of payment → Updates via{' '}
               <code className="rounded bg-emerald-100 px-1">/payment QTN-2026-001 confirmed</code>
               {' '}→ When confirmed, order becomes completed → Verification notification sent
             </p>
           </div>
         </div>
+      </div>
+
+      {/* For Payment Before Delivery (Inventory Arrived + Balance Due) */}
+      <div className="rounded-xl border border-amber-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-amber-200 px-6 py-4">
+          <Scale className="h-4 w-4 text-amber-500" />
+          <h2 className="text-base font-semibold text-gray-800">For Payment Before Delivery</h2>
+          <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            {(inventoryArrivedOrders.length + balanceDueOrders.length)}
+          </span>
+        </div>
+        {inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders awaiting payment before delivery</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {/* Inventory Arrived sub-section */}
+            {inventoryArrivedOrders.length > 0 && (
+              <>
+                <div className="bg-amber-50/50 px-6 py-2">
+                  <p className="text-xs font-medium text-amber-700">
+                    📦 Inventory Arrived — Payment needed before delivery can proceed
+                  </p>
+                </div>
+                {inventoryArrivedOrders.map((order) => renderOrderRow(order, [mutateArrived, mutateBalanceDue]))}
+              </>
+            )}
+            {/* Balance Due sub-section */}
+            {balanceDueOrders.length > 0 && (
+              <>
+                <div className="bg-violet-50/50 px-6 py-2">
+                  <p className="text-xs font-medium text-violet-700">
+                    ⚖️ Balance Due — Payment needed before delivery can proceed
+                  </p>
+                </div>
+                {balanceDueOrders.map((order) => renderOrderRow(order, [mutateBalanceDue]))}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Countered */}
@@ -212,46 +403,7 @@ export default function CollectionPage() {
           <div className="py-12 text-center text-sm text-gray-400">No countered orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {counteredOrders.map((order) => (
-              <div key={order.id}>
-                <div className="flex items-center justify-between px-6 py-4">
-                  <div>
-                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                    {order.sales_agent && (
-                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StageBadge stage={order.current_stage} />
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleEdit(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                        title="Edit order"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                        title="Delete order"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
+            {counteredOrders.map((order) => renderOrderRow(order, [mutateCountered]))}
           </div>
         )}
       </div>
@@ -269,46 +421,7 @@ export default function CollectionPage() {
           <div className="py-12 text-center text-sm text-gray-400">No pending payment confirmations</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {paymentReceivedOrders.map((order) => (
-              <div key={order.id}>
-                <div className="flex items-center justify-between px-6 py-4">
-                  <div>
-                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                    {order.sales_agent && (
-                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StageBadge stage={order.current_stage} />
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleEdit(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                        title="Edit order"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                        title="Delete order"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
+            {paymentReceivedOrders.map((order) => renderOrderRow(order, [mutateReceived]))}
           </div>
         )}
       </div>
@@ -326,46 +439,7 @@ export default function CollectionPage() {
           <div className="py-12 text-center text-sm text-gray-400">No confirmed payments</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {paymentConfirmedOrders.map((order) => (
-              <div key={order.id}>
-                <div className="flex items-center justify-between px-6 py-4">
-                  <div>
-                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                    {order.sales_agent && (
-                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StageBadge stage={order.current_stage} />
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleEdit(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                        title="Edit order"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                        title="Delete order"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
+            {paymentConfirmedOrders.map((order) => renderOrderRow(order, [mutateConfirmed]))}
           </div>
         )}
       </div>
@@ -383,49 +457,56 @@ export default function CollectionPage() {
           <div className="py-12 text-center text-sm text-gray-400">No completed orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {completedOrders.map((order) => (
-              <div key={order.id}>
-                <div className="flex items-center justify-between px-6 py-4">
-                  <div>
-                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                    {order.sales_agent && (
-                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StageBadge stage={order.current_stage} />
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleEdit(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                        title="Edit order"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                        title="Delete order"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
+            {completedOrders.map((order) => renderOrderRow(order, [mutateCompleted]))}
           </div>
         )}
       </div>
+
+      {/* Special Case Exception Modal */}
+      {exceptionModal.open && exceptionModal.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center gap-3">
+              <ShieldAlert className="h-6 w-6 text-amber-500" />
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Grant Delivery Exception</h3>
+                <p className="text-xs text-gray-500">
+                  {exceptionModal.order.quotation_number ?? '—'} — {exceptionModal.order.client_name ?? 'Unknown'}
+                </p>
+              </div>
+            </div>
+            <p className="mb-4 text-sm text-gray-600">
+              This will mark the order as a <strong>Special Case</strong>, allowing delivery to proceed
+              without payment. Please provide a reason for the exception.
+            </p>
+            <div className="mb-4">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Reason / Notes</label>
+              <textarea
+                value={exceptionModal.notes}
+                onChange={(e) => setExceptionModal((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="e.g. Long-time client, payment guaranteed within 7 days"
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setExceptionModal({ open: false, order: null, notes: '', granting: false })}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGrantException}
+                disabled={exceptionModal.granting || !exceptionModal.notes.trim()}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {exceptionModal.granting ? 'Granting...' : 'Grant Exception'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* OTP Modal */}
       <OtpModal

@@ -1,5 +1,6 @@
 import { runQuotationChecker } from '../agents/quotationChecker.js';
 import { runPurchasingAgent } from '../agents/purchasingAgent.js';
+import { runProductionAgent } from '../agents/productionAgent.js';
 import { runInventoryAgent } from '../agents/inventoryAgent.js';
 import { runDeliveryAgent } from '../agents/deliveryAgent.js';
 import { runCollectionAgent } from '../agents/collectionAgent.js';
@@ -26,7 +27,13 @@ const AGENTS: AgentSchedule[] = [
     name: 'purchasing-agent',
     run: runPurchasingAgent,
     intervalMs: 60 * 60 * 1000,     // Every hour
-    description: 'Tracks purchasing/production status',
+    description: 'Tracks purchasing status for orders waiting to start production',
+  },
+  {
+    name: 'production-agent',
+    run: runProductionAgent,
+    intervalMs: 30 * 60 * 1000,     // Every 30 minutes — Hermes Claw adaptive frequency
+    description: 'Monitors production progress with adaptive reminders that tighten as deadlines approach',
   },
   {
     name: 'inventory-agent',

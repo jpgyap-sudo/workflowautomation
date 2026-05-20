@@ -7,6 +7,7 @@ import {
   Bot,
   Search,
   ShoppingCart,
+  Factory,
   Package,
   Truck,
   DollarSign,
@@ -56,14 +57,25 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     icon: ShoppingCart,
     color: 'border-amber-200 bg-amber-50',
     headingColor: 'text-amber-700',
-    description: 'Monitors purchasing progress and sends reminders',
-    monitors: ['purchasing_pending', 'production_confirmed', 'en_route'],
+    description: 'Monitors purchasing pending orders and sends daily reminders until production starts',
+    monitors: ['purchasing_pending'],
     triggers: [
       { from: 'purchasing_pending', to: 'production_confirmed', condition: 'Team replies /produce yes' },
+    ],
+    notificationGroup: 'Purchasing',
+  },
+  {
+    name: 'production-agent',
+    icon: Factory,
+    color: 'border-indigo-200 bg-indigo-50',
+    headingColor: 'text-indigo-700',
+    description: 'Hermes Claw — adaptive-frequency reminders that tighten as production deadlines approach (daily → 12h → 4h → 2h)',
+    monitors: ['production_confirmed', 'en_route', 'partial_production'],
+    triggers: [
       { from: 'production_confirmed', to: 'en_route', condition: 'Production finished via /finish-production' },
       { from: 'en_route', to: 'inventory_arrived', condition: 'En route confirmed with arrival days' },
     ],
-    notificationGroup: 'Purchasing',
+    notificationGroup: 'Production',
   },
   {
     name: 'inventory-agent',
@@ -120,6 +132,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
 const AGENT_ICONS: Record<string, typeof Bot> = {
   'quotation-checker': Search,
   'purchasing-agent': ShoppingCart,
+  'production-agent': Factory,
   'inventory-agent': Package,
   'delivery-agent': Truck,
   'collection-agent': DollarSign,
@@ -129,6 +142,7 @@ const AGENT_ICONS: Record<string, typeof Bot> = {
 const AGENT_COLORS: Record<string, string> = {
   'quotation-checker': 'border-blue-200 bg-blue-50',
   'purchasing-agent': 'border-amber-200 bg-amber-50',
+  'production-agent': 'border-indigo-200 bg-indigo-50',
   'inventory-agent': 'border-cyan-200 bg-cyan-50',
   'delivery-agent': 'border-purple-200 bg-purple-50',
   'collection-agent': 'border-emerald-200 bg-emerald-50',

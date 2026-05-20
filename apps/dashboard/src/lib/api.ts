@@ -34,6 +34,11 @@ export interface Order {
   contact_number: string | null;
   authorized_receiver_name: string | null;
   authorized_receiver_contact: string | null;
+  partial_production_items: string[] | null;
+  delivery_exception: boolean | null;
+  delivery_exception_notes: string | null;
+  delivery_exception_granted_at: string | null;
+  delivery_exception_granted_by: string | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -175,6 +180,10 @@ export async function getOrdersByStage(stage: string): Promise<Order[]> {
   return fetchJson<Order[]>(`/orders/stage/${encodeURIComponent(stage)}`);
 }
 
+export async function getOrdersPartialProduction(): Promise<Order[]> {
+  return fetchJson<Order[]>('/orders/partial-production');
+}
+
 export async function updateOrder(id: string, data: {
   client_name?: string;
   sales_agent?: string;
@@ -267,6 +276,26 @@ export async function verifyOtpForAction(email: string, otp: string): Promise<{ 
 
 export async function getStageUpdates(orderId: string): Promise<StageUpdate[]> {
   return fetchJson<StageUpdate[]>(`/orders/${orderId}/stage-updates`);
+}
+
+export async function grantDeliveryException(
+  orderId: string,
+  notes?: string,
+  grantedBy?: string,
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>('/orders/delivery-exception', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId, notes, granted_by: grantedBy }),
+  });
+}
+
+export async function revokeDeliveryException(
+  orderId: string,
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>('/orders/revoke-delivery-exception', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId }),
+  });
 }
 
 // Stage display configuration

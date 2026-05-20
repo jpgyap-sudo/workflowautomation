@@ -49,6 +49,7 @@ const ORDER_LIST_SELECT = `
   o.production_finished, o.production_finished_at, o.delivery_estimated_days,
   o.client_id, o.delivery_address, o.contact_number,
   o.authorized_receiver_name, o.authorized_receiver_contact,
+  o.partial_production_items,
   o.created_at, o.updated_at
 `;
 
@@ -276,6 +277,26 @@ app.get('/orders/pending', async () => {
   return rows;
 });
 
+app.get('/orders/partial-production', async (request, reply) => {
+  const cacheKey = 'orders:partial_production';
+  const cached = await cacheGet<object[]>(cacheKey);
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.current_stage = 'purchasing_pending'
+       AND o.partial_production_items IS NOT NULL
+       AND o.partial_production_items != '[]'::jsonb
+       AND o.status = 'active'
+     GROUP BY o.id
+     ORDER BY o.created_at ASC`
+  );
+  await cacheSet(cacheKey, rows);
+  return rows;
+});
+
 app.get('/orders/stage/:stage', async (request, reply) => {
   const params = z.object({ stage: z.string() }).parse(request.params);
   const cacheKey = `orders:stage:${params.stage}`;
@@ -318,6 +339,8 @@ const updateOrderSchema = z.object({
   sales_agent: z.string().optional(),
   total_amount: z.number().optional(),
   quotation_number: z.string().optional(),
+  delivery_exception: z.boolean().optional(),
+  delivery_exception_notes: z.string().nullable().optional(),
   action_token: z.string(),
 });
 
@@ -344,6 +367,8 @@ app.patch('/orders/:id', async (request, reply) => {
   if (body.sales_agent !== undefined) { fields.push(`sales_agent=$${idx++}`); values.push(body.sales_agent); }
   if (body.total_amount !== undefined) { fields.push(`total_amount=$${idx++}`); values.push(body.total_amount); }
   if (body.quotation_number !== undefined) { fields.push(`quotation_number=$${idx++}`); values.push(body.quotation_number); }
+  if (body.delivery_exception !== undefined) { fields.push(`delivery_exception=$${idx++}`); values.push(body.delivery_exception); }
+  if (body.delivery_exception_notes !== undefined) { fields.push(`delivery_exception_notes=$${idx++}`); values.push(body.delivery_exception_notes); }
 
   if (fields.length === 0) {
     return reply.status(400).send({ error: 'No fields to update' });
@@ -509,6 +534,99 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: updatedOrder });
 });
+
+// ── Partial Production ───────────────────────────────────────────────
+
+const partialProductionSchema = z.object({
+  missing_items: z.array(z.string().min(1)).min(1),
+});
+
+app.post('/orders/:id/partial-production', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = partialProductionSchema.parse(request.body);
+
+  const existingRows = await query(
+    `SELECT id, quotation_number, client_name FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!existingRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = existingRows[0];
+
+  await query(
+    `UPDATE orders SET partial_production_items = $1, updated_at = NOW() WHERE id = $2`,
+    [JSON.stringify(body.missing_items), id]
+  );
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'purchasing_pending', 'partial', $2, 'system')`,
+    [id, `Partial production: items pending — ${body.missing_items.join(', ')}`]
+  );
+
+  const groupChatId = process.env.PURCHASING_GROUP_ID;
+  if (groupChatId) {
+    const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = order.client_name ?? 'Unknown';
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, 'partial_production', $2, $3, 'daily', $4, 'active')
+       ON CONFLICT (order_id, stage) DO UPDATE SET
+         group_chat_id=EXCLUDED.group_chat_id,
+         message=EXCLUDED.message,
+         frequency=EXCLUDED.frequency,
+         next_run_at=EXCLUDED.next_run_at,
+         status='active',
+         escalation_level=0,
+         updated_at=NOW()`,
+      [id, groupChatId,
+       `Partial production check for ${ref} (${client}). Some items are still pending production.`,
+       tomorrow.toISOString()]
+    );
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true });
+});
+
+const updatePartialItemsSchema = z.object({
+  remaining_items: z.array(z.string()),
+});
+
+app.post('/orders/:id/partial-production-items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = updatePartialItemsSchema.parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET partial_production_items = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+    [JSON.stringify(body.remaining_items), id]
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = rows[0];
+
+  if (body.remaining_items.length === 0) {
+    await query(
+      `UPDATE reminders SET status='completed', updated_at=NOW()
+       WHERE order_id=$1 AND stage='partial_production' AND status='active'`,
+      [id]
+    );
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'purchasing_pending', 'partial_complete', 'All partial production items confirmed produced', 'system')`,
+      [id]
+    );
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, remaining_items: body.remaining_items });
+});
+
+// ────────────────────────────────────────────────────────────────────────
 
 const reportProductionStatusSchema = z.object({
   on_time: z.boolean(),
@@ -1105,6 +1223,71 @@ app.post('/pay-balance', async (request, reply) => {
     expected_balance: expectedBalance,
     overpayment: overpayment,
   });
+});
+
+// ── Grant Delivery Exception (Special Case) ─────────────────────────
+const deliveryExceptionSchema = z.object({
+  order_id: z.string(),
+  notes: z.string().optional(),
+  granted_by: z.string().optional(),
+});
+
+app.post('/orders/delivery-exception', async (request, reply) => {
+  const body = deliveryExceptionSchema.parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET
+      delivery_exception = TRUE,
+      delivery_exception_notes = $2,
+      delivery_exception_granted_at = NOW(),
+      delivery_exception_granted_by = $3,
+      updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [body.order_id, body.notes ?? null, body.granted_by ?? null]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [body.order_id, 'delivery_exception', 'granted',
+     `Delivery exception granted. Notes: ${body.notes ?? 'None provided'}`,
+     body.granted_by ?? null]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  broadcastSSE('order_updated', { id: body.order_id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Revoke Delivery Exception ───────────────────────────────────────
+app.post('/orders/revoke-delivery-exception', async (request, reply) => {
+  const body = z.object({ order_id: z.string() }).parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET
+      delivery_exception = FALSE,
+      delivery_exception_notes = NULL,
+      delivery_exception_granted_at = NULL,
+      delivery_exception_granted_by = NULL,
+      updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [body.order_id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks)
+     VALUES ($1, $2, $3, $4)`,
+    [body.order_id, 'delivery_exception', 'revoked', 'Delivery exception revoked.']
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  broadcastSSE('order_updated', { id: body.order_id });
+  return reply.send({ ok: true, order: rows[0] });
 });
 
 app.get('/orders/:order_id/stage-updates', async (request, reply) => {

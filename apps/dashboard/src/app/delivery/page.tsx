@@ -6,7 +6,7 @@ import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -259,21 +259,41 @@ export default function DeliveryPage() {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
+              const hasException = order.delivery_exception === true;
               return (
                 <div key={order.id}>
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
-                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        {hasException && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />
+                            Special Case
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                       {order.sales_agent && (
                         <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
                       )}
+                      {hasException && order.delivery_exception_notes && (
+                        <p className="mt-1 text-[11px] italic text-amber-600">
+                          Exception: {order.delivery_exception_notes}
+                        </p>
+                      )}
                       <OrderDeliveryInfo order={order} />
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-violet-600">
-                        ₱{balance.toLocaleString()} due
-                      </span>
+                      {hasException ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          Exception Granted
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-violet-600">
+                          ₱{balance.toLocaleString()} due
+                        </span>
+                      )}
                       <StageBadge stage={order.current_stage} />
                       <div className="flex items-center gap-1">
                         <button
@@ -325,11 +345,20 @@ export default function DeliveryPage() {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
+              const hasException = order.delivery_exception === true;
               return (
                 <div key={order.id}>
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
-                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        {hasException && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />
+                            Special Case
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                       {order.sales_agent && (
                         <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
@@ -337,6 +366,11 @@ export default function DeliveryPage() {
                       {order.total_amount != null && (
                         <p className="mt-0.5 text-xs text-gray-400">
                           Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      {hasException && order.delivery_exception_notes && (
+                        <p className="mt-0.5 text-[11px] italic text-amber-600">
+                          Exception: {order.delivery_exception_notes}
                         </p>
                       )}
                       <OrderDeliveryInfo order={order} />

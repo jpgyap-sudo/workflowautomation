@@ -15,6 +15,7 @@ interface Reminder {
   escalation_level: number;
   quotation_number?: string;
   client_name?: string;
+  partial_production_items?: string[];
 }
 
 /**
@@ -73,7 +74,8 @@ export async function processDueReminders(): Promise<number> {
 
   // Fetch all active reminders where next_run_at <= now
   const dueReminders = await query(
-    `SELECT r.*, o.quotation_number, o.client_name
+    `SELECT r.*, o.quotation_number, o.client_name,
+            COALESCE(o.partial_production_items, '[]'::jsonb) AS partial_production_items
      FROM reminders r
      JOIN orders o ON o.id = r.order_id
      WHERE r.status = 'active'
@@ -111,6 +113,7 @@ export async function processDueReminders(): Promise<number> {
       countered: '🔄 Countered',
       payment_received: '💰 Payment Received',
       payment_confirmed: '💵 Payment Confirmed',
+      partial_production: '🏭 Partial Production',
     };
 
     const stageLabel = stageLabels[reminder.stage] ?? reminder.stage;
@@ -154,6 +157,19 @@ export async function processDueReminders(): Promise<number> {
         [
           { text: '✅ Yes', callback_data: `en_route:yes:${orderId}:${quotationNumber}` },
           { text: '❌ No', callback_data: `en_route:no:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'partial_production') {
+      // Partial production: list pending items and offer update button
+      const items: string[] = Array.isArray(reminder.partial_production_items)
+        ? reminder.partial_production_items
+        : [];
+      const itemsList = items.length > 0
+        ? `\n\nItems still pending production:\n${items.map(i => `• ${i}`).join('\n')}`
+        : '\n\nNo items listed — all may have been produced.';
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text + itemsList, [
+        [
+          { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId}:${quotationNumber}` },
         ],
       ]);
     } else {

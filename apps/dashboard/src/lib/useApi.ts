@@ -73,6 +73,10 @@ export function useOrdersByStage(stage: string) {
   );
 }
 
+export function usePartialProductionOrders() {
+  return useSWR<Order[]>('/orders/partial-production', fetcher, SWR_CONFIG);
+}
+
 // ── Hook: Single Order Detail ────────────────────────────────────────
 export function useOrder(quotationNumber: string | undefined) {
   return useSWR<OrderDetail>(

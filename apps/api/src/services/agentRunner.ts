@@ -75,6 +75,7 @@ export function getGroupChatId(agentName: string): string | null {
   const envMap: Record<string, string> = {
     'quotation-checker': 'QUOTATION_GROUP_CHAT_ID',
     'purchasing-agent': 'PURCHASING_GROUP_CHAT_ID',
+    'production-agent': 'PRODUCTION_GROUP_CHAT_ID',
     'inventory-agent': 'INVENTORY_GROUP_CHAT_ID',
     'delivery-agent': 'DELIVERY_GROUP_CHAT_ID',
     'collection-agent': 'COLLECTION_GROUP_CHAT_ID',

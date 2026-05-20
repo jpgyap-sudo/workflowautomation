@@ -52,6 +52,8 @@ const ALLOWED_GROUP_IDS = new Set<string>(
     process.env.COLLECTION_GROUP_ID,
     process.env.ESCALATION_GROUP_CHAT_ID,
     process.env.ESCALATION_GROUP_ID,
+    process.env.PRODUCTION_GROUP_CHAT_ID,
+    process.env.PRODUCTION_GROUP_ID,
   ].filter((v): v is string => Boolean(v))
 );
 
@@ -292,7 +294,10 @@ type UserStep =
   // En route flow
   | { action: 'awaiting_en_route'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_arrival_days'; orderId: string; quotationNumber: string }
-  | { action: 'awaiting_client_search' };
+  | { action: 'awaiting_client_search' }
+  // Partial production flow
+  | { action: 'awaiting_partial_missing_items'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_partial_items_update'; orderId: string; quotationNumber: string; remainingItems: string[] };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -751,6 +756,7 @@ bot.on(message('text'), async (ctx) => {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('✅ Yes, started', `produce:yes:${quotationNumber}`)],
+            [Markup.button.callback('⚠️ Partial — some items started', `produce:partial:${quotationNumber}`)],
             [Markup.button.callback('⏳ Not yet', `produce:no:${quotationNumber}`)],
             [Markup.button.callback('❌ Cancel', 'action:cancel')],
           ]),
@@ -1328,6 +1334,81 @@ Midpoint and due reminders are now scheduled.`,
       break;
     }
 
+    // ── Partial Production — enter missing items ────────────────────
+    case 'awaiting_partial_missing_items': {
+      const { orderId, quotationNumber } = session.step;
+      const items = text.replace(/\r/g, '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+      if (items.length === 0) {
+        await ctx.reply(
+          '❌ No items entered. Please list the missing items (comma-separated or one per line).',
+          { parse_mode: 'Markdown', ...cancelButton() }
+        );
+        return;
+      }
+      try {
+        await postJson(`/orders/${orderId}/partial-production`, { missing_items: items });
+        resetStep(chatId);
+        const list = items.map(i => `• ${i}`).join('\n');
+        await ctx.reply(
+          `⚠️ *Partial Production Noted — ${quotationNumber}*\n\nItems still pending:\n${list}\n\nA daily reminder will track these items until all are produced.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── Partial Production — update which items are now done ────────
+    case 'awaiting_partial_items_update': {
+      const { orderId, quotationNumber, remainingItems } = session.step;
+      const raw = text.trim().toLowerCase();
+
+      let nowDone: string[];
+      let newRemaining: string[];
+
+      if (raw === 'all') {
+        nowDone = [...remainingItems];
+        newRemaining = [];
+      } else {
+        const inputItems = text.replace(/\r/g, '').split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+        nowDone = remainingItems.filter(item =>
+          inputItems.some(input => item.toLowerCase().includes(input) || input.includes(item.toLowerCase()))
+        );
+        newRemaining = remainingItems.filter(item => !nowDone.includes(item));
+      }
+
+      if (nowDone.length === 0) {
+        const list = remainingItems.map(i => `• ${i}`).join('\n');
+        await ctx.reply(
+          `❌ Couldn't match any items. Still pending:\n${list}\n\nPlease type the exact item names, or type \`all\` if all are done.`,
+          { parse_mode: 'Markdown', ...cancelButton() }
+        );
+        return;
+      }
+
+      try {
+        await postJson(`/orders/${orderId}/partial-production-items`, { remaining_items: newRemaining });
+        resetStep(chatId);
+        const doneList = nowDone.map(i => `✅ ${i}`).join('\n');
+        if (newRemaining.length === 0) {
+          await ctx.reply(
+            `🎉 *All Items Produced — ${quotationNumber}*\n\n${doneList}\n\nAll pending items have been confirmed produced! Daily reminders have been stopped.`,
+            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+          );
+        } else {
+          const remainList = newRemaining.map(i => `• ${i}`).join('\n');
+          await ctx.reply(
+            `✅ *Updated — ${quotationNumber}*\n\nMarked as produced:\n${doneList}\n\nStill pending:\n${remainList}\n\nThe daily reminder will continue tracking these items.`,
+            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+          );
+        }
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
     default:
       // Do NOT reset — preserve active flow. Show guidance instead.
       await ctx.reply(
@@ -1373,6 +1454,73 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
       `✅ Production started for *${quotationNumber}*.\n\nEnter the estimated timeline (e.g., \`10 days\`):`,
       { parse_mode: 'Markdown', ...cancelButton() }
     );
+  }
+});
+
+// Partial production: ask for missing items
+bot.action(/^produce:partial:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `produce:partial:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    setStep(chatId, { action: 'awaiting_partial_missing_items', orderId: order.id, quotationNumber });
+    await ctx.editMessageText(
+      `⚠️ *Partial Production — ${quotationNumber}*\n\nWhich items are NOT yet produced or ordered?\n\nList them comma-separated or one per line:\n\nExample:\n\`chairs, tables, shelves\``,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+  }
+});
+
+// Partial production: update which items are now done (from daily reminder button)
+bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `partial_production:update:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const remainingItems: string[] = Array.isArray(order.partial_production_items)
+      ? order.partial_production_items
+      : [];
+
+    if (remainingItems.length === 0) {
+      resetStep(chatId);
+      await ctx.editMessageText(
+        `✅ All items are already marked as produced for *${quotationNumber}*.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
+    const list = remainingItems.map(i => `• ${i}`).join('\n');
+    setStep(chatId, { action: 'awaiting_partial_items_update', orderId, quotationNumber, remainingItems });
+    await ctx.editMessageText(
+      `📝 *Update Items — ${quotationNumber}*\n\nCurrently pending:\n${list}\n\nWhich items have been produced? (comma or newline separated, or type \`all\` if all are done):`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
   }
 });
 
