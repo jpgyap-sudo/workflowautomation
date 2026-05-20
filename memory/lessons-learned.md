@@ -1064,3 +1064,18 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [shared-context] global JSON for cross-AI-tool context sharing (SuperRoo, Claude Code, Kim Code, Codex)
+
+#### Task Summary
+Created `shared-context.json` (git-ignored) and `scripts/query-context.mjs` for SuperRoo, Claude Code, Kim Code, and Codex extensions to share project context, activity logs, and lessons across sessions. The JSON file contains project metadata, tech stack, stage flow, deployment info, activity log, lessons array, and per-agent instructions. The query script supports `--key`, `--path`, `--last`, `--search`, `--add-log`, and `--add-lesson` modes.
+
+#### Lesson Learned
+- `*.json` is gitignored in this repo, so `shared-context.json` stays local — perfect for cross-tool context without polluting git history.
+- Each AI tool should contribute to both `activity_log` (what was done) and `lessons` (what was learned) arrays.
+- The query script (`node scripts/query-context.mjs`) makes it easy for any tool to programmatically extract information without parsing JSON manually.
+- The `agent_instructions` section tells each tool (SuperRoo, Claude Code, Kim Code, Codex) how to interact with the project and the learning layer.
+- Cross-referencing `memory/lessons-learned.md` in the `lessons` array ensures the SuperRoo learning layer is respected by all tools.
+
+#### Tags
+cross-tool, shared-context, json, query-script, learning-layer, gitignore
