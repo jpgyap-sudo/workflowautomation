@@ -2,8 +2,8 @@
 
 import { Suspense } from 'react';
 import { useState, useRef, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { ScanEye, Upload, FileText, User, DollarSign, Hash, Loader2, CheckCircle, XCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { ScanEye, Upload, FileText, User, DollarSign, Hash, Loader2, CheckCircle, XCircle, AlertCircle, ExternalLink, Clock, Image as ImageIcon, Eye } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
@@ -40,10 +40,19 @@ interface ShareData {
   raw_text: string;
 }
 
+interface UploadSummary {
+  token: string;
+  file_name: string;
+  type: 'quotation' | 'payment' | 'unknown';
+  confidence: 'high' | 'medium' | 'low';
+  created_at: number;
+}
+
 type Step = 'idle' | 'extracting' | 'review' | 'creating' | 'done' | 'error';
 
 function VisionPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>('idle');
   const [preview, setPreview] = useState<string | null>(null);
@@ -52,6 +61,8 @@ function VisionPageContent() {
   const [error, setError] = useState<string>('');
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
   const [loadingShare, setLoadingShare] = useState(false);
+  const [recentUploads, setRecentUploads] = useState<UploadSummary[]>([]);
+  const [loadingUploads, setLoadingUploads] = useState(false);
 
   // Editable fields after extraction
   const [quotationNumber, setQuotationNumber] = useState('');
@@ -104,6 +115,25 @@ function VisionPageContent() {
         })
         .finally(() => setLoadingShare(false));
     });
+  }, [searchParams]);
+
+  // Load recent uploads when no token is present
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token) return; // Don't load list when viewing a specific share
+
+    setLoadingUploads(true);
+    fetch(`${API_BASE}/vision/uploads`)
+      .then((res) => res.json())
+      .then((data: { ok: boolean; uploads: UploadSummary[] }) => {
+        if (data.ok) {
+          setRecentUploads(data.uploads);
+        }
+      })
+      .catch(() => {
+        // Silently fail — the upload area is still usable
+      })
+      .finally(() => setLoadingUploads(false));
   }, [searchParams]);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -242,6 +272,10 @@ function VisionPageContent() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  function handleViewUpload(token: string) {
+    router.push(`/vision?token=${token}`);
+  }
+
   function getConfidenceColor(confidence: string) {
     switch (confidence) {
       case 'high': return 'text-green-600 bg-green-50 border-green-200';
@@ -251,17 +285,28 @@ function VisionPageContent() {
     }
   }
 
+  function formatTime(ts: number) {
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 48) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
+
+  const hasToken = !!searchParams.get('token');
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white">
-          <ScanEye className="h-5 w-5" />
-        </div>
+          <ScanEye className="h-5 w-5" /></div>
         <div>
           <h1 className="text-lg font-semibold text-gray-900">AI Vision Upload</h1>
           <p className="text-xs text-gray-500">
-            {searchParams.get('token')
+            {hasToken
               ? 'Review data extracted from Telegram — edit and create the order'
               : 'Upload a screenshot — AI extracts the details and creates the order'}
           </p>
@@ -276,42 +321,91 @@ function VisionPageContent() {
         </div>
       )}
 
-      {/* Upload Area */}
-      {step === 'idle' && !loadingShare && (
-        <div className="space-y-4">
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-6 py-16 transition-colors hover:border-[#2490ef] hover:bg-blue-50/50"
-          >
-            <Upload className="mb-4 h-10 w-10 text-gray-400" />
-            <p className="text-sm font-medium text-gray-700">Click to upload a screenshot</p>
-            <p className="mt-1 text-xs text-gray-400">PNG, JPG, WEBP — quotation screenshots, order confirmations</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-          {preview && (
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview} alt="Uploaded preview" className="max-h-80 w-full rounded-lg bg-gray-50 object-contain" />
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span className="truncate text-xs text-gray-500">{fileName}</span>
-                <button
-                  type="button"
-                  onClick={handleExtract}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9]"
-                >
-                  <ScanEye className="h-4 w-4" />
-                  Analyze image
-                </button>
+      {/* Recent Uploads List (shown when no token) */}
+      {!hasToken && !loadingShare && (
+        <>
+          {/* Upload Area */}
+          {step === 'idle' && (
+            <div className="space-y-4">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-6 py-16 transition-colors hover:border-[#2490ef] hover:bg-blue-50/50"
+              >
+                <Upload className="mb-4 h-10 w-10 text-gray-400" />
+                <p className="text-sm font-medium text-gray-700">Click to upload a screenshot</p>
+                <p className="mt-1 text-xs text-gray-400">PNG, JPG, WEBP — quotation screenshots, order confirmations</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
               </div>
+              {preview && (
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={preview} alt="Uploaded preview" className="max-h-80 w-full rounded-lg bg-gray-50 object-contain" />
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="truncate text-xs text-gray-500">{fileName}</span>
+                    <button
+                      type="button"
+                      onClick={handleExtract}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9]"
+                    >
+                      <ScanEye className="h-4 w-4" />
+                      Analyze image
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </div>
+
+          {/* Recent Uploads Section */}
+          {loadingUploads ? (
+            <div className="flex items-center justify-center rounded-xl border border-gray-200 bg-white py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+            </div>
+          ) : recentUploads.length > 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white">
+              <div className="border-b border-gray-100 px-4 py-3">
+                <h2 className="text-sm font-semibold text-gray-800">Recent Uploads from Telegram</h2>
+                <p className="text-xs text-gray-400">Data persists for 48 hours — click to review and create orders</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {recentUploads.map((upload) => (
+                  <button
+                    key={upload.token}
+                    onClick={() => handleViewUpload(upload.token)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-50">
+                      <ImageIcon className="h-4 w-4 text-purple-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-800">{upload.file_name}</p>
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-400">
+                        <Clock className="h-3 w-3" />
+                        <span>{formatTime(upload.created_at)}</span>
+                        <span className="text-gray-300">·</span>
+                        <span className="capitalize">{upload.type}</span>
+                        <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                          upload.confidence === 'high' ? 'bg-green-50 text-green-600' :
+                          upload.confidence === 'medium' ? 'bg-amber-50 text-amber-600' :
+                          'bg-red-50 text-red-600'
+                        }`}>
+                          {upload.confidence}
+                        </span>
+                      </div>
+                    </div>
+                    <Eye className="h-4 w-4 shrink-0 text-gray-300" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
 
       {/* Preview */}

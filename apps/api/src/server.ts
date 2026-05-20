@@ -701,33 +701,9 @@ app.post('/vision/extract', async (request, reply) => {
 });
 
 // ── Vision Share Endpoints ──────────────────────────────────────────
-// In-memory store for extracted vision data shared from Telegram bot
-// to the dashboard GUI. Data expires after 30 minutes.
-
-interface VisionShareEntry {
-  image_base64: string;
-  mime_type: string;
-  file_name: string;
-  extracted: Record<string, unknown>;
-  type: 'quotation' | 'payment' | 'unknown';
-  confidence: 'high' | 'medium' | 'low';
-  raw_text: string;
-  created_at: number;
-}
-
-const visionShares = new Map<string, VisionShareEntry>();
-
-const VISION_SHARE_TTL = 30 * 60 * 1000; // 30 minutes
-
-// Periodic cleanup of expired shares
-setInterval(() => {
-  const now = Date.now();
-  for (const [token, entry] of visionShares) {
-    if (now - entry.created_at > VISION_SHARE_TTL) {
-      visionShares.delete(token);
-    }
-  }
-}, 60_000);
+// Database-backed store for extracted vision data shared from Telegram bot
+// to the dashboard GUI. Data persists for 48 hours and survives API restarts.
+// This replaces the previous in-memory Map which had only 30min TTL.
 
 const visionShareSchema = z.object({
   image_base64: z.string().min(1),
@@ -739,24 +715,77 @@ const visionShareSchema = z.object({
   raw_text: z.string(),
 });
 
+// POST /vision/share — Store extracted vision data and return a share token
 app.post('/vision/share', async (request, reply) => {
   const body = visionShareSchema.parse(request.body);
   const token = randomUUID();
-  visionShares.set(token, {
-    ...body,
-    created_at: Date.now(),
-  });
+  await query(
+    `INSERT INTO vision_uploads (token, image_base64, mime_type, file_name, extracted, type, confidence, raw_text)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [token, body.image_base64, body.mime_type, body.file_name,
+     JSON.stringify(body.extracted), body.type, body.confidence, body.raw_text]
+  );
   return { ok: true, token };
 });
 
+// GET /vision/share/:token — Retrieve a specific vision upload by token
 app.get('/vision/share/:token', async (request, reply) => {
   const params = z.object({ token: z.string().uuid() }).parse(request.params);
-  const entry = visionShares.get(params.token);
-  if (!entry) {
+  const rows = await query<any>(
+    `SELECT image_base64, mime_type, file_name, extracted, type, confidence, raw_text, created_at
+     FROM vision_uploads
+     WHERE token = $1 AND expires_at > NOW()`,
+    [params.token]
+  );
+  if (rows.length === 0) {
     return reply.code(404).send({ ok: false, error: 'Share not found or expired' });
   }
-  return { ok: true, ...entry };
+  const row = rows[0];
+  return {
+    ok: true,
+    image_base64: row.image_base64,
+    mime_type: row.mime_type,
+    file_name: row.file_name,
+    extracted: row.extracted,
+    type: row.type,
+    confidence: row.confidence,
+    raw_text: row.raw_text,
+    created_at: new Date(row.created_at).getTime(),
+  };
 });
+
+// GET /vision/uploads — List recent vision uploads (for the Vision Upload tab)
+app.get('/vision/uploads', async () => {
+  const rows = await query<any>(
+    `SELECT token, file_name, type, confidence, created_at
+     FROM vision_uploads
+     WHERE expires_at > NOW()
+     ORDER BY created_at DESC
+     LIMIT 50`
+  );
+  return {
+    ok: true,
+    uploads: rows.map((r: any) => ({
+      token: r.token,
+      file_name: r.file_name,
+      type: r.type,
+      confidence: r.confidence,
+      created_at: new Date(r.created_at).getTime(),
+    })),
+  };
+});
+
+// Periodic cleanup of expired vision uploads (runs every 10 minutes)
+setInterval(async () => {
+  try {
+    const result = await query('DELETE FROM vision_uploads WHERE expires_at <= NOW()');
+    if (result.length > 0) {
+      console.log(`[vision] Cleaned up ${result.length} expired upload(s)`);
+    }
+  } catch (err) {
+    console.error('[vision] Cleanup error:', err);
+  }
+}, 600_000);
 
 // ── Agent Endpoints ─────────────────────────────────────────────────
 
