@@ -73,7 +73,7 @@ services:
       GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET}
       GOOGLE_DRIVE_OAUTH_TOKEN_PATH: ${GOOGLE_DRIVE_OAUTH_TOKEN_PATH}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-http://localhost:3000}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-https://track.abcx124.xyz}
     volumes:
       - ./credentials:/app/credentials:ro
     depends_on:
