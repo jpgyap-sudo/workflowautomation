@@ -267,6 +267,7 @@ app.get('/orders/:quotation_number', async (request, reply) => {
   const rows = await query(`SELECT * FROM orders WHERE quotation_number=$1`, [params.quotation_number]);
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
   await cacheSet(cacheKey, rows[0]);
+  return rows[0];
 });
 
 // ── Update Order (requires action token) ────────────────────────────
