@@ -1169,3 +1169,51 @@ When designing event-driven workflows, anticipate and implement handlers for all
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: sync lesson index
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5e864234c4d696499c18d95b7e6a5954dd130639
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5e864234c4d696499c18d95b7e6a5954dd130639
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The lesson index files (`lesson-index.jsonl` and `lessons-learned.md`) were out of sync, causing inconsistent references between structured and human-readable lesson records.
+
+**Why it broke:**  
+Manual updates to one index file were not propagated to the other. The two files serve different purposes (machine-readable JSONL vs. human-readable Markdown) but must remain consistent for the workflow automation to correctly retrieve and display lessons.
+
+**Reusable takeaway:**  
+When maintaining dual-format indexes (e.g., machine + human), enforce a single source of truth or automate synchronization. Manual dual-update is error-prone; use a script or CI hook to regenerate one index from the other after every change.
+
+---
+*Original commit message: chore: sync lesson index*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The lesson index files (`lesson-index.jsonl` and `lessons-learned.md`) were out of sync, causing inconsistent references between structured and human-readable lesson records.
+
+**Why it broke:**  
+Manual updates to one index file were not propagated to the other. The two files serve different purposes (machine-readable JSONL vs. human-readable Markdown) but must remain consistent for the workflow automation to correctly retrieve and display lessons.
+
+**Reusable takeaway:**  
+When maintaining dual-format indexes (e.g., machine + human), enforce a single source of truth or automate synchronization. Manual dual-update is error-prone; use a script or CI hook to regenerate one index from the other after every change.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

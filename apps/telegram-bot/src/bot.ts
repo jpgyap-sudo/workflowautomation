@@ -2941,6 +2941,74 @@ bot.on(['document', 'photo'], async (ctx) => {
     const fileBuffer = Buffer.from(await response.arrayBuffer());
     imageBase64 = fileBuffer.toString('base64');
 
+    // Check if user is in balance proof photo flow
+    if (session.step.action === 'awaiting_balance_proof_photo') {
+      const { orderId, quotationNumber } = session.step;
+
+      // For images, call vision API to extract payment details
+      const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
+      if (isProcessable) {
+        await ctx.reply(`🔍 Scanning proof of payment for *${quotationNumber}*...`, { parse_mode: 'Markdown' });
+
+        try {
+          // Call vision API to extract payment info
+          const visionResult: any = await postJson('/vision/extract', {
+            image_base64: imageBase64,
+            mime_type: mimeType,
+            mode: 'payment',
+          });
+
+          if (visionResult?.amount && visionResult?.amount > 0) {
+            // Record the balance payment
+            const payResult: any = await postJson('/pay-balance', {
+              quotation_number: quotationNumber,
+              amount: visionResult.amount,
+              payment_date: visionResult.date ?? null,
+              updated_by: from,
+            });
+
+            resetStep(chatId);
+
+            let msg = `✅ *Balance Payment Recorded!*\n\n`;
+            msg += `Order: *${quotationNumber}*\n`;
+            msg += `Amount: ₱${Number(visionResult.amount).toLocaleString()}`;
+            if (visionResult.date) {
+              msg += `\nDate: ${visionResult.date}`;
+            }
+            if (payResult.overpayment > 0) {
+              msg += `\n⚠️ Overpayment of ₱${Number(payResult.overpayment).toLocaleString()}`;
+            }
+            msg += `\n\n🚚 You can now schedule delivery using the /deliverydate command.`;
+
+            await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+          } else {
+            // Vision couldn't extract amount — ask user to enter manually
+            setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+            await ctx.reply(
+              `⚠️ Could not automatically detect the payment amount from the image.\n\n` +
+              `💰 Please enter the balance amount in PHP manually:\n\nExample: \`15000\``,
+              { parse_mode: 'Markdown', ...cancelButton() }
+            );
+          }
+        } catch (err: any) {
+          // Vision API failed — fall back to manual entry
+          setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+          await ctx.reply(
+            `⚠️ Could not process the image: ${err.message}\n\n` +
+            `💰 Please enter the balance amount in PHP manually:\n\nExample: \`15000\``,
+            { parse_mode: 'Markdown', ...cancelButton() }
+          );
+        }
+      } else {
+        // Non-image file sent as proof — ask for image
+        await ctx.reply(
+          `❌ Please send a **photo** of the deposit slip or proof of payment (JPEG/PNG).`,
+          { parse_mode: 'Markdown', ...cancelButton() }
+        );
+      }
+      return;
+    }
+
     // Step 2: Ask user what type of document this is
     // For images and PDFs, offer the vision workflow
     const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
