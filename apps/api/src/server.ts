@@ -340,7 +340,7 @@ app.delete('/orders/:id', async (request, reply) => {
 
   // Delete related records first
   await query(`DELETE FROM stage_updates WHERE order_id=$1`, [params.id]);
-  await query(`DELETE FROM order_files WHERE order_id=$1`, [params.id]);
+  await query(`DELETE FROM files WHERE order_id=$1`, [params.id]);
   await query(`DELETE FROM reminders WHERE order_id=$1`, [params.id]);
   const rows = await query(`DELETE FROM orders WHERE id=$1 RETURNING *`, [params.id]);
 
