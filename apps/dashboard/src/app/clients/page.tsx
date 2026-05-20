@@ -3,18 +3,20 @@
 import { useState } from 'react';
 import { useClients } from '@/lib/useApi';
 import type { Client } from '@/lib/api';
-import { createClient, updateClient, deleteClient } from '@/lib/api';
-import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck } from 'lucide-react';
+import { createClient, updateClient, deleteClient, searchClients, getClientOrders } from '@/lib/api';
+import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { useEffect } from 'react';
 
 interface ClientFormProps {
   client?: Client | null;
   onSave: (data: {
     client_name: string;
-    delivery_address?: string;
-    contact_number?: string;
-    authorized_receiver_name?: string;
-    authorized_receiver_contact?: string;
-    notes?: string;
+    delivery_address?: string | null;
+    contact_number?: string | null;
+    authorized_receiver_name?: string | null;
+    authorized_receiver_contact?: string | null;
+    notes?: string | null;
+    propagate_to_orders?: boolean;
   }) => void;
   onCancel: () => void;
   saving: boolean;
@@ -30,13 +32,18 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const optional = (value: string) => {
+      const trimmed = value.trim();
+      return client ? (trimmed || null) : (trimmed || undefined);
+    };
     onSave({
       client_name: clientName.trim(),
-      delivery_address: deliveryAddress.trim() || undefined,
-      contact_number: contactNumber.trim() || undefined,
-      authorized_receiver_name: authReceiverName.trim() || undefined,
-      authorized_receiver_contact: authReceiverContact.trim() || undefined,
-      notes: notes.trim() || undefined,
+      delivery_address: optional(deliveryAddress),
+      contact_number: optional(contactNumber),
+      authorized_receiver_name: optional(authReceiverName),
+      authorized_receiver_contact: optional(authReceiverContact),
+      notes: optional(notes),
+      propagate_to_orders: true,
     });
   }
 
@@ -128,16 +135,57 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
 export default function ClientsPage() {
   const { data: clients = [], isLoading, mutate } = useClients();
   const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<Client[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
+  const [forceDelete, setForceDelete] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
+  const [clientOrders, setClientOrders] = useState<Record<string, any[]>>({});
+  const [loadingOrders, setLoadingOrders] = useState<Record<string, boolean>>({});
 
-  const filtered = clients.filter((c) =>
-    c.client_name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.delivery_address ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.contact_number ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        setSearchResults(await searchClients(q));
+      } catch (err: any) {
+        console.error('Client search failed:', err);
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const filtered = searchResults ?? clients;
+
+  async function toggleExpanded(client: Client) {
+    const next = expandedClientId === client.id ? null : client.id;
+    setExpandedClientId(next);
+    if (next && !clientOrders[client.id]) {
+      setLoadingOrders((prev) => ({ ...prev, [client.id]: true }));
+      try {
+        const orders = await getClientOrders(client.id);
+        setClientOrders((prev) => ({ ...prev, [client.id]: orders }));
+      } catch (err: any) {
+        alert('Failed to load linked orders: ' + (err.message ?? 'Unknown error'));
+      } finally {
+        setLoadingOrders((prev) => ({ ...prev, [client.id]: false }));
+      }
+    }
+  }
 
   async function handleAdd(data: Parameters<typeof createClient>[0]) {
     setSaving(true);

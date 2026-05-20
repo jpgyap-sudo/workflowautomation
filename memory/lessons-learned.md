@@ -731,3 +731,51 @@ Connected purchasing dashboard and Telegram production confirmation to backend p
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: purchasing tab improvements — progress bar, overdue highlighting, error states, inventory arrived section, recalc 
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 89a62eaec5475e06df04bc153ab0868539aad175
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 89a62eaec5475e06df04bc153ab0868539aad175
+**Files:** README.md,apps/api/src/server.ts,apps/dashboard/src/app/actions/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/orders/page.tsx,apps/dashboard/src/app/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/app/workflow/page.tsx,apps/dashboard/src/components/Sidebar.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,apps/telegram-bot/src/bot_header_new.ts,docker-compose.yml,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Improved the purchasing tab with a progress bar, overdue highlighting, error states, an inventory arrived section, and a recalc reminders endpoint.
+
+**Why it broke:**  
+The commit message does not describe a bug fix. Instead, it lists new features and enhancements. There is no root cause of a breakage; this is a feature addition.
+
+**Reusable takeaway:**  
+When adding UI features like progress bars and error states, ensure the backend endpoint (e.g., recalc reminders) is deployed in sync with frontend changes. Use a single commit to bundle related UI and API changes for atomic deployment. Always update documentation (README, lessons learned) alongside code changes to maintain a living knowledge base.
+
+---
+*Original commit message: feat: purchasing tab improvements — progress bar, overdue highlighting, error states, inventory arrived section, recalc reminders endpoint*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Improved the purchasing tab with a progress bar, overdue highlighting, error states, an inventory arrived section, and a recalc reminders endpoint.
+
+**Why it broke:**  
+The commit message does not describe a bug fix. Instead, it lists new features and enhancements. There is no root cause of a breakage; this is a feature addition.
+
+**Reusable takeaway:**  
+When adding UI features like progress bars and error states, ensure the backend endpoint (e.g., recalc reminders) is deployed in sync with frontend changes. Use a single commit to bundle related UI and API changes for atomic deployment. Always update documentation (README, lessons learned) alongside code changes to maintain a living knowledge base.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
