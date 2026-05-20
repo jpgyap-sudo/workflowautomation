@@ -2198,3 +2198,74 @@ Hardcoded credentials in authentication logic are fragile and require manual upd
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: merge default accounts into existing localStorage so password updates apply to all users
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a6dbc40eb8a7869d7fceb38e4befb1e34ac4ce89
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a6dbc40eb8a7869d7fceb38e4befb1e34ac4ce89
+**Files:** apps/dashboard/src/lib/auth.tsx,docs/deployment-builder.md,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/single-builder-deploy.mjs
+
+**Summary:**
+**What was fixed:**  
+Default accounts were not being merged into existing localStorage data, causing password updates to apply only to new users, not existing ones.
+
+**Why it broke:**  
+The code was overwriting localStorage with default accounts instead of merging them into the existing stored data. This meant password changes only affected fresh installations, leaving existing users with outdated credentials.
+
+**Reusable takeaway:**  
+When updating default configuration or credentials in localStorage, always merge new defaults with existing data rather than replacing it entirely. Use a pattern like `{ ...existingData, ...defaults }` to preserve user-specific changes (e.g., passwords) while applying new defaults. This prevents silent data loss and ensures updates propagate to all users, not just new ones.
+
+---
+*Original commit message: fix: merge default accounts into existing localStorage so password updates apply to all users*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Default accounts were not being merged into existing localStorage data, causing password updates to apply only to new users, not existing ones.
+
+**Why it broke:**  
+The code was overwriting localStorage with default accounts instead of merging them into the existing stored data. This meant password changes only affected fresh installations, leaving existing users with outdated credentials.
+
+**Reusable takeaway:**  
+When updating default configuration or credentials in localStorage, always merge new defaults with existing data rather than replacing it entirely. Use a pattern like `{ ...existingData, ...defaults }` to preserve user-specific changes (e.g., passwords) while applying new defaults. This prevents silent data loss and ensures updates propagate to all users, not just new ones.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Single-builder deployment workflow
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Added and documented a single-builder deployment workflow so multiple AI coding apps can edit code without mixing production Docker image/container state. Use scripts/single-builder-deploy.mjs after a clean, pushed commit; it deploys an exact SHA, takes a remote lock, rebuilds/recreates app services one at a time, and verifies API/dashboard health.
+
+#### Lesson Learned
+
+Added and documented a single-builder deployment workflow so multiple AI coding apps can edit code without mixing production Docker image/container state. Use scripts/single-builder-deploy.mjs after a clean, pushed commit; it deploys an exact SHA, takes a remote lock, rebuilds/recreates app services one at a time, and verifies API/dashboard health.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

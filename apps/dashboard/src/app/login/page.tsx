@@ -69,14 +69,19 @@ export default function LoginPage() {
     const code = otp.join('');
     if (code.length < 6) { setError('Enter all 6 digits'); return; }
     setLoading(true);
-    const result = await verifyOtp(email, code);
-    setLoading(false);
-    if (result.success) {
-      router.replace('/');
-    } else {
-      setError(result.error ?? 'Invalid OTP');
-      setOtp(['', '', '', '', '', '']);
-      setTimeout(() => otpRefs.current[0]?.focus(), 50);
+    try {
+      const result = await verifyOtp(email, code);
+      if (result.success) {
+        router.replace('/');
+      } else {
+        setError(result.error ?? 'Invalid OTP');
+        setOtp(['', '', '', '', '', '']);
+        setTimeout(() => otpRefs.current[0]?.focus(), 50);
+      }
+    } catch {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   }
 

@@ -31,7 +31,10 @@ echo '--- Pulling latest code ---'
 git pull origin master
 
 echo '--- Building and restarting containers ---'
-docker compose up -d --build --remove-orphans
+docker-compose stop api dashboard telegram-bot
+docker-compose rm -f api dashboard telegram-bot
+docker rm -f qas_dashboard qas_api qas_telegram_bot 2>/dev/null || true
+docker-compose up -d --build api dashboard telegram-bot
 
 echo '--- Cleaning up old images ---'
 docker image prune -f

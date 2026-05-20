@@ -129,16 +129,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (match.password !== password) return { success: false, error: 'Invalid password' };
 
     try {
-      const res = await fetch(`${API_BASE}/auth/send-otp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: match.email }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/auth/send-otp`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: match.email }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         return { success: false, error: data.error ?? 'Failed to send OTP' };
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return { success: false, error: 'Request timed out. Please try again.' };
+      }
       return { success: false, error: 'Could not reach the server. Please try again.' };
     }
 
@@ -148,28 +161,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Step 2: verify OTP with API, then complete login
   const verifyOtp = useCallback(async (email: string, otp: string) => {
     try {
-      const res = await fetch(`${API_BASE}/auth/verify-otp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: email.toLowerCase().trim(), otp }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/auth/verify-otp`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: email.toLowerCase().trim(), otp }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         return { success: false, error: data.error ?? 'Invalid OTP' };
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return { success: false, error: 'Request timed out. Please try again.' };
+      }
       return { success: false, error: 'Could not reach the server. Please try again.' };
     }
 
-    const accts = getStoredAccounts();
-    const match = accts.find((a) => a.email.toLowerCase().trim() === email.toLowerCase().trim());
-    if (!match) return { success: false, error: 'Account not found' };
+    try {
+      const accts = getStoredAccounts();
+      const match = accts.find((a) => a.email.toLowerCase().trim() === email.toLowerCase().trim());
+      if (!match) return { success: false, error: 'Account not found' };
 
-    const userData = { email: match.email, name: match.name, role: match.role };
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
-    setIsAuthenticated(true);
-    setUser(userData);
-    return { success: true };
+      const userData = { email: match.email, name: match.name, role: match.role };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+      setIsAuthenticated(true);
+      setUser(userData);
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Failed to save login state. Please try again.' };
+    }
   }, []);
 
   const logout = useCallback(() => {
