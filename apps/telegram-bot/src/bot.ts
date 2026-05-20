@@ -82,6 +82,7 @@ type UserStep =
   | { action: 'awaiting_file_upload' }
   | { action: 'awaiting_vision_process'; imageBase64: string; mimeType: string; fileName: string }
   | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string }
+  | { action: 'awaiting_vision_retry_extract'; imageBase64: string; mimeType: string; fileName: string }
   | {
       action: 'awaiting_upload_retry';
       imageBase64: string;
@@ -1080,10 +1081,22 @@ bot.action('vision:extract_yes', async (ctx) => {
       metadata: { errorMessage: String(error.message ?? error) },
       status: 'error',
     });
-    resetStep(chatId);
-    await ctx.editMessageText(`❌ Vision analysis failed: ${error.message}`, {
+    // Keep the data so user can retry
+    setStep(chatId, {
+      action: 'awaiting_vision_retry_extract',
+      imageBase64,
+      mimeType,
+      fileName,
+    });
+    await ctx.editMessageText(`❌ Vision analysis failed: ${error.message}
+
+Tap Retry to try again, or Cancel to go back.`, {
       parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🔁 Retry extraction', 'vision:retry_extract')],
+        [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
     });
   }
 });
@@ -1260,6 +1273,162 @@ bot.action('vision:ignore', async (ctx) => {
     parse_mode: 'Markdown',
     ...mainMenuKeyboard(),
   });
+});
+
+// Retry extraction after a vision API failure
+bot.action('vision:retry_extract', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  if (session.step.action !== 'awaiting_vision_retry_extract') {
+    return ctx.editMessageText('⏳ Retry session expired. Please upload the file again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+  await ctx.editMessageText(`🤖 Retrying AI Vision analysis...`);
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: `retry_extract: ${fileName}`,
+    metadata: { mimeType, fileName },
+    direction: 'incoming',
+  });
+
+  try {
+    // Call the API's vision/extract endpoint
+    const res = await fetch(`${apiBaseUrl}/vision/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: imageBase64,
+        mime_type: mimeType,
+        mode: 'auto',
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Vision API error' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Store the extracted data + image via the share endpoint
+    const shareRes = await fetch(`${apiBaseUrl}/vision/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: imageBase64,
+        mime_type: mimeType,
+        file_name: fileName,
+        extracted: data.quotation || data.payment || {},
+        type: data.type,
+        confidence: data.confidence,
+        raw_text: data.raw_text || '',
+      }),
+    });
+
+    if (!shareRes.ok) {
+      throw new Error('Failed to create share link');
+    }
+
+    const shareData = await shareRes.json();
+    const token = shareData.token;
+
+    // Build dashboard URL
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'http://localhost:3000';
+    const visionUrl = `${dashboardBase}/vision?token=${token}`;
+
+    resetStep(chatId);
+
+    // Log successful retry extraction
+    botLog({
+      chatId, userId, username,
+      messageType: 'vision',
+      content: `retry_extracted: ${data.type} (${data.confidence})`,
+      metadata: { fileName, type: data.type, confidence: data.confidence, token, retry: true },
+      status: 'success',
+    });
+
+    if (data.type === 'quotation' && data.quotation) {
+      const q = data.quotation;
+      const fields = [
+        `📋 *Extracted Quotation Info:*`,
+        q.quotation_number ? `🔢 Number: \`${q.quotation_number}\`` : null,
+        q.client_name ? `👤 Client: ${q.client_name}` : null,
+        q.sales_agent ? `🧑‍💼 Agent: ${q.sales_agent}` : null,
+        q.total_amount ? `💰 Amount: ₱${Number(q.total_amount).toLocaleString()}` : null,
+        `📊 Confidence: ${data.confidence}`,
+      ].filter(Boolean).join('\n');
+
+      await ctx.editMessageText(
+        `${fields}\n\n` +
+        `✅ *Information extracted!*\n\n` +
+        `👉 [Open in Dashboard to review & create order](${visionUrl})\n\n` +
+        `The extracted data has been sent to the dashboard. You can edit the fields and create the order there.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url('🚀 Open in Dashboard', visionUrl)],
+            [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
+          ]),
+        }
+      );
+    } else if (data.type === 'payment' && data.payment) {
+      const p = data.payment;
+      const fields = [
+        `💳 *Extracted Payment Info:*`,
+        p.amount ? `💰 Amount: ₱${Number(p.amount).toLocaleString()}` : null,
+        p.type !== 'unknown' ? `📌 Type: ${p.type}` : null,
+        p.reference_number ? `🔖 Ref: \`${p.reference_number}\`` : null,
+        p.paid_by ? `👤 Paid by: ${p.paid_by}` : null,
+        `📊 Confidence: ${data.confidence}`,
+      ].filter(Boolean).join('\n');
+
+      await ctx.editMessageText(
+        `${fields}\n\n` +
+        `ℹ️ Payment info extracted. To record this payment, use the order status menu in the dashboard.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      await ctx.editMessageText(
+        `🤷 Could not identify this image as a quotation or payment receipt.\nRaw text: ${data.raw_text?.slice(0, 200) || 'none'}`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    }
+  } catch (error: any) {
+    console.error('[vision] Retry extraction error:', error);
+    botLog({
+      chatId, userId, username,
+      messageType: 'vision',
+      content: `retry_extract_error: ${fileName}`,
+      metadata: { errorMessage: String(error.message ?? error), retry: true },
+      status: 'error',
+    });
+    // Keep data for another retry
+    setStep(chatId, {
+      action: 'awaiting_vision_retry_extract',
+      imageBase64,
+      mimeType,
+      fileName,
+    });
+    await ctx.editMessageText(`❌ Vision analysis failed again: ${error.message}
+
+Tap Retry to try again, or Cancel to go back.`, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🔁 Retry extraction', 'vision:retry_extract')],
+        [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
+    });
+  }
 });
 
 // ── File Upload Handler ──────────────────────────────────────────────

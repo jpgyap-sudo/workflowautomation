@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useState, useRef, useEffect } from 'react';
 import { searchOrders, Order } from '@/lib/api';
-import Link from 'next/link';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -160,7 +159,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
 
               {searchQuery.trim().length >= 2 && searchResults.length === 0 && !searching && (
                 <div className="px-3 py-6 text-center text-sm text-gray-400">
-                  No orders found for "{searchQuery}"
+                  No orders found for &quot;{searchQuery}&quot;
                 </div>
               )}
 
