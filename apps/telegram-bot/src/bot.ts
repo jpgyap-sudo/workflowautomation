@@ -80,6 +80,7 @@ type UserStep =
   | { action: 'awaiting_payment_status'; quotationNumber: string }
   | { action: 'awaiting_order_number_for_link' }
   | { action: 'awaiting_file_upload' }
+  | { action: 'awaiting_vision_document_type'; imageBase64: string; mimeType: string; fileName: string }
   | { action: 'awaiting_vision_process'; imageBase64: string; mimeType: string; fileName: string }
   | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string }
   | { action: 'awaiting_vision_retry_extract'; imageBase64: string; mimeType: string; fileName: string }
@@ -814,19 +815,31 @@ bot.on(message('text'), async (ctx) => {
         return;
       }
 
-      const { depositAmount } = session.step;
+      const { depositAmount, imageBase64, mimeType, fileName } = session.step;
 
       await ctx.reply(`🔍 Looking up client *${escapeMarkdown(clientName)}*...`, {
         parse_mode: 'Markdown',
       });
 
       try {
+        // Step 1: Upload deposit slip to Google Drive
+        let depositImageUrl: string | null = null;
+        try {
+          const fileBuffer = Buffer.from(imageBase64, 'base64');
+          const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
+          depositImageUrl = driveResult.webViewLink;
+        } catch (driveErr) {
+          console.error('[deposit] Drive upload error (non-fatal):', driveErr);
+        }
+
+        // Step 2: Record deposit via match-and-record with image_url
         const res = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             amount: depositAmount,
             client_name: clientName,
+            image_url: depositImageUrl,
           }),
         });
 
@@ -842,11 +855,11 @@ bot.on(message('text'), async (ctx) => {
           chatId, userId, username: ctx.from?.username,
           messageType: 'deposit',
           content: `deposit_recorded: ${data.quotation_number} ₱${depositAmount} (by name: ${clientName})`,
-          metadata: { quotationNumber: data.quotation_number, amount: depositAmount, clientName },
+          metadata: { quotationNumber: data.quotation_number, amount: depositAmount, clientName, driveLink: depositImageUrl },
           status: 'success',
         });
 
-        await ctx.reply(
+        const successMsg =
           `✅ *Deposit Recorded Successfully!*\n\n` +
           `👤 Client: *${escapeMarkdown(data.client_name)}*\n` +
           `📋 Order: *${data.quotation_number}*\n` +
@@ -854,9 +867,13 @@ bot.on(message('text'), async (ctx) => {
           (data.expected_deposit
             ? `💵 Expected Deposit (50%): ₱${Number(data.expected_deposit).toLocaleString()}\n`
             : '') +
-          `\nProduction can now proceed.`,
-          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-        );
+          (depositImageUrl ? `🔗 [View Deposit Slip](${depositImageUrl})\n` : '') +
+          `\nProduction can now proceed.`;
+
+        await ctx.reply(successMsg, {
+          parse_mode: 'Markdown',
+          ...mainMenuKeyboard(),
+        });
       } catch (error: any) {
         console.error('[deposit] Client name lookup error:', error);
         botLog({
@@ -969,6 +986,78 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
 //   5. If No to process → do nothing
 
 // Step 1: User said Yes to "Process this order?" → ask about extraction
+// User said the document is a Quotation/Order — proceed to extract
+bot.action('vision:type_quotation', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+
+  if (session.step.action !== 'awaiting_vision_document_type') {
+    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+
+  // Store data for next step (same as vision:process_yes)
+  setStep(chatId, {
+    action: 'awaiting_vision_extract',
+    imageBase64,
+    mimeType,
+    fileName,
+  });
+
+  await ctx.editMessageText(
+    `📄 *Quotation/Order detected:* ${escapeMarkdown(fileName)}\n\n` +
+    `Do you want me to extract the information using AI?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Yes, extract info', 'vision:extract_yes')],
+        [Markup.button.callback('📤 Just upload to Drive', 'vision:upload')],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
+    }
+  );
+});
+
+// User said the document is a Deposit Slip/Payment — go directly to extraction
+bot.action('vision:type_deposit', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+
+  if (session.step.action !== 'awaiting_vision_document_type') {
+    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+
+  // Store data for next step
+  setStep(chatId, {
+    action: 'awaiting_vision_extract',
+    imageBase64,
+    mimeType,
+    fileName,
+  });
+
+  await ctx.editMessageText(
+    `💳 *Deposit Slip detected:* ${escapeMarkdown(fileName)}\n\n` +
+    `Do you want me to extract the payment information using AI?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Yes, extract info', 'vision:extract_yes')],
+        [Markup.button.callback('📤 Just upload to Drive', 'vision:upload')],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
+    }
+  );
+});
+
 bot.action('vision:process_yes', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
@@ -1306,29 +1395,42 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
     });
   }
 
-  const { depositAmount } = session.step;
+  const { depositAmount, imageBase64, mimeType, fileName } = session.step;
 
   await ctx.editMessageText(`💳 Recording deposit of ₱${depositAmount.toLocaleString()} for *${quotationNumber}*...`, {
     parse_mode: 'Markdown',
   });
 
   try {
-    const res = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: depositAmount,
-        client_name: '',  // We'll use the quotation_number approach — call deposits endpoint directly
-      }),
-    });
+    // Step 1: Upload deposit slip to Google Drive in the client's folder
+    let depositImageUrl: string | null = null;
+    try {
+      const fileBuffer = Buffer.from(imageBase64, 'base64');
+      const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
+      depositImageUrl = driveResult.webViewLink;
 
-    // Actually, let's use the existing /deposits endpoint since we know the quotation_number
+      // Also record in the API's drive/upload for DB tracking (non-blocking)
+      postJson('/drive/upload', {
+        quotation_number: quotationNumber,
+        file_type: mimeType,
+        original_filename: `deposit_${fileName}`,
+        mime_type: mimeType,
+        file_data: imageBase64,
+        uploaded_by: username ?? userId,
+      }).catch(() => {});
+    } catch (driveErr) {
+      console.error('[deposit] Drive upload error (non-fatal):', driveErr);
+      // Non-fatal — proceed with recording deposit even if Drive upload fails
+    }
+
+    // Step 2: Record the deposit via the existing /deposits endpoint (handles balance_due reminder)
     const depositRes = await fetch(`${apiBaseUrl}/deposits`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         quotation_number: quotationNumber,
         amount: depositAmount,
+        image_url: depositImageUrl,
         updated_by: username ?? userId,
       }),
     });
@@ -1344,17 +1446,21 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       chatId, userId, username,
       messageType: 'deposit',
       content: `deposit_recorded: ${quotationNumber} ₱${depositAmount}`,
-      metadata: { quotationNumber, amount: depositAmount },
+      metadata: { quotationNumber, amount: depositAmount, driveLink: depositImageUrl },
       status: 'success',
     });
 
-    await ctx.editMessageText(
+    const successMsg =
       `✅ *Deposit Recorded Successfully!*\n\n` +
       `📋 Order: *${quotationNumber}*\n` +
-      `💰 Amount: ₱${depositAmount.toLocaleString()}\n\n` +
-      `Production can now proceed.`,
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-    );
+      `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+      (depositImageUrl ? `🔗 [View Deposit Slip](${depositImageUrl})\n` : '') +
+      `\nProduction can now proceed.`;
+
+    await ctx.editMessageText(successMsg, {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
   } catch (error: any) {
     console.error('[deposit] Record error:', error);
     botLog({
@@ -1419,7 +1525,7 @@ bot.action('vision:upload', async (ctx) => {
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
-  if (session.step.action !== 'awaiting_vision_process' && session.step.action !== 'awaiting_vision_extract') {
+  if (session.step.action !== 'awaiting_vision_process' && session.step.action !== 'awaiting_vision_extract' && session.step.action !== 'awaiting_vision_document_type') {
     return ctx.editMessageText('⏳ Session expired.', {
       parse_mode: 'Markdown',
       ...mainMenuKeyboard(),
@@ -1812,12 +1918,12 @@ bot.on(['document', 'photo'], async (ctx) => {
     const fileBuffer = Buffer.from(await response.arrayBuffer());
     imageBase64 = fileBuffer.toString('base64');
 
-    // Step 2: Ask user if they want to process this file
+    // Step 2: Ask user what type of document this is
     // For images and PDFs, offer the vision workflow
     const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
     if (isProcessable) {
       setStep(chatId, {
-        action: 'awaiting_vision_process',
+        action: 'awaiting_vision_document_type',
         imageBase64,
         mimeType,
         fileName,
@@ -1826,12 +1932,13 @@ bot.on(['document', 'photo'], async (ctx) => {
       await ctx.reply(
         `📎 *File received:* ${escapeMarkdown(fileName)}
 
-Do you want me to process this order?`,
+What type of document is this?`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Yes, process this order', 'vision:process_yes')],
-            [Markup.button.callback('❌ No, do nothing', 'vision:process_no')],
+            [Markup.button.callback('📋 Quotation / Order', 'vision:type_quotation')],
+            [Markup.button.callback('💳 Deposit Slip / Payment', 'vision:type_deposit')],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
           ]),
         }
       );

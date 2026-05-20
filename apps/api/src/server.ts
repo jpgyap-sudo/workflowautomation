@@ -484,6 +484,7 @@ app.post('/deposits', async (request, reply) => {
 const matchDepositSchema = z.object({
   amount: z.number().positive(),
   client_name: z.string().optional(),
+  image_url: z.string().optional(),
 });
 
 app.post('/deposits/match-and-record', async (request, reply) => {
@@ -514,8 +515,8 @@ app.post('/deposits/match-and-record', async (request, reply) => {
 
     // Record the deposit
     await query(
-      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, updated_at=NOW() WHERE id=$2`,
-      [body.amount, order.id]
+      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), updated_at=NOW() WHERE id=$3`,
+      [body.amount, body.image_url ?? null, order.id]
     );
 
     await query(
@@ -527,6 +528,19 @@ app.post('/deposits/match-and-record', async (request, reply) => {
     // Complete any deposit reminders
     await query(
       `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+      [order.id]
+    );
+
+    // Auto-create a balance_due reminder since balance is now due
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       SELECT $1, 'balance_due', r.group_chat_id,
+              'The remaining balance is due before delivery can proceed.',
+              'daily', NOW() + INTERVAL '1 hour', 'active'
+       FROM reminders r
+       WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
+       LIMIT 1
+       ON CONFLICT DO NOTHING`,
       [order.id]
     );
 
