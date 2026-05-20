@@ -957,3 +957,52 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: en route stage — production finished → en route → inventory arrived
+
+#### Task Summary
+Added an `en_route` intermediate stage between `production_confirmed` and `inventory_arrived`. When production finishes, the order moves to `en_route` and a daily reminder asks "Is the order en route?" with Yes/No inline buttons. When confirmed, the order advances to `inventory_arrived` with estimated arrival days.
+
+#### Lesson Learned
+When adding a new stage to a multi-layer system (DB → API → Bot → Dashboard), you must update **all** of these:
+1. **API endpoint** (`finishProduction`) — sets `current_stage='en_route'`
+2. **API endpoint** (`confirmEnRoute`) — advances `en_route` → `inventory_arrived`
+3. **API agent** (`escalationAgent.ts`) — add `'en_route'` to monitored stages list
+4. **API labels** (`STAGE_LABELS` in `agentRunner.ts`) — add display label
+5. **Reminder scheduler** (`reminderScheduler.ts`) — add `en_route_reminder` with inline keyboard handling
+6. **Bot** (`bot.ts`) — add callback handlers (`en_route:yes`, `en_route:no`, `en_route:arrival_standard`, `en_route:arrival_custom`) and text handler for arrival days
+7. **Dashboard** (`api.ts`) — add to `STAGE_CONFIG`, `STAGE_ORDER`, `Order` interface, and `confirmEnRoute` function
+8. **Dashboard** (purchasing page) — add En Route section with `onConfirmEnRoute` handler
+9. **Dashboard** (workflow page) — add to `STAGE_INFO` and agent mappings
+10. **Dashboard** (order detail page) — automatically covered by `STAGE_ORDER`
+11. **Dashboard** (stages page) — automatically covered by `STAGE_ORDER`
+12. **Dashboard** (`StageBadge` component) — automatically covered by `STAGE_CONFIG`
+
+The `current_stage` column is `text` type (not an enum), so no database migration is needed for new stage names.
+
+#### Tags
+workflowautomation, en-route, stage, production, inventory, full-stack
+---
+
+### Lesson: [bugfix] inventory tab gap fixes — type mismatch, data URL bloat, error handling, pagination
+
+#### Task Summary
+Found and fixed 5 gaps in the inventory tab after a full-stack code review:
+1. **`InventoryExtractResult` type mismatch** — frontend expected `ok: boolean` but API returned `VisionExtractResult` without `ok`, causing AI extraction to always fail silently
+2. **Data URL bloat in `image_url`** — full data URLs (e.g. `data:image/png;base64,...`) were stored in the database, bloating rows to megabytes. Changed to store raw base64 and serve via a new `/inventory/:id/image` endpoint with MIME detection from magic bytes
+3. **Delete confirmation** — already had `confirm()` dialog (no fix needed)
+4. **"Clear processed drafts" missing error handling** — the button called `clearProcessedDrafts()` without try/catch, so errors would be swallowed silently
+5. **No pagination on inventory list** — API fetched ALL items without LIMIT/OFFSET. Added `limit`/`offset` query params with defaults, plus a `/inventory/count` endpoint
+
+#### Lesson Learned
+When reviewing a full-stack feature for gaps, check these layers systematically:
+1. **Type alignment** — verify frontend API function return types match actual API responses (especially `ok` fields, optional fields)
+2. **Data storage** — never store data URLs in the database; store raw base64 and serve via a dedicated endpoint with proper Content-Type and caching
+3. **Error boundaries** — every async user action (button click, form submit) must have try/catch with user-visible error feedback
+4. **Query limits** — every list endpoint should have LIMIT/OFFSET to prevent unbounded queries as data grows
+5. **Backward compatibility** — when changing storage format, handle legacy data (e.g. data URLs with `data:...base64,` prefix)
+
+#### Tags
+bugfix, inventory, full-stack, type-mismatch, data-url, pagination, error-handling
+
+---

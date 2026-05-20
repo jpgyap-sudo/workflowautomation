@@ -289,6 +289,9 @@ type UserStep =
   | { action: 'awaiting_delay_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_delivery_timeline'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_custom_delivery_days'; orderId: string; quotationNumber: string }
+  // En route flow
+  | { action: 'awaiting_en_route'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_en_route_arrival_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_client_search' };
 
 interface DepositCandidate {
@@ -1284,9 +1287,39 @@ Midpoint and due reminders are now scheduled.`,
         await postJson(`/orders/${cOrderId}/finish-production`, {
           delivery_estimated_days: deliveryDays,
         });
+        // Ask: Is the order en route?
+        setStep(chatId, { action: 'awaiting_en_route', orderId: cOrderId, quotationNumber: cQuotationNumber });
+        await ctx.reply(
+          `✅ *Delivery Timeline Set* — ${cQuotationNumber}\n\nProduction is finished. Estimated delivery availability: *${deliveryDays} days*.\n\n🚚 Is the order en route to the client?`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${cOrderId}:${cQuotationNumber}`)],
+              [Markup.button.callback('❌ Not yet', `en_route:no:${cOrderId}:${cQuotationNumber}`)],
+            ]),
+          }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    case 'awaiting_en_route_arrival_days': {
+      const { orderId: eOrderId, quotationNumber: eQuotationNumber } = session.step;
+      const arrivalDays = parseInt(text, 10);
+      if (isNaN(arrivalDays) || arrivalDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `28`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await postJson(`/orders/${eOrderId}/confirm-en-route`, {
+          estimated_arrival_days: arrivalDays,
+        });
+
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Delivery Timeline Set* — ${cQuotationNumber}\n\nProduction is finished. Estimated delivery availability: *${deliveryDays} days*.\n\nThe order will proceed to the next stage.`,
+          `✅ *En Route Confirmed* — ${eQuotationNumber}\n\nEstimated inventory arrival: *${arrivalDays} days*.\n\nThe order has moved to the next stage.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -1456,7 +1489,7 @@ bot.action(/^production:finished:(.+):(.+)$/, async (ctx) => {
     direction: 'incoming',
   });
 
-  // Ask for delivery timeline
+  // Ask for delivery timeline (how many days until available for delivery)
   setStep(chatId, { action: 'awaiting_delivery_timeline', orderId, quotationNumber });
   await ctx.editMessageText(
     `✅ *Production Finished* — ${quotationNumber}\n\nHow long until it's available for delivery?`,
@@ -1535,10 +1568,17 @@ bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
       delivery_estimated_days: 28,
     });
 
-    resetStep(chatId);
+    // Now ask: Is the order en route?
+    setStep(chatId, { action: 'awaiting_en_route', orderId, quotationNumber });
     await ctx.editMessageText(
-      `✅ *Delivery Timeline Set* — ${quotationNumber}\n\nProduction is finished. Estimated delivery availability: *4 weeks (28 days)*.\n\nThe order will proceed to the next stage.`,
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      `✅ *Delivery Timeline Set* — ${quotationNumber}\n\nProduction is finished. Estimated delivery availability: *4 weeks (28 days)*.\n\n🚚 Is the order en route to the client?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${orderId}:${quotationNumber}`)],
+          [Markup.button.callback('❌ Not yet', `en_route:no:${orderId}:${quotationNumber}`)],
+        ]),
+      }
     );
   } catch (err: any) {
     await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
@@ -1564,6 +1604,114 @@ bot.action(/^production:delivery_custom:(.+):(.+)$/, async (ctx) => {
   setStep(chatId, { action: 'awaiting_custom_delivery_days', orderId, quotationNumber });
   await ctx.editMessageText(
     `📦 *Custom Delivery Timeline* — ${quotationNumber}\n\nEnter the number of days until available for delivery:`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
+// ── En Route Callback Handlers ────────────────────────────────────────
+// After production is finished, the bot asks "Is the order en route?"
+// If yes → ask for estimated arrival days (28 days default or custom)
+// If no → daily reminder will keep asking
+
+// En Route: Yes — ask for estimated arrival days
+bot.action(/^en_route:yes:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `en_route:yes:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  setStep(chatId, { action: 'awaiting_en_route_arrival_days', orderId, quotationNumber });
+  await ctx.editMessageText(
+    `🚚 *En Route Confirmed* — ${quotationNumber}\n\nHow many days estimated for inventory to arrive?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📦 28 days (Standard)', `en_route:arrival_standard:${orderId}:${quotationNumber}`)],
+        [Markup.button.callback('📦 Custom days', `en_route:arrival_custom:${orderId}:${quotationNumber}`)],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
+    }
+  );
+});
+
+// En Route: No — remind daily (the en_route_reminder will handle this)
+bot.action(/^en_route:no:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `en_route:no:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  resetStep(chatId);
+  await ctx.editMessageText(
+    `⏳ *Noted* — ${quotationNumber}\n\nThe order is not yet en route. A daily reminder will be sent to check again.\n\nWhen the order is en route, use the menu to confirm.`,
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
+});
+
+// En Route: Standard arrival (28 days)
+bot.action(/^en_route:arrival_standard:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `en_route:arrival_standard:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    await postJson(`/orders/${orderId}/confirm-en-route`, {
+      estimated_arrival_days: 28,
+    });
+
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *En Route Confirmed* — ${quotationNumber}\n\nEstimated inventory arrival: *28 days*.\n\nThe order has moved to the next stage.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// En Route: Custom arrival days
+bot.action(/^en_route:arrival_custom:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `en_route:arrival_custom:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  setStep(chatId, { action: 'awaiting_en_route_arrival_days', orderId, quotationNumber });
+  await ctx.editMessageText(
+    `📦 *Custom Arrival Days* — ${quotationNumber}\n\nEnter the number of days estimated for inventory to arrive:`,
     { parse_mode: 'Markdown', ...cancelButton() }
   );
 });

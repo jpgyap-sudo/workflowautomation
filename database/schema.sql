@@ -36,7 +36,18 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_address TEXT,
   contact_number TEXT,
   authorized_receiver_name TEXT,
-  authorized_receiver_contact TEXT
+  authorized_receiver_contact TEXT,
+  -- Production / inventory transit info
+  production_started BOOLEAN DEFAULT FALSE,
+  production_started_at TIMESTAMPTZ,
+  estimated_production_days INTEGER,
+  production_delayed BOOLEAN DEFAULT FALSE,
+  production_delay_days INTEGER,
+  production_finished BOOLEAN DEFAULT FALSE,
+  production_finished_at TIMESTAMPTZ,
+  delivery_estimated_days INTEGER,
+  estimated_inventory_arrival_days INTEGER,
+  inventory_en_route_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -100,3 +111,32 @@ CREATE INDEX IF NOT EXISTS idx_agent_logs_created_at ON agent_logs(created_at DE
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(client_name);
 CREATE INDEX IF NOT EXISTS idx_clients_name_trgm ON clients USING gin (client_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);
+
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_name TEXT NOT NULL,
+  description TEXT,
+  dimension TEXT,
+  quantity INTEGER NOT NULL DEFAULT 0,
+  image_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS inventory_drafts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_name TEXT,
+  description TEXT,
+  dimension TEXT,
+  quantity INTEGER,
+  image_url TEXT,
+  source_type TEXT NOT NULL,
+  source_filename TEXT,
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(product_name);
+CREATE INDEX IF NOT EXISTS idx_inventory_drafts_status ON inventory_drafts(status);
+CREATE INDEX IF NOT EXISTS idx_inventory_drafts_created_at ON inventory_drafts(created_at DESC);

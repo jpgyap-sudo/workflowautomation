@@ -17,6 +17,7 @@ import {
   autoExtract,
   extractQuotation,
   extractPayment,
+  extractInventory,
 } from './services/geminiVision.js';
 import {
   processDueReminders,
@@ -548,7 +549,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 
   const rows = await query(
     `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
-     delivery_estimated_days = $1, current_stage = 'inventory_arrived', updated_at = NOW()
+     delivery_estimated_days = $1, current_stage = 'en_route', updated_at = NOW()
      WHERE id = $2 RETURNING *`,
     [body.delivery_estimated_days, id]
   );
@@ -557,13 +558,77 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'inventory_arrived', 'production_finished', $2, 'system')`,
+     VALUES ($1, 'en_route', 'production_finished', $2, 'system')`,
     [id, `Production finished; delivery availability estimated in ${body.delivery_estimated_days} day(s)`]
   );
 
   await query(
     `UPDATE reminders SET status = 'completed', updated_at = NOW()
      WHERE order_id = $1 AND status = 'active' AND stage IN ('production_midpoint', 'production_due', 'production_confirmed')`,
+    [id]
+  );
+
+  // Create an en_route reminder — daily reminder asking "Is the order en route?"
+  const groupChatId = process.env.PURCHASING_GROUP_ID;
+  if (groupChatId) {
+    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = rows[0].client_name ?? 'Unknown';
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
+       ON CONFLICT (order_id, stage) DO UPDATE SET
+         group_chat_id=EXCLUDED.group_chat_id,
+         message=EXCLUDED.message,
+         frequency=EXCLUDED.frequency,
+         next_run_at=EXCLUDED.next_run_at,
+         status='active',
+         escalation_level=0,
+         updated_at=NOW()`,
+      [id, groupChatId,
+       `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
+       tomorrow.toISOString()]
+    );
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`]);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Confirm En Route ──────────────────────────────────────────────────
+// After production is finished, the bot asks "Is the order en route?"
+// If yes, this endpoint is called with estimated arrival days.
+// The order moves from 'en_route' to 'inventory_arrived'.
+const confirmEnRouteSchema = z.object({
+  estimated_arrival_days: z.number().int().positive(),
+});
+
+app.post('/orders/:id/confirm-en-route', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = confirmEnRouteSchema.parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
+     estimated_arrival_days = $1, current_stage = 'inventory_arrived', updated_at = NOW()
+     WHERE id = $2 RETURNING *`,
+    [body.estimated_arrival_days, id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'inventory_arrived', 'en_route_confirmed', $2, 'system')`,
+    [id, `En route confirmed; estimated arrival in ${body.estimated_arrival_days} day(s)`]
+  );
+
+  // Complete the en_route_reminder
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND stage = 'en_route_reminder' AND status = 'active'`,
     [id]
   );
 
@@ -2260,6 +2325,327 @@ app.delete('/clients/:id', async (request, reply) => {
   await invalidateCache(['clients:*', '/clients', 'orders:*', 'dashboard:*']);
   broadcastSSE('client_deleted', { id: params.id });
   return reply.send({ ok: true, deleted: rows[0], active_order_count: activeOrderCount, forced: force });
+});
+
+// ── Inventory Management ────────────────────────────────────────────
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const char of line) {
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result.map((s) => s.replace(/^"|"$/g, ''));
+}
+
+function parseCSV(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length === 0) return { headers: [], rows: [] };
+  const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, '_'));
+  const rows = lines.slice(1).map(parseCSVLine);
+  return { headers, rows };
+}
+
+function mapCSVHeaders(headers: string[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  const find = (candidates: string[]) => {
+    for (const c of candidates) {
+      const idx = headers.findIndex((h) => h.includes(c));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+  map.product_name = find(['product', 'name', 'product_name', 'item', 'title', 'item_name']);
+  map.description = find(['description', 'desc', 'details', 'detail', 'spec', 'specification']);
+  map.dimension = find(['dimension', 'dimensions', 'size', 'measurement', 'measurements', 'specs']);
+  map.quantity = find(['quantity', 'qty', 'stock', 'count', 'amount', 'units']);
+  return map;
+}
+
+app.get('/inventory', async (request, _reply) => {
+  const queryParams = request.query as Record<string, string>;
+  const limit = Math.min(Math.max(parseInt(queryParams.limit) || 200, 1), 500);
+  const offset = Math.max(parseInt(queryParams.offset) || 0, 0);
+  const rows = await query(
+    `SELECT * FROM inventory_items ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return rows;
+});
+
+app.get('/inventory/count', async (_request, _reply) => {
+  const rows = await query(`SELECT COUNT(*)::int AS total FROM inventory_items`);
+  return { total: rows[0].total };
+});
+
+app.get('/inventory/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const rows = await query(`SELECT * FROM inventory_items WHERE id=$1`, [params.id]);
+  if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
+  return rows[0];
+});
+
+app.post('/inventory', async (request, reply) => {
+  const body = z.object({
+    product_name: z.string().min(1),
+    description: z.string().optional(),
+    dimension: z.string().optional(),
+    quantity: z.number().int().min(0).default(0),
+    image_url: z.string().optional(),
+  }).parse(request.body);
+
+  const rows = await query(
+    `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [body.product_name, body.description ?? null, body.dimension ?? null, body.quantity, body.image_url ?? null]
+  );
+  await invalidateCache(['inventory:*', '/inventory']);
+  broadcastSSE('inventory_updated', { id: rows[0].id });
+  return reply.status(201).send(rows[0]);
+});
+
+app.patch('/inventory/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    product_name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    dimension: z.string().optional(),
+    quantity: z.number().int().min(0).optional(),
+    image_url: z.string().optional(),
+  }).parse(request.body);
+
+  const fields: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (body.product_name !== undefined) { fields.push(`product_name=$${idx++}`); values.push(body.product_name); }
+  if (body.description !== undefined) { fields.push(`description=$${idx++}`); values.push(body.description ?? null); }
+  if (body.dimension !== undefined) { fields.push(`dimension=$${idx++}`); values.push(body.dimension ?? null); }
+  if (body.quantity !== undefined) { fields.push(`quantity=$${idx++}`); values.push(body.quantity); }
+  if (body.image_url !== undefined) { fields.push(`image_url=$${idx++}`); values.push(body.image_url ?? null); }
+
+  if (fields.length === 0) return reply.status(400).send({ error: 'No fields to update' });
+  fields.push(`updated_at=NOW()`);
+  values.push(params.id);
+
+  const rows = await query(
+    `UPDATE inventory_items SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`,
+    values
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
+  await invalidateCache(['inventory:*', '/inventory']);
+  broadcastSSE('inventory_updated', { id: params.id });
+  return rows[0];
+});
+
+app.delete('/inventory/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const rows = await query(`DELETE FROM inventory_items WHERE id=$1 RETURNING *`, [params.id]);
+  if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
+  await invalidateCache(['inventory:*', '/inventory']);
+  broadcastSSE('inventory_deleted', { id: params.id });
+  return { ok: true };
+});
+
+// Serve inventory item image (stored as raw base64 in image_url)
+app.get('/inventory/:id/image', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const rows = await query(`SELECT image_url FROM inventory_items WHERE id=$1`, [params.id]);
+  if (!rows[0] || !rows[0].image_url) return reply.code(404).send({ error: 'Image not found' });
+  let rawBase64 = rows[0].image_url;
+  // Handle legacy data URLs (e.g. "data:image/png;base64,iVBOR...")
+  if (rawBase64.includes('base64,')) {
+    rawBase64 = rawBase64.split('base64,')[1];
+  }
+  const imgBuffer = Buffer.from(rawBase64, 'base64');
+  // Try to detect mime type from magic bytes
+  let mimeType = 'image/png';
+  if (imgBuffer[0] === 0xff && imgBuffer[1] === 0xd8) mimeType = 'image/jpeg';
+  else if (imgBuffer[0] === 0x89 && imgBuffer[1] === 0x50) mimeType = 'image/png';
+  else if (imgBuffer[0] === 0x47 && imgBuffer[1] === 0x49) mimeType = 'image/gif';
+  else if (imgBuffer[0] === 0x52 && imgBuffer[1] === 0x49) mimeType = 'image/webp';
+  reply.header('Content-Type', mimeType);
+  reply.header('Cache-Control', 'public, max-age=86400');
+  return reply.send(imgBuffer);
+});
+
+// Extract inventory details from an image using AI
+app.post('/inventory/extract-image', async (request, reply) => {
+  const body = z.object({
+    image_base64: z.string(),
+    mime_type: z.string(),
+  }).parse(request.body);
+
+  try {
+    const result = await extractInventory(body.image_base64, body.mime_type);
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return reply.status(500).send({ error: message });
+  }
+});
+
+// Bulk upload: CSV, PDF, or image → create drafts
+app.post('/inventory/bulk-upload', async (request, reply) => {
+  const body = z.object({
+    file_data: z.string(), // base64
+    mime_type: z.string(),
+    original_filename: z.string(),
+  }).parse(request.body);
+
+  const mimeType = body.mime_type.toLowerCase();
+  const drafts: any[] = [];
+
+  if (mimeType === 'text/csv' || mimeType === 'application/vnd.ms-excel' || body.original_filename.toLowerCase().endsWith('.csv')) {
+    // Parse CSV
+    const text = Buffer.from(body.file_data, 'base64').toString('utf-8');
+    const { headers, rows } = parseCSV(text);
+    if (headers.length === 0 || rows.length === 0) {
+      return reply.status(400).send({ error: 'CSV file is empty or invalid' });
+    }
+    const colMap = mapCSVHeaders(headers);
+
+    for (const row of rows) {
+      const productName = colMap.product_name >= 0 ? row[colMap.product_name] : '';
+      if (!productName) continue;
+      const description = colMap.description >= 0 ? row[colMap.description] : undefined;
+      const dimension = colMap.dimension >= 0 ? row[colMap.dimension] : undefined;
+      const quantityRaw = colMap.quantity >= 0 ? row[colMap.quantity] : undefined;
+      const quantity = quantityRaw ? parseInt(quantityRaw.replace(/[^0-9]/g, ''), 10) : null;
+
+      const draftRows = await query(
+        `INSERT INTO inventory_drafts (product_name, description, dimension, quantity, source_type, source_filename, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [productName, description ?? null, dimension ?? null, isNaN(quantity as number) ? null : quantity, 'csv', body.original_filename, 'pending']
+      );
+      drafts.push(draftRows[0]);
+    }
+  } else if (mimeType.startsWith('image/') || mimeType === 'application/pdf') {
+    // Use AI extraction for images and PDFs
+    try {
+      const result = await extractInventory(body.file_data, mimeType);
+      if (result.type === 'inventory' && result.inventory && result.inventory.length > 0) {
+        for (const item of result.inventory) {
+          if (!item.product_name && !item.description) continue;
+          const draftRows = await query(
+            `INSERT INTO inventory_drafts (product_name, description, dimension, quantity, source_type, source_filename, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [
+              item.product_name ?? null,
+              item.description ?? null,
+              item.dimension ?? null,
+              item.quantity ?? null,
+              mimeType.startsWith('image/') ? 'image' : 'pdf',
+              body.original_filename,
+              'pending',
+            ]
+          );
+          drafts.push(draftRows[0]);
+        }
+      } else {
+        return reply.status(422).send({ error: 'Could not extract inventory items from file', raw: result.raw_text });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({ error: message });
+    }
+  } else {
+    return reply.status(400).send({ error: 'Unsupported file type. Please upload CSV, PDF, or image.' });
+  }
+
+  await invalidateCache(['inventory:*', '/inventory/drafts']);
+  broadcastSSE('inventory_drafts_created', { count: drafts.length });
+  return { ok: true, drafts_created: drafts.length, drafts };
+});
+
+// Drafts
+app.get('/inventory/drafts', async (_request, _reply) => {
+  const rows = await query(`SELECT * FROM inventory_drafts WHERE status='pending' ORDER BY created_at DESC`);
+  return rows;
+});
+
+app.patch('/inventory/drafts/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    product_name: z.string().optional(),
+    description: z.string().optional(),
+    dimension: z.string().optional(),
+    quantity: z.number().int().min(0).optional(),
+  }).parse(request.body);
+
+  const fields: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (body.product_name !== undefined) { fields.push(`product_name=$${idx++}`); values.push(body.product_name); }
+  if (body.description !== undefined) { fields.push(`description=$${idx++}`); values.push(body.description ?? null); }
+  if (body.dimension !== undefined) { fields.push(`dimension=$${idx++}`); values.push(body.dimension ?? null); }
+  if (body.quantity !== undefined) { fields.push(`quantity=$${idx++}`); values.push(body.quantity); }
+
+  if (fields.length === 0) return reply.status(400).send({ error: 'No fields to update' });
+  fields.push(`updated_at=NOW()`);
+  values.push(params.id);
+
+  const rows = await query(
+    `UPDATE inventory_drafts SET ${fields.join(', ')} WHERE id=$${idx} AND status='pending' RETURNING *`,
+    values
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Draft not found or already processed' });
+  return rows[0];
+});
+
+app.post('/inventory/drafts/:id/approve', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const draftRows = await query(`SELECT * FROM inventory_drafts WHERE id=$1 AND status='pending'`, [params.id]);
+  if (!draftRows[0]) return reply.code(404).send({ error: 'Draft not found or already processed' });
+  const draft = draftRows[0];
+
+  const itemRows = await query(
+    `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url]
+  );
+  await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [params.id]);
+  await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
+  broadcastSSE('inventory_updated', { id: itemRows[0].id });
+  return { ok: true, item: itemRows[0] };
+});
+
+app.post('/inventory/drafts/approve-all', async (_request, reply) => {
+  const draftRows = await query(`SELECT * FROM inventory_drafts WHERE status='pending' ORDER BY created_at`);
+  const items: any[] = [];
+  for (const draft of draftRows) {
+    const itemRows = await query(
+      `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url]
+    );
+    await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [draft.id]);
+    items.push(itemRows[0]);
+  }
+  await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
+  broadcastSSE('inventory_bulk_approved', { count: items.length });
+  return { ok: true, approved_count: items.length, items };
+});
+
+app.delete('/inventory/drafts/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  await query(`UPDATE inventory_drafts SET status='rejected', updated_at=NOW() WHERE id=$1`, [params.id]);
+  await invalidateCache(['inventory:*', '/inventory/drafts']);
+  return { ok: true };
+});
+
+app.post('/inventory/drafts/clear', async (_request, reply) => {
+  await query(`DELETE FROM inventory_drafts WHERE status IN ('approved', 'rejected')`);
+  await invalidateCache(['inventory:*', '/inventory/drafts']);
+  return { ok: true };
 });
 
 // SSE Endpoint

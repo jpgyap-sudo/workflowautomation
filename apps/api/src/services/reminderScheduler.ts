@@ -102,6 +102,8 @@ export async function processDueReminders(): Promise<number> {
       production_midpoint: '🏭 Production Midpoint Check',
       production_due: '🏭 Production Due',
       deposit_pending: '💳 Deposit Pending',
+      en_route: '🚚 En Route',
+      en_route_reminder: '🚚 En Route',
       inventory_arrived: '📦 Inventory Arrived',
       balance_due: '⚖️ Balance Due',
       delivery_scheduled: '🚚 Delivery Scheduled',
@@ -144,6 +146,14 @@ export async function processDueReminders(): Promise<number> {
         [
           { text: '✅ Finished', callback_data: `production:finished:${orderId}:${quotationNumber}` },
           { text: '❌ Not Yet', callback_data: `production:not_finished:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'en_route_reminder') {
+      // En route check: ask if order is en route
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Yes', callback_data: `en_route:yes:${orderId}:${quotationNumber}` },
+          { text: '❌ No', callback_data: `en_route:no:${orderId}:${quotationNumber}` },
         ],
       ]);
     } else {

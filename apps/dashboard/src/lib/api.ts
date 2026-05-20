@@ -26,6 +26,9 @@ export interface Order {
   production_finished: boolean | null;
   production_finished_at: string | null;
   delivery_estimated_days: number | null;
+  en_route_confirmed: boolean | null;
+  en_route_confirmed_at: string | null;
+  estimated_arrival_days: number | null;
   client_id: string | null;
   delivery_address: string | null;
   contact_number: string | null;
@@ -235,6 +238,19 @@ export async function recalcProductionReminders(
   );
 }
 
+export async function confirmEnRoute(
+  id: string,
+  data: { estimated_arrival_days: number }
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>(
+    `/orders/${encodeURIComponent(id)}/confirm-en-route`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 export async function sendOtpForAction(email: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/auth/send-otp', {
     method: 'POST',
@@ -260,6 +276,7 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   purchasing_pending:    { label: 'Purchasing Pending',    color: 'bg-amber-100 text-amber-800',     icon: '🛒' },
   production_confirmed:  { label: 'Production Confirmed',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
   deposit_pending:       { label: 'Deposit Pending',       color: 'bg-pink-100 text-pink-800',       icon: '💳' },
+  en_route:              { label: 'En Route',               color: 'bg-sky-100 text-sky-800',         icon: '🚚' },
   inventory_arrived:     { label: 'Inventory Arrived',     color: 'bg-cyan-100 text-cyan-800',       icon: '📦' },
   balance_due:           { label: 'Balance Due',            color: 'bg-violet-100 text-violet-800',   icon: '⚖️' },
   delivery_scheduled:    { label: 'Delivery Scheduled',    color: 'bg-purple-100 text-purple-800',   icon: '📅' },
@@ -469,11 +486,164 @@ export async function deleteClient(id: string, force = false): Promise<{ ok: boo
   });
 }
 
+// ── Inventory ─────────────────────────────────────────────────────────
+
+export interface InventoryItem {
+  id: string;
+  product_name: string;
+  description: string | null;
+  dimension: string | null;
+  quantity: number;
+  image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryDraft {
+  id: string;
+  product_name: string | null;
+  description: string | null;
+  dimension: string | null;
+  quantity: number | null;
+  image_url: string | null;
+  source_type: string;
+  source_filename: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryExtractResult {
+  type: 'inventory' | 'unknown';
+  inventory?: Array<{
+    product_name?: string;
+    description?: string;
+    dimension?: string;
+    quantity?: number;
+  }>;
+  raw_text: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export async function getInventory(): Promise<InventoryItem[]> {
+  return fetchJson<InventoryItem[]>('/inventory');
+}
+
+export async function getInventoryItem(id: string): Promise<InventoryItem> {
+  return fetchJson<InventoryItem>(`/inventory/${encodeURIComponent(id)}`);
+}
+
+export async function getInventoryCount(): Promise<{ total: number }> {
+  return fetchJson<{ total: number }>('/inventory/count');
+}
+
+/** Returns the URL to fetch an inventory item's image from the API */
+export function getInventoryImageUrl(id: string): string {
+  return `${API_BASE}/inventory/${encodeURIComponent(id)}/image`;
+}
+
+export async function createInventoryItem(data: {
+  product_name: string;
+  description?: string | null;
+  dimension?: string | null;
+  quantity?: number;
+  image_url?: string | null;
+}): Promise<InventoryItem> {
+  return fetchJson<InventoryItem>('/inventory', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateInventoryItem(
+  id: string,
+  data: {
+    product_name?: string;
+    description?: string | null;
+    dimension?: string | null;
+    quantity?: number;
+    image_url?: string | null;
+  }
+): Promise<InventoryItem> {
+  return fetchJson<InventoryItem>(`/inventory/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteInventoryItem(id: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/inventory/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function extractInventoryImage(image_base64: string, mime_type: string): Promise<InventoryExtractResult> {
+  return fetchJson<InventoryExtractResult>('/inventory/extract-image', {
+    method: 'POST',
+    body: JSON.stringify({ image_base64, mime_type }),
+  });
+}
+
+export async function bulkUploadInventory(file_data: string, mime_type: string, original_filename: string): Promise<{
+  ok: boolean;
+  drafts_created: number;
+  drafts: InventoryDraft[];
+}> {
+  return fetchJson('/inventory/bulk-upload', {
+    method: 'POST',
+    body: JSON.stringify({ file_data, mime_type, original_filename }),
+  });
+}
+
+export async function getInventoryDrafts(): Promise<InventoryDraft[]> {
+  return fetchJson<InventoryDraft[]>('/inventory/drafts');
+}
+
+export async function updateInventoryDraft(
+  id: string,
+  data: {
+    product_name?: string;
+    description?: string | null;
+    dimension?: string | null;
+    quantity?: number;
+  }
+): Promise<InventoryDraft> {
+  return fetchJson<InventoryDraft>(`/inventory/drafts/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function approveInventoryDraft(id: string): Promise<{ ok: boolean; item: InventoryItem }> {
+  return fetchJson<{ ok: boolean; item: InventoryItem }>(`/inventory/drafts/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+  });
+}
+
+export async function approveAllInventoryDrafts(): Promise<{ ok: boolean; approved_count: number; items: InventoryItem[] }> {
+  return fetchJson('/inventory/drafts/approve-all', {
+    method: 'POST',
+  });
+}
+
+export async function rejectInventoryDraft(id: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/inventory/drafts/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function clearProcessedDrafts(): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/inventory/drafts/clear', {
+    method: 'POST',
+  });
+}
+
 export const STAGE_ORDER = [
   'order_confirmation_received',
   'math_verified',
   'purchasing_pending',
   'production_confirmed',
+  'en_route',
   'deposit_pending',
   'inventory_arrived',
   'balance_due',

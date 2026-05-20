@@ -31,10 +31,18 @@ export interface ExtractedPayment {
   payment_date?: string;
 }
 
+export interface ExtractedInventoryItem {
+  product_name?: string;
+  description?: string;
+  dimension?: string;
+  quantity?: number;
+}
+
 export interface VisionExtractResult {
-  type: 'quotation' | 'payment' | 'unknown';
+  type: 'quotation' | 'payment' | 'inventory' | 'unknown';
   quotation?: ExtractedQuotation;
   payment?: ExtractedPayment;
+  inventory?: ExtractedInventoryItem[];
   raw_text: string;
   confidence: 'high' | 'medium' | 'low';
 }
@@ -420,6 +428,71 @@ export async function autoExtract(
   return {
     type: 'quotation',
     quotation,
+    raw_text: rawText,
+    confidence,
+  };
+}
+
+// ── Extract Inventory Info ───────────────────────────────────────────────
+
+const INVENTORY_PROMPT = `You are a data extraction assistant. Analyze the image or document and extract all inventory/product items visible. Return a JSON object with an "items" array. Each item should have:
+
+{
+  "items": [
+    {
+      "product_name": "string - the product name or title",
+      "description": "string - detailed description if available, otherwise null",
+      "dimension": "string - size, dimensions, or specifications (e.g. '10x20x5 cm', 'Large', 'XL'). Capture any measurement info.",
+      "quantity": "number - quantity or stock count. Use 0 if out of stock, null if not visible."
+    }
+  ]
+}
+
+Rules:
+- Return ONLY valid JSON, no extra text.
+- If the image shows a single product, return an array with one object.
+- If the image shows a table or list of products, extract ALL rows as separate items.
+- For dimension, capture any size, measurement, or dimensional info in any format.
+- For quantity, extract the numeric value only. If text says 'Out of Stock', use 0.
+- If a field is not visible, set it to null.
+- Be as accurate as possible.`;
+
+export async function extractInventory(
+  imageBase64: string,
+  mimeType: string
+): Promise<VisionExtractResult> {
+  const rawText = await callGemini(imageBase64, mimeType, INVENTORY_PROMPT);
+  const parsed = extractJson(rawText);
+
+  if (!parsed) {
+    return {
+      type: 'unknown',
+      raw_text: rawText,
+      confidence: 'low',
+    };
+  }
+
+  const itemsArr = Array.isArray(parsed.items) ? parsed.items : Array.isArray(parsed) ? parsed : [parsed];
+
+  const inventory: ExtractedInventoryItem[] = itemsArr
+    .map((item: any) => ({
+      product_name: typeof item.product_name === 'string' ? item.product_name : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      dimension: typeof item.dimension === 'string' ? item.dimension : undefined,
+      quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+    }))
+    .filter((item: ExtractedInventoryItem) => item.product_name || item.description || item.dimension || item.quantity !== undefined);
+
+  const confidence: 'high' | 'medium' | 'low' =
+    inventory.length > 0 && inventory.every((i) => i.product_name && i.quantity !== undefined)
+      ? 'high'
+      : inventory.length > 0
+        ? 'medium'
+        : 'low';
+
+  return {
+    type: 'inventory',
+    inventory,
     raw_text: rawText,
     confidence,
   };

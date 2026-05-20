@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, setProduction, reportProductionStatus, finishProduction, recalcProductionReminders } from '@/lib/api';
+import { updateOrder, deleteOrder, setProduction, reportProductionStatus, finishProduction, recalcProductionReminders, confirmEnRoute } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { ShoppingCart, Factory, Clock, ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Calendar, RefreshCw, Package } from 'lucide-react';
+import { ShoppingCart, Factory, Clock, ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Calendar, RefreshCw, Package, Truck } from 'lucide-react';
 
 function DriveLink({ folderId }: { folderId: string | null }) {
   if (!folderId) return <span className="text-xs text-gray-400">—</span>;
@@ -200,6 +200,7 @@ interface OrderRowProps {
   onReportOnTime: (order: Order) => void;
   onReportDelayed: (order: Order) => void;
   onFinishProduction: (order: Order) => void;
+  onConfirmEnRoute?: (order: Order) => void;
 }
 
 function OrderRow({
@@ -210,6 +211,7 @@ function OrderRow({
   onReportOnTime,
   onReportDelayed,
   onFinishProduction,
+  onConfirmEnRoute,
 }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -300,7 +302,7 @@ function OrderRow({
         <>
           <ProductionInfo order={order} />
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
-            {!order.production_started && (
+            {!order.production_started && order.current_stage !== 'en_route' && (
               <button
                 onClick={() => onStartProduction(order)}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
@@ -308,7 +310,7 @@ function OrderRow({
                 Mark Production Started
               </button>
             )}
-            {order.production_started && !order.production_finished && (
+            {order.production_started && !order.production_finished && order.current_stage !== 'en_route' && (
               <>
                 <button
                   onClick={() => onReportOnTime(order)}
@@ -329,6 +331,14 @@ function OrderRow({
                   Finish Production
                 </button>
               </>
+            )}
+            {order.current_stage === 'en_route' && onConfirmEnRoute && (
+              <button
+                onClick={() => onConfirmEnRoute(order)}
+                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+              >
+                Confirm En Route
+              </button>
             )}
             <span className="self-center text-xs text-gray-500">
               Deposit: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
@@ -495,6 +505,13 @@ export default function PurchasingPage() {
   } = useOrdersByStage('production_confirmed');
 
   const {
+    data: enRouteOrders = [],
+    isLoading: loadingEnRoute,
+    error: errorEnRoute,
+    mutate: mutateEnRoute,
+  } = useOrdersByStage('en_route');
+
+  const {
     data: inventoryOrders = [],
     isLoading: loadingInventory,
     error: errorInventory,
@@ -546,6 +563,7 @@ export default function PurchasingPage() {
       setEditingOrder(null);
       mutatePending();
       mutateProduction();
+      mutateEnRoute();
       mutateInventory();
     } catch (err: any) {
       alert('Failed to update order: ' + (err.message ?? 'Unknown error'));
@@ -573,6 +591,7 @@ export default function PurchasingPage() {
       setDeletingOrder(null);
       mutatePending();
       mutateProduction();
+      mutateEnRoute();
       mutateInventory();
     } catch (err: any) {
       alert('Failed to delete order: ' + (err.message ?? 'Unknown error'));
@@ -592,6 +611,7 @@ export default function PurchasingPage() {
   function refreshPurchasingLists() {
     mutatePending();
     mutateProduction();
+    mutateEnRoute();
     mutateInventory();
   }
 
@@ -649,6 +669,22 @@ export default function PurchasingPage() {
       refreshPurchasingLists();
     } catch (err: any) {
       alert('Failed to finish production: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  async function handleConfirmEnRoute(order: Order) {
+    const input = window.prompt('Days estimated for inventory to arrive?', order.estimated_arrival_days?.toString() ?? '28');
+    if (!input) return;
+    const days = Number(input.replace(/[^0-9]/g, ''));
+    if (!Number.isInteger(days) || days <= 0) {
+      alert('Please enter a valid positive number of days.');
+      return;
+    }
+    try {
+      await confirmEnRoute(order.id, { estimated_arrival_days: days });
+      refreshPurchasingLists();
+    } catch (err: any) {
+      alert('Failed to confirm en route: ' + (err.message ?? 'Unknown error'));
     }
   }
 
@@ -727,6 +763,43 @@ export default function PurchasingPage() {
               onReportOnTime={handleReportOnTime}
               onReportDelayed={handleReportDelayed}
               onFinishProduction={handleFinishProduction}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm
+                order={order}
+                onSave={handleEditSave}
+                onCancel={handleCancelEdit}
+                saving={saving}
+              />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* En Route (production finished, waiting for en route confirmation) */}
+      <OrderSection
+        icon={<Truck className="h-4 w-4 text-sky-500" />}
+        title="En Route"
+        count={enRouteOrders.length}
+        countBg="bg-sky-100"
+        countText="text-sky-700"
+        orders={enRouteOrders}
+        isLoading={loadingEnRoute}
+        error={errorEnRoute}
+        onRetry={() => mutateEnRoute()}
+        emptyText="No orders en route"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order}
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+              onStartProduction={handleStartProduction}
+              onReportOnTime={handleReportOnTime}
+              onReportDelayed={handleReportDelayed}
+              onFinishProduction={handleFinishProduction}
+              onConfirmEnRoute={handleConfirmEnRoute}
             />
             {editingOrder?.id === order.id && (
               <EditForm

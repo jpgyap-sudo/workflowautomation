@@ -32,6 +32,9 @@ export interface OrderRow {
   production_finished: boolean | null;
   production_finished_at: string | null;
   delivery_estimated_days: number | null;
+  en_route_confirmed: boolean | null;
+  en_route_confirmed_at: string | null;
+  estimated_arrival_days: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,6 +59,7 @@ export const STAGE_LABELS: Record<string, string> = {
   purchasing_pending: '🛒 Purchasing Pending',
   production_confirmed: '🏭 Production Confirmed',
   deposit_pending: '💳 Deposit Pending',
+  en_route: '🚚 En Route',
   inventory_arrived: '📦 Inventory Arrived',
   balance_due: '⚖️ Balance Due',
   delivery_scheduled: '🚚 Delivery Scheduled',
