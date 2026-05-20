@@ -2150,3 +2150,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: update jpgyap password to Purchasing888 and add maiquocquynh2506 as default account
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c72fd816b88db700436441a108287d964d30c6ab
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c72fd816b88db700436441a108287d964d30c6ab
+**Files:** apps/dashboard/src/lib/auth.tsx
+
+**Summary:**
+**What was fixed:**  
+Updated the `jpgyap` account password to `Purchasing888` and added `maiquocquynh2506` as a default account in the authentication logic.
+
+**Why it broke:**  
+The previous password was likely incorrect or expired, causing authentication failures for the `jpgyap` account. Additionally, the system lacked a fallback default account (`maiquocquynh2506`), which may have been needed for initial login or testing.
+
+**Reusable takeaway:**  
+Hardcoded credentials in authentication logic are fragile and require manual updates when passwords change. Instead, store credentials in environment variables or a secure vault. Also, always include a default or fallback account for bootstrapping access, but ensure it is temporary and documented.
+
+---
+*Original commit message: fix: update jpgyap password to Purchasing888 and add maiquocquynh2506 as default account*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated the `jpgyap` account password to `Purchasing888` and added `maiquocquynh2506` as a default account in the authentication logic.
+
+**Why it broke:**  
+The previous password was likely incorrect or expired, causing authentication failures for the `jpgyap` account. Additionally, the system lacked a fallback default account (`maiquocquynh2506`), which may have been needed for initial login or testing.
+
+**Reusable takeaway:**  
+Hardcoded credentials in authentication logic are fragile and require manual updates when passwords change. Instead, store credentials in environment variables or a secure vault. Also, always include a default or fallback account for bootstrapping access, but ensure it is temporary and documented.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

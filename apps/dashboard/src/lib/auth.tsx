@@ -52,7 +52,29 @@ function getStoredAccounts(): Account[] {
     const stored = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Merge defaults into stored accounts so password changes and new accounts
+        // from source code updates are applied to existing users
+        let changed = false;
+        for (const def of DEFAULT_ACCOUNTS) {
+          const idx = parsed.findIndex((a: Account) => a.email.toLowerCase() === def.email.toLowerCase());
+          if (idx >= 0) {
+            // Update password from defaults (in case it changed)
+            if (parsed[idx].password !== def.password) {
+              parsed[idx].password = def.password;
+              changed = true;
+            }
+          } else {
+            // Add new default account that doesn't exist in storage
+            parsed.push(def);
+            changed = true;
+          }
+        }
+        if (changed) {
+          localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(parsed));
+        }
+        return parsed;
+      }
     }
   } catch {
     // ignore
