@@ -2475,14 +2475,18 @@ bot.command('unlink', async (ctx) => {
  *
  * When a container restarts, Telegram's polling lock from the previous
  * instance may still be active. deleteWebhook does NOT clear polling locks,
- * so we must retry with exponential backoff until the lock expires
- * (typically 30-60 seconds).
+ * so we use the Telegram Bot API `close` method to terminate any existing
+ * session before launching. If a 409 still occurs, we retry with exponential
+ * backoff (capped at 60s) up to 12 times (~5 minutes total).
  */
 async function launchWithRetry(maxRetries = 12, baseDelayMs = 5000): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Clear any lingering webhook before each attempt
+      // 1) Clear any lingering webhook
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      // 2) Close any existing bot session (releases polling lock)
+      await bot.telegram.callApi('close', {});
+      // 3) Launch
       await bot.launch();
       console.log(`[bot] Launched successfully on attempt ${attempt}`);
       return;
