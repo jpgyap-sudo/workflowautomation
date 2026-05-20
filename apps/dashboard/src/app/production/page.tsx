@@ -17,6 +17,13 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
+function DaysAgo({ updatedAt }: { updatedAt: string }) {
+  const days = Math.floor((new Date().getTime() - new Date(updatedAt).getTime()) / 86_400_000);
+  if (days <= 0) return null;
+  const cls = days >= 7 ? 'font-semibold text-red-500' : days >= 3 ? 'text-amber-500' : 'text-gray-400';
+  return <span className={`hidden text-xs sm:inline ${cls}`}>{days}d</span>;
+}
+
 function DriveLink({ folderId }: { folderId: string | null }) {
   if (!folderId) return <span className="text-xs text-gray-400">—</span>;
   return (
@@ -225,14 +232,7 @@ function OrderRow({ order, onEdit, onDelete, onReportOnTime, onReportDelayed, on
         </div>
         <div className="flex items-center gap-3">
           <DriveLink folderId={order.google_drive_folder_id} />
-          {(() => {
-            const days = Math.floor((Date.now() - new Date(order.updated_at).getTime()) / 86_400_000);
-            return days > 0 ? (
-              <span className={`hidden text-xs sm:inline ${days >= 7 ? 'font-semibold text-red-500' : days >= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
-                {days}d
-              </span>
-            ) : null;
-          })()}
+          <DaysAgo updatedAt={order.updated_at} />
           <StageBadge stage={order.current_stage} />
           <div className="flex items-center gap-1">
             <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
