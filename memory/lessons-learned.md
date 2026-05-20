@@ -552,3 +552,63 @@ To reset a long-polling connection without destroying the client, use `getUpdate
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: increase telegram bot launch retries to 30, remove resetPollingLock, improve autoLinkClientToOrder
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 356cfb002bb32c901bfad286162a9c323b6814e0
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 356cfb002bb32c901bfad286162a9c323b6814e0
+**Files:** apps/api/src/server.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+- Increased Telegram bot launch retries from 5 to 30 to handle transient startup failures.  
+- Removed `resetPollingLock` call that was causing race conditions.  
+- Improved `autoLinkClientToOrder` logic for more reliable client-order linking.  
+
+**Why it broke:**  
+- Low retry count (5) was insufficient for unstable network/API conditions.  
+- `resetPollingLock` interfered with Telegram’s internal polling state, causing deadlocks or duplicate connections.  
+- `autoLinkClientToOrder` had fragile matching logic that failed under edge cases (e.g., partial data).  
+
+**Reusable takeaway:**  
+- When integrating with external APIs (especially polling-based ones), use generous retries (≥30) and avoid manually resetting internal state unless absolutely necessary.  
+- For linking logic, prefer idempotent, fault-tolerant matching (e.g., fallback to fuzzy matching or multiple key lookups) rather than strict single-field equality.  
+- Always test under degraded network conditions to validate retry and recovery behavior.
+
+---
+*Original commit message: fix: increase telegram bot launch retries to 30, remove resetPollingLock, improve autoLinkClientToOrder*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Increased Telegram bot launch retries from 5 to 30 to handle transient startup failures.  
+- Removed `resetPollingLock` call that was causing race conditions.  
+- Improved `autoLinkClientToOrder` logic for more reliable client-order linking.  
+
+**Why it broke:**  
+- Low retry count (5) was insufficient for unstable network/API conditions.  
+- `resetPollingLock` interfered with Telegram’s internal polling state, causing deadlocks or duplicate connections.  
+- `autoLinkClientToOrder` had fragile matching logic that failed under edge cases (e.g., partial data).  
+
+**Reusable takeaway:**  
+- When integrating with external APIs (especially polling-based ones), use generous retries (≥30) and avoid manually resetting internal state unless absolutely necessary.  
+- For linking logic, prefer idempotent, fault-tolerant matching (e.g., fallback to fuzzy matching or multiple key lookups) rather than strict single-field equality.  
+- Always test under degraded network conditions to validate retry and recovery behavior.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
