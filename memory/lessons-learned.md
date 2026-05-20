@@ -110,3 +110,51 @@ When adding a new database field, always update all layers: schema migration, Ty
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: update lesson index and migration for production_started_at
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit cb0541fdbe2ebcfd04e6259f3db49d16cec5ed00
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** cb0541fdbe2ebcfd04e6259f3db49d16cec5ed00
+**Files:** database/migrations/010_clients.sql,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Updated documentation and migration logic to correctly reference `production_started_at` instead of an ambiguous or incorrect timestamp field in client records.
+
+**Why it broke:**  
+The original schema or lesson index used a vague timestamp (e.g., `created_at` or `updated_at`) that did not accurately capture when a client’s production workflow actually began. This caused incorrect sequencing in automation triggers and reporting.
+
+**Reusable takeaway:**  
+When modeling state transitions in workflow automation, always use explicit, semantically precise timestamp fields (e.g., `production_started_at`, `deployed_at`) rather than generic timestamps. This prevents logic errors in event-driven systems and ensures audit trails reflect actual process milestones.
+
+---
+*Original commit message: docs: update lesson index and migration for production_started_at*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated documentation and migration logic to correctly reference `production_started_at` instead of an ambiguous or incorrect timestamp field in client records.
+
+**Why it broke:**  
+The original schema or lesson index used a vague timestamp (e.g., `created_at` or `updated_at`) that did not accurately capture when a client’s production workflow actually began. This caused incorrect sequencing in automation triggers and reporting.
+
+**Reusable takeaway:**  
+When modeling state transitions in workflow automation, always use explicit, semantically precise timestamp fields (e.g., `production_started_at`, `deployed_at`) rather than generic timestamps. This prevents logic errors in event-driven systems and ensures audit trails reflect actual process milestones.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
