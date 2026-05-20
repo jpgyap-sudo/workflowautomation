@@ -10,6 +10,8 @@ import {
   CalendarEvent,
   MonthlySales,
   BackupsResponse,
+  BotLogEntry,
+  BotLogsQuery,
 } from './api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -126,6 +128,7 @@ export function useRealtimeSubscription() {
             swrKeys.push('/calendar/notes');
           }
           if (key.includes('/backups') || key.includes('supabase-backup')) swrKeys.push('/backups');
+          if (key.includes('/bot-logs')) swrKeys.push('/bot-logs');
         }
 
         // Also revalidate any stage-specific keys
@@ -190,5 +193,21 @@ export function useBackups() {
   return useSWR<BackupsResponse>('/backups', fetcher, {
     ...SWR_CONFIG,
     refreshInterval: 30_000, // backups refresh every 30s
+  });
+}
+
+// ── Hook: Bot Logs ──────────────────────────────────────────────────
+export function useBotLogs(query?: BotLogsQuery) {
+  const params = new URLSearchParams();
+  if (query?.limit) params.set('limit', String(query.limit));
+  if (query?.offset) params.set('offset', String(query.offset));
+  if (query?.chat_id) params.set('chat_id', query.chat_id);
+  if (query?.message_type) params.set('message_type', query.message_type);
+  if (query?.status) params.set('status', query.status);
+  const qs = params.toString();
+  const key = `/bot-logs${qs ? `?${qs}` : ''}`;
+  return useSWR<BotLogEntry[]>(key, fetcher, {
+    ...SWR_CONFIG,
+    refreshInterval: 15_000, // bot logs refresh every 15s
   });
 }

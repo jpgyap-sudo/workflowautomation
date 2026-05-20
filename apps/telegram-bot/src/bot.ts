@@ -9,6 +9,39 @@ if (!token) throw new Error('TELEGRAM_BOT_TOKEN is required');
 
 const bot = new Telegraf(token);
 
+// ── Bot Logger ─────────────────────────────────────────────────────────
+// Logs all bot activity to the API's bot_logs table for debugging
+
+async function botLog(params: {
+  chatId: string;
+  userId?: string;
+  username?: string;
+  messageType: string;
+  direction?: 'incoming' | 'outgoing' | 'internal';
+  content?: string;
+  metadata?: Record<string, unknown>;
+  status?: 'success' | 'error' | 'pending';
+}) {
+  try {
+    await fetch(`${apiBaseUrl}/bot-logs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: params.chatId,
+        user_id: params.userId,
+        username: params.username,
+        message_type: params.messageType,
+        direction: params.direction ?? 'incoming',
+        content: params.content,
+        metadata: params.metadata,
+        status: params.status ?? 'success',
+      }),
+    });
+  } catch {
+    // Silently ignore logging failures — we don't want log failures to break the bot
+  }
+}
+
 // ── API Helpers ────────────────────────────────────────────────────────
 
 async function postJson(path: string, body: unknown) {
@@ -150,7 +183,15 @@ function cancelButton() {
 
 bot.start(async (ctx) => {
   const chatId = String(ctx.chat!.id);
+  const username = ctx.from?.username;
   resetStep(chatId);
+  botLog({
+    chatId,
+    username,
+    messageType: 'command',
+    content: '/start',
+    direction: 'incoming',
+  });
   await ctx.reply(
     '👋 *Welcome to Quotation Automation Bot!*\n\n' +
     'Use the buttons below to manage orders. No need to type commands — just tap and follow the prompts.',
@@ -162,7 +203,15 @@ bot.start(async (ctx) => {
 
 bot.action('action:cancel', async (ctx) => {
   const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
   resetStep(chatId);
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: 'action:cancel',
+    direction: 'incoming',
+  });
   await ctx.editMessageText(
     '❌ Cancelled. What would you like to do next?',
     { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -174,6 +223,15 @@ bot.action('action:cancel', async (ctx) => {
 bot.action(/^menu:(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const action = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `menu:${action}`,
+    direction: 'incoming',
+  });
 
   switch (action) {
     case 'main':
@@ -334,6 +392,18 @@ bot.on(message('text'), async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const text = ctx.message.text.trim();
   const session = getSession(chatId);
+  const username = ctx.from?.username;
+  const userId = String(ctx.from?.id ?? '');
+
+  // Log incoming text message
+  botLog({
+    chatId,
+    userId,
+    username,
+    messageType: 'text',
+    content: text.substring(0, 500),
+    metadata: { step: session.step.action },
+  });
 
   // If idle, show main menu
   if (session.step.action === 'idle') {
@@ -734,6 +804,15 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const status = ctx.match[1];
   const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `produce:${status}:${quotationNumber}`,
+    direction: 'incoming',
+  });
 
   if (status === 'no') {
     await postJson('/stage-updates', {
@@ -762,6 +841,15 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const status = ctx.match[1];
   const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `payment:${status}:${quotationNumber}`,
+    direction: 'incoming',
+  });
 
   try {
     await postJson('/stage-updates', {
@@ -796,6 +884,8 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
 bot.action('vision:process_yes', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_vision_process') {
     return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
@@ -805,6 +895,14 @@ bot.action('vision:process_yes', async (ctx) => {
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: `process_yes: ${fileName}`,
+    metadata: { mimeType, fileName },
+    direction: 'incoming',
+  });
 
   // Store data for next step
   setStep(chatId, {
@@ -831,7 +929,15 @@ bot.action('vision:process_yes', async (ctx) => {
 // Step 1: User said No to "Process this order?" → do nothing
 bot.action('vision:process_no', async (ctx) => {
   const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
   resetStep(chatId);
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: 'process_no',
+    direction: 'incoming',
+  });
   await ctx.editMessageText('✅ File ignored. Nothing was uploaded.', {
     parse_mode: 'Markdown',
     ...mainMenuKeyboard(),
@@ -842,6 +948,8 @@ bot.action('vision:process_no', async (ctx) => {
 bot.action('vision:extract_yes', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_vision_extract') {
     return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
@@ -852,6 +960,14 @@ bot.action('vision:extract_yes', async (ctx) => {
 
   const { imageBase64, mimeType, fileName } = session.step;
   await ctx.editMessageText(`🤖 Analyzing with AI Vision...`);
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: `extract_yes: ${fileName}`,
+    metadata: { mimeType, fileName },
+    direction: 'incoming',
+  });
 
   try {
     // Call the API's vision/extract endpoint
@@ -899,6 +1015,15 @@ bot.action('vision:extract_yes', async (ctx) => {
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
+
+    // Log successful extraction
+    botLog({
+      chatId, userId, username,
+      messageType: 'vision',
+      content: `extracted: ${data.type} (${data.confidence})`,
+      metadata: { fileName, type: data.type, confidence: data.confidence, token },
+      status: 'success',
+    });
 
     if (data.type === 'quotation' && data.quotation) {
       const q = data.quotation;
@@ -948,6 +1073,13 @@ bot.action('vision:extract_yes', async (ctx) => {
     }
   } catch (error: any) {
     console.error('[vision] Extraction error:', error);
+    botLog({
+      chatId, userId, username,
+      messageType: 'vision',
+      content: `extract_error: ${fileName}`,
+      metadata: { errorMessage: String(error.message ?? error) },
+      status: 'error',
+    });
     resetStep(chatId);
     await ctx.editMessageText(`❌ Vision analysis failed: ${error.message}`, {
       parse_mode: 'Markdown',
@@ -960,6 +1092,8 @@ bot.action('vision:extract_yes', async (ctx) => {
 bot.action('vision:upload', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_vision_process' && session.step.action !== 'awaiting_vision_extract') {
     return ctx.editMessageText('⏳ Session expired.', {
@@ -970,6 +1104,14 @@ bot.action('vision:upload', async (ctx) => {
 
   const { imageBase64, mimeType, fileName } = session.step;
   const uploadedBy = ctx.from?.username ?? String(ctx.from?.id);
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: `upload_to_drive: ${fileName}`,
+    metadata: { mimeType, fileName },
+    direction: 'incoming',
+  });
 
   try {
     await ctx.editMessageText(`📤 Uploading to Google Drive...`);
@@ -982,6 +1124,14 @@ bot.action('vision:upload', async (ctx) => {
       uploadedBy,
     });
 
+    botLog({
+      chatId, userId, username,
+      messageType: 'upload',
+      content: fileName,
+      metadata: { mimeType, driveFileId: driveResult.fileId, driveLink: driveResult.webViewLink },
+      status: 'success',
+    });
+
     resetStep(chatId);
     await ctx.editMessageText(
       `✅ *File uploaded to Google Drive!*
@@ -991,6 +1141,13 @@ bot.action('vision:upload', async (ctx) => {
     );
   } catch (error: any) {
     console.error('[vision] Upload error:', error);
+    botLog({
+      chatId, userId, username,
+      messageType: 'upload',
+      content: fileName,
+      metadata: { mimeType, errorMessage: String(error.message ?? error) },
+      status: 'error',
+    });
     setStep(chatId, {
       action: 'awaiting_upload_retry',
       imageBase64,
@@ -1009,6 +1166,8 @@ Tap Retry upload to try again.`, {
 bot.action('upload:retry', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_upload_retry') {
     return ctx.editMessageText('⏳ Retry session expired. Please upload the file again.', {
@@ -1030,6 +1189,20 @@ bot.action('upload:retry', async (ctx) => {
       uploadedBy: uploadedBy ?? ctx.from?.username ?? String(ctx.from?.id),
     });
 
+    // Log successful retry
+    botLog({
+      chatId, userId, username,
+      messageType: 'upload',
+      content: fileName,
+      metadata: {
+        mimeType, quotationNumber, telegramMessageId,
+        driveFileId: driveResult.fileId,
+        driveLink: driveResult.webViewLink,
+        retry: true,
+      },
+      status: 'success',
+    });
+
     resetStep(chatId);
     await ctx.editMessageText(
       `✅ *File uploaded to Google Drive!*
@@ -1041,6 +1214,19 @@ bot.action('upload:retry', async (ctx) => {
     );
   } catch (error: any) {
     console.error('[upload:retry] Upload error:', error);
+    // Log retry failure
+    botLog({
+      chatId, userId, username,
+      messageType: 'upload',
+      content: fileName,
+      metadata: {
+        mimeType, quotationNumber, telegramMessageId,
+        errorMessage: String(error.message ?? error),
+        retry: true,
+      },
+      status: 'error',
+    });
+
     setStep(chatId, {
       action: 'awaiting_upload_retry',
       imageBase64,
@@ -1061,7 +1247,15 @@ Tap Retry upload to try again.`, {
 // Do nothing
 bot.action('vision:ignore', async (ctx) => {
   const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
   resetStep(chatId);
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: 'ignore',
+    direction: 'incoming',
+  });
   await ctx.editMessageText('✅ File ignored. Nothing was uploaded.', {
     parse_mode: 'Markdown',
     ...mainMenuKeyboard(),
@@ -1076,6 +1270,7 @@ bot.on(['document', 'photo'], async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const messageId = String(ctx.message.message_id);
   const from = ctx.from?.username ?? String(ctx.from?.id);
+  const userId = String(ctx.from?.id ?? '');
   const session = getSession(chatId);
 
   // Determine file info using type-safe narrowing
@@ -1096,8 +1291,23 @@ bot.on(['document', 'photo'], async (ctx) => {
     fileName = `photo_${Date.now()}.jpg`;
     mimeType = 'image/jpeg';
   } else {
+    botLog({
+      chatId, userId, username: from,
+      messageType: 'error',
+      content: 'Unsupported file type',
+      status: 'error',
+    });
     return ctx.reply('❌ Unsupported file type.');
   }
+
+  // Log file receipt
+  botLog({
+    chatId, userId, username: from,
+    messageType: msg.document ? 'document' : 'photo',
+    content: fileName,
+    metadata: { fileId, mimeType, messageId, linkedOrder: session.linkedOrder },
+    status: 'pending',
+  });
 
   await ctx.reply(`📎 Downloading ${fileName}...`);
 
@@ -1146,6 +1356,20 @@ Do you want me to process this order?`,
         uploadedBy: from,
       });
 
+      // Log successful upload
+      botLog({
+        chatId, userId, username: from,
+        messageType: 'upload',
+        content: fileName,
+        metadata: {
+          fileId, mimeType, messageId,
+          quotationNumber,
+          driveFileId: driveResult.fileId,
+          driveLink: driveResult.webViewLink,
+        },
+        status: 'success',
+      });
+
       await ctx.reply(
         `✅ *File uploaded to Google Drive!*
 📄 ${escapeMarkdown(fileName)}
@@ -1157,6 +1381,19 @@ Do you want me to process this order?`,
     }
   } catch (error: any) {
     console.error('Upload error:', error);
+    // Log the failure
+    botLog({
+      chatId, userId, username: from,
+      messageType: 'upload',
+      content: fileName,
+      metadata: {
+        fileId, mimeType, messageId,
+        linkedOrder: session.linkedOrder,
+        errorMessage: String(error.message ?? error),
+      },
+      status: 'error',
+    });
+
     if (imageBase64) {
       setStep(chatId, {
         action: 'awaiting_upload_retry',
@@ -1184,7 +1421,15 @@ Tap Retry upload to try again.`, {
 // Help Command
 bot.command('help', async (ctx) => {
   const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
   resetStep(chatId);
+  botLog({
+    chatId, userId, username,
+    messageType: 'command',
+    content: '/help',
+    direction: 'incoming',
+  });
   await ctx.reply(
     '📖 *Quotation Automation Bot — Help*\n\n' +
     'This bot uses *buttons*, not commands. Just tap and follow the prompts.\n\n' +
@@ -1209,8 +1454,16 @@ bot.command('help', async (ctx) => {
 // ── Unlink Command (keep for power users) ─────────────────────────────
 bot.command('unlink', async (ctx) => {
   const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
   const session = getSession(chatId);
   session.linkedOrder = null;
+  botLog({
+    chatId, userId, username,
+    messageType: 'command',
+    content: '/unlink',
+    direction: 'incoming',
+  });
   await ctx.reply('🔗 Order context cleared. Files will not be linked to any order.', mainMenuKeyboard());
 });
 

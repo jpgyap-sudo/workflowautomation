@@ -224,6 +224,40 @@ export async function deleteCalendarNote(id: string): Promise<{ ok: boolean }> {
   });
 }
 
+// ── Bot Logs ──────────────────────────────────────────────────────────
+
+export interface BotLogEntry {
+  id: string;
+  chat_id: string;
+  user_id: string | null;
+  username: string | null;
+  message_type: string;
+  direction: string;
+  content: string | null;
+  metadata: Record<string, unknown> | null;
+  status: string;
+  created_at: string;
+}
+
+export interface BotLogsQuery {
+  limit?: number;
+  offset?: number;
+  chat_id?: string;
+  message_type?: string;
+  status?: string;
+}
+
+export async function getBotLogs(query?: BotLogsQuery): Promise<BotLogEntry[]> {
+  const params = new URLSearchParams();
+  if (query?.limit) params.set('limit', String(query.limit));
+  if (query?.offset) params.set('offset', String(query.offset));
+  if (query?.chat_id) params.set('chat_id', query.chat_id);
+  if (query?.message_type) params.set('message_type', query.message_type);
+  if (query?.status) params.set('status', query.status);
+  const qs = params.toString();
+  return fetchJson<BotLogEntry[]>(`/bot-logs${qs ? `?${qs}` : ''}`);
+}
+
 export const STAGE_ORDER = [
   'order_confirmation_received',
   'math_verified',

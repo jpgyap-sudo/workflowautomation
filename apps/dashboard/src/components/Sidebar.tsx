@@ -20,6 +20,7 @@ import {
   Bot,
   Database,
   ScanEye,
+  MessageSquare,
   X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/agents', label: 'Agents', icon: Bot },
   { href: '/logs', label: 'Agent Logs', icon: Activity },
+  { href: '/bot-logs', label: 'Bot Logs', icon: MessageSquare },
   { href: '/backup', label: 'Backups', icon: Database },
   { href: '/vision', label: 'Vision Upload', icon: ScanEye },
   { href: '/settings', label: 'Settings', icon: Settings },

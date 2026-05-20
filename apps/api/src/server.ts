@@ -1272,6 +1272,81 @@ app.delete('/calendar/notes/:id', async (request, reply) => {
   return reply.send({ ok: true });
 });
 
+// ── Bot Logs ────────────────────────────────────────────────────────
+
+/**
+ * POST /bot-logs — Receive a log entry from the Telegram bot
+ * The bot calls this to record message events, uploads, errors, etc.
+ */
+const botLogSchema = z.object({
+  chat_id: z.string(),
+  user_id: z.string().optional(),
+  username: z.string().optional(),
+  message_type: z.string(),
+  direction: z.enum(['incoming', 'outgoing', 'internal']).optional().default('incoming'),
+  content: z.string().optional(),
+  metadata: z.any().optional(),
+  status: z.enum(['success', 'error', 'pending']).optional().default('success'),
+});
+
+app.post('/bot-logs', async (request, reply) => {
+  const body = botLogSchema.parse(request.body);
+  const rows = await query(
+    `INSERT INTO bot_logs (chat_id, user_id, username, message_type, direction, content, metadata, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, created_at`,
+    [
+      body.chat_id,
+      body.user_id ?? null,
+      body.username ?? null,
+      body.message_type,
+      body.direction,
+      body.content ?? null,
+      body.metadata ? JSON.stringify(body.metadata) : null,
+      body.status,
+    ]
+  );
+  return reply.send({ ok: true, id: rows[0].id, created_at: rows[0].created_at });
+});
+
+/**
+ * GET /bot-logs — List bot logs (paginated, filterable)
+ */
+app.get('/bot-logs', async (request) => {
+  const query_params = z.object({
+    limit: z.coerce.number().min(1).max(200).optional().default(100),
+    offset: z.coerce.number().min(0).optional().default(0),
+    chat_id: z.string().optional(),
+    message_type: z.string().optional(),
+    status: z.string().optional(),
+  }).parse(request.query);
+
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  if (query_params.chat_id) {
+    conditions.push(`chat_id = $${idx++}`);
+    values.push(query_params.chat_id);
+  }
+  if (query_params.message_type) {
+    conditions.push(`message_type = $${idx++}`);
+    values.push(query_params.message_type);
+  }
+  if (query_params.status) {
+    conditions.push(`status = $${idx++}`);
+    values.push(query_params.status);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const sql = `SELECT id, chat_id, user_id, username, message_type, direction, content, metadata, status, created_at
+               FROM bot_logs ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`;
+  values.push(query_params.limit, query_params.offset);
+
+  const rows = await query(sql, values);
+  return rows;
+});
+
 // ── SSE Endpoint ────────────────────────────────────────────────────
 // Dashboard clients connect here for real-time cache invalidation events
 app.get('/events', (request, reply) => {
