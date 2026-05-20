@@ -5,7 +5,7 @@ ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 COPY package*.json ./
-RUN npm config set maxsockets 2 && npm ci --prefer-offline
+RUN npm config set maxsockets 2 && npm install --prefer-offline
 COPY . .
 RUN npm run build
 
