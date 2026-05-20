@@ -188,6 +188,30 @@ export async function processDueReminders(): Promise<number> {
           { text: '❌ Not Yet', callback_data: `balance:not_paid:${orderId}:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'delivery_scheduled') {
+      // Delivery scheduled: ask if item has been delivered yet
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Yes, Delivered', callback_data: `delivery:yes:${orderId}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `delivery:no:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'countered') {
+      // Countered: ask if payment has been received
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '💰 Payment Received', callback_data: `payment:confirmed:${orderId}:${quotationNumber}` },
+          { text: '⏳ Still Waiting', callback_data: `payment:pending:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'payment_received') {
+      // Payment received: ask if payment is confirmed
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Confirm Payment', callback_data: `payment:confirmed:${orderId}:${quotationNumber}` },
+          { text: '⏳ Still Pending', callback_data: `payment:pending:${orderId}:${quotationNumber}` },
+        ],
+      ]);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);

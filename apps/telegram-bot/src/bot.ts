@@ -1531,17 +1531,24 @@ bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
 });
 
 // Payment status callback
+// payment:confirmed:orderId:quotationNumber (from inline keyboards)
+// OR payment:confirmed:quotationNumber (from /payment command, legacy)
 bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const status = ctx.match[1];
-  const quotationNumber = ctx.match[2];
+  const rest = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+
+  // Support both formats: "orderId:quotationNumber" and just "quotationNumber"
+  const parts = rest.split(':');
+  const quotationNumber = parts.length >= 2 ? parts.slice(1).join(':') : rest;
+  const orderId = parts.length >= 2 ? parts[0] : '';
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `payment:${status}:${quotationNumber}`,
+    content: `payment:${status}:${rest}`,
     direction: 'incoming',
   });
 
@@ -1888,24 +1895,14 @@ bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
   });
 
   try {
-    // Advance to balance_due stage
+    // Advance to balance_due stage via /stage-updates (accepts quotation_number)
     await postJson('/stage-updates', {
-      order_id: orderId,
+      quotation_number: quotationNumber,
       stage: 'balance_due',
       status: 'auto_advanced',
       remarks: 'Inventory arrived — ready for delivery, balance payment required',
       updated_by: 'delivery-agent',
     });
-
-    // Update order stage
-    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
-    if (res.ok) {
-      await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ current_stage: 'balance_due' }),
-      });
-    }
 
     await ctx.editMessageText(
       `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
@@ -1991,6 +1988,70 @@ bot.action(/^balance:not_paid:(.+):(.+)$/, async (ctx) => {
     `⏳ *Payment Pending* — ${quotationNumber}\n\n` +
     `Noted. The bot will ask again tomorrow. ` +
     `Please remind the client about the balance payment.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// ── Delivery Day Check Callback Handlers ─────────────────────────────
+
+// User confirmed item has been delivered
+bot.action(/^delivery:yes:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `delivery:yes:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Advance to delivered stage
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'delivered',
+      status: 'auto_advanced',
+      remarks: 'Delivery confirmed via bot callback',
+      updated_by: 'delivery-agent',
+    });
+
+    await ctx.editMessageText(
+      `✅ *Delivery Confirmed* — ${quotationNumber}\n\n` +
+      `Stage advanced to 📦 *Delivered*.\n\n` +
+      `Please update payment status using the /payment command.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(
+      `❌ Error updating delivery status: ${err.message}`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+});
+
+// User said item has NOT been delivered yet
+bot.action(/^delivery:no:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `delivery:no:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(
+    `⏳ *Delivery Pending* — ${quotationNumber}\n\n` +
+    `Noted. The bot will ask again tomorrow. ` +
+    `Please update once the item has been delivered.`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -2958,27 +3019,41 @@ bot.on(['document', 'photo'], async (ctx) => {
             mode: 'payment',
           });
 
-          if (visionResult?.amount && visionResult?.amount > 0) {
+          const paymentAmount = visionResult?.payment?.amount;
+          const paymentDate = visionResult?.payment?.payment_date;
+
+          if (paymentAmount && paymentAmount > 0) {
             // Record the balance payment
             const payResult: any = await postJson('/pay-balance', {
               quotation_number: quotationNumber,
-              amount: visionResult.amount,
-              payment_date: visionResult.date ?? null,
+              amount: paymentAmount,
+              payment_date: paymentDate ?? null,
               updated_by: from,
+            });
+
+            // Advance stage to delivery_scheduled
+            await postJson('/stage-updates', {
+              quotation_number: quotationNumber,
+              stage: 'delivery_scheduled',
+              status: 'auto_advanced',
+              remarks: 'Balance paid — ready for delivery scheduling',
+              updated_by: 'delivery-agent',
             });
 
             resetStep(chatId);
 
             let msg = `✅ *Balance Payment Recorded!*\n\n`;
             msg += `Order: *${quotationNumber}*\n`;
-            msg += `Amount: ₱${Number(visionResult.amount).toLocaleString()}`;
-            if (visionResult.date) {
-              msg += `\nDate: ${visionResult.date}`;
+            msg += `Amount: ₱${Number(paymentAmount).toLocaleString()}`;
+            if (paymentDate) {
+              msg += `\nDate: ${paymentDate}`;
             }
             if (payResult.overpayment > 0) {
               msg += `\n⚠️ Overpayment of ₱${Number(payResult.overpayment).toLocaleString()}`;
             }
-            msg += `\n\n🚚 You can now schedule delivery using the /deliverydate command.`;
+            msg += `\n\n🚚 *Delivery Scheduling*\n\n`;
+            msg += `The stage has been advanced to *Delivery Scheduled*.\n`;
+            msg += `Please set the delivery schedule using the /deliverydate command.`;
 
             await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
           } else {

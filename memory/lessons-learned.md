@@ -1080,6 +1080,51 @@ Created `shared-context.json` (git-ignored) and `scripts/query-context.mjs` for 
 #### Tags
 cross-tool, shared-context, json, query-script, learning-layer, gitignore
 
+### Lesson: [workflowautomation] feat: bot automation for inventory_arrived → balance payment flow
+
+Date: 2026-05-20
+Source: SuperRoo (code mode)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+- apps/api/src/agents/deliveryAgent.ts
+- apps/api/src/services/reminderScheduler.ts
+- apps/api/src/server.ts
+- apps/telegram-bot/src/bot.ts
+Tags: delivery-agent, inventory-arrived, balance-due, inline-keyboard, vision-extraction, payment-flow
+
+#### Task Summary
+Implemented the full bot automation for the inventory_arrived → balance payment flow:
+
+1. **Delivery Agent** ([`deliveryAgent.ts`](apps/api/src/agents/deliveryAgent.ts)):
+   - Added `checkInventoryArrived()` — reminds delivery group that inventory arrived, quotation ready for delivery, balance payment required
+   - Added `checkBalanceDue()` — asks daily "Did the client pay yet?" with balance amount
+   - Both functions escalate after 3 reminders (Level 3 → manager intervention)
+   - `runDeliveryAgent()` now checks `inventory_arrived` and `balance_due` stages in addition to existing stages
+
+2. **Reminder Scheduler** ([`reminderScheduler.ts`](apps/api/src/services/reminderScheduler.ts)):
+   - Added inline keyboard for `inventory_arrived` stage: "✅ Ready for Delivery" / "⏳ Still Waiting"
+   - Added inline keyboard for `balance_due` stage: "✅ Yes, Client Paid" / "❌ Not Yet"
+
+3. **Telegram Bot** ([`bot.ts`](apps/telegram-bot/src/bot.ts)):
+   - Added callback handlers for `inventory:ready` (advances to `balance_due` stage)
+   - Added callback handlers for `inventory:waiting` (acknowledges, continues daily reminders)
+   - Added callback handlers for `balance:paid` (asks for proof of payment photo)
+   - Added callback handlers for `balance:not_paid` (acknowledges, continues daily reminders)
+   - Added `awaiting_balance_proof_photo` state — when user sends photo, calls `/vision/extract` with `mode: 'payment'` to AI-scan amount and date
+   - Auto-records balance payment via `/pay-balance` API when vision extraction succeeds
+   - Falls back to manual amount entry if vision extraction fails
+
+4. **API Server** ([`server.ts`](apps/api/src/server.ts)):
+   - Updated `/agents/delivery` endpoint to handle `inventory_arrived` and `balance_due` stages
+
+#### Lesson Learned
+- The delivery agent is the right place for inventory_arrived and balance_due automation because both stages are pre-delivery checks
+- Inline keyboards with Yes/No buttons work well for daily reminder interactions — the callback data format `stage:action:orderId:quotationNumber` is consistent across all stages
+- For balance proof photos, the existing `/vision/extract` with `mode: 'payment'` already extracts amount, date, and reference — no new AI integration needed
+- The `/pay-balance` API already validates that the amount covers the full balance and rejects insufficient payments
+- Stage flow: `inventory_arrived` → (on "Ready") → `balance_due` → (on "Paid" + proof photo) → balance recorded → `delivery_scheduled` (via existing /deliverydate command)
+
 ### Lesson: [workflowautomation] fix: extract Date.now from render into DaysAgo component (production page lint)
 
 Date: 2026-05-20
@@ -1215,5 +1260,23 @@ When maintaining dual-format indexes (e.g., machine + human), enforce a single s
 #### Tags
 
 cross-project, local-fallback
+
+---
+
+### Lesson: [bugfix] gap fixes for bot automation — inventory:ready callback, unused imports, stage advance after payment, delivery day check
+
+#### Task Summary
+Fixed 4 gaps in the bot automation for inventory_arrived → balance payment → delivery flow:
+1. **inventory:ready callback**: Was passing `order_id` to `/stage-updates` (expects `quotation_number`). Also had a broken PATCH to `/orders/${quotationNumber}` (route expects UUID). Fixed by using `quotation_number` in `/stage-updates` and removing the unnecessary PATCH (the endpoint already updates the order).
+2. **Unused imports**: Removed `advanceStage`, `completeRemindersForOrder`, `getActiveOrdersByStages` from deliveryAgent.ts imports.
+3. **Stage advance after payment**: After balance payment is recorded via photo, the stage now auto-advances to `delivery_scheduled` via `/stage-updates` call.
+4. **Delivery day check**: Added `delivery_scheduled` inline keyboard (Yes/No delivered) in reminderScheduler.ts, and `delivery:yes`/`delivery:no` callback handlers in bot.ts. `delivery:yes` advances to `delivered` stage.
+
+#### Lesson Learned
+When using `/stage-updates` API endpoint, always pass `quotation_number` (not `order_id`) since the schema expects `quotation_number` to look up the order. The `/stage-updates` endpoint handles both the stage update record AND the order's `current_stage` update, so no additional PATCH is needed. After balance payment is recorded, the stage must be explicitly advanced to `delivery_scheduled` — the `/pay-balance` endpoint only records the payment but does not change the stage.
+
+#### Tags
+
+bot-automation, gap-fix, stage-advance, delivery-flow, callback-handler
 
 ---

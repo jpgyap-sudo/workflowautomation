@@ -28,7 +28,7 @@ import {
 import { checkQuotation } from './agents/quotationChecker.js';
 import { checkPurchasing } from './agents/purchasingAgent.js';
 import { checkInventory } from './agents/inventoryAgent.js';
-import { checkScheduledDelivery, checkDelivered } from './agents/deliveryAgent.js';
+import { checkInventoryArrived, checkBalanceDue, checkScheduledDelivery, checkDelivered } from './agents/deliveryAgent.js';
 import { checkCollection } from './agents/collectionAgent.js';
 import { checkEscalation } from './agents/escalationAgent.js';
 import {
@@ -50,6 +50,7 @@ const ORDER_LIST_SELECT = `
   o.client_id, o.delivery_address, o.contact_number,
   o.authorized_receiver_name, o.authorized_receiver_contact,
   o.partial_production_items,
+  o.delivery_date,
   o.created_at, o.updated_at
 `;
 
@@ -882,6 +883,11 @@ app.post('/stage-updates', async (request, reply) => {
   );
   await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [body.stage, orderId]);
 
+  // Capture delivery date from remarks when scheduling delivery
+  if (body.stage === 'delivery_scheduled' && body.remarks) {
+    await query(`UPDATE orders SET delivery_date=$1 WHERE id=$2`, [body.remarks, orderId]);
+  }
+
   // Auto-complete reminders for the previous stage when moving forward
   if (previousStage && previousStage !== body.stage) {
     await query(
@@ -1641,7 +1647,11 @@ app.post('/agents/delivery', async (request, reply) => {
 
   const order = orders[0];
   let result;
-  if (order.current_stage === 'delivery_scheduled') {
+  if (order.current_stage === 'inventory_arrived') {
+    result = await checkInventoryArrived(order);
+  } else if (order.current_stage === 'balance_due') {
+    result = await checkBalanceDue(order);
+  } else if (order.current_stage === 'delivery_scheduled') {
     result = await checkScheduledDelivery(order);
   } else if (order.current_stage === 'delivered') {
     result = await checkDelivered(order);

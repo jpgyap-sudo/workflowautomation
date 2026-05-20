@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, recordStageUpdate } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -33,67 +33,37 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-blue-50/50">
-      <input
-        value={quotationNumber}
-        onChange={(e) => setQuotationNumber(e.target.value)}
-        placeholder="Quotation #"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
-      />
-      <input
-        value={clientName}
-        onChange={(e) => setClientName(e.target.value)}
-        placeholder="Client name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
-      />
-      <input
-        value={salesAgent}
-        onChange={(e) => setSalesAgent(e.target.value)}
-        placeholder="Sales agent"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
-      />
-      <input
-        value={totalAmount}
-        onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-        placeholder="Amount"
-        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
-      />
-      <button
-        type="submit"
-        disabled={saving}
-        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50"
-        title="Save"
-      >
+      <input value={quotationNumber} onChange={(e) => setQuotationNumber(e.target.value)} placeholder="Quotation #"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={salesAgent} onChange={(e) => setSalesAgent(e.target.value)} placeholder="Sales agent"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={totalAmount} onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount"
+        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <button type="submit" disabled={saving}
+        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50" title="Save">
         <Check className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded-lg bg-gray-200 p-1.5 text-gray-600 hover:bg-gray-300"
-        title="Cancel"
-      >
+      <button type="button" onClick={onCancel}
+        className="rounded-lg bg-gray-200 p-1.5 text-gray-600 hover:bg-gray-300" title="Cancel">
         <X className="h-4 w-4" />
       </button>
     </form>
   );
 }
 
-function OrderDeliveryInfo({ order }: { order: Order }) {
+function DeliveryInfo({ order }: { order: Order }) {
   if (!order.delivery_address && !order.contact_number && !order.authorized_receiver_name && !order.authorized_receiver_contact) {
     return null;
   }
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-purple-700">
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-purple-700">
       {order.delivery_address && (
-        <span className="flex items-center gap-1">
-          <MapPin className="h-3 w-3" />
-          {order.delivery_address}
-        </span>
+        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{order.delivery_address}</span>
       )}
       {order.contact_number && (
-        <span className="flex items-center gap-1">
-          <Phone className="h-3 w-3" />
-          {order.contact_number}
-        </span>
+        <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.contact_number}</span>
       )}
       {order.authorized_receiver_name && (
         <span className="flex items-center gap-1">
@@ -107,49 +77,151 @@ function OrderDeliveryInfo({ order }: { order: Order }) {
 }
 
 export default function DeliveryPage() {
-  const {
-    data: balanceDueOrders = [],
-    isLoading: loadingBalanceDue,
-    mutate: mutateBalanceDue,
-  } = useOrdersByStage('balance_due');
+  const { data: inventoryArrivedOrders = [], isLoading: loadingInventory, mutate: mutateInventory } = useOrdersByStage('inventory_arrived');
+  const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
+  const { data: scheduledOrders = [], isLoading: loadingScheduled, mutate: mutateScheduled } = useOrdersByStage('delivery_scheduled');
+  const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
 
-  const {
-    data: scheduledOrders = [],
-    isLoading: loadingScheduled,
-    mutate: mutateScheduled,
-  } = useOrdersByStage('delivery_scheduled');
+  const loading = loadingInventory && loadingBalanceDue && loadingScheduled && loadingDelivered;
 
-  const {
-    data: deliveredOrders = [],
-    isLoading: loadingDelivered,
-    mutate: mutateDelivered,
-  } = useOrdersByStage('delivered');
-
-  const loading = loadingBalanceDue && loadingScheduled && loadingDelivered;
-
-  // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Delete state
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [payingOrder, setPayingOrder] = useState<Order | null>(null);
+  const [payAmount, setPayAmount] = useState('');
 
-  // OTP modal state
   const [otpModal, setOtpModal] = useState<{
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
-  function handleEdit(order: Order) {
-    setEditingOrder(order);
+  function mutateAll() {
+    mutateInventory(); mutateBalanceDue(); mutateScheduled(); mutateDelivered();
   }
 
-  function handleCancelEdit() {
-    setEditingOrder(null);
+  // ── Payment ────────────────────────────────────────────────────────────
+
+  async function handleRecordPayment(order: Order) {
+    const amount = Number(payAmount.replace(/,/g, ''));
+    if (!amount || amount <= 0) { alert('Please enter a valid payment amount'); return; }
+    setActionLoading(order.id);
+    try {
+      await payBalance({ quotation_number: order.quotation_number ?? '', amount });
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'delivery_scheduled',
+        status: 'auto_advanced',
+        remarks: 'Balance paid — ready for delivery scheduling',
+        updated_by: 'dashboard',
+      });
+      setPayingOrder(null);
+      setPayAmount('');
+      mutateBalanceDue();
+      mutateScheduled();
+    } catch (err: any) {
+      alert('Failed to record payment: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
   }
+
+  // ── Advance inventory_arrived → balance_due ────────────────────────────
+
+  function handleAdvanceBalanceDue(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Advance to Balance Due',
+      description: `Confirm that inventory for "${order.quotation_number ?? '—'}" is ready and advance to Balance Due stage.`,
+      pendingAction: 'advance_balance_due',
+    });
+  }
+
+  async function executeAdvanceBalanceDue(order: Order) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'balance_due',
+        status: 'auto_advanced',
+        remarks: 'Inventory confirmed — advancing to balance due',
+        updated_by: 'dashboard',
+      });
+      mutateInventory();
+      mutateBalanceDue();
+    } catch (err: any) {
+      alert('Failed to advance stage: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Mark delivered ──────────────────────────────────────────────────────
+
+  function handleMarkDelivered(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Mark as Delivered',
+      description: `Confirm that "${order.quotation_number ?? '—'}" has been delivered to the client.`,
+      pendingAction: 'mark_delivered',
+    });
+  }
+
+  async function executeMarkDelivered(order: Order) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'delivered',
+        status: 'auto_advanced',
+        remarks: 'Marked as delivered via dashboard',
+        updated_by: 'dashboard',
+      });
+      mutateScheduled();
+      mutateDelivered();
+    } catch (err: any) {
+      alert('Failed to mark as delivered: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Mark countered ──────────────────────────────────────────────────────
+
+  function handleMarkCountered(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Mark as Countered',
+      description: `Mark "${order.quotation_number ?? '—'}" as delivered and awaiting payment collection.`,
+      pendingAction: 'mark_countered',
+    });
+  }
+
+  async function executeMarkCountered(order: Order) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'countered',
+        status: 'auto_advanced',
+        remarks: 'Delivered — awaiting payment (marked via dashboard)',
+        updated_by: 'dashboard',
+      });
+      mutateDelivered();
+    } catch (err: any) {
+      alert('Failed to mark as countered: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Edit / Delete ───────────────────────────────────────────────────────
 
   function handleEditSave(data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }) {
     if (!editingOrder) return;
@@ -169,9 +241,7 @@ export default function DeliveryPage() {
     try {
       await updateOrder(pending.orderId, { ...pending.data, action_token: actionToken });
       setEditingOrder(null);
-      mutateBalanceDue();
-      mutateScheduled();
-      mutateDelivered();
+      mutateAll();
     } catch (err: any) {
       alert('Failed to update order: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -196,9 +266,7 @@ export default function DeliveryPage() {
     try {
       await deleteOrder(deletingOrder.id, actionToken);
       setDeletingOrder(null);
-      mutateBalanceDue();
-      mutateScheduled();
-      mutateDelivered();
+      mutateAll();
     } catch (err: any) {
       alert('Failed to delete order: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -207,14 +275,34 @@ export default function DeliveryPage() {
   }
 
   function handleOtpVerified(actionToken: string) {
-    if (otpModal.pendingAction === 'edit') {
-      handleEditVerified(actionToken);
-    } else if (otpModal.pendingAction === 'delete') {
-      handleDeleteVerified(actionToken);
-    }
+    const order = (window as any).__pendingActionOrder as Order | undefined;
+    if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
+    if (otpModal.pendingAction === 'delete') { handleDeleteVerified(actionToken); return; }
+    if (!order) return;
+    if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order);
+    else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order);
+    else if (otpModal.pendingAction === 'advance_balance_due') executeAdvanceBalanceDue(order);
+    (window as any).__pendingActionOrder = null;
   }
 
-  if (loading && balanceDueOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
+  // ── Shared row actions (edit + delete buttons) ─────────────────────────
+
+  function RowActions({ order }: { order: Order }) {
+    return (
+      <div className="flex items-center gap-1">
+        <button onClick={() => setEditingOrder(order)}
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button onClick={() => handleDeleteClick(order)}
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -224,25 +312,88 @@ export default function DeliveryPage() {
 
   return (
     <div className="space-y-6">
-      {/* Workflow info from Excel */}
+
+      {/* Workflow banner */}
       <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
         <div className="flex items-start gap-3">
           <Truck className="mt-0.5 h-5 w-5 text-purple-600" />
           <div>
             <h3 className="text-sm font-semibold text-purple-800">Delivery Workflow</h3>
             <p className="mt-1 text-xs text-purple-700">
-              Balance must be paid before delivery can be scheduled → Team records payment via{' '}
+              Inventory arrives → Balance paid via{' '}
               <code className="rounded bg-purple-100 px-1">/paybalance QTN-2026-001 15000</code>
-              {' '}→ Then schedules delivery via{' '}
+              {' '}→ Schedule via{' '}
               <code className="rounded bg-purple-100 px-1">/deliverydate QTN-2026-001 May 22 2026</code>
-              {' '}→ Delivery team sends photos/DR → Updates via{' '}
+              {' '}→ Deliver → Update via{' '}
               <code className="rounded bg-purple-100 px-1">/delivered QTN-2026-001 yes countered</code>
             </p>
           </div>
         </div>
       </div>
 
-      {/* Balance Due (blocked until paid) */}
+      {/* ── Inventory Arrived ──────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <PackageOpen className="h-4 w-4 text-teal-500" />
+          <h2 className="text-base font-semibold text-gray-800">Inventory Arrived</h2>
+          <span className="ml-auto rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700">
+            {inventoryArrivedOrders.length}
+          </span>
+        </div>
+        {inventoryArrivedOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders with inventory arrived</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {inventoryArrivedOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              const hasException = order.delivery_exception === true;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        {hasException && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />Special Case
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()} due`}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleAdvanceBalanceDue(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
+                        title="Advance to Balance Due"
+                      >
+                        {actionLoading === order.id ? '…' : 'Ready for Delivery →'}
+                      </button>
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Balance Due ────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
           <Scale className="h-4 w-4 text-violet-500" />
@@ -268,21 +419,16 @@ export default function DeliveryPage() {
                         <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
                         {hasException && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            <ShieldAlert className="h-3 w-3" />
-                            Special Case
+                            <ShieldAlert className="h-3 w-3" />Special Case
                           </span>
                         )}
                       </div>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                      {order.sales_agent && (
-                        <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                      )}
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
                       {hasException && order.delivery_exception_notes && (
-                        <p className="mt-1 text-[11px] italic text-amber-600">
-                          Exception: {order.delivery_exception_notes}
-                        </p>
+                        <p className="mt-1 text-[11px] italic text-amber-600">Exception: {order.delivery_exception_notes}</p>
                       )}
-                      <OrderDeliveryInfo order={order} />
+                      <DeliveryInfo order={order} />
                     </div>
                     <div className="flex items-center gap-3">
                       {hasException ? (
@@ -290,36 +436,41 @@ export default function DeliveryPage() {
                           Exception Granted
                         </span>
                       ) : (
-                        <span className="text-xs font-medium text-violet-600">
-                          ₱{balance.toLocaleString()} due
-                        </span>
+                        <span className="text-xs font-medium text-violet-600">₱{balance.toLocaleString()} due</span>
                       )}
                       <StageBadge stage={order.current_stage} />
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleEdit(order)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                          title="Edit order"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(order)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                          title="Delete order"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => { setPayingOrder(order); setPayAmount(String(balance)); }}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
+                        title="Record payment"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                      </button>
+                      <RowActions order={order} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
-                    <EditForm
-                      order={order}
-                      onSave={handleEditSave}
-                      onCancel={handleCancelEdit}
-                      saving={saving}
-                    />
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                  {payingOrder?.id === order.id && (
+                    <div className="flex items-center gap-2 border-t border-gray-100 bg-emerald-50/50 px-6 py-3">
+                      <span className="text-xs font-medium text-emerald-700">Amount:</span>
+                      <input
+                        value={payAmount}
+                        onChange={(e) => setPayAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                        placeholder="Enter amount"
+                        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <button onClick={() => handleRecordPayment(order)} disabled={actionLoading === order.id}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                        {actionLoading === order.id ? 'Processing…' : 'Confirm Payment'}
+                      </button>
+                      <button onClick={() => { setPayingOrder(null); setPayAmount(''); }}
+                        className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-300">
+                        Cancel
+                      </button>
+                    </div>
                   )}
                 </div>
               );
@@ -328,7 +479,7 @@ export default function DeliveryPage() {
         )}
       </div>
 
-      {/* Scheduled Deliveries */}
+      {/* ── Scheduled Deliveries ──────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
           <Calendar className="h-4 w-4 text-purple-500" />
@@ -354,57 +505,42 @@ export default function DeliveryPage() {
                         <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
                         {hasException && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            <ShieldAlert className="h-3 w-3" />
-                            Special Case
+                            <ShieldAlert className="h-3 w-3" />Special Case
                           </span>
                         )}
                       </div>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                      {order.sales_agent && (
-                        <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                      )}
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
                       {order.total_amount != null && (
                         <p className="mt-0.5 text-xs text-gray-400">
                           Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
                         </p>
                       )}
-                      {hasException && order.delivery_exception_notes && (
-                        <p className="mt-0.5 text-[11px] italic text-amber-600">
-                          Exception: {order.delivery_exception_notes}
+                      {order.delivery_date && (
+                        <p className="mt-0.5 text-xs font-medium text-purple-700">
+                          📅 {order.delivery_date}
                         </p>
                       )}
-                      <OrderDeliveryInfo order={order} />
+                      {hasException && order.delivery_exception_notes && (
+                        <p className="mt-0.5 text-[11px] italic text-amber-600">Exception: {order.delivery_exception_notes}</p>
+                      )}
+                      <DeliveryInfo order={order} />
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400">
-                        {new Date(order.created_at).toLocaleDateString()}
-                      </span>
                       <StageBadge stage={order.current_stage} />
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleEdit(order)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                          title="Edit order"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(order)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                          title="Delete order"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleMarkDelivered(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
+                        title="Mark as delivered"
+                      >
+                        <PackageCheck className="h-4 w-4" />
+                      </button>
+                      <RowActions order={order} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
-                    <EditForm
-                      order={order}
-                      onSave={handleEditSave}
-                      onCancel={handleCancelEdit}
-                      saving={saving}
-                    />
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
                   )}
                 </div>
               );
@@ -413,7 +549,7 @@ export default function DeliveryPage() {
         )}
       </div>
 
-      {/* Delivered */}
+      {/* ── Delivered ─────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
           <CheckCircle2 className="h-4 w-4 text-orange-500" />
@@ -426,72 +562,48 @@ export default function DeliveryPage() {
           <div className="py-12 text-center text-sm text-gray-400">No delivered orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {deliveredOrders.map((order) => (
-              <div key={order.id}>
-                <div className="flex items-center justify-between px-6 py-4">
-                  <div>
-                    <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                    {order.sales_agent && (
-                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                    )}
-                    <OrderDeliveryInfo order={order} />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </span>
-                    <StageBadge stage={order.current_stage} />
-                    <div className="flex items-center gap-1">
+            {deliveredOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()} unpaid`}
+                        </p>
+                      )}
+                      {order.delivery_date && (
+                        <p className="mt-0.5 text-xs text-gray-400">📅 Delivered: {order.delivery_date}</p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
                       <button
-                        onClick={() => handleEdit(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                        title="Edit order"
+                        onClick={() => handleMarkCountered(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg p-1.5 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
+                        title="Mark as countered (awaiting payment)"
                       >
-                        <Pencil className="h-4 w-4" />
+                        <DollarSign className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => handleDeleteClick(order)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                        title="Delete order"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <RowActions order={order} />
                     </div>
                   </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
                 </div>
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
-      </div>
-
-      {/* Workflow fields from Excel */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs font-medium text-gray-500">Estimated Delivery Date</p>
-          <p className="mt-1 text-sm text-gray-800">—</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs font-medium text-gray-500">Actual Delivery Date</p>
-          <p className="mt-1 text-sm text-gray-800">—</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs font-medium text-gray-500">PO / Quotation #</p>
-          <p className="mt-1 text-sm text-gray-800">—</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs font-medium text-gray-500">Delivery Issues</p>
-          <p className="mt-1 text-sm text-gray-800">—</p>
-        </div>
       </div>
 
       {/* OTP Modal */}
@@ -503,15 +615,15 @@ export default function DeliveryPage() {
         onClose={() => {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingEditData = null;
+          (window as any).__pendingActionOrder = null;
         }}
       />
 
-      {/* Deleting overlay */}
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="rounded-xl bg-white p-6 text-center shadow-xl">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
-            <p className="text-sm text-gray-600">Deleting order...</p>
+            <p className="text-sm text-gray-600">Deleting order…</p>
           </div>
         </div>
       )}
