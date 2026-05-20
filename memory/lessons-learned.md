@@ -779,3 +779,51 @@ When adding UI features like progress bars and error states, ensure the backend 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: clients page — reset search on create, refresh search on update/delete
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e802f61c158d8a4b97550814ef64d9e3511a2c93
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e802f61c158d8a4b97550814ef64d9e3511a2c93
+**Files:** apps/dashboard/src/app/clients/page.tsx
+
+**Summary:**
+**What was fixed:**  
+The clients page now resets the search query when a new client is created, and refreshes the search results after updating or deleting a client.
+
+**Why it broke:**  
+The search state was not tied to the data lifecycle. After creating a client, the old search term remained active, hiding the new entry. After updates or deletions, the displayed list was stale because the search query wasn’t re-executed against the latest data.
+
+**Reusable takeaway:**  
+When managing a list with client-side search, always synchronize the search state with CRUD operations. On create, clear the search to show the new item. On update/delete, re-trigger the search to reflect changes. This prevents stale or hidden data and ensures the UI matches the backend state.
+
+---
+*Original commit message: fix: clients page — reset search on create, refresh search on update/delete*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The clients page now resets the search query when a new client is created, and refreshes the search results after updating or deleting a client.
+
+**Why it broke:**  
+The search state was not tied to the data lifecycle. After creating a client, the old search term remained active, hiding the new entry. After updates or deletions, the displayed list was stale because the search query wasn’t re-executed against the latest data.
+
+**Reusable takeaway:**  
+When managing a list with client-side search, always synchronize the search state with CRUD operations. On create, clear the search to show the new item. On update/delete, re-trigger the search to reflect changes. This prevents stale or hidden data and ensures the UI matches the backend state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
