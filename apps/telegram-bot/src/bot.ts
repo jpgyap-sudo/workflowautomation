@@ -9,6 +9,49 @@ if (!token) throw new Error('TELEGRAM_BOT_TOKEN is required');
 
 const bot = new Telegraf(token);
 
+// ── Group Chat Guard ───────────────────────────────────────────────────
+// The bot only responds in authorized group chats defined in env vars.
+// Direct messages (private chats) and unauthorized groups are silently ignored.
+
+const ALLOWED_GROUP_IDS = new Set<string>(
+  [
+    process.env.QUOTATION_GROUP_CHAT_ID,
+    process.env.QUOTATION_GROUP_ID,
+    process.env.PURCHASING_GROUP_CHAT_ID,
+    process.env.PURCHASING_GROUP_ID,
+    process.env.INVENTORY_GROUP_CHAT_ID,
+    process.env.INVENTORY_GROUP_ID,
+    process.env.DELIVERY_GROUP_CHAT_ID,
+    process.env.DELIVERY_GROUP_ID,
+    process.env.COLLECTION_GROUP_CHAT_ID,
+    process.env.COLLECTION_GROUP_ID,
+    process.env.ESCALATION_GROUP_CHAT_ID,
+    process.env.ESCALATION_GROUP_ID,
+  ].filter((v): v is string => Boolean(v))
+);
+
+if (ALLOWED_GROUP_IDS.size === 0) {
+  console.warn('[bot] No group chat IDs configured in environment. Bot will not respond anywhere.');
+}
+
+bot.use(async (ctx, next) => {
+  const chatId = String(ctx.chat?.id ?? '');
+  const chatType = ctx.chat?.type;
+
+  // Allow only configured group/supergroup chats
+  if (chatType !== 'group' && chatType !== 'supergroup') {
+    // Silently ignore private channels and DMs
+    return;
+  }
+
+  if (!ALLOWED_GROUP_IDS.has(chatId)) {
+    console.log(`[bot] Ignored message from unauthorized group ${chatId}`);
+    return;
+  }
+
+  return next();
+});
+
 // ── Bot Logger ─────────────────────────────────────────────────────────
 // Logs all bot activity to the API's bot_logs table for debugging
 
@@ -2427,6 +2470,9 @@ bot.command('unlink', async (ctx) => {
 
 // ── Start ─────────────────────────────────────────────────────────────
 
+// Clear any lingering webhook/polling lock before launching
+// This prevents 409 Conflict errors when restarting the container
+bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
