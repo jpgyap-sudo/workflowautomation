@@ -240,3 +240,11 @@ export function useInventoryDrafts() {
     refreshInterval: 10_000,
   });
 }
+
+// ── Hook: Reminders ──────────────────────────────────────────────────
+export function useReminders() {
+  return useSWR<any[]>('/reminders', fetcher, {
+    ...SWR_CONFIG,
+    refreshInterval: 15_000,
+  });
+}

@@ -705,6 +705,26 @@ export async function uploadToDrive(data: {
   });
 }
 
+export interface Reminder {
+  id: string;
+  order_id: string;
+  stage: string;
+  group_chat_id: string;
+  message: string;
+  frequency: string;
+  next_run_at: string;
+  escalation_level: number;
+  status: string;
+  quotation_number: string | null;
+  client_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getReminders(): Promise<Reminder[]> {
+  return fetchJson<Reminder[]>('/reminders');
+}
+
 export const STAGE_ORDER = [
   'order_confirmation_received',
   'math_verified',
