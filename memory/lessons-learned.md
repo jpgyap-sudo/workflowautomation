@@ -1328,3 +1328,45 @@ When integrating external systems, ensure all shared data fields (e.g., timestam
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: sync SuperRoo lesson index
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b1d5510273ec630c3c4047781094994a43cdccac
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b1d5510273ec630c3c4047781094994a43cdccac
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** The SuperRoo lesson index was out of sync, causing mismatches between the lesson index file and the lessons-learned documentation.
+
+**Why it broke:** The index file (`lesson-index.jsonl`) and the lessons-learned markdown file (`lessons-learned.md`) were updated independently, leading to inconsistencies in lesson references, timestamps, or ordering.
+
+**Reusable takeaway:** When maintaining dual-format documentation (e.g., a structured index and a human-readable summary), always update both files atomically in the same commit or via a single automated sync process. Avoid manual, separate edits to prevent drift. Use a script or CI step to validate that the index and content are consistent before merging.
+
+---
+*Original commit message: chore: sync SuperRoo lesson index*
+
+#### Lesson Learned
+
+**What was fixed:** The SuperRoo lesson index was out of sync, causing mismatches between the lesson index file and the lessons-learned documentation.
+
+**Why it broke:** The index file (`lesson-index.jsonl`) and the lessons-learned markdown file (`lessons-learned.md`) were updated independently, leading to inconsistencies in lesson references, timestamps, or ordering.
+
+**Reusable takeaway:** When maintaining dual-format documentation (e.g., a structured index and a human-readable summary), always update both files atomically in the same commit or via a single automated sync process. Avoid manual, separate edits to prevent drift. Use a script or CI step to validate that the index and content are consistent before merging.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
