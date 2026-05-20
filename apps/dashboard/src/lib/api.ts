@@ -14,15 +14,23 @@ export interface Order {
   deposit_paid: boolean;
   deposit_amount: number | null;
   deposit_image_url: string | null;
+  deposit_paid_at: string | null;
   balance_paid: boolean;
   balance_paid_at: string | null;
+  order_confirmed_at: string | null;
   production_started: boolean | null;
+  production_started_at: string | null;
   estimated_production_days: number | null;
   production_delayed: boolean | null;
   production_delay_days: number | null;
   production_finished: boolean | null;
   production_finished_at: string | null;
   delivery_estimated_days: number | null;
+  client_id: string | null;
+  delivery_address: string | null;
+  contact_number: string | null;
+  authorized_receiver_name: string | null;
+  authorized_receiver_contact: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -297,6 +305,69 @@ export async function getBotLogs(query?: BotLogsQuery): Promise<BotLogEntry[]> {
   if (query?.status) params.set('status', query.status);
   const qs = params.toString();
   return fetchJson<BotLogEntry[]>(`/bot-logs${qs ? `?${qs}` : ''}`);
+}
+
+// ── Clients ───────────────────────────────────────────────────────────
+
+export interface Client {
+  id: string;
+  client_name: string;
+  delivery_address: string | null;
+  contact_number: string | null;
+  authorized_receiver_name: string | null;
+  authorized_receiver_contact: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getClients(): Promise<Client[]> {
+  return fetchJson<Client[]>('/clients');
+}
+
+export async function searchClients(q: string): Promise<Client[]> {
+  return fetchJson<Client[]>(`/clients/search?q=${encodeURIComponent(q)}`);
+}
+
+export async function lookupClientByName(name: string): Promise<Client> {
+  return fetchJson<Client>(`/clients/lookup/${encodeURIComponent(name)}`);
+}
+
+export async function createClient(data: {
+  client_name: string;
+  delivery_address?: string;
+  contact_number?: string;
+  authorized_receiver_name?: string;
+  authorized_receiver_contact?: string;
+  notes?: string;
+}): Promise<Client> {
+  return fetchJson<Client>('/clients', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateClient(
+  id: string,
+  data: {
+    client_name?: string;
+    delivery_address?: string;
+    contact_number?: string;
+    authorized_receiver_name?: string;
+    authorized_receiver_contact?: string;
+    notes?: string;
+  }
+): Promise<Client> {
+  return fetchJson<Client>(`/clients/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteClient(id: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/clients/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
 }
 
 export const STAGE_ORDER = [

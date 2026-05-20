@@ -60,6 +60,29 @@ async function getJson(path: string) {
   return res.json();
 }
 
+async function lookupClient(name: string): Promise<any | null> {
+  try {
+    const res = await fetch(`${apiBaseUrl}/clients/lookup/${encodeURIComponent(name)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function formatClientInfo(client: any): string {
+  const parts: string[] = [];
+  if (client.delivery_address) parts.push(`📍 *Address:* ${client.delivery_address}`);
+  if (client.contact_number) parts.push(`📞 *Contact:* ${client.contact_number}`);
+  if (client.authorized_receiver_name) {
+    let receiver = `👤 *Auth. Receiver:* ${client.authorized_receiver_name}`;
+    if (client.authorized_receiver_contact) receiver += ` (${client.authorized_receiver_contact})`;
+    parts.push(receiver);
+  }
+  if (client.notes) parts.push(`📝 *Notes:* ${client.notes}`);
+  return parts.join('\n');
+}
+
 // ── State Machine ──────────────────────────────────────────────────────
 // Tracks multi-step interactions per chat so users don't need /commands
 
@@ -94,12 +117,13 @@ type UserStep =
       uploadedBy?: string;
     }
   // Deposit slip matching flow (from vision payment extraction)
-  | { action: 'awaiting_deposit_confirmation'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; candidates: DepositCandidate[] }
-  | { action: 'awaiting_deposit_client_name'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number }
+  | { action: 'awaiting_deposit_confirmation'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; candidates: DepositCandidate[]; paymentDate?: string }
+  | { action: 'awaiting_deposit_client_name'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; paymentDate?: string }
   // Production tracking flow
   | { action: 'awaiting_delay_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_delivery_timeline'; orderId: string; quotationNumber: string }
-  | { action: 'awaiting_custom_delivery_days'; orderId: string; quotationNumber: string };
+  | { action: 'awaiting_custom_delivery_days'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_client_search' };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -186,6 +210,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🚚 Schedule Delivery', 'menu:deliverydate')],
     [Markup.button.callback('✅ Mark as Delivered', 'menu:delivered')],
     [Markup.button.callback('💵 Record Payment', 'menu:payment')],
+    [Markup.button.callback('👤 Clients', 'menu:clients')],
     [Markup.button.callback('🔗 Link Order for Upload', 'menu:link')],
     [Markup.button.callback('📎 Upload File', 'menu:upload')],
   ]);
@@ -398,6 +423,19 @@ bot.action(/^menu:(.+)$/, async (ctx) => {
       }
       break;
 
+    case 'clients':
+      setStep(chatId, { action: 'awaiting_client_search' });
+      await ctx.editMessageText(
+        '👤 *Clients*\n\nEnter a client name to search their delivery details, or type *list* to see all clients:',
+        { parse_mode: 'Markdown', ...cancelButton() }
+      ).catch(() =>
+        ctx.reply(
+          '👤 *Clients*\n\nEnter a client name to search their delivery details, or type *list* to see all clients:',
+          { parse_mode: 'Markdown', ...cancelButton() }
+        )
+      );
+      break;
+
     default:
       await ctx.answerCbQuery('Unknown option');
   }
@@ -449,7 +487,7 @@ bot.on(message('text'), async (ctx) => {
         const totalAmount = Number(order.total_amount ?? 0);
         const depositAmount = Number(order.deposit_amount ?? 0);
         const balance = totalAmount - depositAmount;
-        const msg =
+        let msg =
           `📋 *${order.quotation_number}*\n` +
           `Stage: ${order.current_stage}\n` +
           `Status: ${order.status}\n` +
@@ -457,6 +495,21 @@ bot.on(message('text'), async (ctx) => {
           `Total: ₱${totalAmount.toLocaleString()}\n` +
           `Deposit: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
           `Balance: ${order.balance_paid ? '✅ Paid' : `⏳ ₱${balance.toLocaleString()}`}`;
+
+        // Auto-detect client delivery info
+        const client = order.client_name ? await lookupClient(order.client_name) : null;
+        if (client || order.delivery_address || order.contact_number) {
+          msg += `\n\n🚚 *Delivery Info:*`;
+          if (client) {
+            const info = formatClientInfo(client);
+            if (info) msg += `\n${info}`;
+          } else {
+            if (order.delivery_address) msg += `\n📍 *Address:* ${order.delivery_address}`;
+            if (order.contact_number) msg += `\n📞 *Contact:* ${order.contact_number}`;
+            if (order.authorized_receiver_name) msg += `\n👤 *Auth. Receiver:* ${order.authorized_receiver_name}${order.authorized_receiver_contact ? ` (${order.authorized_receiver_contact})` : ''}`;
+          }
+        }
+
         resetStep(chatId);
         await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
       } catch {
@@ -660,8 +713,9 @@ bot.on(message('text'), async (ctx) => {
     case 'awaiting_order_number_for_delivered': {
       const quotationNumber = text;
       // Check balance first
+      let order: any;
       try {
-        const order: any = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+        order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
         const totalAmount = Number(order.total_amount ?? 0);
         const depositAmount = Number(order.deposit_amount ?? 0);
         const balance = totalAmount - depositAmount;
@@ -693,8 +747,25 @@ bot.on(message('text'), async (ctx) => {
         return;
       }
       setStep(chatId, { action: 'awaiting_delivery_date', quotationNumber });
+
+      // Auto-detect client delivery info
+      let clientInfo = '';
+      const client = order.client_name ? await lookupClient(order.client_name) : null;
+      if (client || order.delivery_address || order.contact_number) {
+        clientInfo = `\n\n🚚 *Detected Delivery Info:*`;
+        if (client) {
+          const info = formatClientInfo(client);
+          if (info) clientInfo += `\n${info}`;
+        } else {
+          if (order.delivery_address) clientInfo += `\n📍 *Address:* ${order.delivery_address}`;
+          if (order.contact_number) clientInfo += `\n📞 *Contact:* ${order.contact_number}`;
+          if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${order.authorized_receiver_name}${order.authorized_receiver_contact ? ` (${order.authorized_receiver_contact})` : ''}`;
+        }
+        clientInfo += `\n\n_If the details above look wrong, you can update them in the dashboard Clients tab._\n`;
+      }
+
       await ctx.reply(
-        `🚚 *Schedule Delivery for ${quotationNumber}*\n\nEnter the delivery date:\n\nExample: \`May 22 2026\``,
+        `🚚 *Schedule Delivery for ${quotationNumber}*${clientInfo}\nEnter the delivery date:\n\nExample: \`May 22 2026\``,
         { parse_mode: 'Markdown', ...cancelButton() }
       );
       break;
@@ -820,7 +891,7 @@ bot.on(message('text'), async (ctx) => {
         return;
       }
 
-      const { depositAmount, imageBase64, mimeType, fileName } = session.step;
+      const { depositAmount, imageBase64, mimeType, fileName, paymentDate } = session.step;
 
       await ctx.reply(`🔍 Looking up client *${escapeMarkdown(clientName)}*...`, {
         parse_mode: 'Markdown',
@@ -845,6 +916,7 @@ bot.on(message('text'), async (ctx) => {
             amount: depositAmount,
             client_name: clientName,
             image_url: depositImageUrl,
+            deposit_paid_at: paymentDate ?? null,
           }),
         });
 
@@ -894,6 +966,46 @@ bot.on(message('text'), async (ctx) => {
           `❌ ${error.message}\n\nPlease check the name and try again, or type *cancel* to go back.`,
           { parse_mode: 'Markdown', ...cancelButton() }
         );
+      }
+      break;
+    }
+
+    // ── Client Search ───────────────────────────────────────────────
+    case 'awaiting_client_search': {
+      const searchText = text.trim();
+      if (searchText.toLowerCase() === 'cancel') {
+        resetStep(chatId);
+        await ctx.reply('❌ Cancelled.', { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+        break;
+      }
+      try {
+        if (searchText.toLowerCase() === 'list') {
+          const clients: any[] = await getJson('/clients');
+          if (clients.length === 0) {
+            await ctx.reply('👤 No clients found in the database.', { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+            break;
+          }
+          const list = clients.slice(0, 20).map((c) => `• *${escapeMarkdown(c.client_name)}*`).join('\n');
+          resetStep(chatId);
+          await ctx.reply(`👤 *Clients:*\n\n${list}`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+        } else {
+          const client = await lookupClient(searchText);
+          if (!client) {
+            await ctx.reply(
+              `❌ No client found matching "${escapeMarkdown(searchText)}".\n\nTry typing *list* to see all clients, or check the spelling.`,
+              { parse_mode: 'Markdown', ...cancelButton() }
+            );
+            break;
+          }
+          const info = formatClientInfo(client);
+          resetStep(chatId);
+          await ctx.reply(
+            `👤 *${escapeMarkdown(client.client_name)}*\n\n${info || 'No delivery details on file.'}`,
+            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+          );
+        }
+      } catch {
+        await ctx.reply('❌ Error searching clients. Please try again.', { parse_mode: 'Markdown', ...cancelButton() });
       }
       break;
     }
@@ -1482,12 +1594,14 @@ bot.action('vision:extract_yes', async (ctx) => {
     } else if (data.type === 'payment' && data.payment) {
       const p = data.payment;
       const depositAmount = p.amount ? Number(p.amount) : 0;
+      const paymentDate: string | undefined = p.payment_date ?? undefined;
       const fields = [
         `💳 *Extracted Payment Info:*`,
         p.amount ? `💰 Amount: ₱${depositAmount.toLocaleString()}` : null,
         p.type !== 'unknown' ? `📌 Type: ${p.type}` : null,
         p.reference_number ? `🔖 Ref: \`${p.reference_number}\`` : null,
         p.paid_by ? `👤 Paid by: ${p.paid_by}` : null,
+        paymentDate ? `📅 Date: ${paymentDate}` : null,
         `📊 Confidence: ${data.confidence}`,
       ].filter(Boolean).join('\n');
 
@@ -1512,6 +1626,7 @@ bot.action('vision:extract_yes', async (ctx) => {
               fileName,
               depositAmount,
               candidates: matchData.candidates,
+              paymentDate,
             });
 
             // Build keyboard with top candidate(s)
@@ -1551,6 +1666,7 @@ bot.action('vision:extract_yes', async (ctx) => {
               mimeType,
               fileName,
               depositAmount,
+              paymentDate,
             });
 
             const otherCandidates = matchData.candidates && matchData.candidates.length > 0
@@ -1635,7 +1751,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
     });
   }
 
-  const { depositAmount, imageBase64, mimeType, fileName } = session.step;
+  const { depositAmount, imageBase64, mimeType, fileName, paymentDate } = session.step;
 
   await ctx.editMessageText(`💳 Recording deposit of ₱${depositAmount.toLocaleString()} for *${quotationNumber}*...`, {
     parse_mode: 'Markdown',
@@ -1672,6 +1788,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
         amount: depositAmount,
         image_url: depositImageUrl,
         updated_by: username ?? userId,
+        deposit_paid_at: paymentDate ?? null,
       }),
     });
 
@@ -2280,6 +2397,7 @@ bot.command('help', async (ctx) => {
     '📅 *Schedule Delivery* — Set a delivery date (balance must be paid first)\n' +
     '✅ *Mark as Delivered* — Confirm delivery with remarks\n' +
     '💵 *Record Payment* — Log payment received or confirmed\n' +
+    '👤 *Clients* — Search client delivery details\n' +
     '🔗 *Link Order* — Associate an order for file uploads\n' +
     '📎 *Upload File* — Send a document/photo linked to an order\n\n' +
     'Available commands:\n' +

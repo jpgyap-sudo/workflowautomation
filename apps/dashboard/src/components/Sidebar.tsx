@@ -22,12 +22,14 @@ import {
   ScanEye,
   MessageSquare,
   X,
+  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/orders', label: 'All Orders', icon: FileText },
+  { href: '/clients', label: 'Clients', icon: Users },
   { href: '/purchasing', label: 'Purchasing', icon: ShoppingCart },
   { href: '/inventory', label: 'Inventory', icon: Package },
   { href: '/delivery', label: 'Delivery', icon: Truck },

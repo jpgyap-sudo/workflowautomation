@@ -12,6 +12,7 @@ interface ExtractedQuotation {
   client_name?: string;
   sales_agent?: string;
   total_amount?: number;
+  order_date?: string;
 }
 
 interface VisionResult {
@@ -69,6 +70,7 @@ function VisionPageContent() {
   const [clientName, setClientName] = useState('');
   const [salesAgent, setSalesAgent] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
+  const [orderDate, setOrderDate] = useState('');
 
   // Load shared data from Telegram bot via ?token=xxx
   useEffect(() => {
@@ -97,6 +99,7 @@ function VisionPageContent() {
             setClientName(ext.client_name ?? '');
             setSalesAgent(ext.sales_agent ?? '');
             setTotalAmount(ext.total_amount ? String(ext.total_amount) : '');
+            setOrderDate(ext.order_date ?? '');
           }
 
           setResult({
@@ -188,6 +191,7 @@ function VisionPageContent() {
         setClientName(data.quotation.client_name ?? '');
         setSalesAgent(data.quotation.sales_agent ?? '');
         setTotalAmount(data.quotation.total_amount ? String(data.quotation.total_amount) : '');
+        setOrderDate(data.quotation.order_date ?? '');
         setStep('review');
       } else if (data.type === 'payment') {
         setStep('done');
@@ -218,6 +222,7 @@ function VisionPageContent() {
           client_name: clientName || null,
           sales_agent: salesAgent || null,
           total_amount: totalAmount ? Number(totalAmount) : null,
+          order_confirmed_at: orderDate || null,
         }),
       });
 
@@ -265,6 +270,7 @@ function VisionPageContent() {
     setClientName('');
     setSalesAgent('');
     setTotalAmount('');
+    setOrderDate('');
     // Clear token from URL without reload
     const url = new URL(window.location.href);
     url.searchParams.delete('token');
@@ -494,6 +500,17 @@ function VisionPageContent() {
                   value={totalAmount}
                   onChange={(e) => setTotalAmount(e.target.value)}
                   placeholder="e.g. 15000"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                  <Clock className="h-3.5 w-3.5" /> Order Date
+                </label>
+                <input
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
                 />
               </div>

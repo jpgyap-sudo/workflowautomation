@@ -20,6 +20,7 @@ export interface ExtractedQuotation {
   client_name?: string;
   sales_agent?: string;
   total_amount?: number;
+  order_date?: string;
 }
 
 export interface ExtractedPayment {
@@ -27,6 +28,7 @@ export interface ExtractedPayment {
   type?: 'deposit' | 'balance' | 'unknown';
   reference_number?: string;
   paid_by?: string;
+  payment_date?: string;
 }
 
 export interface VisionExtractResult {
@@ -228,13 +230,15 @@ const QUOTATION_PROMPT = `You are a data extraction assistant. Analyze the image
   "quotation_number": "string or null — the quotation/order number (e.g. QTN-2025-0001)",
   "client_name": "string or null — the client or customer name",
   "sales_agent": "string or null — the sales agent or person who prepared the quotation",
-  "total_amount": "number or null — the total amount in PHP (numeric only, no currency symbol)"
+  "total_amount": "number or null — the total amount in PHP (numeric only, no currency symbol)",
+  "order_date": "string or null — the date on the quotation/order confirmation document in ISO 8601 format (YYYY-MM-DD)"
 }
 
 Rules:
 - Return ONLY valid JSON, no extra text.
 - If a field is not visible in the image, set it to null.
 - For total_amount, extract the numeric value only (e.g. 15000, not "₱15,000").
+- For order_date, look for any date printed on the document (issued date, quotation date, etc.) and format as YYYY-MM-DD.
 - Be as accurate as possible.`;
 
 export async function extractQuotation(
@@ -257,6 +261,7 @@ export async function extractQuotation(
     client_name: typeof parsed.client_name === 'string' ? parsed.client_name : undefined,
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
+    order_date: typeof parsed.order_date === 'string' ? parsed.order_date : undefined,
   };
 
   const hasFields = quotation.quotation_number || quotation.client_name || quotation.total_amount;
@@ -283,13 +288,15 @@ const PAYMENT_PROMPT = `You are a data extraction assistant. Analyze the image a
   "amount": "number or null — the payment amount in PHP (numeric only)",
   "type": "string — one of: 'deposit', 'balance', or 'unknown'",
   "reference_number": "string or null — any reference/transaction number",
-  "paid_by": "string or null — the name of the person who made the payment"
+  "paid_by": "string or null — the name of the person who made the payment",
+  "payment_date": "string or null — the date of payment as shown on the receipt/slip in ISO 8601 format (YYYY-MM-DD)"
 }
 
 Rules:
 - Return ONLY valid JSON, no extra text.
 - If a field is not visible, set it to null.
-- Determine if this is a deposit payment or balance payment from context.`;
+- Determine if this is a deposit payment or balance payment from context.
+- For payment_date, look for transaction date, payment date, or any date printed on the receipt/slip.`;
 
 export async function extractPayment(
   imageBase64: string,
@@ -311,6 +318,7 @@ export async function extractPayment(
     type: parsed.type === 'deposit' || parsed.type === 'balance' ? parsed.type : 'unknown',
     reference_number: typeof parsed.reference_number === 'string' ? parsed.reference_number : undefined,
     paid_by: typeof parsed.paid_by === 'string' ? parsed.paid_by : undefined,
+    payment_date: typeof parsed.payment_date === 'string' ? parsed.payment_date : undefined,
   };
 
   const confidence: 'high' | 'medium' | 'low' =
@@ -338,7 +346,8 @@ If it's a QUOTATION or ORDER CONFIRMATION, return:
   "quotation_number": "string or null",
   "client_name": "string or null",
   "sales_agent": "string or null",
-  "total_amount": "number or null"
+  "total_amount": "number or null",
+  "order_date": "string or null — the date on the document in YYYY-MM-DD format"
 }
 
 If it's a PAYMENT RECEIPT or DEPOSIT SLIP, return:
@@ -347,13 +356,15 @@ If it's a PAYMENT RECEIPT or DEPOSIT SLIP, return:
   "amount": "number or null",
   "payment_type": "'deposit' | 'balance' | 'unknown'",
   "reference_number": "string or null",
-  "paid_by": "string or null"
+  "paid_by": "string or null",
+  "payment_date": "string or null — the date of payment in YYYY-MM-DD format"
 }
 
 Rules:
 - Return ONLY valid JSON, no extra text.
 - Set unknown fields to null.
-- For amounts, use numeric values only (e.g. 15000).`;
+- For amounts, use numeric values only (e.g. 15000).
+- For dates, look for any date printed on the document and format as YYYY-MM-DD.`;
 
 export async function autoExtract(
   imageBase64: string,
@@ -381,6 +392,7 @@ export async function autoExtract(
           : 'unknown',
       reference_number: typeof parsed.reference_number === 'string' ? parsed.reference_number : undefined,
       paid_by: typeof parsed.paid_by === 'string' ? parsed.paid_by : undefined,
+      payment_date: typeof parsed.payment_date === 'string' ? parsed.payment_date : undefined,
     };
     return {
       type: 'payment',
@@ -395,6 +407,7 @@ export async function autoExtract(
     client_name: typeof parsed.client_name === 'string' ? parsed.client_name : undefined,
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
+    order_date: typeof parsed.order_date === 'string' ? parsed.order_date : undefined,
   };
 
   const confidence: 'high' | 'medium' | 'low' =

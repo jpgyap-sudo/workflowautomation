@@ -208,17 +208,23 @@ const createOrderSchema = z.object({
   client_name: z.string().optional(),
   sales_agent: z.string().optional(),
   total_amount: z.number().optional(),
+  order_confirmed_at: z.string().optional(),
 });
 
 app.post('/orders', async (request, reply) => {
   const body = createOrderSchema.parse(request.body);
   const rows = await query(
-    `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount)
-     VALUES ($1,$2,$3,$4)
+    `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount, order_confirmed_at)
+     VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (quotation_number) DO UPDATE SET updated_at = NOW()
      RETURNING *`,
-    [body.quotation_number ?? null, body.client_name ?? null, body.sales_agent ?? null, body.total_amount ?? null]
+    [body.quotation_number ?? null, body.client_name ?? null, body.sales_agent ?? null, body.total_amount ?? null, body.order_confirmed_at ?? null]
   );
+  // Auto-link client by name
+  if (body.client_name) {
+    await autoLinkClientToOrder(rows[0].id, body.client_name);
+  }
+
   // Invalidate caches after write
   await invalidateCache(['dashboard:*', 'orders:*']);
   return reply.send(rows[0]);
@@ -228,7 +234,7 @@ app.get('/orders', async () => {
   const cached = await cacheGet<object[]>('orders:all');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
      FROM orders ORDER BY created_at DESC LIMIT 100`
   );
   await cacheSet('orders:all', rows);
@@ -239,7 +245,7 @@ app.get('/orders/pending', async () => {
   const cached = await cacheGet<object[]>('orders:pending');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
      FROM orders WHERE status='active' ORDER BY created_at DESC LIMIT 50`
   );
   await cacheSet('orders:pending', rows);
@@ -252,7 +258,7 @@ app.get('/orders/stage/:stage', async (request, reply) => {
   const cached = await cacheGet<object[]>(cacheKey);
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
      FROM orders WHERE current_stage=$1 ORDER BY created_at DESC`, [params.stage]
   );
   await cacheSet(cacheKey, rows);
@@ -317,6 +323,11 @@ app.patch('/orders/:id', async (request, reply) => {
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
 
+  // Auto-link client if client_name was updated
+  if (body.client_name) {
+    await autoLinkClientToOrder(params.id, body.client_name);
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
   broadcastSSE('order_updated', { id: params.id });
   return reply.send(rows[0]);
@@ -365,6 +376,11 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   const setClauses: string[] = ['production_started = $1'];
   const values: any[] = [body.production_started];
   let idx = 2;
+
+  // Record when production started
+  if (body.production_started) {
+    setClauses.push(`production_started_at = COALESCE(production_started_at, NOW())`);
+  }
 
   if (body.estimated_production_days != null) {
     setClauses.push(`estimated_production_days = $${idx++}`);
@@ -532,6 +548,7 @@ const depositSchema = z.object({
   amount: z.number().positive(),
   image_url: z.string().optional(),
   updated_by: z.string().optional(),
+  deposit_paid_at: z.string().optional(),
 });
 
 /**
@@ -550,8 +567,8 @@ app.post('/deposits', async (request, reply) => {
 
   // Update deposit fields on the order and advance to purchasing_pending
   await query(
-    `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
-    [body.amount, body.image_url ?? null, orderId]
+    `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), deposit_paid_at=COALESCE($4, deposit_paid_at), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
+    [body.amount, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
   );
 
   // Record stage update for deposit_pending → deposit_paid
@@ -604,6 +621,7 @@ const matchDepositSchema = z.object({
   amount: z.number().positive(),
   client_name: z.string().optional(),
   image_url: z.string().optional(),
+  deposit_paid_at: z.string().optional(),
 });
 
 app.post('/deposits/match-and-record', async (request, reply) => {
@@ -634,8 +652,8 @@ app.post('/deposits/match-and-record', async (request, reply) => {
 
     // Record the deposit and advance to purchasing_pending
     await query(
-      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
-      [body.amount, body.image_url ?? null, order.id]
+      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), deposit_paid_at=COALESCE($4, deposit_paid_at), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
+      [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
     );
 
     await query(
@@ -1260,7 +1278,7 @@ app.get('/dashboard/stats', async () => {
   );
 
   const recentOrders = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid, google_drive_folder_id, created_at, updated_at
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
      FROM orders ORDER BY created_at DESC LIMIT 10`
   );
 
@@ -1614,8 +1632,8 @@ app.get('/search', async (request) => {
 
   const orders = await query(
     `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount,
-            math_status, current_stage, status, deposit_paid, deposit_amount, balance_paid,
-            google_drive_folder_id, created_at, updated_at
+            math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at,
+            balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
      FROM orders
      WHERE quotation_number ILIKE $1
         OR client_name ILIKE $1
@@ -1781,6 +1799,118 @@ app.get('/bot-logs', async (request) => {
 
   const rows = await query(sql, values);
   return rows;
+});
+
+// ── Clients ─────────────────────────────────────────────────────────
+
+const clientSchema = z.object({
+  client_name: z.string().min(1),
+  delivery_address: z.string().optional(),
+  contact_number: z.string().optional(),
+  authorized_receiver_name: z.string().optional(),
+  authorized_receiver_contact: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+async function autoLinkClientToOrder(orderId: string, clientName: string | null) {
+  if (!clientName) return;
+  const clients = await query(`SELECT id FROM clients WHERE client_name ILIKE $1 LIMIT 1`, [clientName.trim()]);
+  if (clients[0]) {
+    const client = clients[0];
+    await query(
+      `UPDATE orders SET client_id = $1, delivery_address = COALESCE(delivery_address, $2), contact_number = COALESCE(contact_number, $3), authorized_receiver_name = COALESCE(authorized_receiver_name, $4), authorized_receiver_contact = COALESCE(authorized_receiver_contact, $5), updated_at = NOW() WHERE id = $6`,
+      [client.id, client.delivery_address ?? null, client.contact_number ?? null, client.authorized_receiver_name ?? null, client.authorized_receiver_contact ?? null, orderId]
+    );
+  }
+}
+
+app.post('/clients', async (request, reply) => {
+  const body = clientSchema.parse(request.body);
+  const rows = await query(
+    `INSERT INTO clients (client_name, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact, notes)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (client_name) DO UPDATE SET
+       delivery_address = COALESCE(EXCLUDED.delivery_address, clients.delivery_address),
+       contact_number = COALESCE(EXCLUDED.contact_number, clients.contact_number),
+       authorized_receiver_name = COALESCE(EXCLUDED.authorized_receiver_name, clients.authorized_receiver_name),
+       authorized_receiver_contact = COALESCE(EXCLUDED.authorized_receiver_contact, clients.authorized_receiver_contact),
+       notes = COALESCE(EXCLUDED.notes, clients.notes),
+       updated_at = NOW()
+     RETURNING *`,
+    [body.client_name, body.delivery_address ?? null, body.contact_number ?? null, body.authorized_receiver_name ?? null, body.authorized_receiver_contact ?? null, body.notes ?? null]
+  );
+  await invalidateCache(['clients:*', 'dashboard:*']);
+  broadcastSSE('client_updated', { id: rows[0].id });
+  return reply.send(rows[0]);
+});
+
+app.get('/clients', async () => {
+  const cached = await cacheGet<object[]>('clients:all');
+  if (cached) return cached;
+  const rows = await query(`SELECT * FROM clients ORDER BY client_name ASC LIMIT 500`);
+  await cacheSet('clients:all', rows);
+  return rows;
+});
+
+app.get('/clients/search', async (request) => {
+  const q = z.object({ q: z.string() }).parse(request.query).q;
+  const rows = await query(
+    `SELECT * FROM clients WHERE client_name ILIKE $1 ORDER BY client_name ASC LIMIT 20`,
+    [`%${q}%`]
+  );
+  return rows;
+});
+
+app.get('/clients/lookup/:name', async (request, reply) => {
+  const params = z.object({ name: z.string() }).parse(request.params);
+  const rows = await query(
+    `SELECT * FROM clients WHERE client_name ILIKE $1 LIMIT 1`,
+    [params.name.trim()]
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Client not found' });
+  return rows[0];
+});
+
+app.patch('/clients/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = clientSchema.partial().parse(request.body);
+
+  const fields: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (body.client_name !== undefined) { fields.push(`client_name=$${idx++}`); values.push(body.client_name); }
+  if (body.delivery_address !== undefined) { fields.push(`delivery_address=$${idx++}`); values.push(body.delivery_address); }
+  if (body.contact_number !== undefined) { fields.push(`contact_number=$${idx++}`); values.push(body.contact_number); }
+  if (body.authorized_receiver_name !== undefined) { fields.push(`authorized_receiver_name=$${idx++}`); values.push(body.authorized_receiver_name); }
+  if (body.authorized_receiver_contact !== undefined) { fields.push(`authorized_receiver_contact=$${idx++}`); values.push(body.authorized_receiver_contact); }
+  if (body.notes !== undefined) { fields.push(`notes=$${idx++}`); values.push(body.notes); }
+
+  if (fields.length === 0) {
+    return reply.status(400).send({ error: 'No fields to update' });
+  }
+
+  fields.push(`updated_at=NOW()`);
+  values.push(params.id);
+
+  const rows = await query(
+    `UPDATE clients SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`,
+    values
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Client not found' });
+
+  await invalidateCache(['clients:*', 'dashboard:*']);
+  broadcastSSE('client_updated', { id: params.id });
+  return reply.send(rows[0]);
+});
+
+app.delete('/clients/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const rows = await query(`DELETE FROM clients WHERE id=$1 RETURNING *`, [params.id]);
+  if (!rows[0]) return reply.code(404).send({ error: 'Client not found' });
+  await invalidateCache(['clients:*', 'dashboard:*']);
+  broadcastSSE('client_deleted', { id: params.id });
+  return reply.send({ ok: true, deleted: rows[0] });
 });
 
 // ── SSE Endpoint ────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   BackupsResponse,
   BotLogEntry,
   BotLogsQuery,
+  Client,
 } from './api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -129,6 +130,7 @@ export function useRealtimeSubscription() {
           }
           if (key.includes('/backups') || key.includes('supabase-backup')) swrKeys.push('/backups');
           if (key.includes('/bot-logs')) swrKeys.push('/bot-logs');
+          if (key.includes('/clients')) swrKeys.push('/clients');
         }
 
         // Also revalidate any stage-specific keys
@@ -210,4 +212,9 @@ export function useBotLogs(query?: BotLogsQuery) {
     ...SWR_CONFIG,
     refreshInterval: 15_000, // bot logs refresh every 15s
   });
+}
+
+// ── Hook: Clients ────────────────────────────────────────────────────
+export function useClients() {
+  return useSWR<Client[]>('/clients', fetcher, SWR_CONFIG);
 }

@@ -25,11 +25,13 @@ function DriveLink({ folderId }: { folderId: string | null }) {
 
 function computeFinishDate(order: Order): string | null {
   if (!order.production_started || !order.estimated_production_days) return null;
-  // Estimate start date from created_at or production_finished_at
+  // Use production_started_at if available, otherwise fall back to created_at
+  // If production is finished, use finished_at as the end date
   const startDate = order.production_finished_at
     ? new Date(order.production_finished_at)
-    : new Date(order.created_at);
-  // If production_finished, use finished_at; otherwise estimate from created_at
+    : order.production_started_at
+      ? new Date(order.production_started_at)
+      : new Date(order.created_at);
   const finishDate = new Date(startDate);
   finishDate.setDate(finishDate.getDate() + order.estimated_production_days);
   return finishDate.toLocaleDateString('en-US', {
@@ -47,10 +49,17 @@ function ProductionInfo({ order }: { order: Order }) {
   const delayDays = order.production_delay_days;
   const isFinished = order.production_finished;
   const deliveryDays = order.delivery_estimated_days;
+  const startedAt = order.production_started_at
+    ? new Date(order.production_started_at).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : null;
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
-      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
         {/* Production Started */}
         <div className="rounded-lg bg-white p-2.5 shadow-sm">
           <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
@@ -61,6 +70,17 @@ function ProductionInfo({ order }: { order: Order }) {
             {order.production_started ? 'Started' : 'Not Started'}
           </p>
         </div>
+
+        {/* Started At */}
+        {startedAt && (
+          <div className="rounded-lg bg-white p-2.5 shadow-sm">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <Calendar className="h-3 w-3 text-indigo-500" />
+              Started At
+            </span>
+            <p className="mt-1 font-semibold text-gray-800">{startedAt}</p>
+          </div>
+        )}
 
         {/* Estimated Duration */}
         {order.estimated_production_days && (

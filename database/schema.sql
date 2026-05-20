@@ -1,4 +1,17 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE TABLE IF NOT EXISTS clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_name TEXT NOT NULL UNIQUE,
+  delivery_address TEXT,
+  contact_number TEXT,
+  authorized_receiver_name TEXT,
+  authorized_receiver_contact TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -17,7 +30,13 @@ CREATE TABLE IF NOT EXISTS orders (
   balance_paid BOOLEAN DEFAULT FALSE,
   balance_paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  -- Client delivery info
+  client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  delivery_address TEXT,
+  contact_number TEXT,
+  authorized_receiver_name TEXT,
+  authorized_receiver_contact TEXT
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -78,3 +97,6 @@ CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_next_run ON reminders(next_run_at, status);
 CREATE INDEX IF NOT EXISTS idx_stage_updates_order_id ON stage_updates(order_id);
 CREATE INDEX IF NOT EXISTS idx_agent_logs_created_at ON agent_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(client_name);
+CREATE INDEX IF NOT EXISTS idx_clients_name_trgm ON clients USING gin (client_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);

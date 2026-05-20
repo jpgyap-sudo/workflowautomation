@@ -11,6 +11,8 @@ interface OrderTableProps {
   showAmount?: boolean;
   showDeposit?: boolean;
   showBalance?: boolean;
+  showOrderDate?: boolean;
+  showDepositDate?: boolean;
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
 }
@@ -27,6 +29,11 @@ function StatusPill({ children, className }: { children: ReactNode; className: s
   );
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString();
+}
+
 export default function OrderTable({
   orders,
   showClient = true,
@@ -34,6 +41,8 @@ export default function OrderTable({
   showAmount = true,
   showDeposit = true,
   showBalance = true,
+  showOrderDate = true,
+  showDepositDate = true,
   onEdit,
   onDelete,
 }: OrderTableProps) {
@@ -133,6 +142,18 @@ export default function OrderTable({
                     </StatusPill>
                   </dd>
                 </div>
+                {showOrderDate && (
+                  <div>
+                    <dt className="text-gray-400">Order Date</dt>
+                    <dd className="font-medium text-gray-700">{formatDate(order.order_confirmed_at)}</dd>
+                  </div>
+                )}
+                {showDepositDate && (
+                  <div>
+                    <dt className="text-gray-400">Deposit Date</dt>
+                    <dd className="font-medium text-gray-700">{formatDate(order.deposit_paid_at)}</dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-gray-400">Created</dt>
                   <dd className="font-medium text-gray-700">{new Date(order.created_at).toLocaleDateString()}</dd>
@@ -181,6 +202,8 @@ export default function OrderTable({
               {showAmount && <th className="px-4 py-3 text-right">Amount</th>}
               {showDeposit && <th className="px-4 py-3">Deposit</th>}
               {showBalance && <th className="px-4 py-3">Balance</th>}
+              {showOrderDate && <th className="px-4 py-3">Order Date</th>}
+              {showDepositDate && <th className="px-4 py-3">Deposit Date</th>}
               <th className="px-4 py-3">Math</th>
               <th className="px-4 py-3">Created</th>
               <th className="px-4 py-3">Actions</th>
@@ -232,6 +255,12 @@ export default function OrderTable({
                           : '—'}
                     </StatusPill>
                   </td>
+                )}
+                {showOrderDate && (
+                  <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.order_confirmed_at)}</td>
+                )}
+                {showDepositDate && (
+                  <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.deposit_paid_at)}</td>
                 )}
                 <td className="px-4 py-3">
                   <StatusPill

@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OrderDetailPage() {
@@ -109,6 +109,54 @@ export default function OrderDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Delivery Info */}
+      {(order.delivery_address || order.contact_number || order.authorized_receiver_name || order.authorized_receiver_contact) && (
+        <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-purple-800">
+            <Truck className="h-4 w-4" />
+            Delivery Information
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {order.delivery_address && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-purple-700">
+                  <MapPin className="h-3 w-3" />
+                  Address
+                </div>
+                <p className="mt-0.5 text-sm text-purple-900">{order.delivery_address}</p>
+              </div>
+            )}
+            {order.contact_number && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-purple-700">
+                  <Phone className="h-3 w-3" />
+                  Contact
+                </div>
+                <p className="mt-0.5 text-sm text-purple-900">{order.contact_number}</p>
+              </div>
+            )}
+            {order.authorized_receiver_name && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-purple-700">
+                  <UserCheck className="h-3 w-3" />
+                  Auth. Receiver
+                </div>
+                <p className="mt-0.5 text-sm text-purple-900">{order.authorized_receiver_name}</p>
+              </div>
+            )}
+            {order.authorized_receiver_contact && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-purple-700">
+                  <Phone className="h-3 w-3" />
+                  Receiver Contact
+                </div>
+                <p className="mt-0.5 text-sm text-purple-900">{order.authorized_receiver_contact}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Math status */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">

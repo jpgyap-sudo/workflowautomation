@@ -25,6 +25,7 @@ export interface OrderRow {
   balance_paid: boolean;
   balance_paid_at: string | null;
   production_started: boolean | null;
+  production_started_at: string | null;
   estimated_production_days: number | null;
   production_delayed: boolean | null;
   production_delay_days: number | null;

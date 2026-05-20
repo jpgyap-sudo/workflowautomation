@@ -6,7 +6,7 @@ import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle, Pencil, Trash2, X, Check } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, AlertTriangle, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -74,6 +74,35 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
         <X className="h-4 w-4" />
       </button>
     </form>
+  );
+}
+
+function OrderDeliveryInfo({ order }: { order: Order }) {
+  if (!order.delivery_address && !order.contact_number && !order.authorized_receiver_name && !order.authorized_receiver_contact) {
+    return null;
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-purple-700">
+      {order.delivery_address && (
+        <span className="flex items-center gap-1">
+          <MapPin className="h-3 w-3" />
+          {order.delivery_address}
+        </span>
+      )}
+      {order.contact_number && (
+        <span className="flex items-center gap-1">
+          <Phone className="h-3 w-3" />
+          {order.contact_number}
+        </span>
+      )}
+      {order.authorized_receiver_name && (
+        <span className="flex items-center gap-1">
+          <UserCheck className="h-3 w-3" />
+          {order.authorized_receiver_name}
+          {order.authorized_receiver_contact && ` (${order.authorized_receiver_contact})`}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -239,6 +268,7 @@ export default function DeliveryPage() {
                       {order.sales_agent && (
                         <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
                       )}
+                      <OrderDeliveryInfo order={order} />
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-medium text-violet-600">
@@ -309,6 +339,7 @@ export default function DeliveryPage() {
                           Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
                         </p>
                       )}
+                      <OrderDeliveryInfo order={order} />
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-gray-400">
@@ -370,6 +401,7 @@ export default function DeliveryPage() {
                     {order.sales_agent && (
                       <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
                     )}
+                    <OrderDeliveryInfo order={order} />
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-gray-400">
