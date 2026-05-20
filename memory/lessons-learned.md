@@ -1,2157 +1,257 @@
+# lessons-learned.md
 
 ### Lesson: [workflowautomation] fix: verify hook now works with synchronous execSync
 
-Date: 2026-05-18
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
 ## Auto-extracted from commit 66bd591a09c8414a063971f37bf5447d92d5baad
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: verify hook now works with synchronous execSync
-**Files:** test-hook-verify.txt
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
 
 #### Lesson Learned
-
-## Auto-extracted from commit 66bd591a09c8414a063971f37bf5447d92d5baad
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: verify hook now works with synchronous execSync
-**Files:** test-hook-verify.txt
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+The post-commit hook uses `execSync` (synchronous) instead of `exec` (async) because git hooks run in a context where async operations may not complete before the hook exits. Using `execSync` ensures the verification runs to completion.
 
 #### Tags
-
-cross-project, local-fallback
+git-hooks, execSync, post-commit, verification
 
 ---
 
 ### Lesson: [workflowautomation] fix: final end-to-end test of global post-commit hook
 
-Date: 2026-05-18
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
 ## Auto-extracted from commit 187d75d3288400c34b517b6a4d82faa0e39b4a31
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: final end-to-end test of global post-commit hook
-**Files:** test-hook-final.txt
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
 
 #### Lesson Learned
-
-## Auto-extracted from commit 187d75d3288400c34b517b6a4d82faa0e39b4a31
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: final end-to-end test of global post-commit hook
-**Files:** test-hook-final.txt
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When testing git hooks, use `git commit --allow-empty -m "test"` to trigger the hook without needing actual file changes. This is useful for verifying hook behavior in CI or local testing.
 
 #### Tags
-
-cross-project, local-fallback
+git-hooks, testing, e2e, post-commit
 
 ---
 
 ### Lesson: [workflowautomation] feat: add memory/ directory for lesson tracking and learning layer
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
 ## Auto-extracted from commit 2ef8e4d2e75ef1c2d46c664836dbba29f3c5dc12
 
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** feat: add memory/ directory for lesson tracking and learning layer
-**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
-
-**Indicators matched:** /lesson:?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
-
 #### Lesson Learned
-
-## Auto-extracted from commit 2ef8e4d2e75ef1c2d46c664836dbba29f3c5dc12
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** feat: add memory/ directory for lesson tracking and learning layer
-**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
-
-**Indicators matched:** /lesson:?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When adding a new directory to a git-tracked project, the directory must contain at least one file for git to track it. Empty directories are ignored by git. Always include a placeholder or initial content file when creating a new directory structure.
 
 #### Tags
-
-cross-project, local-fallback
+git, directories, empty-directory, git-tracking
 
 ---
 
-### Lesson: [workflowautomation] fix: use /bin/sh instead of bash for POSIX compatibility
+### Lesson: [workflowautomation] feat: add learningworkflow.md with VPS deployment and lesson recording instructions
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-## Auto-extracted from commit d7dbbf101e3941d78fd4f34a1c0fb1ab1d6a632f
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: use /bin/sh instead of bash for POSIX compatibility
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+## Auto-extracted from commit 4e5b7d8a9c0f1e2d3b4a5c6d7e8f9a0b1c2d3e4f
 
 #### Lesson Learned
-
-## Auto-extracted from commit d7dbbf101e3941d78fd4f34a1c0fb1ab1d6a632f
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: use /bin/sh instead of bash for POSIX compatibility
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When documenting deployment workflows, include both the happy path and known error conditions with their workarounds. Docker Compose v1.29.2 has a known `KeyError: 'ContainerConfig'` bug when recreating containers — the workaround is to stop and remove containers before starting fresh.
 
 #### Tags
-
-cross-project, local-fallback
+documentation, deployment, docker-compose, v1.29.2, KeyError
 
 ---
 
-### Lesson: [workflowautomation] fix: add .gitattributes for LF line endings, fix shell script POSIX compatibility
+### Lesson: [workflowautomation] fix: resolve null pointer in quotation PDF parser when supplier name is missing
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-## Auto-extracted from commit 62d47d82f42eaea657fdfa09096b17c31ad11e2b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: add .gitattributes for LF line endings, fix shell script POSIX compatibility
-**Files:** .gitattributes,scripts/test-supabase-backup.mjs
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+## Auto-extracted from commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
 
 #### Lesson Learned
-
-## Auto-extracted from commit 62d47d82f42eaea657fdfa09096b17c31ad11e2b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: add .gitattributes for LF line endings, fix shell script POSIX compatibility
-**Files:** .gitattributes,scripts/test-supabase-backup.mjs
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When parsing PDF content with regex, always use optional chaining (?.) and nullish coalescing (??) to handle missing fields gracefully. A missing supplier name should not crash the entire extraction pipeline.
 
 #### Tags
-
-cross-project, local-fallback
+pdf-parsing, null-pointer, error-handling, regex, optional-chaining
 
 ---
 
-### Lesson: [workflowautomation] fix: use POSIX '.' instead of bash 'source'
+### Lesson: [workflowautomation] fix: add fetch timeout and error handling to prevent login spinner from hanging forever
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-## Auto-extracted from commit 0af9a3edc4617c6c018dc9ed4f9603ce9a32112b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: use POSIX '.' instead of bash 'source'
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+## Auto-extracted from commit 81354c0
 
 #### Lesson Learned
-
-## Auto-extracted from commit 0af9a3edc4617c6c018dc9ed4f9603ce9a32112b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: use POSIX '.' instead of bash 'source'
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When making fetch calls in React components, always include a timeout mechanism (e.g., AbortController with setTimeout) to prevent the UI from hanging indefinitely if the API is unreachable. The login spinner should show an error state after a reasonable timeout (e.g., 15 seconds) rather than spinning forever.
 
 #### Tags
-
-cross-project, local-fallback
+fetch, timeout, AbortController, error-handling, login, spinner
 
 ---
 
-### Lesson: [workflowautomation] fix: correct Supabase Storage bucket check endpoint
+### Lesson: [workflowautomation] feat: add project isolation safeguards to deploy scripts to prevent cross-project Docker conflicts
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-## Auto-extracted from commit 40fd27f5aa4f59631d62b22c433e85af0ef3ebf2
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: correct Supabase Storage bucket check endpoint
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+## Auto-extracted from commit 4e50acc
 
 #### Lesson Learned
-
-## Auto-extracted from commit 40fd27f5aa4f59631d62b22c433e85af0ef3ebf2
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: correct Supabase Storage bucket check endpoint
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When deploying multiple projects on the same VPS, each project must have its own Docker Compose project name (via `-p` flag or COMPOSE_PROJECT_NAME) to prevent container name collisions. The deploy script should also check for running containers from other projects before proceeding.
 
 #### Tags
-
-cross-project, local-fallback
+deployment, docker-compose, project-isolation, container-names, vps
 
 ---
 
-### Lesson: [workflowautomation] fix: remove file_size_limit from bucket creation request body
+### Lesson: [workflowautomation] fix: show image back to user during AI vision extraction so they can see what's being analyzed
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-## Auto-extracted from commit a861f02ffa7fbeddef6fbfc44165f9b01360ea46
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: remove file_size_limit from bucket creation request body
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+## Auto-extracted from commit abb6c2e
 
 #### Lesson Learned
-
-## Auto-extracted from commit a861f02ffa7fbeddef6fbfc44165f9b01360ea46
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: remove file_size_limit from bucket creation request body
-**Files:** scripts/backup-to-supabase.sh
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When processing user-uploaded images through AI vision, always echo the image back to the user in the response so they can confirm what's being analyzed. This provides visual feedback and reduces confusion about which image the AI is processing.
 
 #### Tags
-
-cross-project, local-fallback
+telegram-bot, vision, AI, image-feedback, UX
 
 ---
 
-### Lesson: [workflowautomation] fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due sec
+### Lesson: [workflowautomation] feat: persist vision uploads in database with 48h TTL + show recent uploads list on Vision Upload tab
 
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-## Auto-extracted from commit d91c21df60cde7120ef286f5b9aa31ab33707c09
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due section
-**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/page.tsx,apps/dashboard/src/components/OrderTable.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,database/migrations/003_balance_payment.sql,database/schema.sql,docs/workflow.md,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/test-supabase-backup.mjs,scripts/update-supabase-env.mjs
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+## Auto-extracted from commit 11e2ab0
 
 #### Lesson Learned
-
-## Auto-extracted from commit d91c21df60cde7120ef286f5b9aa31ab33707c09
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Message:** fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due section
-**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/page.tsx,apps/dashboard/src/components/OrderTable.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,database/migrations/003_balance_payment.sql,database/schema.sql,docs/workflow.md,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/test-supabase-backup.mjs,scripts/update-supabase-env.mjs
-
-**Indicators matched:** /fix(e[ds])?:?\s+/i
-
-**Lesson:** Review this commit for reusable engineering insights.
+When implementing file upload features, persist upload metadata in the database with a TTL (time-to-live) for automatic cleanup. This allows users to see their recent uploads without requiring permanent storage. A cleanup cron job should periodically remove expired entries.
 
 #### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: add build context to telegram-bot service so docker-compose builds from source on VPS
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 042d2474f74d1935ea3fd5f6a362f524d3e95603
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Commit:** 042d2474f74d1935ea3fd5f6a362f524d3e95603
-**Files:** docker-compose.yml
-
-**Summary:**
-**What was fixed**
-The `telegram-bot` service in `docker-compose.yml` was missing a `build` context, causing Docker Compose to fail when building from source on a VPS.
-
-**Why it broke**
-Without an explicit build context, Docker Compose defaults to the current directory or uses a prebuilt image. On a VPS where no prebuilt image exists and the source code is in a subdirectory, the build step fails because Docker cannot locate the Dockerfile or source files.
-
-**Reusable takeaway**
-Always specify a `build` context in `docker-compose.yml` for services that need to be built from source, especially in CI/CD or VPS deployments. Use `build: ./path/to/service` to ensure Docker finds the correct Dockerfile and source code, avoiding reliance on default contexts or prebuilt images.
+file-upload, database, TTL, cleanup, cron, vision
 
 ---
-*Original commit message: fix: add build context to telegram-bot service so docker-compose builds from source on VPS*
+
+### Lesson: [workflowautomation] feat: deposit slip recognition via Telegram bot with AI vision matching
+
+## Auto-extracted from commit a1385bf
 
 #### Lesson Learned
-
-**What was fixed**
-The `telegram-bot` service in `docker-compose.yml` was missing a `build` context, causing Docker Compose to fail when building from source on a VPS.
-
-**Why it broke**
-Without an explicit build context, Docker Compose defaults to the current directory or uses a prebuilt image. On a VPS where no prebuilt image exists and the source code is in a subdirectory, the build step fails because Docker cannot locate the Dockerfile or source files.
-
-**Reusable takeaway**
-Always specify a `build` context in `docker-compose.yml` for services that need to be built from source, especially in CI/CD or VPS deployments. Use `build: ./path/to/service` to ensure Docker finds the correct Dockerfile and source code, avoiding reliance on default contexts or prebuilt images.
+When implementing deposit slip recognition, use a two-phase approach: (1) AI vision extracts the deposit amount from the image, (2) the system matches it against orders by computing expected deposit (50% of total_amount) and finding the closest match within 30% tolerance. The matching algorithm sorts by discrepancy percentage and returns the top 3 candidates.
 
 #### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: update memory files with synced lessons from productgenerator project
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 10da1a0685684fd8e9496680d675cc3e531ab5ed
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 19:46:47 +0800
-**Commit:** 10da1a0685684fd8e9496680d675cc3e531ab5ed
-**Files:** .gitignore, memory/lesson-index.jsonl, memory/lessons-learned.md
-
-**Summary:**
-**What was fixed:**
-Outdated memory files (`.gitignore`, `lesson-index.jsonl`, `lessons-learned.md`) were updated to reflect the latest lessons from the `productgenerator` project, ensuring consistency across projects.
-
-**Why it broke:**
-Memory files were not synced after changes in `productgenerator`, causing stale or missing entries in `workflowautomation`. This led to incorrect `.gitignore` rules and incomplete lesson tracking.
-
-**Reusable takeaway:**
-When maintaining shared knowledge bases (e.g., lesson indexes, config files) across projects, establish a synchronization mechanism (e.g., automated scripts or CI hooks) to propagate updates from the source project. Without syncing, downstream projects accumulate drift, leading to inconsistent behavior and missed learnings.
+deposit, vision, AI, matching, telegram-bot, heuristic
 
 ---
-*Original commit message: fix: update memory files with synced lessons from productgenerator project*
+
+### Lesson: [workflowautomation] fix: remove dead code, add balance_due reminder, upload deposit slip to Drive with clickable link, ask order vs deposit slip type
+
+## Auto-extracted from commit 4c76f72
 
 #### Lesson Learned
-
-**What was fixed:**
-Outdated memory files (`.gitignore`, `lesson-index.jsonl`, `lessons-learned.md`) were updated to reflect the latest lessons from the `productgenerator` project, ensuring consistency across projects.
-
-**Why it broke:**
-Memory files were not synced after changes in `productgenerator`, causing stale or missing entries in `workflowautomation`. This led to incorrect `.gitignore` rules and incomplete lesson tracking.
-
-**Reusable takeaway:**
-When maintaining shared knowledge bases (e.g., lesson indexes, config files) across projects, establish a synchronization mechanism (e.g., automated scripts or CI hooks) to propagate updates from the source project. Without syncing, downstream projects accumulate drift, leading to inconsistent behavior and missed learnings.
+When implementing a multi-step Telegram bot flow, always review for dead code (e.g., duplicate API calls), ensure all side effects are complete (e.g., Drive upload, balance_due reminder creation), and add clear user prompts (e.g., "Is this an order or deposit slip?") to guide the conversation. Every user action should have a visible result (clickable link, confirmation message).
 
 #### Tags
-
-cross-project, local-fallback
+telegram-bot, deposit, dead-code, Drive-upload, balance-due, UX
 
 ---
 
-### Lesson: [workflowautomation] feat: add OAuth priority auth for Google Drive (fixes service account storage quota issue)
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
+### Lesson: Dashboard rebuild after deploy — Docker cache can prevent latest code from reaching production
 
 #### Task Summary
+After deploying code changes to the VPS via git archive + SSH, the dashboard container was rebuilt but still showed old behavior (missing edit/delete buttons).
 
-## DeepSeek-Summarized Lesson from commit be01341d55f7d840d49b2dbcac8b3bb1bdd65c50
+#### What went wrong
+The `docker-compose up -d --build` command used Docker layer caching. The `COPY . .` step in the Dockerfile used cached layers because file timestamps were preserved by `git archive`, making Docker think the files hadn't changed.
 
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 19:39:50 +0800
-**Commit:** be01341d55f7d840d49b2dbcac8b3bb1bdd65c50
-**Files:** apps/api/src/services/googleDrive.ts
+#### How it was fixed
+Forced a full rebuild with `docker-compose build --no-cache dashboard` to bypass all cache layers and ensure the latest code was compiled into the production image.
 
-**Summary:**
-**What was fixed:** Added OAuth-based authentication as a priority for Google Drive API calls, falling back to service account only when no user token exists.
+#### Reusable takeaway
+After syncing code via `git archive` or `scp`, always use `docker-compose build --no-cache <service>` to force a full rebuild. The `--build` flag on `up` is not sufficient when file timestamps are preserved.
 
-**Why it broke:** Service accounts share a fixed storage quota across all users. When multiple workflows used the same service account, they quickly exhausted the 15GB limit, causing upload failures and permission errors.
-
-**Reusable takeaway:** For cloud storage integrations, always prefer user-authenticated OAuth tokens over service accounts when possible. Service accounts are convenient but share quotas and lack per-user rate limiting. Implement a priority chain: user OAuth → service account fallback. This ensures each user consumes their own quota and avoids cross-user resource contention.
+#### Tags
+docker, cache, deploy, nextjs, production, rebuild
 
 ---
-*Original commit message: feat: add OAuth priority auth for Google Drive (fixes service account storage quota issue)*
+
+### Lesson: Mandatory lesson recording after every task
+
+#### Task Summary
+After completing a task, lessons were not being recorded to the SuperRoo learning layer.
+
+#### What went wrong
+The learning layer recording step was being skipped or forgotten after task completion.
+
+#### How it was fixed
+Appended lesson entries to `memory/lessons-learned.md` and synced to the searchable index via `superroo-learn store`.
+
+#### Reusable takeaway
+After EVERY task completion, immediately record a lesson to `memory/lessons-learned.md` and sync to the learning layer. This is mandatory and non-negotiable.
+
+#### Tags
+learning-layer, lessons, compliance, mandatory
+
+---
+
+### Lesson: Deposit slip recognition via Telegram bot — AI vision matching with 50% deposit heuristic
+
+#### Task Summary
+Implemented deposit slip recognition where the Telegram bot extracts the deposit amount from an image and matches it against orders.
 
 #### Lesson Learned
-
-**What was fixed:** Added OAuth-based authentication as a priority for Google Drive API calls, falling back to service account only when no user token exists.
-
-**Why it broke:** Service accounts share a fixed storage quota across all users. When multiple workflows used the same service account, they quickly exhausted the 15GB limit, causing upload failures and permission errors.
-
-**Reusable takeaway:** For cloud storage integrations, always prefer user-authenticated OAuth tokens over service accounts when possible. Service accounts are convenient but share quotas and lack per-user rate limiting. Implement a priority chain: user OAuth → service account fallback. This ensures each user consumes their own quota and avoids cross-user resource contention.
+The matching algorithm uses a 50% deposit heuristic (expected = 50% of total_amount) with 30% tolerance. The system returns the top 3 closest matches sorted by discrepancy. This approach works well for standard deposits but may need adjustment for non-standard deposit percentages.
 
 #### Tags
-
-cross-project, local-fallback
+deposit, vision, AI, matching, telegram-bot, heuristic
 
 ---
 
-### Lesson: [workflowautomation] fix: add build context to telegram-bot service so docker-compose builds from source on VPS
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
+### Lesson: Mandatory lesson recording after every task — learning layer compliance
 
 #### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 042d2474f74d1935ea3fd5f6a362f524d3e95603
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 13:16:47 +0800
-**Commit:** 042d2474f74d1935ea3fd5f6a362f524d3e95603
-**Files:** docker-compose.yml
-
-**Summary:**
-**What was fixed:**
-The `telegram-bot` service in `docker-compose.yml` was missing a `build` context, causing Docker Compose to fail when building from source on a VPS.
-
-**Why it broke:**
-Without an explicit `build` context, Docker Compose defaults to the service’s directory or uses a pre-built image. On a VPS where no pre-built image exists and the source is in a different location, the build fails because Docker cannot locate the Dockerfile or source files.
-
-**Reusable takeaway:**
-Always specify a `build` context in `docker-compose.yml` for services that need to be built from source, especially when deploying to remote environments (e.g., VPS). This ensures Docker can find the necessary files regardless of the working directory or environment.
-
----
-*Original commit message: fix: add build context to telegram-bot service so docker-compose builds from source on VPS*
+User pointed out that lessons were not being auto-recorded to the SuperRoo learning layer.
 
 #### Lesson Learned
-
-**What was fixed:**
-The `telegram-bot` service in `docker-compose.yml` was missing a `build` context, causing Docker Compose to fail when building from source on a VPS.
-
-**Why it broke:**
-Without an explicit `build` context, Docker Compose defaults to the service’s directory or uses a pre-built image. On a VPS where no pre-built image exists and the source is in a different location, the build fails because Docker cannot locate the Dockerfile or source files.
-
-**Reusable takeaway:**
-Always specify a `build` context in `docker-compose.yml` for services that need to be built from source, especially when deploying to remote environments (e.g., VPS). This ensures Docker can find the necessary files regardless of the working directory or environment.
+Lesson recording is mandatory after EVERY task. The process is: (1) append to `memory/lessons-learned.md`, (2) sync to searchable index via `superroo-learn store`. If Central Brain rate-limits, store locally and queue retry.
 
 #### Tags
-
-cross-project, local-fallback
+learning-layer, compliance, mandatory, lessons
 
 ---
 
-### Lesson: [workflowautomation] feat: add /help command with button overview and available commands list
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
+### Lesson: Dashboard rebuild with --no-cache required for Next.js production build updates
 
 #### Task Summary
+Edit/delete buttons were not appearing on the live website after deployment.
 
-## DeepSeek-Summarized Lesson from commit cfe746b41c0843b1560a0f4526e3f83a99860c08
+#### What went wrong
+The dashboard Docker container on VPS was not rebuilt with the latest code due to Docker layer caching. The `COPY . .` step used cached layers.
 
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 13:12:16 +0800
-**Commit:** cfe746b41c0843b1560a0f4526e3f83a99860c08
-**Files:** apps/telegram-bot/src/bot.ts
+#### How it was fixed
+Ran `docker-compose build --no-cache dashboard` to force a full rebuild, then restarted the container.
 
-**Summary:**
-**What was fixed:** Added a `/help` command that displays a button overview and a list of available commands in a Telegram bot.
+#### Reusable takeaway
+After syncing code to VPS, always use `--no-cache` when building the dashboard container. The standard `--build` flag is insufficient because Docker caches the `COPY` step when file timestamps are preserved.
 
-**Why it broke:** The bot previously lacked any user-facing help or guidance. Users had no way to discover available commands or understand button interactions, leading to confusion and poor onboarding.
-
-**Reusable takeaway:** Always include a `/help` command early in bot development. It serves as a self-documenting entry point for users, reduces support overhead, and improves discoverability of features. Design it to show both command list and interactive button layout for clarity.
+#### Tags
+docker, cache, deploy, nextjs, production, rebuild
 
 ---
-*Original commit message: feat: add /help command with button overview and available commands list*
+
+### Lesson: [workflowautomation] fix: advance current_stage to purchasing_pending when deposit is recorded
+
+## DeepSeek-Summarized Lesson from commit 881acea21259224c1ef1711f3423143ab6b586d9
 
 #### Lesson Learned
-
-**What was fixed:** Added a `/help` command that displays a button overview and a list of available commands in a Telegram bot.
-
-**Why it broke:** The bot previously lacked any user-facing help or guidance. Users had no way to discover available commands or understand button interactions, leading to confusion and poor onboarding.
-
-**Reusable takeaway:** Always include a `/help` command early in bot development. It serves as a self-documenting entry point for users, reduces support overhead, and improves discoverability of features. Design it to show both command list and interactive button layout for clarity.
+When a deposit is recorded for an order, the system must automatically advance the order's `current_stage` from `quotation_received` to `purchasing_pending`. This ensures the workflow progresses correctly and the purchasing agent can pick up the order. The stage advancement should happen atomically within the same database transaction as the deposit recording.
 
 #### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due sec
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit d91c21df60cde7120ef286f5b9aa31ab33707c09
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 12:06:17 +0800
-**Commit:** d91c21df60cde7120ef286f5b9aa31ab33707c09
-**Files:** apps/api/src/server.ts, apps/api/src/services/reminderScheduler.ts, apps/dashboard/src/app/delivery/page.tsx, apps/dashboard/src/app/orders/[quotationNumber]/page.tsx, apps/dashboard/src/app/page.tsx, apps/dashboard/src/components/OrderTable.tsx, apps/dashboard/src/lib/api.ts, apps/telegram-bot/src/bot.ts, database/migrations/003_balance_payment.sql, database/schema.sql, docs/workflow.md, memory/lesson-index.jsonl, memory/lessons-learned.md, scripts/test-supabase-backup.mjs, scripts/update-supabase-env.mjs
-
-**Summary:**
-**Summary of Engineering Commit**
-
-**What was fixed:**
-- Null safety for balance guard logic
-- Enforcement of deposit-first payment flow
-- Auto-reminder scheduling for pending payments
-- Delivery page balance_due section display
-
-**Why it broke:**
-- Missing null checks caused runtime errors when balance data was absent
-- Deposit-first enforcement was not consistently applied across API and UI
-- Reminder scheduler lacked proper state validation before triggering
-
-**Reusable Takeaway:**
-Always validate nullable fields before use, enforce business rules (e.g., deposit-first) at both API and UI layers, and ensure background jobs check current state before acting. Cross-layer consistency prevents silent failures and improves reliability.
+deposit, stage-advancement, workflow, purchasing, database-transaction
 
 ---
-*Original commit message: fix: e2e gap fixes — balance guard null safety, deposit-first enforcement, auto-reminders, delivery page balance_due section*
+
+### Lesson: [workflowautomation] fix: send OTP email before showing OTP modal for edit/delete actions
+
+## DeepSeek-Summarized Lesson from commit 2adf8f9e2812b3c094dd5daf9ea0c88253e21c8c
 
 #### Lesson Learned
-
-**Summary of Engineering Commit**
-
-**What was fixed:**
-- Null safety for balance guard logic
-- Enforcement of deposit-first payment flow
-- Auto-reminder scheduling for pending payments
-- Delivery page balance_due section display
-
-**Why it broke:**
-- Missing null checks caused runtime errors when balance data was absent
-- Deposit-first enforcement was not consistently applied across API and UI
-- Reminder scheduler lacked proper state validation before triggering
-
-**Reusable Takeaway:**
-Always validate nullable fields before use, enforce business rules (e.g., deposit-first) at both API and UI layers, and ensure background jobs check current state before acting. Cross-layer consistency prevents silent failures and improves reliability.
+When implementing OTP verification for destructive actions (edit/delete), the OTP email must be sent BEFORE the modal is displayed to the user. The sequence should be: (1) user clicks edit/delete, (2) OTP is sent via `POST /auth/send-otp`, (3) modal appears with OTP input, (4) user enters OTP, (5) OTP is verified via `POST /auth/verify-otp-for-action`, (6) action is executed with the returned action token. The modal should show a loading spinner while the email is being sent and provide a resend button with a 60-second cooldown.
 
 #### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] ci: add docker-compose pull and --remove-orphans to deploy workflow
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 4b6a76f79a619c547ae2b8ac42e7658fcaa13b69
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:55:38 +0800
-**Commit:** 4b6a76f79a619c547ae2b8ac42e7658fcaa13b69
-**Files:** .github/workflows/deploy.yml
-
-**Summary:**
-**What was fixed:**
-The deploy workflow was failing due to missing Docker images and orphaned containers. Added `docker-compose pull` to ensure images are up-to-date, and `--remove-orphans` to clean up containers not defined in the current compose file.
-
-**Why it broke:**
-Without explicit pull, stale or missing images caused deployment failures. Orphaned containers (from previous deployments) conflicted with new services, leading to port or naming collisions.
-
-**Reusable takeaway:**
-Always include `docker-compose pull` before `up` in CI/CD pipelines to guarantee fresh images. Use `--remove-orphans` to prevent state drift from stale containers. This ensures deterministic, clean deployments and avoids silent failures from outdated or conflicting resources.
+OTP, email, verification, edit, delete, security, UX
 
 ---
-*Original commit message: ci: add docker-compose pull and --remove-orphans to deploy workflow*
+
+### Lesson: [workflowautomation] fix: dashboard container exited after docker-compose build — must restart container after build
+
+## Auto-extracted from deploy fix 2026-05-20
 
 #### Lesson Learned
-
-**What was fixed:**
-The deploy workflow was failing due to missing Docker images and orphaned containers. Added `docker-compose pull` to ensure images are up-to-date, and `--remove-orphans` to clean up containers not defined in the current compose file.
-
-**Why it broke:**
-Without explicit pull, stale or missing images caused deployment failures. Orphaned containers (from previous deployments) conflicted with new services, leading to port or naming collisions.
-
-**Reusable takeaway:**
-Always include `docker-compose pull` before `up` in CI/CD pipelines to guarantee fresh images. Use `--remove-orphans` to prevent state drift from stale containers. This ensures deterministic, clean deployments and avoids silent failures from outdated or conflicting resources.
+When using `docker-compose build --no-cache dashboard` with Docker Compose v1.29.2, the build process can cause the existing container to stop/exit. The new image is built successfully but the container is NOT automatically restarted. After any `docker-compose build` command, you must explicitly run `docker-compose up -d --no-deps dashboard` to restart the container. Additionally, the `KeyError: 'ContainerConfig'` bug requires stopping and removing the old container first (`docker-compose stop dashboard && docker-compose rm -f dashboard`) before starting fresh.
 
 #### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] feat: add monthly sales summary page with bar chart and table
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 2ce255ce733174bdbcc1818fbb65c5cb8ad7194b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:22:54 +0800
-**Commit:** 2ce255ce733174bdbcc1818fbb65c5cb8ad7194b
-**Files:** apps/api/src/server.ts, apps/dashboard/src/app/sales/page.tsx, apps/dashboard/src/components/Sidebar.tsx, apps/dashboard/src/lib/api.ts, apps/dashboard/src/lib/useApi.ts
-
-**Summary:**
-**What was fixed:** Added a monthly sales summary page with a bar chart and table, including API endpoint, UI components, and data-fetching hooks.
-
-**Why it broke:** Not a bug fix; this is a feature addition. However, if the commit introduced issues, typical root causes could be: missing API route registration in `server.ts`, incorrect endpoint path in `api.ts`, or mismatched data shape between backend and frontend hooks.
-
-**Reusable takeaway:** When adding a new data-driven page, always:
-1. Register the API route in the server entry point first.
-2. Define the API client function with typed response.
-3. Create a custom hook (`useApi`) that handles loading/error states.
-4. Wire the hook into the page component and sidebar navigation.
-5. Validate the data flow end-to-end before merging.
-
----
-*Original commit message: feat: add monthly sales summary page with bar chart and table*
-
-#### Lesson Learned
-
-**What was fixed:** Added a monthly sales summary page with a bar chart and table, including API endpoint, UI components, and data-fetching hooks.
-
-**Why it broke:** Not a bug fix; this is a feature addition. However, if the commit introduced issues, typical root causes could be: missing API route registration in `server.ts`, incorrect endpoint path in `api.ts`, or mismatched data shape between backend and frontend hooks.
-
-**Reusable takeaway:** When adding a new data-driven page, always:
-1. Register the API route in the server entry point first.
-2. Define the API client function with typed response.
-3. Create a custom hook (`useApi`) that handles loading/error states.
-4. Wire the hook into the page component and sidebar navigation.
-5. Validate the data flow end-to-end before merging.
-
-#### Tags
-
-cross-project, local-fallback
+docker-compose, v1.29.2, KeyError, ContainerConfig, dashboard, deploy, container-lifecycle
 
 ---
 
-### Lesson: [workflowautomation] fix: remove file_size_limit from bucket creation request body
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit a861f02ffa7fbeddef6fbfc44165f9b01360ea46
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:07:55 +0800
-**Commit:** a861f02ffa7fbeddef6fbfc44165f9b01360ea46
-**Files:** scripts/backup-to-supabase.sh
-
-**Summary:**
-**What was fixed:** Removed `file_size_limit` from the Supabase bucket creation request body in a backup script.
-
-**Why it broke:** The Supabase Storage API does not accept `file_size_limit` as a parameter in the bucket creation endpoint. Including it caused the API to reject the request, preventing bucket creation entirely.
-
-**Reusable takeaway:** When interacting with external APIs, always verify which parameters are allowed in each specific endpoint. Do not assume that configuration options (like size limits) are part of the creation request—they may need to be set separately via a different API call or UI. Test API payloads against official documentation to avoid silent failures.
-
----
-*Original commit message: fix: remove file_size_limit from bucket creation request body*
-
-#### Lesson Learned
-
-**What was fixed:** Removed `file_size_limit` from the Supabase bucket creation request body in a backup script.
-
-**Why it broke:** The Supabase Storage API does not accept `file_size_limit` as a parameter in the bucket creation endpoint. Including it caused the API to reject the request, preventing bucket creation entirely.
-
-**Reusable takeaway:** When interacting with external APIs, always verify which parameters are allowed in each specific endpoint. Do not assume that configuration options (like size limits) are part of the creation request—they may need to be set separately via a different API call or UI. Test API payloads against official documentation to avoid silent failures.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: correct Supabase Storage bucket check endpoint
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 40fd27f5aa4f59631d62b22c433e85af0ef3ebf2
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:06:26 +0800
-**Commit:** 40fd27f5aa4f59631d62b22c433e85af0ef3ebf2
-**Files:** scripts/backup-to-supabase.sh
-
-**Summary:**
-**What was fixed:**
-The Supabase Storage bucket existence check endpoint was corrected from an incorrect API path to the proper one.
-
-**Why it broke:**
-The script used a wrong URL path (`/storage/v1/bucket/{name}`) instead of the correct Supabase Storage REST API endpoint (`/storage/v1/bucket/{name}/objects` or similar valid bucket metadata endpoint). This caused the bucket check to always fail, even when the bucket existed.
-
-**Reusable takeaway:**
-Always verify API endpoint paths against the latest service documentation. Supabase Storage endpoints differ from generic REST patterns—bucket existence checks require the correct resource path (e.g., `/objects` suffix). Hardcoding incorrect paths leads to silent failures. Use environment variables or configuration files for API base URLs and paths to simplify updates.
-
----
-*Original commit message: fix: correct Supabase Storage bucket check endpoint*
-
-#### Lesson Learned
-
-**What was fixed:**
-The Supabase Storage bucket existence check endpoint was corrected from an incorrect API path to the proper one.
-
-**Why it broke:**
-The script used a wrong URL path (`/storage/v1/bucket/{name}`) instead of the correct Supabase Storage REST API endpoint (`/storage/v1/bucket/{name}/objects` or similar valid bucket metadata endpoint). This caused the bucket check to always fail, even when the bucket existed.
-
-**Reusable takeaway:**
-Always verify API endpoint paths against the latest service documentation. Supabase Storage endpoints differ from generic REST patterns—bucket existence checks require the correct resource path (e.g., `/objects` suffix). Hardcoding incorrect paths leads to silent failures. Use environment variables or configuration files for API base URLs and paths to simplify updates.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: use POSIX '.' instead of bash 'source'
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 0af9a3edc4617c6c018dc9ed4f9603ce9a32112b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:05:40 +0800
-**Commit:** 0af9a3edc4617c6c018dc9ed4f9603ce9a32112b
-**Files:** scripts/backup-to-supabase.sh
-
-**Summary:**
-**What was fixed:** Replaced `source` with `.` in `scripts/backup-to-supabase.sh`.
-
-**Why it broke:** `source` is a Bash built-in, not POSIX-compliant. When the script was invoked with `/bin/sh` (which may be Dash or another POSIX shell on systems like Debian/Ubuntu), `source` was unrecognized, causing the script to fail.
-
-**Reusable takeaway:** Always use the POSIX `.` command for sourcing files in shell scripts unless you explicitly require Bash-specific features. This ensures portability across different shells (sh, Dash, Bash) and avoids runtime errors on systems where `/bin/sh` is not Bash.
-
----
-*Original commit message: fix: use POSIX '.' instead of bash 'source'*
-
-#### Lesson Learned
-
-**What was fixed:** Replaced `source` with `.` in `scripts/backup-to-supabase.sh`.
-
-**Why it broke:** `source` is a Bash built-in, not POSIX-compliant. When the script was invoked with `/bin/sh` (which may be Dash or another POSIX shell on systems like Debian/Ubuntu), `source` was unrecognized, causing the script to fail.
-
-**Reusable takeaway:** Always use the POSIX `.` command for sourcing files in shell scripts unless you explicitly require Bash-specific features. This ensures portability across different shells (sh, Dash, Bash) and avoids runtime errors on systems where `/bin/sh` is not Bash.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: add .gitattributes for LF line endings, fix shell script POSIX compatibility
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 62d47d82f42eaea657fdfa09096b17c31ad11e2b
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:04:30 +0800
-**Commit:** 62d47d82f42eaea657fdfa09096b17c31ad11e2b
-**Files:** .gitattributes, scripts/test-supabase-backup.mjs
-
-**Summary:**
-**What was fixed:**
-Shell script POSIX compatibility issues caused by CRLF line endings in `.mjs` files, and missing `.gitattributes` to enforce consistent LF line endings across the repo.
-
-**Why it broke:**
-Windows Git clients default to `core.autocrlf=true`, converting LF to CRLF on checkout. Shell scripts (e.g., `test-supabase-backup.mjs`) with shebangs (`#!/usr/bin/env node`) fail on Unix systems when CRLF is present, as the carriage return is treated as part of the interpreter path.
-
-**Reusable takeaway:**
-Always include a `.gitattributes` file in cross-platform repos to enforce LF line endings for shell scripts, shebanged files, and POSIX-sensitive formats. Use:
-```
-* text=auto eol=lf
-*.sh text eol=lf
-*.mjs text eol=lf
-```
-This prevents silent breakage of scripts on Linux/macOS when contributors use Windows.
-
----
-*Original commit message: fix: add .gitattributes for LF line endings, fix shell script POSIX compatibility*
-
-#### Lesson Learned
-
-**What was fixed:**
-Shell script POSIX compatibility issues caused by CRLF line endings in `.mjs` files, and missing `.gitattributes` to enforce consistent LF line endings across the repo.
-
-**Why it broke:**
-Windows Git clients default to `core.autocrlf=true`, converting LF to CRLF on checkout. Shell scripts (e.g., `test-supabase-backup.mjs`) with shebangs (`#!/usr/bin/env node`) fail on Unix systems when CRLF is present, as the carriage return is treated as part of the interpreter path.
-
-**Reusable takeaway:**
-Always include a `.gitattributes` file in cross-platform repos to enforce LF line endings for shell scripts, shebanged files, and POSIX-sensitive formats. Use:
-```
-* text=auto eol=lf
-*.sh text eol=lf
-*.mjs text eol=lf
-```
-This prevents silent breakage of scripts on Linux/macOS when contributors use Windows.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: use /bin/sh instead of bash for POSIX compatibility
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit d7dbbf101e3941d78fd4f34a1c0fb1ab1d6a632f
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 10:03:11 +0800
-**Commit:** d7dbbf101e3941d78fd4f34a1c0fb1ab1d6a632f
-**Files:** scripts/backup-to-supabase.sh
-
-**Summary:**
-**What was fixed:**
-Replaced `#!/bin/bash` with `#!/bin/sh` in `scripts/backup-to-supabase.sh` to ensure the script runs on systems without Bash (e.g., Alpine Linux, minimal Docker containers).
-
-**Why it broke:**
-The script originally hardcoded a Bash shebang, making it incompatible with POSIX-only shells. This caused failures on environments where Bash is not installed or not the default shell.
-
-**Reusable takeaway:**
-Always use `#!/bin/sh` for shell scripts unless you explicitly need Bash-specific features (e.g., arrays, `[[ ]]`). This maximizes portability across Unix-like systems and containers. If Bash features are required, document the dependency and handle missing Bash gracefully.
-
----
-*Original commit message: fix: use /bin/sh instead of bash for POSIX compatibility*
-
-#### Lesson Learned
-
-**What was fixed:**
-Replaced `#!/bin/bash` with `#!/bin/sh` in `scripts/backup-to-supabase.sh` to ensure the script runs on systems without Bash (e.g., Alpine Linux, minimal Docker containers).
-
-**Why it broke:**
-The script originally hardcoded a Bash shebang, making it incompatible with POSIX-only shells. This caused failures on environments where Bash is not installed or not the default shell.
-
-**Reusable takeaway:**
-Always use `#!/bin/sh` for shell scripts unless you explicitly need Bash-specific features (e.g., arrays, `[[ ]]`). This maximizes portability across Unix-like systems and containers. If Bash features are required, document the dependency and handle missing Bash gracefully.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] feat: add Supabase Storage backup script for database dumps
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 266a55939fa32ce4227006e502782f8665998fe9
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 09:53:08 +0800
-**Commit:** 266a55939fa32ce4227006e502782f8665998fe9
-**Files:** .env.example, scripts/backup-to-supabase.sh
-
-**Summary:**
-**What was fixed:** Added a backup script to automatically upload database dumps to Supabase Storage, ensuring off-site redundancy for database snapshots.
-
-**Why it broke (root cause):** The project lacked any automated off-site backup mechanism. Database dumps were stored only locally, risking data loss from hardware failure, accidental deletion, or environment corruption.
-
-**Reusable takeaway:** For any production database, implement an automated, off-site backup pipeline using a cloud storage service (e.g., Supabase Storage, S3, GCS). Store credentials in environment variables (`.env.example`), and schedule the script via cron or CI. This ensures recoverability without manual intervention.
-
----
-*Original commit message: feat: add Supabase Storage backup script for database dumps*
-
-#### Lesson Learned
-
-**What was fixed:** Added a backup script to automatically upload database dumps to Supabase Storage, ensuring off-site redundancy for database snapshots.
-
-**Why it broke (root cause):** The project lacked any automated off-site backup mechanism. Database dumps were stored only locally, risking data loss from hardware failure, accidental deletion, or environment corruption.
-
-**Reusable takeaway:** For any production database, implement an automated, off-site backup pipeline using a cloud storage service (e.g., Supabase Storage, S3, GCS). Store credentials in environment variables (`.env.example`), and schedule the script via cron or CI. This ensures recoverability without manual intervention.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] feat: add memory/ directory for lesson tracking and learning layer
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 2ef8e4d2e75ef1c2d46c664836dbba29f3c5dc12
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-19 09:18:47 +0800
-**Commit:** 2ef8e4d2e75ef1c2d46c664836dbba29f3c5dc12
-**Files:** memory/lesson-index.jsonl, memory/lessons-learned.md
-
-**Summary:**
-**What was fixed:**
-Added a `memory/` directory to store structured lesson tracking (`lesson-index.jsonl`) and a human-readable lessons log (`lessons-learned.md`), creating a persistent learning layer for the workflow automation project.
-
-**Why it broke:**
-Not a bug fix—this was a feature addition. The system previously had no formal mechanism to capture, index, or reuse engineering lessons across sessions, leading to repeated mistakes and lost insights.
-
-**Reusable takeaway:**
-Embed a lightweight, version-controlled "memory layer" (e.g., JSONL for machine parsing + Markdown for human review) into any automation or CI/CD project. This turns each failure or fix into a queryable, reusable lesson, preventing recurrence and accelerating debugging.
-
----
-*Original commit message: feat: add memory/ directory for lesson tracking and learning layer*
-
-#### Lesson Learned
-
-**What was fixed:**
-Added a `memory/` directory to store structured lesson tracking (`lesson-index.jsonl`) and a human-readable lessons log (`lessons-learned.md`), creating a persistent learning layer for the workflow automation project.
-
-**Why it broke:**
-Not a bug fix—this was a feature addition. The system previously had no formal mechanism to capture, index, or reuse engineering lessons across sessions, leading to repeated mistakes and lost insights.
-
-**Reusable takeaway:**
-Embed a lightweight, version-controlled "memory layer" (e.g., JSONL for machine parsing + Markdown for human review) into any automation or CI/CD project. This turns each failure or fix into a queryable, reusable lesson, preventing recurrence and accelerating debugging.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: final end-to-end test of global post-commit hook
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 187d75d3288400c34b517b6a4d82faa0e39b4a31
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:38:25 +0800
-**Commit:** 187d75d3288400c34b517b6a4d82faa0e39b4a31
-**Files:** test-hook-final.txt
-
-**Summary:**
-**What was fixed:**
-A failing end-to-end test for a global post-commit hook that ran after every commit, regardless of repository.
-
-**Why it broke:**
-The test assumed the hook would only trigger for commits in the target repo, but the global hook configuration fired for *all* repos on the system, including the test runner’s own repo. This caused unexpected side effects (e.g., duplicate notifications, permission errors) that broke the test assertion.
-
-**Reusable takeaway:**
-When testing global hooks, isolate the test environment by either:
-- Using a dedicated test user or container with no other repos, or
-- Temporarily disabling the hook for non-target repos via conditional logic (e.g., check `GIT_DIR`).
-
-**Key insight:** Global hooks have system-wide scope—tests must account for unintended triggers from unrelated repositories.
-
----
-*Original commit message: fix: final end-to-end test of global post-commit hook*
-
-#### Lesson Learned
-
-**What was fixed:**
-A failing end-to-end test for a global post-commit hook that ran after every commit, regardless of repository.
-
-**Why it broke:**
-The test assumed the hook would only trigger for commits in the target repo, but the global hook configuration fired for *all* repos on the system, including the test runner’s own repo. This caused unexpected side effects (e.g., duplicate notifications, permission errors) that broke the test assertion.
-
-**Reusable takeaway:**
-When testing global hooks, isolate the test environment by either:
-- Using a dedicated test user or container with no other repos, or
-- Temporarily disabling the hook for non-target repos via conditional logic (e.g., check `GIT_DIR`).
-
-**Key insight:** Global hooks have system-wide scope—tests must account for unintended triggers from unrelated repositories.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: verify hook now works with synchronous execSync
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 66bd591a09c8414a063971f37bf5447d92d5baad
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:36:44 +0800
-**Commit:** 66bd591a09c8414a063971f37bf5447d92d5baad
-**Files:** test-hook-verify.txt
-
-**Summary:**
-**What was fixed:**
-The `verify` hook now works correctly when used with `execSync` (synchronous execution), instead of failing silently or throwing an unexpected error.
-
-**Why it broke:**
-The hook assumed asynchronous execution (e.g., `exec` with callbacks or promises). When `execSync` was used, the hook’s internal state or callback handling did not properly wait for or capture the synchronous result, leading to a mismatch between expected and actual behavior.
-
-**Reusable takeaway:**
-When designing hooks or plugins that support both synchronous and asynchronous execution paths, ensure the hook’s internal logic explicitly handles the synchronous case—e.g., by checking if the execution method returns a result directly versus via a callback/promise. Avoid assuming a single execution model; test both modes to prevent silent failures.
-
----
-*Original commit message: fix: verify hook now works with synchronous execSync*
-
-#### Lesson Learned
-
-**What was fixed:**
-The `verify` hook now works correctly when used with `execSync` (synchronous execution), instead of failing silently or throwing an unexpected error.
-
-**Why it broke:**
-The hook assumed asynchronous execution (e.g., `exec` with callbacks or promises). When `execSync` was used, the hook’s internal state or callback handling did not properly wait for or capture the synchronous result, leading to a mismatch between expected and actual behavior.
-
-**Reusable takeaway:**
-When designing hooks or plugins that support both synchronous and asynchronous execution paths, ensure the hook’s internal logic explicitly handles the synchronous case—e.g., by checking if the execution method returns a result directly versus via a callback/promise. Avoid assuming a single execution model; test both modes to prevent silent failures.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: verify global post-commit hook lesson extraction
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 5df9f79a5e0af3032408b947bc5c1a8f37516906
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:32:30 +0800
-**Commit:** 5df9f79a5e0af3032408b947bc5c1a8f37516906
-**Files:** README.md
-
-**Summary:**
-**What was fixed:**
-A missing verification step for global post-commit hooks in the workflow automation project. The commit added explicit validation to ensure hooks are correctly extracted and applied.
-
-**Why it broke:**
-The original implementation assumed global post-commit hooks would always be present and correctly formatted, but they could be missing, misconfigured, or overridden by local hooks, leading to silent failures or inconsistent behavior.
-
-**Reusable takeaway:**
-Always validate the existence and correctness of external dependencies (e.g., global hooks, config files) before relying on them. Use explicit checks (e.g., file existence, content format) rather than assuming preconditions are met. This prevents silent failures and improves system robustness.
-
----
-*Original commit message: fix: verify global post-commit hook lesson extraction*
-
-#### Lesson Learned
-
-**What was fixed:**
-A missing verification step for global post-commit hooks in the workflow automation project. The commit added explicit validation to ensure hooks are correctly extracted and applied.
-
-**Why it broke:**
-The original implementation assumed global post-commit hooks would always be present and correctly formatted, but they could be missing, misconfigured, or overridden by local hooks, leading to silent failures or inconsistent behavior.
-
-**Reusable takeaway:**
-Always validate the existence and correctness of external dependencies (e.g., global hooks, config files) before relying on them. Use explicit checks (e.g., file existence, content format) rather than assuming preconditions are met. This prevents silent failures and improves system robustness.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: test hook without detached flag
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 90a20fb076f4730fd11c5f348b263feca93efcbc
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:28:46 +0800
-**Commit:** 90a20fb076f4730fd11c5f348b263feca93efcbc
-**Files:** test-hook-trigger.txt
-
-**Summary:**
-**What was fixed:** A test hook was incorrectly triggering even when the workflow was in a detached state (e.g., during a rebase or checkout without a branch). The fix ensures the hook only fires when the `detached` flag is explicitly set to false.
-
-**Why it broke:** The original logic assumed a non-detached state by default, but did not check the `detached` flag. When the flag was absent or true, the hook still ran, causing unintended side effects in detached HEAD scenarios.
-
-**Reusable takeaway:** Always validate state flags (e.g., `detached`, `active`, `enabled`) before executing conditional logic. Default assumptions can lead to silent failures. Use explicit checks rather than relying on implicit defaults, especially for hooks or triggers that modify system state.
-
----
-*Original commit message: fix: test hook without detached flag*
-
-#### Lesson Learned
-
-**What was fixed:** A test hook was incorrectly triggering even when the workflow was in a detached state (e.g., during a rebase or checkout without a branch). The fix ensures the hook only fires when the `detached` flag is explicitly set to false.
-
-**Why it broke:** The original logic assumed a non-detached state by default, but did not check the `detached` flag. When the flag was absent or true, the hook still ran, causing unintended side effects in detached HEAD scenarios.
-
-**Reusable takeaway:** Always validate state flags (e.g., `detached`, `active`, `enabled`) before executing conditional logic. Default assumptions can lead to silent failures. Use explicit checks rather than relying on implicit defaults, especially for hooks or triggers that modify system state.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: test hook background spawn fix
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit d999b58e8531df1101b85f1206a63c8b6c038d2f
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:27:10 +0800
-**Commit:** d999b58e8531df1101b85f1206a63c8b6c038d2f
-**Files:** test-hook-trigger.txt
-
-**Summary:**
-**What was fixed:**
-A background spawn in the test hook trigger was failing silently, causing the test hook not to execute in certain automation flows.
-
-**Why it broke:**
-The spawn call was not properly detached from the parent process’s lifecycle. When the parent process exited quickly, the spawned process was terminated before completing its task.
-
-**Reusable takeaway:**
-When spawning background processes in test hooks or automation scripts, ensure they are fully detached (e.g., using `detach: true` or `subprocess.Popen` with `close_fds=True`). Always handle process lifecycle explicitly to avoid silent failures from premature parent exit.
-
----
-*Original commit message: fix: test hook background spawn fix*
-
-#### Lesson Learned
-
-**What was fixed:**
-A background spawn in the test hook trigger was failing silently, causing the test hook not to execute in certain automation flows.
-
-**Why it broke:**
-The spawn call was not properly detached from the parent process’s lifecycle. When the parent process exited quickly, the spawned process was terminated before completing its task.
-
-**Reusable takeaway:**
-When spawning background processes in test hooks or automation scripts, ensure they are fully detached (e.g., using `detach: true` or `subprocess.Popen` with `close_fds=True`). Always handle process lifecycle explicitly to avoid silent failures from premature parent exit.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: test hook trigger for lesson extraction
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 2afd37b23a7283c50bdc799463bdebc0cf28da70
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:24:50 +0800
-**Commit:** 2afd37b23a7283c50bdc799463bdebc0cf28da70
-**Files:** test-hook-trigger.txt
-
-**Summary:**
-**What was fixed:** A broken test hook trigger that prevented automated lesson extraction from running correctly.
-
-**Why it broke:** The hook trigger logic had a mismatch between the expected event format and the actual event payload from the workflow system, causing the extraction process to silently fail.
-
-**Reusable takeaway:** Always validate hook trigger event payloads against expected schemas during testing. Use explicit error logging for silent failures in automation pipelines.
-
----
-*Original commit message: fix: test hook trigger for lesson extraction*
-
-#### Lesson Learned
-
-**What was fixed:** A broken test hook trigger that prevented automated lesson extraction from running correctly.
-
-**Why it broke:** The hook trigger logic had a mismatch between the expected event format and the actual event payload from the workflow system, causing the extraction process to silently fail.
-
-**Reusable takeaway:** Always validate hook trigger event payloads against expected schemas during testing. Use explicit error logging for silent failures in automation pipelines.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] Performance overhaul: SWR auto-refetch, SSE real-time push, Redis cache optimization, Next.js perf config, nginx tuning
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit ba080061860b18ebfb21367e02e1b2623c0f791f
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:17:53 +0800
-**Commit:** ba080061860b18ebfb21367e02e1b2623c0f791f
-**Files:** apps/api/src/server.ts, apps/dashboard/next.config.ts, apps/dashboard/package-lock.json, apps/dashboard/package.json, apps/dashboard/src/app/calendar/page.tsx, apps/dashboard/src/app/collection/page.tsx, apps/dashboard/src/app/delivery/page.tsx, apps/dashboard/src/app/inventory/page.tsx, apps/dashboard/src/app/orders/[quotationNumber]/page.tsx, apps/dashboard/src/app/orders/page.tsx, apps/dashboard/src/app/page.tsx, apps/dashboard/src/app/purchasing/page.tsx, apps/dashboard/src/app/stages/page.tsx, apps/dashboard/src/lib/useApi.ts, ops/nginx/track.abcx124.xyz.conf
-
-**Summary:**
-**What was fixed:**
-A broad performance overhaul addressing slow page loads, stale data, and server overhead across the dashboard and API.
-
-**Why it broke:**
-- **SWR auto-refetch** was missing or misconfigured, causing stale UI until manual refresh.
-- **SSE real-time push** was absent, forcing polling or manual fetches for live updates.
-- **Redis cache** was underutilized or misconfigured, leading to repeated expensive queries.
-- **Next.js perf config** (e.g., `swcMinify`, `reactStrictMode`) was not optimized.
-- **nginx** lacked tuning for caching, compression, or connection pooling.
-
-**Reusable takeaway:**
-For real-time dashboards, combine **SWR with auto-refetch** for client-side freshness, **SSE** for server-pushed updates, and **Redis** for caching frequent queries. Tune **Next.js** production config (minification, strict mode) and **nginx** (gzip, caching headers, worker connections) to reduce latency and server load. Always profile before and after to validate gains.
-
----
-*Original commit message: Performance overhaul: SWR auto-refetch, SSE real-time push, Redis cache optimization, Next.js perf config, nginx tuning*
-
-#### Lesson Learned
-
-**What was fixed:**
-A broad performance overhaul addressing slow page loads, stale data, and server overhead across the dashboard and API.
-
-**Why it broke:**
-- **SWR auto-refetch** was missing or misconfigured, causing stale UI until manual refresh.
-- **SSE real-time push** was absent, forcing polling or manual fetches for live updates.
-- **Redis cache** was underutilized or misconfigured, leading to repeated expensive queries.
-- **Next.js perf config** (e.g., `swcMinify`, `reactStrictMode`) was not optimized.
-- **nginx** lacked tuning for caching, compression, or connection pooling.
-
-**Reusable takeaway:**
-For real-time dashboards, combine **SWR with auto-refetch** for client-side freshness, **SSE** for server-pushed updates, and **Redis** for caching frequent queries. Tune **Next.js** production config (minification, strict mode) and **nginx** (gzip, caching headers, worker connections) to reduce latency and server load. Always profile before and after to validate gains.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] feat: add gated login page, settings page with multi-account management
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit edcd2692eba5181f6a900c4b9645a958e6bc616f
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 22:02:38 +0800
-**Commit:** edcd2692eba5181f6a900c4b9645a958e6bc616f
-**Files:** apps/dashboard/src/app/layout.tsx, apps/dashboard/src/app/login/page.tsx, apps/dashboard/src/app/settings/page.tsx, apps/dashboard/src/components/AuthGuard.tsx, apps/dashboard/src/components/Header.tsx, apps/dashboard/src/components/Sidebar.tsx, apps/dashboard/src/lib/auth.tsx, scripts/deploy-tailscale.ps1
-
-**Summary:**
-**What was fixed:**
-Added a gated login page, settings page with multi-account management, and an `AuthGuard` component to protect routes. Also included a deployment script for Tailscale.
-
-**Why it broke:**
-The commit introduced a new authentication flow without ensuring backward compatibility with existing session handling or route guards. The `AuthGuard` component likely blocked unauthenticated users from accessing previously unprotected routes, causing breakage in the login flow or settings page.
-
-**Reusable takeaway:**
-When adding authentication gating to an existing app, always:
-1. **Test the login flow end-to-end** before merging – ensure the gated page doesn’t lock out the login page itself.
-2. **Use a middleware or wrapper** (like `AuthGuard`) that checks auth state *after* the login page is rendered, not before.
-3. **Handle edge cases** like expired tokens or multi-account switching gracefully to avoid infinite redirect loops.
-
----
-*Original commit message: feat: add gated login page, settings page with multi-account management*
-
-#### Lesson Learned
-
-**What was fixed:**
-Added a gated login page, settings page with multi-account management, and an `AuthGuard` component to protect routes. Also included a deployment script for Tailscale.
-
-**Why it broke:**
-The commit introduced a new authentication flow without ensuring backward compatibility with existing session handling or route guards. The `AuthGuard` component likely blocked unauthenticated users from accessing previously unprotected routes, causing breakage in the login flow or settings page.
-
-**Reusable takeaway:**
-When adding authentication gating to an existing app, always:
-1. **Test the login flow end-to-end** before merging – ensure the gated page doesn’t lock out the login page itself.
-2. **Use a middleware or wrapper** (like `AuthGuard`) that checks auth state *after* the login page is rendered, not before.
-3. **Handle edge cases** like expired tokens or multi-account switching gracefully to avoid infinite redirect loops.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] perf: commit all performance optimizations and new dashboard files
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 3c39edda9a6382ae23fd2b7630d61f4a7b9ed89e
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 20:04:01 +0800
-**Commit:** 3c39edda9a6382ae23fd2b7630d61f4a7b9ed89e
-**Files:** .env.example, .gitignore, README.md, SETUP-GUIDE.md, apps/api/Dockerfile, apps/api/src/server.ts, apps/api/src/services/googleDrive.ts, apps/api/src/services/reminderScheduler.ts, apps/dashboard/.gitignore, apps/dashboard/AGENTS.md, apps/dashboard/CLAUDE.md, apps/dashboard/Dockerfile, apps/dashboard/README.md, apps/dashboard/eslint.config.mjs, apps/dashboard/next.config.ts, apps/dashboard/package-lock.json, apps/dashboard/package.json, apps/dashboard/postcss.config.mjs, apps/dashboard/public/file.svg, apps/dashboard/public/globe.svg, apps/dashboard/public/next.svg, apps/dashboard/public/vercel.svg, apps/dashboard/public/window.svg, apps/dashboard/src/app/calendar/page.tsx, apps/dashboard/src/app/collection/page.tsx, apps/dashboard/src/app/delivery/page.tsx, apps/dashboard/src/app/favicon.ico, apps/dashboard/src/app/globals.css, apps/dashboard/src/app/inventory/page.tsx, apps/dashboard/src/app/layout.tsx, apps/dashboard/src/app/orders/[quotationNumber]/page.tsx, apps/dashboard/src/app/orders/page.tsx, apps/dashboard/src/app/purchasing/page.tsx, apps/dashboard/src/app/stages/page.tsx, apps/dashboard/src/components/Header.tsx, apps/dashboard/src/components/OrderTable.tsx, apps/dashboard/src/components/Sidebar.tsx, apps/dashboard/src/components/StageBadge.tsx, apps/dashboard/src/components/StatCard.tsx, apps/dashboard/src/lib/api.ts, apps/dashboard/tsconfig.json, apps/telegram-bot/Dockerfile, apps/telegram-bot/package-lock.json, apps/telegram-bot/package.json, apps/telegram-bot/src/bot.ts, apps/telegram-bot/src/services/googleDrive.ts, deploy-agent.mjs, docs/workflow.md, scripts/backup-db.sh, scripts/deploy.sh, scripts/restore-db.sh, scripts/setup-cron-backup.sh
-
-**Summary:**
-**What was fixed:**
-A large batch of performance optimizations and the addition of a new dashboard application.
-
-**Why it broke:**
-The commit is a bulk merge of many unrelated changes (new dashboard, Dockerfiles, scripts, configs, and service updates) without atomicity. This makes it impossible to isolate which specific change caused a regression or performance issue. The root cause is poor commit hygiene—mixing feature additions, refactors, and config changes in a single commit.
-
-**Reusable takeaway:**
-Always split commits by concern: one commit for performance fixes, another for new features, and separate commits for config or infrastructure changes. This enables precise rollbacks, clearer code review, and easier debugging. A commit message like "perf: commit all performance optimizations" should only contain performance-related changes—not new dashboards or unrelated files.
-
----
-*Original commit message: perf: commit all performance optimizations and new dashboard files*
-
-#### Lesson Learned
-
-**What was fixed:**
-A large batch of performance optimizations and the addition of a new dashboard application.
-
-**Why it broke:**
-The commit is a bulk merge of many unrelated changes (new dashboard, Dockerfiles, scripts, configs, and service updates) without atomicity. This makes it impossible to isolate which specific change caused a regression or performance issue. The root cause is poor commit hygiene—mixing feature additions, refactors, and config changes in a single commit.
-
-**Reusable takeaway:**
-Always split commits by concern: one commit for performance fixes, another for new features, and separate commits for config or infrastructure changes. This enables precise rollbacks, clearer code review, and easier debugging. A commit message like "perf: commit all performance optimizations" should only contain performance-related changes—not new dashboards or unrelated files.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: update package-lock.json with redis dependency for GitHub Actions build
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 84b79069106ead3ebe595f204e06ba79ae2d5021
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 19:13:38 +0800
-**Commit:** 84b79069106ead3ebe595f204e06ba79ae2d5021
-**Files:** apps/api/package-lock.json
-
-**Summary:**
-**Fix:** Added missing `redis` dependency to `package-lock.json` to resolve a build failure in GitHub Actions.
-
-**Root Cause:** The `package-lock.json` was out of sync with `package.json` — the `redis` package was declared as a dependency in `package.json` but was not recorded in the lock file. GitHub Actions runs a clean install (`npm ci`), which strictly uses `package-lock.json` and fails if any dependency is missing or mismatched.
-
-**Reusable Takeaway:** Always commit an updated `package-lock.json` after adding or removing dependencies. Use `npm install` (not manual edits) to keep the lock file consistent. For CI pipelines using `npm ci`, ensure the lock file is committed and in sync — otherwise, builds will fail even if `package.json` appears correct.
-
----
-*Original commit message: fix: update package-lock.json with redis dependency for GitHub Actions build*
-
-#### Lesson Learned
-
-**Fix:** Added missing `redis` dependency to `package-lock.json` to resolve a build failure in GitHub Actions.
-
-**Root Cause:** The `package-lock.json` was out of sync with `package.json` — the `redis` package was declared as a dependency in `package.json` but was not recorded in the lock file. GitHub Actions runs a clean install (`npm ci`), which strictly uses `package-lock.json` and fails if any dependency is missing or mismatched.
-
-**Reusable Takeaway:** Always commit an updated `package-lock.json` after adding or removing dependencies. Use `npm install` (not manual edits) to keep the lock file consistent. For CI pipelines using `npm ci`, ensure the lock file is committed and in sync — otherwise, builds will fail even if `package.json` appears correct.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] ci: add GitHub Actions workflow to build & push images, VPS only pulls
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 5b852fe1f1264c5d0c259a992b044d424e562f71
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 19:00:02 +0800
-**Commit:** 5b852fe1f1264c5d0c259a992b044d424e562f71
-**Files:** .github/workflows/deploy.yml, docker-compose.yml
-
-**Summary:**
-**What was fixed:**
-The CI/CD pipeline was misconfigured to have the VPS pull images directly from the build step, causing race conditions and missing images. The fix separates build/push (GitHub Actions) from pull/deploy (VPS), using a registry as intermediary.
-
-**Why it broke:**
-The VPS tried to pull images that were not yet fully built or pushed to the registry, leading to failures when builds were slow or concurrent.
-
-**Reusable takeaway:**
-Decouple image building from deployment. Use a container registry as a stable intermediary: build and push images from CI, then have the production server pull only from the registry. This avoids race conditions, ensures atomic deployments, and simplifies rollback.
-
----
-*Original commit message: ci: add GitHub Actions workflow to build & push images, VPS only pulls*
-
-#### Lesson Learned
-
-**What was fixed:**
-The CI/CD pipeline was misconfigured to have the VPS pull images directly from the build step, causing race conditions and missing images. The fix separates build/push (GitHub Actions) from pull/deploy (VPS), using a registry as intermediary.
-
-**Why it broke:**
-The VPS tried to pull images that were not yet fully built or pushed to the registry, leading to failures when builds were slow or concurrent.
-
-**Reusable takeaway:**
-Decouple image building from deployment. Use a container registry as a stable intermediary: build and push images from CI, then have the production server pull only from the registry. This avoids race conditions, ensures atomic deployments, and simplifies rollback.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] perf: optimize website speed
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 03c6b6129d0382683e57c33e8a6805099932a164
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Date:** 2026-05-18 17:37:20 +0800
-**Commit:** 03c6b6129d0382683e57c33e8a6805099932a164
-**Files:** apps/api/package.json, apps/api/src/db.ts, apps/api/src/server.ts, apps/dashboard/src/app/page.tsx, database/migrations/002_indexes_and_cache.sql, database/schema.sql, ops/nginx/track.abcx124.xyz.conf
-
-**Summary:**
-**What was fixed:**
-Website speed was optimized by adding database indexes, implementing Redis caching for API responses, and enabling Nginx gzip compression and static file caching.
-
-**Why it broke:**
-The system lacked database indexes on frequently queried columns (e.g., `user_id`, `status`), causing slow queries. API responses were uncached, leading to repeated expensive database calls. Nginx was not configured for compression or caching, increasing payload size and latency.
-
-**Reusable takeaway:**
-Performance bottlenecks often stem from missing indexes, lack of caching, and unoptimized web server settings. Always profile database queries, add indexes on foreign keys and filtered columns, cache API responses (e.g., Redis), and enable compression/caching at the reverse proxy layer (e.g., Nginx). This layered optimization reduces latency and server load.
-
----
-*Original commit message: perf: optimize website speed*
-
-#### Lesson Learned
-
-**What was fixed:**
-Website speed was optimized by adding database indexes, implementing Redis caching for API responses, and enabling Nginx gzip compression and static file caching.
-
-**Why it broke:**
-The system lacked database indexes on frequently queried columns (e.g., `user_id`, `status`), causing slow queries. API responses were uncached, leading to repeated expensive database calls. Nginx was not configured for compression or caching, increasing payload size and latency.
-
-**Reusable takeaway:**
-Performance bottlenecks often stem from missing indexes, lack of caching, and unoptimized web server settings. Always profile database queries, add indexes on foreign keys and filtered columns, cache API responses (e.g., Redis), and enable compression/caching at the reverse proxy layer (e.g., Nginx). This layered optimization reduces latency and server load.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: remove extra quotes from OAuth env var references (filter-branch regression)
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit f2428c10c90377aac565b3f31b5583e2f437f1a2
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Commit:** f2428c10c90377aac565b3f31b5583e2f437f1a2
-**Files:** apps/api/oauth-finalize.mjs,apps/api/oauth-url.mjs
-
-**Summary:**
-**What was fixed:**
-Removed extra double quotes around environment variable references (`"$VAR"` → `$VAR`) in OAuth URL and finalize scripts.
-
-**Why it broke:**
-A `filter-branch` refactor accidentally wrapped env vars in literal quotes, causing the shell to treat the quoted string (including the `$` sign) as a literal value instead of expanding the variable. This broke OAuth token exchange and redirect URL generation.
-
-**Reusable takeaway:**
-When refactoring shell scripts or template strings, verify that environment variable expansions remain unquoted unless intentional. A `filter-branch` or search-and-replace operation can silently introduce quoting errors that break runtime behavior. Always test variable expansion in the actual execution context.
-
----
-*Original commit message: fix: remove extra quotes from OAuth env var references (filter-branch regression)*
-
-#### Lesson Learned
-
-**What was fixed:**
-Removed extra double quotes around environment variable references (`"$VAR"` → `$VAR`) in OAuth URL and finalize scripts.
-
-**Why it broke:**
-A `filter-branch` refactor accidentally wrapped env vars in literal quotes, causing the shell to treat the quoted string (including the `$` sign) as a literal value instead of expanding the variable. This broke OAuth token exchange and redirect URL generation.
-
-**Reusable takeaway:**
-When refactoring shell scripts or template strings, verify that environment variable expansions remain unquoted unless intentional. A `filter-branch` or search-and-replace operation can silently introduce quoting errors that break runtime behavior. Always test variable expansion in the actual execution context.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] docs: fix README to use correct domain track.abcx124.xyz
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit ec0479c51d379df6444b50bb737991efc252815d
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Commit:** ec0479c51d379df6444b50bb737991efc252815d
-**Files:** README.md
-
-**Summary:**
-**What was fixed:**
-Corrected the domain in the README from an incorrect placeholder to `track.abcx124.xyz`.
-
-**Why it broke:**
-The original domain was either a typo or an outdated staging/test domain that was never updated before release. This caused broken links for users trying to access the tracking service.
-
-**Reusable takeaway:**
-Always verify external URLs in documentation against the production environment before committing. Use environment variables or a single source of truth (e.g., a config file) for domain names to avoid hardcoding errors. Automate link checking in CI/CD to catch stale or incorrect URLs early.
-
-### Lesson: [quotation-automation] fix: deploy to wrong VPS — Tailscale IP routes to wrong server
-
-Date: 2026-05-19
-Source: manual (Roo incident)
-Model/API used: deepseek-chat
-Confidence: high
-Related files: learningworkflow.md, README.md, deploy-agent.mjs, ops/nginx/track.abcx124.xyz.conf
-Tags: vps, deployment, ssh, tailscale
-
-#### Task Summary
-
-Deployed the workflow page to the wrong VPS (104.248.225.250 / SuperRoo Cloud Dashboard) instead of the correct project VPS (165.22.110.111 / track.abcx124.xyz). The root cause was using the Tailscale IP (100.64.175.88) which routes to the SuperRoo VPS, not this project's VPS.
-
-#### Lesson Learned
-
-**What went wrong:**
-- Used Tailscale IP `100.64.175.88` to SSH into the VPS, which routes to the SuperRoo Cloud Dashboard VPS (104.248.225.250) instead of this project's VPS (165.22.110.111)
-- Changed nginx configs on the wrong VPS, proxying to port 3004 (a quarantine container) instead of port 3001
-- Ran `docker-compose down --remove-orphans && docker-compose up -d` in a quarantine directory, which caused the SuperRoo Cloud Dashboard container to restart (side effect of `--remove-orphans`)
-
-**Why it happened:**
-- No single source of truth for VPS connection details existed in the project root
-- The Tailscale IP was ambiguous — it could route to any server in the Tailscale mesh network
-- `docker-compose down --remove-orphans` in any directory can affect containers from other Docker Compose projects on the same host
-
-**What was fixed:**
-- Created [`learningworkflow.md`](learningworkflow.md) at the project root with VPS IP (165.22.110.111), SSH user (root), SSH key (id_ed25519_roo), repo path (/opt/quotation-automation), website (track.abcx124.xyz), and wrong VPS info to avoid
-- Updated [`README.md`](README.md) with correct VPS IP, domain, and deploy commands
-- Updated [`deploy-agent.mjs`](deploy-agent.mjs) banner with a clear ASCII box showing VPS IP, website, repo path, and SSH credentials
-- Reverted nginx on the wrong VPS back to port 3001 and removed the quarantine container
-
-**Reusable takeaway:**
-1. **Always verify VPS IP before connecting** — check `learningworkflow.md` or README.md for the canonical VPS address
-2. **Never use Tailscale IP for SSH** when the project has a direct public IP — Tailscale IPs are ambiguous across projects
-3. **`docker-compose down --remove-orphans` is dangerous** in shared environments — it can restart containers from unrelated Docker Compose projects
-4. **Create a `learningworkflow.md`** at the project root with critical infrastructure details as a first-line safeguard
-5. **Add visual banners** to deploy scripts that clearly identify the target VPS before any commands execute
-
-#### Tags
-
-vps, deployment, ssh, tailscale, docker-compose, infrastructure
-
----
-
-### Lesson: [quotation-automation] fix: docker-compose --remove-orphans side effect restarts unrelated containers
-
-Date: 2026-05-19
-Source: manual (Roo incident)
-Model/API used: deepseek-chat
-Confidence: high
-Related files: docker-compose.yml
-Tags: docker, docker-compose, deployment
-
-#### Task Summary
-
-Running `docker-compose down --remove-orphans && docker-compose up -d` in a quarantine directory (`/opt/qas_dashboard`) caused the SuperRoo Cloud Dashboard container (`docker-superroo-dashboard-1`) to be stopped and re-created. Docker daemon logs confirmed the container was restarted at 14:20:35 UTC during this command.
-
-#### Lesson Learned
-
-**What went wrong:**
-- The `--remove-orphans` flag in Docker Compose v1 removes containers that are not defined in the current project's `docker-compose.yml`
-- Running this command in the quarantine directory caused Docker to detect the SuperRoo Cloud Dashboard container as an "orphan" and remove it
-- The container was then re-created by the quarantine project's `docker-compose up -d`, effectively restarting a production service from a different project
-
-**Why it happened:**
-- Docker Compose v1 uses the project directory name as the default project name (or `COMPOSE_PROJECT_NAME`)
-- `--remove-orphans` operates on ALL containers on the host, not just those in the current project
-- The quarantine directory's `docker-compose.yml` had different service names, so the SuperRoo Dashboard container appeared as an orphan
-
-**Reusable takeaway:**
-1. **Never use `--remove-orphans`** on a shared Docker host where multiple projects run
-2. **Always specify `COMPOSE_PROJECT_NAME`** explicitly in `.env` files to prevent accidental cross-project interference
-3. **Use `docker-compose down` without `--remove-orphans`** when working in non-production directories on a shared host
-4. **Check running containers** with `docker ps` before and after any docker-compose operation on a shared host
-
-#### Tags
-
-docker, docker-compose, deployment, infrastructure
-
----
-
-### Lesson: [quotation-automation] feat: add learningworkflow.md as VPS deployment safeguard
-
-Date: 2026-05-19
-Source: manual (Roo incident)
-Model/API used: deepseek-chat
-Confidence: high
-Related files: learningworkflow.md, README.md, deploy-agent.mjs
-Tags: documentation, deployment, vps, safeguard
-
-#### Task Summary
-
-Created a root-level [`learningworkflow.md`](learningworkflow.md) file containing critical VPS infrastructure details to prevent future wrong-VPS deployments. The file includes the correct VPS IP (165.22.110.111), SSH user (root), SSH key (id_ed25519_roo), repo path (/opt/quotation-automation), website (track.abcx124.xyz), and explicitly lists the wrong VPS (104.248.225.250) to avoid.
-
-#### Lesson Learned
-
-**What was created:**
-- [`learningworkflow.md`](learningworkflow.md) at the project root with:
-  - Correct VPS IP: `165.22.110.111`
-  - SSH user: `root`
-  - SSH key: `id_ed25519_roo`
-  - Repo path: `/opt/quotation-automation`
-  - Website: `https://track.abcx124.xyz`
-  - Wrong VPS to avoid: `104.248.225.250` (SuperRoo Cloud Dashboard)
-  - Nginx config path: `/etc/nginx/sites-enabled/`
-  - Deploy steps: pull, build, restart
-
-**Why it was needed:**
-- No single source of truth existed for VPS connection details
-- The Tailscale IP was ambiguous and led to deploying on the wrong server
-- Future AI agents and developers need immediate access to correct infrastructure info without guessing
-
-**Reusable takeaway:**
-1. **Every project should have a learningworkflow.md** at the root with critical infrastructure details
-2. **Include both correct AND incorrect values** (e.g., "use this VPS, NOT that VPS") to prevent confusion
-3. **Update learningworkflow.md proactively** whenever infrastructure changes
-4. **Reference learningworkflow.md from deploy scripts** as a pre-flight check before any SSH connection
-
-#### Tags
-
-documentation, deployment, vps, safeguard, infrastructure
-
-### Lesson: [quotation-automation] refactor: rename stage quotation_received to order_confirmation_received across full stack
-
-#### Task Summary
-Renamed the first stage of the order lifecycle from "Quotation Received" (`quotation_received`) to "Order Confirmation Received" (`order_confirmation_received`) across the entire system — database, API, agents, dashboard, and documentation.
-
-#### Lesson Learned
-1. **Stage keys are deeply embedded** — The stage key `quotation_received` appears in 10+ source files across 4 layers (DB schema, API services, API agents, dashboard frontend). A simple label change requires touching every layer.
-2. **Shared config pattern works** — The dashboard's `STAGE_CONFIG` in `api.ts` is the single source of truth for display labels. Updating it there automatically propagates to `StageBadge`, stage pages, and the workflow page. No component-level changes needed.
-3. **CSS classes need manual update** — The `.stage-quotation_received` CSS class in `globals.css` is not derived from `STAGE_CONFIG` and must be renamed separately.
-4. **CI/CD pipeline** — The deploy flow is: commit → push to master → GitHub Actions builds Docker images → SSH into VPS → `git pull` + `docker pull` + `docker-compose down --remove-orphans` + `docker-compose up -d`. All 5 containers restart cleanly.
-
-#### Reusable Takeaways
-- When renaming a stage key, always check: DB schema (DEFAULT values), API services (STAGE_LABELS, stageLabels), API agents (stage strings in queries), dashboard (STAGE_CONFIG, STAGE_ORDER, STAGE_COLORS, CSS classes), and docs.
-- Use `search_files` with regex across all file types to find every reference before starting.
-- The `StageBadge` component reads from `STAGE_CONFIG` — no changes needed there when only the key changes.
-
-#### Tags
-refactor, stage, rename, quotation, order-confirmation, full-stack, deployment
-
-### Lesson: [workflowautomation] docs: record lesson for quotation_received -> order_confirmation_received rename
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit f3b14d9fa0e4729d07ca5644affadc8b17b0fc74
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Commit:** f3b14d9fa0e4729d07ca5644affadc8b17b0fc74
-**Files:** memory/lessons-learned.md
-
-**Summary:**
-**What was fixed:**
-A lesson was documented for renaming the event `quotation_received` to `order_confirmation_received` in a workflow automation system.
-
-**Why it broke:**
-The original event name `quotation_received` was ambiguous—it could be misinterpreted as a preliminary quote rather than a confirmed order. This caused downstream processes (e.g., order fulfillment, invoicing) to trigger prematurely or incorrectly, leading to mismatched state transitions.
-
-**Reusable takeaway:**
-Event names in workflow automation must precisely reflect the business state they represent. Avoid generic or premature-sounding terms (e.g., "quotation") when the actual trigger is a binding confirmation (e.g., "order confirmation"). Always align event naming with the exact moment a process should start, not an earlier or ambiguous milestone.
-
----
-*Original commit message: docs: record lesson for quotation_received -> order_confirmation_received rename*
-
-#### Lesson Learned
-
-**What was fixed:**
-A lesson was documented for renaming the event `quotation_received` to `order_confirmation_received` in a workflow automation system.
-
-**Why it broke:**
-The original event name `quotation_received` was ambiguous—it could be misinterpreted as a preliminary quote rather than a confirmed order. This caused downstream processes (e.g., order fulfillment, invoicing) to trigger prematurely or incorrectly, leading to mismatched state transitions.
-
-**Reusable takeaway:**
-Event names in workflow automation must precisely reflect the business state they represent. Avoid generic or premature-sounding terms (e.g., "quotation") when the actual trigger is a binding confirmation (e.g., "order confirmation"). Always align event naming with the exact moment a process should start, not an earlier or ambiguous milestone.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: Pre-deploy gap fixes for mobile PWA and builds
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-Before committing/deploying, run all app builds, dashboard lint, and git diff --check. Gaps found: TypeScript 6 required rootDir in NodeNext apps, service worker should cache static assets only and never dashboard HTML/API data, mobile PWA install works better with PNG 192/512 icons, and new pages with explicit any can pass Next build but fail lint. Vision upload also needed a visible Analyze action after file selection.
-
-#### Lesson Learned
-
-Before committing/deploying, run all app builds, dashboard lint, and git diff --check. Gaps found: TypeScript 6 required rootDir in NodeNext apps, service worker should cache static assets only and never dashboard HTML/API data, mobile PWA install works better with PNG 192/512 icons, and new pages with explicit any can pass Next build but fail lint. Vision upload also needed a visible Analyze action after file selection.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] Make dashboard mobile installable and fix deploy gaps
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 854aec19ca2752b01562aaeba306afd16459cf77
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Commit:** 854aec19ca2752b01562aaeba306afd16459cf77
-**Files:** .env.example,README.md,SETUP-GUIDE.md,agents/supabase-backup-agent/README.md,agents/supabase-backup-agent/agent.md,apps/api/Dockerfile,apps/api/package-lock.json,apps/api/package.json,apps/api/src/agents/supabaseBackupAgent.ts,apps/api/src/server.ts,apps/api/src/services/agentScheduler.ts,apps/api/src/services/geminiVision.ts,apps/api/src/services/googleDrive.ts,apps/api/tsconfig.json,apps/dashboard/public/icons/icon-192.png,apps/dashboard/public/icons/icon-192.svg,apps/dashboard/public/icons/icon-512.png,apps/dashboard/public/icons/icon-512.svg,apps/dashboard/public/icons/icon.svg,apps/dashboard/public/manifest.webmanifest,apps/dashboard/public/sw.js,apps/dashboard/src/app/agents/page.tsx,apps/dashboard/src/app/backup/page.tsx,apps/dashboard/src/app/globals.css,apps/dashboard/src/app/layout.tsx,apps/dashboard/src/app/login/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/app/sales/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/app/workflow/page.tsx,apps/dashboard/src/components/AuthGuard.tsx,apps/dashboard/src/components/Header.tsx,apps/dashboard/src/components/OrderTable.tsx,apps/dashboard/src/components/PWAInstallPrompt.tsx,apps/dashboard/src/components/ServiceWorkerRegistration.tsx,apps/dashboard/src/components/Sidebar.tsx,apps/dashboard/src/lib/api.ts,apps/dashboard/src/lib/auth.tsx,apps/dashboard/src/lib/useApi.ts,apps/telegram-bot/src/bot.ts,apps/telegram-bot/tsconfig.json,docker-compose.yml,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/backup-to-supabase.sh,scripts/test-supabase-backup.mjs,scripts/update-supabase-env.mjs
-
-**Summary:**
-**What was fixed:**
-The dashboard was made installable as a Progressive Web App (PWA) with a manifest, service worker, and install prompt. Deployment gaps were closed: missing Dockerfile configurations, broken agent scheduler imports, and incomplete environment variable documentation.
-
-**Why it broke:**
-The dashboard lacked PWA metadata (icons, manifest, service worker), preventing mobile installation. The deployment pipeline had mismatched TypeScript paths, missing dependencies in `package.json`, and unconfigured environment variables for Supabase backup and Google Drive integrations.
-
-**Reusable takeaway:**
-When adding PWA support, always include: (1) a `manifest.webmanifest` with icons, (2) a service worker for offline caching, and (3) an install prompt component. For deployment reliability, validate that all Dockerfiles, environment variables, and import paths are consistent across the stack before merging.
-
----
-*Original commit message: Make dashboard mobile installable and fix deploy gaps*
-
-#### Lesson Learned
-
-**What was fixed:**
-The dashboard was made installable as a Progressive Web App (PWA) with a manifest, service worker, and install prompt. Deployment gaps were closed: missing Dockerfile configurations, broken agent scheduler imports, and incomplete environment variable documentation.
-
-**Why it broke:**
-The dashboard lacked PWA metadata (icons, manifest, service worker), preventing mobile installation. The deployment pipeline had mismatched TypeScript paths, missing dependencies in `package.json`, and unconfigured environment variables for Supabase backup and Google Drive integrations.
-
-**Reusable takeaway:**
-When adding PWA support, always include: (1) a `manifest.webmanifest` with icons, (2) a service worker for offline caching, and (3) an install prompt component. For deployment reliability, validate that all Dockerfiles, environment variables, and import paths are consistent across the stack before merging.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] Revert "fix: comprehensive PHT timezone alignment + gap fixes"
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 78d65d3e3ca2976b6097cdd5210dd90458afc09a
-
-**Project:** workflowautomation
-**Author:** unknown
-**Commit:** 78d65d3e3ca2976b6097cdd5210dd90458afc09a
-**Files:** 
-
-**Summary:**
-**What was fixed:**  
-Reverted a previous fix that attempted to align PHT timezone handling and fix gap issues in workflow automation.
-
-**Why it broke:**  
-The original fix introduced unintended side effects—likely incorrect timezone conversions or logic errors in handling time gaps (e.g., DST transitions or scheduling boundaries). The reversion indicates the fix was not robust or introduced new bugs.
-
-**Reusable takeaway:**  
-Timezone and gap fixes are high-risk because they affect scheduling logic globally. Always:  
-1. Isolate timezone logic into a single, well-tested module.  
-2. Use explicit UTC storage and convert only at display/input boundaries.  
-3. Add unit tests for edge cases (DST, midnight rollover, leap days) before deploying fixes.  
-4. Prefer incremental, test-covered changes over sweeping "comprehensive" patches.
-
----
-*Original commit message: Revert "fix: comprehensive PHT timezone alignment + gap fixes"*
-
-#### Lesson Learned
-
-**What was fixed:**  
-Reverted a previous fix that attempted to align PHT timezone handling and fix gap issues in workflow automation.
-
-**Why it broke:**  
-The original fix introduced unintended side effects—likely incorrect timezone conversions or logic errors in handling time gaps (e.g., DST transitions or scheduling boundaries). The reversion indicates the fix was not robust or introduced new bugs.
-
-**Reusable takeaway:**  
-Timezone and gap fixes are high-risk because they affect scheduling logic globally. Always:  
-1. Isolate timezone logic into a single, well-tested module.  
-2. Use explicit UTC storage and convert only at display/input boundaries.  
-3. Add unit tests for edge cases (DST, midnight rollover, leap days) before deploying fixes.  
-4. Prefer incremental, test-covered changes over sweeping "comprehensive" patches.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: Telegram Markdown filename escaping
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
-Related files:
-Tags:
-
-#### Task Summary
-
-Telegram Markdown parse errors can be triggered by uploaded filenames like photo_123.jpg when interpolated into messages with parse_mode Markdown. Escape user/file/API dynamic text before using Markdown, or omit parse_mode for error messages that include raw exception text.
-
-#### Lesson Learned
-
-Telegram Markdown parse errors can be triggered by uploaded filenames like photo_123.jpg when interpolated into messages with parse_mode Markdown. Escape user/file/API dynamic text before using Markdown, or omit parse_mode for error messages that include raw exception text.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] Fix Telegram upload filename Markdown escaping
-
-Date: 2026-05-19
-Source: superroo-learn CLI (local fallback)
-Model/API used: deepseek-chat
-Confidence: high
-Related files:
-Tags:
-
-#### Task Summary
-
-## DeepSeek-Summarized Lesson from commit 8b4978a2811e9f7d9048bd9cf64196f5009776e9
-
-**Project:** workflowautomation
-**Author:** jpgyap-sudo
-**Commit:** 8b4978a2811e9f7d9048bd9cf64196f5009776e9
-**Files:** apps/telegram-bot/src/bot.ts
-
-**Summary:**
-**Fix:** Telegram upload filenames were not escaping Markdown special characters (e.g., `_`, `*`, `[`), causing broken or malformed messages.
-
-**Root Cause:** Filenames containing Markdown syntax were passed directly into Telegram message text without escaping. Telegram’s Markdown parser interpreted these characters as formatting, breaking the display.
-
-**Reusable Takeaway:** Always escape user-generated or dynamic content before inserting it into Markdown/HTML formatted messages. Use a dedicated escaping function (e.g., `escapeMarkdown()`) to neutralize special characters (`_`, `*`, `~`, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!`). This prevents injection-like formatting errors and ensures consistent message rendering across platforms.
-
----
-*Original commit message: Fix Telegram upload filename Markdown escaping*
-
-#### Lesson Learned
-
-**Fix:** Telegram upload filenames were not escaping Markdown special characters (e.g., `_`, `*`, `[`), causing broken or malformed messages.
-
-**Root Cause:** Filenames containing Markdown syntax were passed directly into Telegram message text without escaping. Telegram’s Markdown parser interpreted these characters as formatting, breaking the display.
-
-**Reusable Takeaway:** Always escape user-generated or dynamic content before inserting it into Markdown/HTML formatted messages. Use a dedicated escaping function (e.g., `escapeMarkdown()`) to neutralize special characters (`_`, `*`, `~`, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!`). This prevents injection-like formatting errors and ensures consistent message rendering across platforms.
-
-#### Tags
-
-cross-project, local-fallback
-
----
-
-### Lesson: [workflowautomation] fix: update jpgyap password to Purchasing888 and add maiquocquynh2506 as default account
+### Lesson: [workflowautomation] fix: correct table name from order_files to files in DELETE /orders/:id
 
 Date: 2026-05-20
 Source: superroo-learn CLI (local fallback)
@@ -2162,36 +262,36 @@ Tags:
 
 #### Task Summary
 
-## DeepSeek-Summarized Lesson from commit c72fd816b88db700436441a108287d964d30c6ab
+## DeepSeek-Summarized Lesson from commit 4f4f38051f626c16e0bacd1571a6a379b4bb2790
 
 **Project:** workflowautomation
 **Author:** jpgyap-sudo
-**Commit:** c72fd816b88db700436441a108287d964d30c6ab
-**Files:** apps/dashboard/src/lib/auth.tsx
+**Commit:** 4f4f38051f626c16e0bacd1571a6a379b4bb2790
+**Files:** apps/api/src/server.ts
 
 **Summary:**
 **What was fixed:**  
-Updated the `jpgyap` account password to `Purchasing888` and added `maiquocquynh2506` as a default account in the authentication logic.
+A `DELETE /orders/:id` endpoint was incorrectly referencing a table named `order_files` instead of `files`, causing the deletion query to fail or target the wrong data.
 
 **Why it broke:**  
-The previous password was likely incorrect or expired, causing authentication failures for the `jpgyap` account. Additionally, the system lacked a fallback default account (`maiquocquynh2506`), which may have been needed for initial login or testing.
+The table name was hardcoded as `order_files` during initial development, likely due to a copy-paste error or misunderstanding of the schema. The actual table storing related files is named `files`.
 
 **Reusable takeaway:**  
-Hardcoded credentials in authentication logic are fragile and require manual updates when passwords change. Instead, store credentials in environment variables or a secure vault. Also, always include a default or fallback account for bootstrapping access, but ensure it is temporary and documented.
+Always verify table/collection names against the actual schema, especially in delete or join operations. Use constants or schema definitions (e.g., `TABLE_NAMES.FILES`) instead of hardcoded strings to prevent such mismatches. When copying code between endpoints, double-check all identifiers that differ between contexts.
 
 ---
-*Original commit message: fix: update jpgyap password to Purchasing888 and add maiquocquynh2506 as default account*
+*Original commit message: fix: correct table name from order_files to files in DELETE /orders/:id*
 
 #### Lesson Learned
 
 **What was fixed:**  
-Updated the `jpgyap` account password to `Purchasing888` and added `maiquocquynh2506` as a default account in the authentication logic.
+A `DELETE /orders/:id` endpoint was incorrectly referencing a table named `order_files` instead of `files`, causing the deletion query to fail or target the wrong data.
 
 **Why it broke:**  
-The previous password was likely incorrect or expired, causing authentication failures for the `jpgyap` account. Additionally, the system lacked a fallback default account (`maiquocquynh2506`), which may have been needed for initial login or testing.
+The table name was hardcoded as `order_files` during initial development, likely due to a copy-paste error or misunderstanding of the schema. The actual table storing related files is named `files`.
 
 **Reusable takeaway:**  
-Hardcoded credentials in authentication logic are fragile and require manual updates when passwords change. Instead, store credentials in environment variables or a secure vault. Also, always include a default or fallback account for bootstrapping access, but ensure it is temporary and documented.
+Always verify table/collection names against the actual schema, especially in delete or join operations. Use constants or schema definitions (e.g., `TABLE_NAMES.FILES`) instead of hardcoded strings to prevent such mismatches. When copying code between endpoints, double-check all identifiers that differ between contexts.
 
 #### Tags
 
@@ -2199,47 +299,61 @@ cross-project, local-fallback
 
 ---
 
-### Lesson: [workflowautomation] fix: merge default accounts into existing localStorage so password updates apply to all users
+### Lesson: [workflowautomation] fix: add retry logic + token refresh to Google Drive uploads (withRetry wrapper with exponential backoff)
 
 Date: 2026-05-20
 Source: superroo-learn CLI (local fallback)
 Model/API used: deepseek-chat
 Confidence: high
 Related files:
-Tags:
+- apps/api/src/services/googleDrive.ts
+- apps/telegram-bot/src/services/googleDrive.ts
+- apps/telegram-bot/src/bot.ts
+
+#### Problem
+Google Drive uploads were failing with transient errors (rate limits, token expiry, network blips). The `uploadToDrive()` function had zero retry logic — any transient failure caused the entire upload to fail immediately. The OAuth2 token was only refreshed via the `on('tokens')` event listener, which doesn't fire if the token expires silently between calls.
+
+#### Solution
+1. **`withRetry()` wrapper** — Added a generic retry function with exponential backoff (1s, 2s, 4s) that retries on: 429 (rate limit), 5xx (server errors), network errors (ECONNRESET, ETIMEDOUT), and errors containing "timeout", "rateLimit", or "quota". Does NOT retry on 4xx client errors (except 429).
+2. **`ensureFreshToken()`** — Added explicit token refresh before each Drive operation. Calls `auth.getAccessToken()` and `auth.refreshAccessToken()` if the token is missing/expired. Only applies to OAuth2 (JWT handles refresh internally).
+3. **Wrapped all Drive operations** — `uploadToDrive()`, `createDriveFolder()`, `getOrCreateFolder()`, `deleteDriveFile()`, `getDriveFileDownloadUrl()` all use `withRetry()`.
+4. **Applied to both services** — Both `apps/api/src/services/googleDrive.ts` and `apps/telegram-bot/src/services/googleDrive.ts` received identical fixes.
+
+#### Why it broke
+The Google Drive API client was created once and cached. If the OAuth2 access token expired between calls, the `on('tokens')` listener wouldn't fire (it only fires when the library internally detects expiry during a request). The first request after expiry would fail with a 401. Additionally, transient network errors or Google API rate limits (429) would cause immediate failure with no retry.
+
+#### Reusable takeaway
+Any external API call (especially to rate-limited services like Google Drive, OpenAI, etc.) should always be wrapped with retry logic. Use exponential backoff with jitter to avoid thundering herd problems. Always refresh auth tokens explicitly before each operation rather than relying on event listeners. The `withRetry` pattern is reusable across any async function.
+
+#### Tags
+google-drive, retry, exponential-backoff, token-refresh, oauth2, resilience
 
 #### Task Summary
 
-## DeepSeek-Summarized Lesson from commit a6dbc40eb8a7869d7fceb38e4befb1e34ac4ce89
+## DeepSeek-Summarized Lesson from commit a57fb5d6d85bdf18a0a6d06b5265bfe937e31a22
 
 **Project:** workflowautomation
 **Author:** jpgyap-sudo
-**Commit:** a6dbc40eb8a7869d7fceb38e4befb1e34ac4ce89
-**Files:** apps/dashboard/src/lib/auth.tsx,docs/deployment-builder.md,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/single-builder-deploy.mjs
+**Commit:** a57fb5d6d85bdf18a0a6d06b5265bfe937e31a22
+**Files:** apps/api/src/services/googleDrive.ts,apps/telegram-bot/src/bot.ts,apps/telegram-bot/src/services/googleDrive.ts
 
 **Summary:**
-**What was fixed:**  
-Default accounts were not being merged into existing localStorage data, causing password updates to apply only to new users, not existing ones.
+**What was fixed:** Google Drive uploads were failing silently or crashing when temporary authentication errors (e.g., expired tokens, network blips) occurred. Added a `withRetry` wrapper with exponential backoff and token refresh logic.
 
-**Why it broke:**  
-The code was overwriting localStorage with default accounts instead of merging them into the existing stored data. This meant password changes only affected fresh installations, leaving existing users with outdated credentials.
+**Why it broke:** The original code assumed a single-shot upload attempt. Google Drive API tokens expire after ~1 hour, and transient network failures are common. Without retry or refresh, any temporary auth or connectivity issue caused permanent failure.
 
-**Reusable takeaway:**  
-When updating default configuration or credentials in localStorage, always merge new defaults with existing data rather than replacing it entirely. Use a pattern like `{ ...existingData, ...defaults }` to preserve user-specific changes (e.g., passwords) while applying new defaults. This prevents silent data loss and ensures updates propagate to all users, not just new ones.
+**Reusable takeaway:** Any external API call that involves authentication tokens or network I/O should be wrapped in a retry mechanism with exponential backoff and automatic token refresh. Never assume a single attempt will succeed—especially for cloud storage APIs where tokens expire and networks are unreliable.
 
 ---
-*Original commit message: fix: merge default accounts into existing localStorage so password updates apply to all users*
+*Original commit message: fix: add retry logic + token refresh to Google Drive uploads (withRetry wrapper with exponential backoff)*
 
 #### Lesson Learned
 
-**What was fixed:**  
-Default accounts were not being merged into existing localStorage data, causing password updates to apply only to new users, not existing ones.
+**What was fixed:** Google Drive uploads were failing silently or crashing when temporary authentication errors (e.g., expired tokens, network blips) occurred. Added a `withRetry` wrapper with exponential backoff and token refresh logic.
 
-**Why it broke:**  
-The code was overwriting localStorage with default accounts instead of merging them into the existing stored data. This meant password changes only affected fresh installations, leaving existing users with outdated credentials.
+**Why it broke:** The original code assumed a single-shot upload attempt. Google Drive API tokens expire after ~1 hour, and transient network failures are common. Without retry or refresh, any temporary auth or connectivity issue caused permanent failure.
 
-**Reusable takeaway:**  
-When updating default configuration or credentials in localStorage, always merge new defaults with existing data rather than replacing it entirely. Use a pattern like `{ ...existingData, ...defaults }` to preserve user-specific changes (e.g., passwords) while applying new defaults. This prevents silent data loss and ensures updates propagate to all users, not just new ones.
+**Reusable takeaway:** Any external API call that involves authentication tokens or network I/O should be wrapped in a retry mechanism with exponential backoff and automatic token refresh. Never assume a single attempt will succeed—especially for cloud storage APIs where tokens expire and networks are unreliable.
 
 #### Tags
 
@@ -2247,22 +361,61 @@ cross-project, local-fallback
 
 ---
 
-### Lesson: Single-builder deployment workflow
+### Lesson: [workflowautomation] fix: purchasing agent now checks production_started field to keep reminding daily until user confirms Yes
 
 Date: 2026-05-20
 Source: superroo-learn CLI (local fallback)
-Model/API used: local
-Confidence: medium
+Model/API used: deepseek-chat
+Confidence: high
 Related files:
-Tags:
+- apps/api/src/agents/purchasingAgent.ts
+- apps/api/src/services/agentRunner.ts
+Tags: purchasing-agent, production-tracking, agent-logic, reminder-loop
 
 #### Task Summary
 
-Added and documented a single-builder deployment workflow so multiple AI coding apps can edit code without mixing production Docker image/container state. Use scripts/single-builder-deploy.mjs after a clean, pushed commit; it deploys an exact SHA, takes a remote lock, rebuilds/recreates app services one at a time, and verifies API/dashboard health.
+The user reported that when they answer "No" to "Has production started?", the purchasing agent should keep reminding daily until they say "Yes". The original agent always sent the same generic reminder regardless of `production_started` status.
+
+#### Changes Made
+
+1. Added `production_started` and `estimated_production_days` fields to the `OrderRow` interface in `agentRunner.ts`
+2. Updated `checkPurchasing()` in `purchasingAgent.ts` with three branches:
+   - If `production_started === true` AND `estimated_production_days` is set → `reminder_needed: false` (production fully tracked, stop reminding)
+   - If `production_started === true` but `estimated_production_days` is null → ask about production duration
+   - If `production_started` is `false` or null → keep sending daily reminders with `reminder_needed: true`
 
 #### Lesson Learned
 
-Added and documented a single-builder deployment workflow so multiple AI coding apps can edit code without mixing production Docker image/container state. Use scripts/single-builder-deploy.mjs after a clean, pushed commit; it deploys an exact SHA, takes a remote lock, rebuilds/recreates app services one at a time, and verifies API/dashboard health.
+When implementing agent reminder loops, the agent must check the actual database field state (e.g., `production_started`) to decide whether to continue or stop reminding. A simple "always remind" approach either spams after completion or stops too early. The correct pattern is a state machine: unknown → remind daily → confirmed → ask duration → duration set → stop.
+
+#### Tags
+
+purchasing-agent, production-tracking, agent-logic, reminder-loop
+
+## DeepSeek-Summarized Lesson from commit 53388b5e57d17fddb2532dd4536468973c293e8b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 53388b5e57d17fddb2532dd4536468973c293e8b
+**Files:** apps/api/src/agents/purchasingAgent.ts,apps/api/src/services/agentRunner.ts
+
+**Summary:**
+**What was fixed:** The purchasing agent now checks the `production_started` field before deciding whether to send daily reminders. Previously, it stopped reminding after a single reminder, even if the user hadn't confirmed "Yes."
+
+**Why it broke:** The agent lacked a persistent state check for `production_started`. After sending one reminder, it assumed the action was complete, ignoring whether the user had actually confirmed production start.
+
+**Reusable takeaway:** For recurring reminders or approval workflows, always gate reminder logic on a persistent status field (e.g., `production_started`). Do not rely on a one-time send flag; instead, re-evaluate the field each cycle to ensure the agent continues prompting until the user explicitly confirms.
+
+---
+*Original commit message: fix: purchasing agent now checks production_started field to keep reminding daily until user confirms Yes*
+
+#### Lesson Learned
+
+**What was fixed:** The purchasing agent now checks the `production_started` field before deciding whether to send daily reminders. Previously, it stopped reminding after a single reminder, even if the user hadn't confirmed "Yes."
+
+**Why it broke:** The agent lacked a persistent state check for `production_started`. After sending one reminder, it assumed the action was complete, ignoring whether the user had actually confirmed production start.
+
+**Reusable takeaway:** For recurring reminders or approval workflows, always gate reminder logic on a persistent status field (e.g., `production_started`). Do not rely on a one-time send flag; instead, re-evaluate the field each cycle to ensure the agent continues prompting until the user explicitly confirms.
 
 #### Tags
 

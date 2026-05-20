@@ -351,6 +351,125 @@ app.delete('/orders/:id', async (request, reply) => {
   return reply.send({ ok: true, deleted: rows[0] });
 });
 
+// ── Production Tracking ─────────────────────────────────────────────
+
+const setProductionSchema = z.object({
+  production_started: z.boolean(),
+  estimated_production_days: z.number().int().positive().optional(),
+});
+
+app.post('/orders/:id/set-production', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = setProductionSchema.parse(request.body);
+
+  const setClauses: string[] = ['production_started = $1'];
+  const values: any[] = [body.production_started];
+  let idx = 2;
+
+  if (body.estimated_production_days != null) {
+    setClauses.push(`estimated_production_days = $${idx++}`);
+    values.push(body.estimated_production_days);
+  }
+
+  setClauses.push('updated_at = NOW()');
+  values.push(id);
+
+  const rows = await query(
+    `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  // If production started and estimated days set, create production_due reminder
+  if (body.production_started && body.estimated_production_days) {
+    const groupChatId = process.env.PURCHASING_GROUP_ID;
+    if (groupChatId) {
+      const order = rows[0] as any;
+      const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+      const client = order.client_name ?? 'Unknown';
+      const finishDate = new Date();
+      finishDate.setDate(finishDate.getDate() + body.estimated_production_days);
+
+      // Create midpoint reminder (at 50% of production time)
+      const midpointDays = Math.max(1, Math.floor(body.estimated_production_days / 2));
+      const midpointDate = new Date();
+      midpointDate.setDate(midpointDate.getDate() + midpointDays);
+
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
+         ON CONFLICT DO NOTHING`,
+        [id, groupChatId,
+         `🏭 *Midpoint Check* — ${ref} (${client})\nProduction is estimated at ${body.estimated_production_days} days.\nIs this order on time or delayed?`,
+         midpointDate.toISOString()]
+      );
+
+      // Create finish reminder (at estimated completion date)
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, 'production_due', $2, $3, 'once', $4, 'active')
+         ON CONFLICT DO NOTHING`,
+        [id, groupChatId,
+         `🏭 *Production Due* — ${ref} (${client})\nEstimated production of ${body.estimated_production_days} days should be complete now.\nIs production finished?`,
+         finishDate.toISOString()]
+      );
+    }
+  }
+
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
+const reportProductionStatusSchema = z.object({
+  on_time: z.boolean(),
+  delay_days: z.number().int().min(0).optional(),
+});
+
+app.post('/orders/:id/report-production-status', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = reportProductionStatusSchema.parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET production_delayed = $1, production_delay_days = $2, updated_at = NOW()
+     WHERE id = $3 RETURNING *`,
+    [!body.on_time, body.delay_days ?? 0, id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
+const finishProductionSchema = z.object({
+  delivery_estimated_days: z.number().int().positive(),
+});
+
+app.post('/orders/:id/finish-production', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = finishProductionSchema.parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
+     delivery_estimated_days = $1, updated_at = NOW()
+     WHERE id = $2 RETURNING *`,
+    [body.delivery_estimated_days, id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  // Complete production reminders
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active' AND stage IN ('production_midpoint', 'production_due')`,
+    [id]
+  );
+
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
 // ── Stage Updates ───────────────────────────────────────────────────
 
 const stageUpdateSchema = z.object({
@@ -1374,11 +1493,21 @@ app.post('/reminders', async (request, reply) => {
       stage: z.string(),
       group_chat_id: z.string(),
       message: z.string(),
-      frequency: z.enum(['hourly', 'daily']).default('daily'),
+      frequency: z.enum(['hourly', 'daily', 'once']).default('daily'),
+      next_run_at: z.string().optional(),
     })
     .parse(request.body);
 
-  await createStageReminder(body.order_id, body.stage, body.group_chat_id, body.message, body.frequency);
+  if (body.next_run_at) {
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')
+       ON CONFLICT DO NOTHING`,
+      [body.order_id, body.stage, body.group_chat_id, body.message, body.frequency, body.next_run_at]
+    );
+  } else {
+    await createStageReminder(body.order_id, body.stage, body.group_chat_id, body.message, body.frequency);
+  }
   return reply.send({ ok: true });
 });
 

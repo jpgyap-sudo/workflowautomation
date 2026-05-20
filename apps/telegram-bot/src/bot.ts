@@ -95,7 +95,11 @@ type UserStep =
     }
   // Deposit slip matching flow (from vision payment extraction)
   | { action: 'awaiting_deposit_confirmation'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; candidates: DepositCandidate[] }
-  | { action: 'awaiting_deposit_client_name'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number };
+  | { action: 'awaiting_deposit_client_name'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number }
+  // Production tracking flow
+  | { action: 'awaiting_delay_days'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_delivery_timeline'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_custom_delivery_days'; orderId: string; quotationNumber: string };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -894,6 +898,52 @@ bot.on(message('text'), async (ctx) => {
       break;
     }
 
+    // ── Production Tracking Text Handlers ────────────────────────────
+    case 'awaiting_delay_days': {
+      const { orderId, quotationNumber } = session.step;
+      const days = parseInt(text, 10);
+      if (isNaN(days) || days < 0) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `5`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await postJson(`/orders/${orderId}/report-production-status`, {
+          on_time: false,
+          delay_days: days,
+        });
+        resetStep(chatId);
+        await ctx.reply(
+          `⚠️ *Delay Recorded* — ${quotationNumber}\n\nDelay of ${days} day(s) has been recorded. The dashboard has been updated.\n\nA reminder will be sent at the estimated completion date.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    case 'awaiting_custom_delivery_days': {
+      const { orderId: cOrderId, quotationNumber: cQuotationNumber } = session.step;
+      const deliveryDays = parseInt(text, 10);
+      if (isNaN(deliveryDays) || deliveryDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `14`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await postJson(`/orders/${cOrderId}/finish-production`, {
+          delivery_estimated_days: deliveryDays,
+        });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Delivery Timeline Set* — ${cQuotationNumber}\n\nProduction is finished. Estimated delivery availability: *${deliveryDays} days*.\n\nThe order will proceed to the next stage.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
     default:
       resetStep(chatId);
       await ctx.reply(
@@ -976,6 +1026,195 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
       ...mainMenuKeyboard(),
     });
   }
+});
+
+// ── Production Tracking Callback Handlers ────────────────────────────
+// Workflow:
+//   1. Midpoint reminder sent → user clicks "On Time" or "Delayed"
+//   2. If Delayed → bot asks how many days delay
+//   3. Production due reminder sent → user clicks "Finished" or "Not Yet"
+//   4. If Finished → bot asks delivery timeline (standard 4 weeks or custom)
+
+// Midpoint check: On Time
+bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `production:ontime:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Report on-time status to API
+    await postJson(`/orders/${orderId}/report-production-status`, {
+      on_time: true,
+      delay_days: 0,
+    });
+
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *On Time* — ${quotationNumber}\n\nProduction is on schedule. A reminder will be sent at the estimated completion date.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Midpoint check: Delayed
+bot.action(/^production:delayed:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `production:delayed:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  // Set step to ask for delay days
+  setStep(chatId, { action: 'awaiting_delay_days', orderId, quotationNumber });
+  await ctx.editMessageText(
+    `⚠️ *Delayed* — ${quotationNumber}\n\nHow many days is the delay? (Enter a number)`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
+// Production due: Finished
+bot.action(/^production:finished:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `production:finished:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  // Ask for delivery timeline
+  setStep(chatId, { action: 'awaiting_delivery_timeline', orderId, quotationNumber });
+  await ctx.editMessageText(
+    `✅ *Production Finished* — ${quotationNumber}\n\nHow long until it's available for delivery?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📦 Standard (4 weeks)', `production:delivery_standard:${orderId}:${quotationNumber}`)],
+        [Markup.button.callback('📦 Custom', `production:delivery_custom:${orderId}:${quotationNumber}`)],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
+    }
+  );
+});
+
+// Production due: Not Yet Finished
+bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `production:not_finished:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  // Re-create the production_due reminder for tomorrow
+  try {
+    const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    const order = await orderRes.json();
+    const groupChatId = process.env.PURCHASING_GROUP_ID;
+    if (groupChatId && order) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      await postJson('/reminders', {
+        order_id: orderId,
+        stage: 'production_due',
+        group_chat_id: groupChatId,
+        message: `🏭 *Production Due* — ${quotationNumber} (${order.client_name ?? 'Unknown'})\nEstimated production should be complete now.\nIs production finished?`,
+        frequency: 'once',
+        next_run_at: tomorrow.toISOString(),
+      });
+    }
+
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `⏳ *Noted* — ${quotationNumber}\n\nProduction is not yet finished. A reminder will be sent again tomorrow.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Delivery timeline: Standard (4 weeks)
+bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `production:delivery_standard:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Finish production with standard 4 weeks (28 days) delivery estimate
+    await postJson(`/orders/${orderId}/finish-production`, {
+      delivery_estimated_days: 28,
+    });
+
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *Delivery Timeline Set* — ${quotationNumber}\n\nProduction is finished. Estimated delivery availability: *4 weeks (28 days)*.\n\nThe order will proceed to the next stage.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Delivery timeline: Custom
+bot.action(/^production:delivery_custom:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `production:delivery_custom:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  // Ask for custom delivery days
+  setStep(chatId, { action: 'awaiting_custom_delivery_days', orderId, quotationNumber });
+  await ctx.editMessageText(
+    `📦 *Custom Delivery Timeline* — ${quotationNumber}\n\nEnter the number of days until available for delivery:`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
 });
 
 // ── Gemini Vision Callback Handlers ──────────────────────────────────

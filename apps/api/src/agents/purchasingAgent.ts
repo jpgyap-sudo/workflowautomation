@@ -18,6 +18,7 @@ import {
  * - Sends daily reminders to the purchasing group
  * - Escalates after 3 reminders with no update
  * - Auto-advances when team confirms via /produce command (handled by bot.ts)
+ * - Monitors production midpoint and due reminders for orders with production tracking
  */
 export async function runPurchasingAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
@@ -48,6 +49,7 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
     days_since_creation: daysSince(order.created_at),
     production_started: order.production_started,
     estimated_production_days: order.estimated_production_days,
+    production_finished: order.production_finished,
   };
 
   try {
@@ -55,10 +57,11 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
     const daysWaiting = daysSince(order.created_at);
 
     // If production_started is true and estimated_production_days is set → production is fully tracked, stop reminding
+    // The midpoint and due reminders are handled by the reminder scheduler + bot.ts callbacks
     if (order.production_started === true && order.estimated_production_days != null) {
       const result: AgentResult = {
         status: 'complete',
-        message: `✅ Production for #${order.quotation_number ?? 'unknown'} has started and estimated at ${order.estimated_production_days} days. No reminder needed.`,
+        message: `✅ Production for #${order.quotation_number ?? 'unknown'} has started and estimated at ${order.estimated_production_days} days. Midpoint and due reminders are active.`,
         next_stage: null,
         reminder_needed: false,
         escalation_level: escalationLevel,

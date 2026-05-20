@@ -39,6 +39,32 @@ async function sendTelegramMessage(chatId: string, text: string): Promise<boolea
 }
 
 /**
+ * Send a Telegram message with an inline keyboard.
+ */
+async function sendTelegramInlineKeyboard(
+  chatId: string,
+  text: string,
+  buttons: { text: string; callback_data: string }[][],
+): Promise<boolean> {
+  if (!TELEGRAM_BOT_TOKEN) return false;
+  try {
+    const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buttons },
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check all active reminders and send those that are due.
  * Runs every minute via setInterval.
  */
@@ -73,6 +99,8 @@ export async function processDueReminders(): Promise<number> {
       math_verified: '✅ Math Verified',
       purchasing_pending: '🛒 Purchasing Pending',
       production_confirmed: '🏭 Production Confirmed',
+      production_midpoint: '🏭 Production Midpoint Check',
+      production_due: '🏭 Production Due',
       deposit_pending: '💳 Deposit Pending',
       inventory_arrived: '📦 Inventory Arrived',
       balance_due: '⚖️ Balance Due',
@@ -96,35 +124,68 @@ export async function processDueReminders(): Promise<number> {
 
     text += `_Use /status ${reminder.quotation_number ?? ''} to check details._`;
 
-    // Send the message
-    const ok = await sendTelegramMessage(reminder.group_chat_id, text);
+    // Determine if this reminder needs inline keyboard buttons
+    const quotationNumber = reminder.quotation_number ?? '';
+    const orderId = reminder.order_id;
+
+    let ok = false;
+
+    if (reminder.stage === 'production_midpoint') {
+      // Midpoint check: ask if on time or delayed
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ On Time', callback_data: `production:ontime:${orderId}:${quotationNumber}` },
+          { text: '⚠️ Delayed', callback_data: `production:delayed:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'production_due') {
+      // Production due: ask if finished
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Finished', callback_data: `production:finished:${orderId}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `production:not_finished:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else {
+      // Standard reminder — plain text
+      ok = await sendTelegramMessage(reminder.group_chat_id, text);
+    }
 
     if (ok) {
       sent++;
 
-      // Calculate next run time based on frequency
-      const nextRun = new Date();
-      switch (reminder.frequency) {
-        case 'hourly':
-          nextRun.setHours(nextRun.getHours() + 1);
-          break;
-        case 'daily':
-        default:
-          nextRun.setDate(nextRun.getDate() + 1);
-          break;
+      // For production midpoint and due reminders with 'once' frequency, mark as completed after sending
+      // (they will be re-created if needed by the bot callback handlers)
+      if (reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') {
+        await query(
+          `UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+          [reminder.id]
+        );
+      } else {
+        // Calculate next run time based on frequency
+        const nextRun = new Date();
+        switch (reminder.frequency) {
+          case 'hourly':
+            nextRun.setHours(nextRun.getHours() + 1);
+            break;
+          case 'daily':
+          default:
+            nextRun.setDate(nextRun.getDate() + 1);
+            break;
+        }
+
+        // Escalate if overdue (after 3 reminders without update)
+        const newEscalation = reminder.escalation_level + 1;
+
+        await query(
+          `UPDATE reminders
+           SET next_run_at = $1,
+               escalation_level = $2,
+               updated_at = NOW()
+           WHERE id = $3`,
+          [nextRun.toISOString(), newEscalation, reminder.id]
+        );
       }
-
-      // Escalate if overdue (after 3 reminders without update)
-      const newEscalation = reminder.escalation_level + 1;
-
-      await query(
-        `UPDATE reminders
-         SET next_run_at = $1,
-             escalation_level = $2,
-             updated_at = NOW()
-         WHERE id = $3`,
-        [nextRun.toISOString(), newEscalation, reminder.id]
-      );
     }
   }
 

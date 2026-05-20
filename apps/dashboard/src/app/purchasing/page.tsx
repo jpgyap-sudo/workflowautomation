@@ -6,7 +6,7 @@ import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { ShoppingCart, Factory, Clock, ExternalLink, Pencil, Trash2, X, Check } from 'lucide-react';
+import { ShoppingCart, Factory, Clock, ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Calendar } from 'lucide-react';
 
 function DriveLink({ folderId }: { folderId: string | null }) {
   if (!folderId) return <span className="text-xs text-gray-400">—</span>;
@@ -23,6 +23,110 @@ function DriveLink({ folderId }: { folderId: string | null }) {
   );
 }
 
+function computeFinishDate(order: Order): string | null {
+  if (!order.production_started || !order.estimated_production_days) return null;
+  // Estimate start date from created_at or production_finished_at
+  const startDate = order.production_finished_at
+    ? new Date(order.production_finished_at)
+    : new Date(order.created_at);
+  // If production_finished, use finished_at; otherwise estimate from created_at
+  const finishDate = new Date(startDate);
+  finishDate.setDate(finishDate.getDate() + order.estimated_production_days);
+  return finishDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function ProductionInfo({ order }: { order: Order }) {
+  if (!order.production_started) return null;
+
+  const finishDate = computeFinishDate(order);
+  const isDelayed = order.production_delayed;
+  const delayDays = order.production_delay_days;
+  const isFinished = order.production_finished;
+  const deliveryDays = order.delivery_estimated_days;
+
+  return (
+    <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-5">
+        {/* Production Started */}
+        <div className="rounded-lg bg-white p-2.5 shadow-sm">
+          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+            <Factory className="h-3 w-3 text-indigo-500" />
+            Production
+          </span>
+          <p className="mt-1 font-semibold text-gray-800">
+            {order.production_started ? 'Started' : 'Not Started'}
+          </p>
+        </div>
+
+        {/* Estimated Duration */}
+        {order.estimated_production_days && (
+          <div className="rounded-lg bg-white p-2.5 shadow-sm">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <Clock className="h-3 w-3 text-amber-500" />
+              Est. Duration
+            </span>
+            <p className="mt-1 font-semibold text-gray-800">
+              {order.estimated_production_days} days
+            </p>
+          </div>
+        )}
+
+        {/* Estimated Finish Date */}
+        {finishDate && !isFinished && (
+          <div className="rounded-lg bg-white p-2.5 shadow-sm">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <Calendar className="h-3 w-3 text-blue-500" />
+              Est. Finish
+            </span>
+            <p className="mt-1 font-semibold text-gray-800">{finishDate}</p>
+          </div>
+        )}
+
+        {/* Delay Status */}
+        {isDelayed !== null && (
+          <div className="rounded-lg bg-white p-2.5 shadow-sm">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <AlertTriangle className={`h-3 w-3 ${isDelayed ? 'text-red-500' : 'text-green-500'}`} />
+              Status
+            </span>
+            <p className={`mt-1 font-semibold ${isDelayed ? 'text-red-600' : 'text-green-600'}`}>
+              {isDelayed ? `Delayed ${delayDays ? `(${delayDays}d)` : ''}` : 'On Time'}
+            </p>
+          </div>
+        )}
+
+        {/* Finished */}
+        {isFinished !== null && (
+          <div className="rounded-lg bg-white p-2.5 shadow-sm">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <CheckCircle className={`h-3 w-3 ${isFinished ? 'text-green-500' : 'text-gray-400'}`} />
+              Finished
+            </span>
+            <p className={`mt-1 font-semibold ${isFinished ? 'text-green-600' : 'text-gray-500'}`}>
+              {isFinished ? 'Yes' : 'No'}
+            </p>
+          </div>
+        )}
+
+        {/* Delivery Estimate */}
+        {deliveryDays && (
+          <div className="rounded-lg bg-white p-2.5 shadow-sm">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <Calendar className="h-3 w-3 text-purple-500" />
+              Delivery Est.
+            </span>
+            <p className="mt-1 font-semibold text-gray-800">{deliveryDays} days</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface OrderRowProps {
   order: Order;
   onEdit: (order: Order) => void;
@@ -30,38 +134,51 @@ interface OrderRowProps {
 }
 
 function OrderRow({ order, onEdit, onDelete }: OrderRowProps) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <div className="flex items-center justify-between px-6 py-4">
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-        <p className="truncate text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-        {order.sales_agent && (
-          <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <DriveLink folderId={order.google_drive_folder_id} />
-        <span className="hidden text-xs text-gray-400 sm:inline">
-          {new Date(order.created_at).toLocaleDateString()}
-        </span>
-        <StageBadge stage={order.current_stage} />
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onEdit(order)}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-            title="Edit order"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => onDelete(order)}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-            title="Delete order"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50/50"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+          <p className="truncate text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+          {order.sales_agent && (
+            <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+          )}
         </div>
-      </div>
+        <div className="flex items-center gap-3">
+          <DriveLink folderId={order.google_drive_folder_id} />
+          <span className="hidden text-xs text-gray-400 sm:inline">
+            {new Date(order.created_at).toLocaleDateString()}
+          </span>
+          <StageBadge stage={order.current_stage} />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(order); }}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+              title="Edit order"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(order); }}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+              title="Delete order"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 text-gray-400" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-400" />
+          )}
+        </div>
+      </button>
+      {expanded && <ProductionInfo order={order} />}
     </div>
   );
 }
