@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { verifyOtpForAction } from '@/lib/api';
-import { X, ShieldAlert } from 'lucide-react';
+import { sendOtpForAction, verifyOtpForAction } from '@/lib/api';
+import { X, ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface OtpModalProps {
   open: boolean;
@@ -18,19 +18,54 @@ export default function OtpModal({ open, title, description, onVerified, onClose
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
   const [step, setStep] = useState<'otp' | 'confirm'>('otp');
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Reset state when modal opens
+  // Send OTP when modal opens
   useEffect(() => {
-    if (open) {
+    if (open && user?.email) {
       setOtp(['', '', '', '', '', '']);
       setError('');
       setLoading(false);
       setStep('otp');
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      setOtpSent(false);
+      setResendCooldown(0);
+      sendOtp();
     }
   }, [open]);
+
+  async function sendOtp() {
+    if (!user?.email) return;
+    setSendingOtp(true);
+    setError('');
+    try {
+      const result = await sendOtpForAction(user.email);
+      if (result.ok) {
+        setOtpSent(true);
+        setResendCooldown(60);
+        startCooldown();
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      } else {
+        setError('Failed to send OTP. Please try again.');
+      }
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to send OTP');
+    } finally {
+      setSendingOtp(false);
+    }
+  }
+
+  function startCooldown() {
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) { clearInterval(interval); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  }
 
   if (!open) return null;
 
@@ -110,38 +145,63 @@ export default function OtpModal({ open, title, description, onVerified, onClose
         {step === 'otp' ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm text-gray-600">{description}</p>
-            <p className="text-xs text-gray-400">
-              A 6-digit code was sent to <span className="font-medium text-gray-600">{user?.email}</span>
-            </p>
 
-            <div className="flex justify-center gap-2">
-              {otp.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={(el) => { otpRefs.current[i] = el; }}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(i, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  onPaste={i === 0 ? handleOtpPaste : undefined}
-                  className="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold text-gray-900 outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
-                />
-              ))}
-            </div>
+            {sendingOtp ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#2490ef]" />
+                Sending OTP to your email...
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400">
+                  {otpSent
+                    ? `A 6-digit code was sent to `
+                    : `Click "Send OTP" to receive a code at `}
+                  <span className="font-medium text-gray-600">{user?.email}</span>
+                </p>
 
-            {error && (
-              <p className="text-center text-xs text-red-500">{error}</p>
+                <div className="flex justify-center gap-2">
+                  {otp.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => { otpRefs.current[i] = el; }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(i, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                      onPaste={i === 0 ? handleOtpPaste : undefined}
+                      className="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold text-gray-900 outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                    />
+                  ))}
+                </div>
+
+                {error && (
+                  <p className="text-center text-xs text-red-500">{error}</p>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={loading || !otpSent}
+                    className="flex-1 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                  >
+                    {loading ? 'Verifying...' : 'Verify OTP'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendOtp}
+                    disabled={sendingOtp || resendCooldown > 0}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    title="Resend OTP"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${sendingOtp ? 'animate-spin' : ''}`} />
+                    {resendCooldown > 0 ? `${resendCooldown}s` : 'Resend'}
+                  </button>
+                </div>
+              </>
             )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
-            >
-              {loading ? 'Verifying...' : 'Verify OTP'}
-            </button>
           </form>
         ) : (
           <div className="space-y-4">

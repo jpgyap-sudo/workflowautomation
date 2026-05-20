@@ -130,6 +130,13 @@ export async function deleteOrder(id: string, actionToken: string): Promise<{ ok
   });
 }
 
+export async function sendOtpForAction(email: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/auth/send-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
 export async function verifyOtpForAction(email: string, otp: string): Promise<{ ok: boolean; actionToken: string }> {
   return fetchJson<{ ok: boolean; actionToken: string }>('/auth/verify-otp-for-action', {
     method: 'POST',
