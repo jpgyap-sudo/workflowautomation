@@ -193,6 +193,8 @@ export default function ClientsPage() {
       await createClient(data);
       setShowForm(false);
       mutate();
+      setSearchResults(null);
+      setSearch('');
     } catch (err: any) {
       alert('Failed to add client: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -207,6 +209,12 @@ export default function ClientsPage() {
       await updateClient(editingClient.id, data);
       setEditingClient(null);
       mutate();
+      if (search.trim()) setSearchResults(await searchClients(search.trim()));
+      setClientOrders((prev) => {
+        const next = { ...prev };
+        delete next[editingClient.id];
+        return next;
+      });
     } catch (err: any) {
       alert('Failed to update client: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -218,9 +226,11 @@ export default function ClientsPage() {
     if (!deletingClient) return;
     setSaving(true);
     try {
-      await deleteClient(deletingClient.id);
+      await deleteClient(deletingClient.id, forceDelete);
       setDeletingClient(null);
+      setForceDelete(false);
       mutate();
+      if (search.trim()) setSearchResults(await searchClients(search.trim()));
     } catch (err: any) {
       alert('Failed to delete client: ' + (err.message ?? 'Unknown error'));
     } finally {
