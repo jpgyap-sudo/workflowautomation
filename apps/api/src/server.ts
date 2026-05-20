@@ -429,9 +429,9 @@ app.post('/deposits', async (request, reply) => {
   const orderId = orders[0].id;
   const quotationNumber = orders[0].quotation_number;
 
-  // Update deposit fields on the order
+  // Update deposit fields on the order and advance to purchasing_pending
   await query(
-    `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), updated_at=NOW() WHERE id=$3`,
+    `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
     [body.amount, body.image_url ?? null, orderId]
   );
 
@@ -513,9 +513,9 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       ? Number(order.total_amount) / 2
       : null;
 
-    // Record the deposit
+    // Record the deposit and advance to purchasing_pending
     await query(
-      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), updated_at=NOW() WHERE id=$3`,
+      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
       [body.amount, body.image_url ?? null, order.id]
     );
 
