@@ -2470,9 +2470,38 @@ bot.command('unlink', async (ctx) => {
 
 // ── Start ─────────────────────────────────────────────────────────────
 
-// Clear any lingering webhook/polling lock before launching
-// This prevents 409 Conflict errors when restarting the container
-bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
-bot.launch();
+/**
+ * Launch the bot with retry logic for 409 Conflict errors.
+ *
+ * When a container restarts, Telegram's polling lock from the previous
+ * instance may still be active. deleteWebhook does NOT clear polling locks,
+ * so we must retry with exponential backoff until the lock expires
+ * (typically 30-60 seconds).
+ */
+async function launchWithRetry(maxRetries = 12, baseDelayMs = 5000): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Clear any lingering webhook before each attempt
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      await bot.launch();
+      console.log(`[bot] Launched successfully on attempt ${attempt}`);
+      return;
+    } catch (err: any) {
+      const is409 = err?.code === 409 || (err?.message && err.message.includes('409'));
+      if (!is409 || attempt === maxRetries) {
+        throw err;
+      }
+      const delay = Math.min(baseDelayMs * Math.pow(1.5, attempt - 1), 60_000);
+      console.log(`[bot] 409 Conflict on attempt ${attempt}, retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+launchWithRetry().catch((err) => {
+  console.error('[bot] Failed to launch after all retries:', err);
+  process.exit(1);
+});
+
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
