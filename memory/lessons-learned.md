@@ -708,3 +708,26 @@ Always explicitly close or release long-lived external connections (like Telegra
 cross-project, local-fallback
 
 ---
+
+### Lesson: Purchasing workflow production tracking implementation
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Connected purchasing dashboard and Telegram production confirmation to backend production-tracking endpoints. Ensure stage/list API queries return production fields, set-production advances to production_confirmed and creates/reactivates midpoint/due reminders, deposit recording preserves later stages, and finish-production advances to inventory_arrived. Builds: api, telegram-bot, dashboard.
+
+#### Lesson Learned
+
+Connected purchasing dashboard and Telegram production confirmation to backend production-tracking endpoints. Ensure stage/list API queries return production fields, set-production advances to production_confirmed and creates/reactivates midpoint/due reminders, deposit recording preserves later stages, and finish-production advances to inventory_arrived. Builds: api, telegram-bot, dashboard.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

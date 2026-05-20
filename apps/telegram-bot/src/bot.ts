@@ -1,6 +1,7 @@
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { uploadToDrive } from './services/googleDrive.js';
+import { AsyncLocalStorage } from 'async_hooks';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:8080';
@@ -9,9 +10,33 @@ if (!token) throw new Error('TELEGRAM_BOT_TOKEN is required');
 
 const bot = new Telegraf(token);
 
-// ── Group Chat Guard ───────────────────────────────────────────────────
-// The bot only responds in authorized group chats defined in env vars.
-// Direct messages (private chats) and unauthorized groups are silently ignored.
+// ── AsyncLocalStorage for implicit context propagation ─────────────────
+// Lets setStep/setLock read the current Telegraf ctx without passing it
+// through every call site.
+const ctxStore = new AsyncLocalStorage<any>();
+
+// ── Global editMessageText safety patch ────────────────────────────────
+// Swallows the harmless "message is not modified" error so callbacks don't
+// crash when content hasn't changed.
+bot.use(async (ctx, next) => {
+  if (typeof (ctx as any).editMessageText === 'function') {
+    const original = (ctx as any).editMessageText.bind(ctx);
+    (ctx as any).editMessageText = async (...args: any[]) => {
+      try {
+        return await original(...args);
+      } catch (err: any) {
+        if (err?.description?.includes('message is not modified')) {
+          // Silently ignore
+          return;
+        }
+        throw err;
+      }
+    };
+  }
+  return next();
+});
+
+// ── Group Chat Guard + DM Admin Guard + Rate Limiting ──────────────────
 
 const ALLOWED_GROUP_IDS = new Set<string>(
   [
@@ -34,14 +59,92 @@ if (ALLOWED_GROUP_IDS.size === 0) {
   console.warn('[bot] No group chat IDs configured in environment. Bot will not respond anywhere.');
 }
 
+// ── Rate Limiting ──────────────────────────────────────────────────────
+const rateLimits = new Map<string, { count: number; windowStart: number }>();
+const RATE_LIMIT_WINDOW_MS = 10_000;
+const RATE_LIMIT_MAX_REQUESTS = 5;
+
+function checkRateLimit(userId: string): { allowed: boolean; retryAfterSec?: number } {
+  const now = Date.now();
+  const entry = rateLimits.get(userId);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimits.set(userId, { count: 1, windowStart: now });
+    return { allowed: true };
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSec = Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000);
+    return { allowed: false, retryAfterSec };
+  }
+  return { allowed: true };
+}
+
+// ── Admin Cache ────────────────────────────────────────────────────────
+const adminCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000;
+const ADMIN_CACHE_DENY_TTL_MS = 60 * 1000;
+
+async function isUserAdmin(userId: string): Promise<boolean> {
+  const cached = adminCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.isAdmin;
+
+  for (const groupId of ALLOWED_GROUP_IDS) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getChatMember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: groupId, user_id: Number(userId) }),
+      });
+      const data = await res.json();
+      if (data.ok && (data.result.status === 'creator' || data.result.status === 'administrator')) {
+        adminCache.set(userId, { isAdmin: true, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+        return true;
+      }
+    } catch (e) {
+      console.error(`[admin-check] Error checking group ${groupId}:`, e);
+    }
+  }
+
+  adminCache.set(userId, { isAdmin: false, expiresAt: Date.now() + ADMIN_CACHE_DENY_TTL_MS });
+  return false;
+}
+
+// ── Main Middleware: Auth + Rate Limit + Group Lock ────────────────────
+
 bot.use(async (ctx, next) => {
   const chatId = String(ctx.chat?.id ?? '');
+  const userId = String(ctx.from?.id ?? '');
   const chatType = ctx.chat?.type;
 
-  // Allow only configured group/supergroup chats
+  // Rate limit every user
+  if (userId) {
+    const rate = checkRateLimit(userId);
+    if (!rate.allowed) {
+      if (chatType === 'private') {
+        await ctx.reply(`⏳ Please wait ${rate.retryAfterSec}s before sending another message.`, { parse_mode: 'Markdown' }).catch(() => {});
+      }
+      return;
+    }
+  }
+
+  // Private chats: only allow group admins
+  if (chatType === 'private') {
+    if (!userId) return; // Can't verify anonymous
+    const admin = await isUserAdmin(userId);
+    if (!admin) {
+      await ctx.reply(
+        '🔒 *Private messages are restricted.*\n\nOnly admins of authorized QAS groups can use this bot via DM.',
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+      return;
+    }
+    // Proceed to next (DMs use chatId as session key naturally)
+    return ctxStore.run(ctx, next);
+  }
+
+  // Groups / supergroups
   if (chatType !== 'group' && chatType !== 'supergroup') {
-    // Silently ignore private channels and DMs
-    return;
+    return; // Silently ignore channels etc.
   }
 
   if (!ALLOWED_GROUP_IDS.has(chatId)) {
@@ -49,11 +152,24 @@ bot.use(async (ctx, next) => {
     return;
   }
 
-  return next();
+  // Group session lock check
+  const session = getSession(chatId);
+  if (session.step.action !== 'idle' && session.ownerUserId && session.ownerUserId !== userId) {
+    // Don't spam: only reply if this is a callback or command-like interaction
+    const updateType = ctx.updateType;
+    if (updateType === 'callback_query' || (ctx.message && 'text' in ctx.message)) {
+      await ctx.reply(
+        `⏳ *Bot is busy*\nAnother user ${session.ownerUsername ? `(@${session.ownerUsername})` : ''} is currently using the commands. Please wait until they finish.`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+    return;
+  }
+
+  return ctxStore.run(ctx, next);
 });
 
 // ── Bot Logger ─────────────────────────────────────────────────────────
-// Logs all bot activity to the API's bot_logs table for debugging
 
 async function botLog(params: {
   chatId: string;
@@ -81,7 +197,7 @@ async function botLog(params: {
       }),
     });
   } catch {
-    // Silently ignore logging failures — we don't want log failures to break the bot
+    // Silently ignore logging failures
   }
 }
 
@@ -101,6 +217,13 @@ async function getJson(path: string) {
   const res = await fetch(`${apiBaseUrl}${path}`);
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
+}
+
+function parseProductionDays(text: string): number | null {
+  const match = text.trim().match(/(\d+)/);
+  if (!match) return null;
+  const days = Number(match[1]);
+  return Number.isInteger(days) && days > 0 ? days : null;
 }
 
 async function lookupClient(name: string): Promise<any | null> {
@@ -127,7 +250,6 @@ function formatClientInfo(client: any): string {
 }
 
 // ── State Machine ──────────────────────────────────────────────────────
-// Tracks multi-step interactions per chat so users don't need /commands
 
 type UserStep =
   | { action: 'idle' }
@@ -141,6 +263,7 @@ type UserStep =
   | { action: 'awaiting_paybalance_amount'; quotationNumber: string }
   | { action: 'awaiting_delivery_date'; quotationNumber: string }
   | { action: 'awaiting_order_number_for_delivered' }
+  | { action: 'awaiting_order_number_for_mark_delivered' }
   | { action: 'awaiting_delivered_remarks'; quotationNumber: string }
   | { action: 'awaiting_order_number_for_payment' }
   | { action: 'awaiting_payment_status'; quotationNumber: string }
@@ -159,7 +282,7 @@ type UserStep =
       telegramMessageId?: string;
       uploadedBy?: string;
     }
-  // Deposit slip matching flow (from vision payment extraction)
+  // Deposit slip matching flow
   | { action: 'awaiting_deposit_confirmation'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; candidates: DepositCandidate[]; paymentDate?: string }
   | { action: 'awaiting_deposit_client_name'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; paymentDate?: string }
   // Production tracking flow
@@ -178,7 +301,10 @@ interface DepositCandidate {
 
 interface UserSession {
   step: UserStep;
-  linkedOrder: string | null; // quotation_number linked for file uploads
+  linkedOrder: string | null;
+  ownerUserId?: string;
+  ownerUsername?: string;
+  lockedAt?: number;
 }
 
 const sessions = new Map<string, UserSession>();
@@ -194,13 +320,46 @@ function getSession(chatId: string): UserSession {
 
 function setStep(chatId: string, step: UserStep) {
   const session = getSession(chatId);
+  const wasIdle = session.step.action === 'idle';
   session.step = step;
+
+  // Auto-lock on transition from idle -> active using AsyncLocalStorage context
+  if (wasIdle && step.action !== 'idle') {
+    const ctx = ctxStore.getStore();
+    if (ctx) {
+      session.ownerUserId = String(ctx.from?.id ?? '');
+      session.ownerUsername = ctx.from?.username;
+      session.lockedAt = Date.now();
+    }
+  }
+
+  // Auto-unlock on reset
+  if (step.action === 'idle') {
+    delete session.ownerUserId;
+    delete session.ownerUsername;
+    delete session.lockedAt;
+  }
 }
 
 function resetStep(chatId: string) {
   const session = getSession(chatId);
   session.step = { action: 'idle' };
+  delete session.ownerUserId;
+  delete session.ownerUsername;
+  delete session.lockedAt;
 }
+
+// ── Auto-release stale group locks ─────────────────────────────────────
+const LOCK_TIMEOUT_MS = 5 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [chatId, session] of sessions.entries()) {
+    if (session.step.action !== 'idle' && session.lockedAt && now - session.lockedAt > LOCK_TIMEOUT_MS) {
+      console.log(`[lock] Auto-releasing expired lock for chat ${chatId} (owner: ${session.ownerUsername ?? session.ownerUserId})`);
+      resetStep(chatId);
+    }
+  }
+}, 60_000);
 
 function escapeMarkdown(value: unknown): string {
   return String(value ?? '').replace(/([_*`[\]\\])/g, '\\$1');
@@ -223,7 +382,6 @@ async function uploadFileAndRecord(params: {
   uploadedBy?: string;
 }) {
   const fileBuffer = Buffer.from(params.imageBase64, 'base64');
-  // uploadToDrive now has internal withRetry (3 attempts with exponential backoff)
   const driveResult = await uploadToDrive(fileBuffer, params.fileName, params.mimeType);
 
   const payload: Record<string, unknown> = {
@@ -399,7 +557,7 @@ bot.action(/^menu:(.+)$/, async (ctx) => {
       break;
 
     case 'delivered':
-      setStep(chatId, { action: 'awaiting_order_number_for_delivered' });
+      setStep(chatId, { action: 'awaiting_order_number_for_mark_delivered' });
       await ctx.editMessageText(
         '✅ *Mark as Delivered*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
         { parse_mode: 'Markdown', ...cancelButton() }
@@ -601,22 +759,33 @@ bot.on(message('text'), async (ctx) => {
     // ── Produce Remarks (after "yes" callback) ──────────────────────
     case 'awaiting_produce_remarks': {
       const { quotationNumber, status } = session.step;
-      const remarks = text;
+      const estimatedDays = parseProductionDays(text);
+      if (!estimatedDays) {
+        await ctx.reply('Please enter the estimated production time in days (e.g., `10 days` or `10`).', {
+          parse_mode: 'Markdown',
+          ...cancelButton(),
+        });
+        return;
+      }
+
       try {
-        await postJson('/stage-updates', {
-          quotation_number: quotationNumber,
-          stage: 'production_confirmed',
-          status,
-          remarks,
-          updated_by: ctx.from?.username ?? String(ctx.from?.id),
+        const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+        await postJson(`/orders/${order.id}/set-production`, {
+          production_started: status === 'yes',
+          estimated_production_days: estimatedDays,
         });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Production Confirmed*\n\nOrder: *${quotationNumber}*\nTimeline: ${remarks}`,
+          `Production Confirmed
+
+Order: *${quotationNumber}*
+Timeline: ${estimatedDays} day(s)
+
+Midpoint and due reminders are now scheduled.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
-        await ctx.reply(`❌ Error: ${err.message}`, {
+        await ctx.reply(`Error: ${err.message}`, {
           parse_mode: 'Markdown',
           ...cancelButton(),
         });
@@ -836,6 +1005,33 @@ bot.on(message('text'), async (ctx) => {
           ...cancelButton(),
         });
       }
+      break;
+    }
+
+    // ── Mark as Delivered — order number input ──────────────────────
+    case 'awaiting_order_number_for_mark_delivered': {
+      const quotationNumber = text;
+      try {
+        const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+        if (!res.ok) {
+          await ctx.reply(`❌ Order *${quotationNumber}* not found.`, {
+            parse_mode: 'Markdown',
+            ...cancelButton(),
+          });
+          return;
+        }
+      } catch {
+        await ctx.reply(`❌ Error checking order *${quotationNumber}*.`, {
+          parse_mode: 'Markdown',
+          ...cancelButton(),
+        });
+        return;
+      }
+      setStep(chatId, { action: 'awaiting_delivered_remarks', quotationNumber });
+      await ctx.reply(
+        `✅ *Mark as Delivered — ${quotationNumber}*\n\nEnter any delivery remarks (e.g., recipient name, notes), or send \`-\` to skip:`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
       break;
     }
 
@@ -1100,10 +1296,10 @@ bot.on(message('text'), async (ctx) => {
     }
 
     default:
-      resetStep(chatId);
+      // Do NOT reset — preserve active flow. Show guidance instead.
       await ctx.reply(
-        '🏠 *Main Menu*\nChoose an action below:',
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        '❓ I didn\'t understand that. You are currently in a flow. Please follow the prompts above, or press *Cancel* to go back to the Main Menu.',
+        { parse_mode: 'Markdown', ...cancelButton() }
       );
   }
 });
@@ -1128,7 +1324,7 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
   if (status === 'no') {
     await postJson('/stage-updates', {
       quotation_number: quotationNumber,
-      stage: 'production_confirmed',
+      stage: 'purchasing_pending',
       status: 'no',
       remarks: 'Not yet started',
       updated_by: ctx.from?.username ?? String(ctx.from?.id),
@@ -2443,6 +2639,11 @@ bot.command('help', async (ctx) => {
     '👤 *Clients* — Search client delivery details\n' +
     '🔗 *Link Order* — Associate an order for file uploads\n' +
     '📎 *Upload File* — Send a document/photo linked to an order\n\n' +
+    '*Group Setup:*\n' +
+    '• The bot must have *privacy mode disabled* in @BotFather to see messages and files in groups.\n' +
+    '• Only one user can use the bot at a time per group. If busy, wait for the current user to finish.\n\n' +
+    '*Direct Messages:*\n' +
+    '• Only group admins can DM the bot.\n\n' +
     'Available commands:\n' +
     '/start — Show main menu\n' +
     '/help — Show this message\n' +

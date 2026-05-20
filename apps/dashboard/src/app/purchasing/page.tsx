@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder } from '@/lib/api';
+import { updateOrder, deleteOrder, setProduction, reportProductionStatus, finishProduction, recalcProductionReminders } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { ShoppingCart, Factory, Clock, ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Calendar } from 'lucide-react';
+import { ShoppingCart, Factory, Clock, ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Calendar, RefreshCw, Package } from 'lucide-react';
 
 function DriveLink({ folderId }: { folderId: string | null }) {
   if (!folderId) return <span className="text-xs text-gray-400">—</span>;
@@ -23,10 +23,8 @@ function DriveLink({ folderId }: { folderId: string | null }) {
   );
 }
 
-function computeFinishDate(order: Order): string | null {
+function computeFinishDate(order: Order): Date | null {
   if (!order.production_started || !order.estimated_production_days) return null;
-  // Use production_started_at if available, otherwise fall back to created_at
-  // If production is finished, use finished_at as the end date
   const startDate = order.production_finished_at
     ? new Date(order.production_finished_at)
     : order.production_started_at
@@ -34,11 +32,28 @@ function computeFinishDate(order: Order): string | null {
       : new Date(order.created_at);
   const finishDate = new Date(startDate);
   finishDate.setDate(finishDate.getDate() + order.estimated_production_days);
-  return finishDate.toLocaleDateString('en-US', {
+  return finishDate;
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
+}
+
+function getProductionProgress(order: Order): { pct: number; remainingDays: number; isOverdue: boolean; isDueSoon: boolean } | null {
+  if (!order.production_started || !order.estimated_production_days || order.production_finished) return null;
+  const startDate = order.production_started_at ? new Date(order.production_started_at) : new Date(order.created_at);
+  const now = new Date();
+  const elapsedMs = now.getTime() - startDate.getTime();
+  const totalMs = order.estimated_production_days * 86_400_000;
+  const pct = Math.min(100, Math.max(0, Math.round((elapsedMs / totalMs) * 100)));
+  const remainingDays = Math.max(0, order.estimated_production_days - Math.floor(elapsedMs / 86_400_000));
+  const isOverdue = elapsedMs > totalMs;
+  const isDueSoon = !isOverdue && remainingDays <= Math.max(3, Math.ceil(order.estimated_production_days * 0.15));
+  return { pct, remainingDays, isOverdue, isDueSoon };
 }
 
 function ProductionInfo({ order }: { order: Order }) {
@@ -56,6 +71,8 @@ function ProductionInfo({ order }: { order: Order }) {
         day: 'numeric',
       })
     : null;
+
+  const progress = getProductionProgress(order);
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
@@ -102,7 +119,7 @@ function ProductionInfo({ order }: { order: Order }) {
               <Calendar className="h-3 w-3 text-blue-500" />
               Est. Finish
             </span>
-            <p className="mt-1 font-semibold text-gray-800">{finishDate}</p>
+            <p className="mt-1 font-semibold text-gray-800">{formatDate(finishDate)}</p>
           </div>
         )}
 
@@ -143,6 +160,34 @@ function ProductionInfo({ order }: { order: Order }) {
           </div>
         )}
       </div>
+
+      {/* Progress Bar — only show when production is in progress (not finished) */}
+      {progress && !isFinished && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>
+              {progress.isOverdue ? (
+                <span className="font-semibold text-red-600">Overdue by {Math.abs(progress.remainingDays)} days</span>
+              ) : (
+                <span>{progress.remainingDays} days remaining</span>
+              )}
+            </span>
+            <span>{progress.pct}%</span>
+          </div>
+          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                progress.isOverdue
+                  ? 'bg-red-500'
+                  : progress.isDueSoon
+                    ? 'bg-amber-500'
+                    : 'bg-green-500'
+              }`}
+              style={{ width: `${Math.min(progress.pct, 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -151,19 +196,67 @@ interface OrderRowProps {
   order: Order;
   onEdit: (order: Order) => void;
   onDelete: (order: Order) => void;
+  onStartProduction: (order: Order) => void;
+  onReportOnTime: (order: Order) => void;
+  onReportDelayed: (order: Order) => void;
+  onFinishProduction: (order: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete }: OrderRowProps) {
+function OrderRow({
+  order,
+  onEdit,
+  onDelete,
+  onStartProduction,
+  onReportOnTime,
+  onReportDelayed,
+  onFinishProduction,
+}: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
 
+  // Determine overdue/due-soon status for row highlighting
+  const progress = getProductionProgress(order);
+  const rowHighlight = progress && !order.production_finished
+    ? progress.isOverdue
+      ? 'border-l-4 border-l-red-500'
+      : progress.isDueSoon
+        ? 'border-l-4 border-l-amber-500'
+        : ''
+    : '';
+
   return (
-    <div>
+    <div className={rowHighlight}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50/50"
       >
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+            {/* Overdue / Due-soon badge */}
+            {progress && !order.production_finished && (
+              <>
+                {progress.isOverdue && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                    <AlertTriangle className="h-3 w-3" />
+                    Overdue
+                  </span>
+                )}
+                {progress.isDueSoon && !progress.isOverdue && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                    <Clock className="h-3 w-3" />
+                    Due Soon
+                  </span>
+                )}
+              </>
+            )}
+            {(order.escalation_level ?? 0) > 0 && (
+              <span className="flex items-center gap-0.5">
+                {Array.from({ length: Math.min(order.escalation_level ?? 0, 3) }).map((_, i) => (
+                  <span key={i} className="h-2 w-2 rounded-full bg-red-500" />
+                ))}
+              </span>
+            )}
+          </div>
           <p className="truncate text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
           {order.sales_agent && (
             <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
@@ -171,9 +264,14 @@ function OrderRow({ order, onEdit, onDelete }: OrderRowProps) {
         </div>
         <div className="flex items-center gap-3">
           <DriveLink folderId={order.google_drive_folder_id} />
-          <span className="hidden text-xs text-gray-400 sm:inline">
-            {new Date(order.created_at).toLocaleDateString()}
-          </span>
+          {(() => {
+            const days = Math.floor((Date.now() - new Date(order.updated_at).getTime()) / 86_400_000);
+            return days > 0 ? (
+              <span className={`hidden text-xs sm:inline ${days >= 7 ? 'font-semibold text-red-500' : days >= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+                {days}d
+              </span>
+            ) : null;
+          })()}
           <StageBadge stage={order.current_stage} />
           <div className="flex items-center gap-1">
             <button
@@ -198,7 +296,48 @@ function OrderRow({ order, onEdit, onDelete }: OrderRowProps) {
           )}
         </div>
       </button>
-      {expanded && <ProductionInfo order={order} />}
+      {expanded && (
+        <>
+          <ProductionInfo order={order} />
+          <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
+            {!order.production_started && (
+              <button
+                onClick={() => onStartProduction(order)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+              >
+                Mark Production Started
+              </button>
+            )}
+            {order.production_started && !order.production_finished && (
+              <>
+                <button
+                  onClick={() => onReportOnTime(order)}
+                  className="rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+                >
+                  On Time
+                </button>
+                <button
+                  onClick={() => onReportDelayed(order)}
+                  className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                >
+                  Mark Delayed
+                </button>
+                <button
+                  onClick={() => onFinishProduction(order)}
+                  className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700"
+                >
+                  Finish Production
+                </button>
+              </>
+            )}
+            <span className="self-center text-xs text-gray-500">
+              Deposit: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
+              {' · '}
+              Balance: {order.balance_paid ? 'Paid' : 'Pending'}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -272,20 +411,95 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   );
 }
 
+// ── Section Component ─────────────────────────────────────────────────
+function OrderSection({
+  icon,
+  title,
+  count,
+  countBg,
+  countText,
+  orders,
+  isLoading,
+  error,
+  onRetry,
+  emptyText,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count: number;
+  countBg: string;
+  countText: string;
+  orders: Order[];
+  isLoading: boolean;
+  error?: Error;
+  onRetry?: () => void;
+  emptyText: string;
+  children: (order: Order) => React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+        {icon}
+        <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+        <span className={`ml-auto rounded-full ${countBg} px-2 py-0.5 text-xs font-medium ${countText}`}>
+          {count}
+        </span>
+      </div>
+      {isLoading && orders.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center gap-3 py-12">
+          <AlertTriangle className="h-8 w-8 text-red-400" />
+          <p className="text-sm text-red-500">Failed to load: {error.message}</p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9]"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
+          )}
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="py-12 text-center text-sm text-gray-400">{emptyText}</div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {orders.map((order) => (
+            <div key={order.id}>
+              {children(order)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PurchasingPage() {
   const {
     data: pendingOrders = [],
     isLoading: loadingPending,
+    error: errorPending,
     mutate: mutatePending,
   } = useOrdersByStage('purchasing_pending');
 
   const {
     data: productionOrders = [],
     isLoading: loadingProduction,
+    error: errorProduction,
     mutate: mutateProduction,
   } = useOrdersByStage('production_confirmed');
 
-  const loading = loadingPending && loadingProduction;
+  const {
+    data: inventoryOrders = [],
+    isLoading: loadingInventory,
+    error: errorInventory,
+    mutate: mutateInventory,
+  } = useOrdersByStage('inventory_arrived');
 
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -332,6 +546,7 @@ export default function PurchasingPage() {
       setEditingOrder(null);
       mutatePending();
       mutateProduction();
+      mutateInventory();
     } catch (err: any) {
       alert('Failed to update order: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -358,6 +573,7 @@ export default function PurchasingPage() {
       setDeletingOrder(null);
       mutatePending();
       mutateProduction();
+      mutateInventory();
     } catch (err: any) {
       alert('Failed to delete order: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -373,12 +589,67 @@ export default function PurchasingPage() {
     }
   }
 
-  if (loading && pendingOrders.length === 0 && productionOrders.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
-      </div>
-    );
+  function refreshPurchasingLists() {
+    mutatePending();
+    mutateProduction();
+    mutateInventory();
+  }
+
+  async function handleStartProduction(order: Order) {
+    const input = window.prompt('Estimated production days?', order.estimated_production_days?.toString() ?? '');
+    if (!input) return;
+    const days = Number(input.replace(/[^0-9]/g, ''));
+    if (!Number.isInteger(days) || days <= 0) {
+      alert('Please enter a valid positive number of days.');
+      return;
+    }
+    try {
+      await setProduction(order.id, { production_started: true, estimated_production_days: days });
+      refreshPurchasingLists();
+    } catch (err: any) {
+      alert('Failed to start production: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  async function handleReportOnTime(order: Order) {
+    try {
+      await reportProductionStatus(order.id, { on_time: true, delay_days: 0 });
+      refreshPurchasingLists();
+    } catch (err: any) {
+      alert('Failed to update production status: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  async function handleReportDelayed(order: Order) {
+    const input = window.prompt('How many days delayed?', order.production_delay_days?.toString() ?? '');
+    if (!input) return;
+    const days = Number(input.replace(/[^0-9]/g, ''));
+    if (!Number.isInteger(days) || days < 0) {
+      alert('Please enter a valid delay in days.');
+      return;
+    }
+    try {
+      await reportProductionStatus(order.id, { on_time: false, delay_days: days });
+      refreshPurchasingLists();
+    } catch (err: any) {
+      alert('Failed to mark delayed: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  async function handleFinishProduction(order: Order) {
+    const input = window.prompt('Days until available for delivery?', order.delivery_estimated_days?.toString() ?? '28');
+    if (!input) return;
+    const days = Number(input.replace(/[^0-9]/g, ''));
+    if (!Number.isInteger(days) || days <= 0) {
+      alert('Please enter a valid positive number of days.');
+      return;
+    }
+    try {
+      await finishProduction(order.id, { delivery_estimated_days: days });
+      refreshPurchasingLists();
+    } catch (err: any) {
+      alert('Failed to finish production: ' + (err.message ?? 'Unknown error'));
+    }
   }
 
   return (
@@ -398,64 +669,112 @@ export default function PurchasingPage() {
       </div>
 
       {/* Pending Purchasing */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <Clock className="h-4 w-4 text-amber-500" />
-          <h2 className="text-base font-semibold text-gray-800">Pending Purchasing</h2>
-          <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-            {pendingOrders.length}
-          </span>
-        </div>
-        {pendingOrders.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">No pending purchasing orders</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {pendingOrders.map((order) => (
-              <div key={order.id}>
-                <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} />
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+      <OrderSection
+        icon={<Clock className="h-4 w-4 text-amber-500" />}
+        title="Pending Purchasing"
+        count={pendingOrders.length}
+        countBg="bg-amber-100"
+        countText="text-amber-700"
+        orders={pendingOrders}
+        isLoading={loadingPending}
+        error={errorPending}
+        onRetry={() => mutatePending()}
+        emptyText="No pending purchasing orders"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order}
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+              onStartProduction={handleStartProduction}
+              onReportOnTime={handleReportOnTime}
+              onReportDelayed={handleReportDelayed}
+              onFinishProduction={handleFinishProduction}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm
+                order={order}
+                onSave={handleEditSave}
+                onCancel={handleCancelEdit}
+                saving={saving}
+              />
+            )}
+          </>
         )}
-      </div>
+      </OrderSection>
 
       {/* Production Confirmed */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <Factory className="h-4 w-4 text-indigo-500" />
-          <h2 className="text-base font-semibold text-gray-800">Production Confirmed</h2>
-          <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-            {productionOrders.length}
-          </span>
-        </div>
-        {productionOrders.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">No production confirmed orders</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {productionOrders.map((order) => (
-              <div key={order.id}>
-                <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} />
-                {editingOrder?.id === order.id && (
-                  <EditForm
-                    order={order}
-                    onSave={handleEditSave}
-                    onCancel={handleCancelEdit}
-                    saving={saving}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+      <OrderSection
+        icon={<Factory className="h-4 w-4 text-indigo-500" />}
+        title="Production Confirmed"
+        count={productionOrders.length}
+        countBg="bg-indigo-100"
+        countText="text-indigo-700"
+        orders={productionOrders}
+        isLoading={loadingProduction}
+        error={errorProduction}
+        onRetry={() => mutateProduction()}
+        emptyText="No production confirmed orders"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order}
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+              onStartProduction={handleStartProduction}
+              onReportOnTime={handleReportOnTime}
+              onReportDelayed={handleReportDelayed}
+              onFinishProduction={handleFinishProduction}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm
+                order={order}
+                onSave={handleEditSave}
+                onCancel={handleCancelEdit}
+                saving={saving}
+              />
+            )}
+          </>
         )}
-      </div>
+      </OrderSection>
+
+      {/* Inventory Arrived (completed production) */}
+      <OrderSection
+        icon={<Package className="h-4 w-4 text-emerald-500" />}
+        title="Inventory Arrived"
+        count={inventoryOrders.length}
+        countBg="bg-emerald-100"
+        countText="text-emerald-700"
+        orders={inventoryOrders}
+        isLoading={loadingInventory}
+        error={errorInventory}
+        onRetry={() => mutateInventory()}
+        emptyText="No inventory arrived orders"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order}
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+              onStartProduction={handleStartProduction}
+              onReportOnTime={handleReportOnTime}
+              onReportDelayed={handleReportDelayed}
+              onFinishProduction={handleFinishProduction}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm
+                order={order}
+                onSave={handleEditSave}
+                onCancel={handleCancelEdit}
+                saving={saving}
+              />
+            )}
+          </>
+        )}
+      </OrderSection>
 
       {/* OTP Modal */}
       <OtpModal

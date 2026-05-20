@@ -37,6 +37,20 @@ import {
   getAgentHealth,
 } from './services/agentScheduler.js';
 
+const ORDER_LIST_SELECT = `
+  o.id, o.quotation_number, o.client_name, o.sales_agent,
+  o.total_amount, o.computed_amount, o.math_status, o.current_stage, o.status,
+  o.deposit_paid, o.deposit_amount, o.deposit_image_url, o.deposit_paid_at,
+  o.balance_paid, o.balance_paid_at, o.order_confirmed_at,
+  o.google_drive_folder_id,
+  o.production_started, o.production_started_at, o.estimated_production_days,
+  o.production_delayed, o.production_delay_days,
+  o.production_finished, o.production_finished_at, o.delivery_estimated_days,
+  o.client_id, o.delivery_address, o.contact_number,
+  o.authorized_receiver_name, o.authorized_receiver_contact,
+  o.created_at, o.updated_at
+`;
+
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
@@ -234,8 +248,12 @@ app.get('/orders', async () => {
   const cached = await cacheGet<object[]>('orders:all');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
-     FROM orders ORDER BY created_at DESC LIMIT 100`
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     GROUP BY o.id
+     ORDER BY o.created_at DESC LIMIT 100`
   );
   await cacheSet('orders:all', rows);
   return rows;
@@ -245,8 +263,13 @@ app.get('/orders/pending', async () => {
   const cached = await cacheGet<object[]>('orders:pending');
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
-     FROM orders WHERE status='active' ORDER BY created_at DESC LIMIT 50`
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.status = 'active'
+     GROUP BY o.id
+     ORDER BY o.created_at DESC LIMIT 50`
   );
   await cacheSet('orders:pending', rows);
   return rows;
@@ -258,8 +281,13 @@ app.get('/orders/stage/:stage', async (request, reply) => {
   const cached = await cacheGet<object[]>(cacheKey);
   if (cached) return cached;
   const rows = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
-     FROM orders WHERE current_stage=$1 ORDER BY created_at DESC`, [params.stage]
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.current_stage = $1
+     GROUP BY o.id
+     ORDER BY o.created_at DESC`, [params.stage]
   );
   await cacheSet(cacheKey, rows);
   return rows;
@@ -270,7 +298,14 @@ app.get('/orders/:quotation_number', async (request, reply) => {
   const cacheKey = `order:detail:${params.quotation_number}`;
   const cached = await cacheGet<object>(cacheKey);
   if (cached) return cached;
-  const rows = await query(`SELECT * FROM orders WHERE quotation_number=$1`, [params.quotation_number]);
+  const rows = await query(
+    `SELECT o.*, COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.quotation_number = $1
+     GROUP BY o.id`,
+    [params.quotation_number]
+  );
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
   await cacheSet(cacheKey, rows[0]);
   return rows[0];
@@ -373,13 +408,20 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = setProductionSchema.parse(request.body);
 
+  const existingRows = await query(
+    `SELECT id, quotation_number, current_stage FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!existingRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const previousStage = existingRows[0].current_stage;
+
   const setClauses: string[] = ['production_started = $1'];
   const values: any[] = [body.production_started];
   let idx = 2;
 
-  // Record when production started
   if (body.production_started) {
     setClauses.push(`production_started_at = COALESCE(production_started_at, NOW())`);
+    setClauses.push(`current_stage = 'production_confirmed'`);
   }
 
   if (body.estimated_production_days != null) {
@@ -394,47 +436,77 @@ app.post('/orders/:id/set-production', async (request, reply) => {
     `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
     values
   );
+  const updatedOrder = rows[0] as any;
 
-  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (body.production_started) {
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'production_confirmed', 'started', $2, 'system')`,
+      [id, body.estimated_production_days
+        ? `Production started; estimated ${body.estimated_production_days} day(s)`
+        : 'Production started']
+    );
 
-  // If production started and estimated days set, create production_due reminder
+    if (previousStage && previousStage !== 'production_confirmed') {
+      await query(
+        `UPDATE reminders SET status='completed', updated_at=NOW()
+         WHERE order_id=$1 AND stage=$2 AND status='active'`,
+        [id, previousStage]
+      );
+    }
+  }
+
   if (body.production_started && body.estimated_production_days) {
     const groupChatId = process.env.PURCHASING_GROUP_ID;
     if (groupChatId) {
-      const order = rows[0] as any;
-      const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
-      const client = order.client_name ?? 'Unknown';
-      const finishDate = new Date();
+      const ref = updatedOrder.quotation_number ?? `Order #${id.slice(0, 8)}`;
+      const client = updatedOrder.client_name ?? 'Unknown';
+      const productionStart = updatedOrder.production_started_at
+        ? new Date(updatedOrder.production_started_at)
+        : new Date();
+      const finishDate = new Date(productionStart);
       finishDate.setDate(finishDate.getDate() + body.estimated_production_days);
-
-      // Create midpoint reminder (at 50% of production time)
       const midpointDays = Math.max(1, Math.floor(body.estimated_production_days / 2));
-      const midpointDate = new Date();
+      const midpointDate = new Date(productionStart);
       midpointDate.setDate(midpointDate.getDate() + midpointDays);
 
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
          VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (order_id, stage) DO UPDATE SET
+           group_chat_id=EXCLUDED.group_chat_id,
+           message=EXCLUDED.message,
+           frequency=EXCLUDED.frequency,
+           next_run_at=EXCLUDED.next_run_at,
+           status='active',
+           escalation_level=0,
+           updated_at=NOW()`,
         [id, groupChatId,
-         `🏭 *Midpoint Check* — ${ref} (${client})\nProduction is estimated at ${body.estimated_production_days} days.\nIs this order on time or delayed?`,
+         `*Midpoint Check* - ${ref} (${client})\nProduction is estimated at ${body.estimated_production_days} days.\nIs this order on time or delayed?`,
          midpointDate.toISOString()]
       );
 
-      // Create finish reminder (at estimated completion date)
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
          VALUES ($1, 'production_due', $2, $3, 'once', $4, 'active')
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (order_id, stage) DO UPDATE SET
+           group_chat_id=EXCLUDED.group_chat_id,
+           message=EXCLUDED.message,
+           frequency=EXCLUDED.frequency,
+           next_run_at=EXCLUDED.next_run_at,
+           status='active',
+           escalation_level=0,
+           updated_at=NOW()`,
         [id, groupChatId,
-         `🏭 *Production Due* — ${ref} (${client})\nEstimated production of ${body.estimated_production_days} days should be complete now.\nIs production finished?`,
+         `*Production Due* - ${ref} (${client})\nEstimated production of ${body.estimated_production_days} days should be complete now.\nIs production finished?`,
          finishDate.toISOString()]
       );
     }
   }
 
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${updatedOrder.quotation_number}`]);
   broadcastSSE('order_updated', { id });
-  return reply.send({ ok: true, order: rows[0] });
+  return reply.send({ ok: true, order: updatedOrder });
 });
 
 const reportProductionStatusSchema = z.object({
@@ -454,6 +526,14 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
 
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'production_confirmed', $2, $3, 'system')`,
+    [id, body.on_time ? 'on_time' : 'delayed',
+     body.on_time ? 'Production reported on time' : `Production delayed by ${body.delay_days ?? 0} day(s)`]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`]);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
 });
@@ -468,26 +548,117 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 
   const rows = await query(
     `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
-     delivery_estimated_days = $1, updated_at = NOW()
+     delivery_estimated_days = $1, current_stage = 'inventory_arrived', updated_at = NOW()
      WHERE id = $2 RETURNING *`,
     [body.delivery_estimated_days, id]
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
 
-  // Complete production reminders
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'inventory_arrived', 'production_finished', $2, 'system')`,
+    [id, `Production finished; delivery availability estimated in ${body.delivery_estimated_days} day(s)`]
+  );
+
   await query(
     `UPDATE reminders SET status = 'completed', updated_at = NOW()
-     WHERE order_id = $1 AND status = 'active' AND stage IN ('production_midpoint', 'production_due')`,
+     WHERE order_id = $1 AND status = 'active' AND stage IN ('production_midpoint', 'production_due', 'production_confirmed')`,
     [id]
   );
 
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`]);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
 });
 
-// ── Stage Updates ───────────────────────────────────────────────────
+// ── Recalculate Production Reminders ─────────────────────────────────
+// When estimated_production_days changes, recalculate midpoint and due reminders
+const recalcProductionRemindersSchema = z.object({
+  estimated_production_days: z.number().int().positive(),
+});
 
+app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = recalcProductionRemindersSchema.parse(request.body);
+
+  const rows = await query(
+    `SELECT id, quotation_number, client_name, production_started_at, estimated_production_days
+     FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = rows[0] as any;
+
+  if (!order.production_started_at) {
+    return reply.status(400).send({ error: 'Production has not started yet. No reminders to recalculate.' });
+  }
+
+  const groupChatId = process.env.PURCHASING_GROUP_ID;
+  if (!groupChatId) {
+    return reply.status(500).send({ error: 'PURCHASING_GROUP_ID not configured' });
+  }
+
+  const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+  const client = order.client_name ?? 'Unknown';
+  const productionStart = new Date(order.production_started_at);
+  const finishDate = new Date(productionStart);
+  finishDate.setDate(finishDate.getDate() + body.estimated_production_days);
+  const midpointDays = Math.max(1, Math.floor(body.estimated_production_days / 2));
+  const midpointDate = new Date(productionStart);
+  midpointDate.setDate(midpointDate.getDate() + midpointDays);
+
+  // Upsert midpoint reminder
+  await query(
+    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+     VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
+     ON CONFLICT (order_id, stage) DO UPDATE SET
+       group_chat_id=EXCLUDED.group_chat_id,
+       message=EXCLUDED.message,
+       frequency=EXCLUDED.frequency,
+       next_run_at=EXCLUDED.next_run_at,
+       status='active',
+       escalation_level=0,
+       updated_at=NOW()`,
+    [id, groupChatId,
+     `*Midpoint Check* - ${ref} (${client})\nProduction is estimated at ${body.estimated_production_days} days.\nIs this order on time or delayed?`,
+     midpointDate.toISOString()]
+  );
+
+  // Upsert due reminder
+  await query(
+    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+     VALUES ($1, 'production_due', $2, $3, 'once', $4, 'active')
+     ON CONFLICT (order_id, stage) DO UPDATE SET
+       group_chat_id=EXCLUDED.group_chat_id,
+       message=EXCLUDED.message,
+       frequency=EXCLUDED.frequency,
+       next_run_at=EXCLUDED.next_run_at,
+       status='active',
+       escalation_level=0,
+       updated_at=NOW()`,
+    [id, groupChatId,
+     `*Production Due* - ${ref} (${client})\nEstimated production of ${body.estimated_production_days} days should be complete now.\nIs production finished?`,
+     finishDate.toISOString()]
+  );
+
+  // Also update the estimated_production_days on the order
+  await query(
+    `UPDATE orders SET estimated_production_days = $1, updated_at = NOW() WHERE id = $2`,
+    [body.estimated_production_days, id]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  broadcastSSE('order_updated', { id });
+  return reply.send({
+    ok: true,
+    message: `Production reminders recalculated for ${body.estimated_production_days} days`,
+    midpoint_date: midpointDate.toISOString(),
+    finish_date: finishDate.toISOString(),
+  });
+});
+
+// Stage Updates
 const stageUpdateSchema = z.object({
   quotation_number: z.string(),
   stage: z.string(),
@@ -565,9 +736,21 @@ app.post('/deposits', async (request, reply) => {
   const orderId = orders[0].id;
   const quotationNumber = orders[0].quotation_number;
 
-  // Update deposit fields on the order and advance to purchasing_pending
+  // Update deposit fields. Only advance early/deposit-stage orders to purchasing_pending;
+  // do not move orders backwards if production or later work already started.
   await query(
-    `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), deposit_paid_at=COALESCE($4, deposit_paid_at), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
+    `UPDATE orders SET
+       deposit_paid=TRUE,
+       deposit_amount=$1,
+       deposit_image_url=COALESCE($2, deposit_image_url),
+       deposit_paid_at=COALESCE($4, deposit_paid_at),
+       current_stage=CASE
+         WHEN current_stage IN ('order_confirmation_received', 'math_verified', 'deposit_pending')
+         THEN 'purchasing_pending'
+         ELSE current_stage
+       END,
+       updated_at=NOW()
+     WHERE id=$3`,
     [body.amount, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
   );
 
@@ -650,9 +833,21 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       ? Number(order.total_amount) / 2
       : null;
 
-    // Record the deposit and advance to purchasing_pending
+    // Record the deposit. Only advance early/deposit-stage orders to purchasing_pending;
+    // do not move orders backwards if production or later work already started.
     await query(
-      `UPDATE orders SET deposit_paid=TRUE, deposit_amount=$1, deposit_image_url=COALESCE($2, deposit_image_url), deposit_paid_at=COALESCE($4, deposit_paid_at), current_stage='purchasing_pending', updated_at=NOW() WHERE id=$3`,
+      `UPDATE orders SET
+         deposit_paid=TRUE,
+         deposit_amount=$1,
+         deposit_image_url=COALESCE($2, deposit_image_url),
+         deposit_paid_at=COALESCE($4, deposit_paid_at),
+         current_stage=CASE
+           WHEN current_stage IN ('order_confirmation_received', 'math_verified', 'deposit_pending')
+           THEN 'purchasing_pending'
+           ELSE current_stage
+         END,
+         updated_at=NOW()
+       WHERE id=$3`,
       [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
     );
 
@@ -1278,8 +1473,8 @@ app.get('/dashboard/stats', async () => {
   );
 
   const recentOrders = await query(
-    `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount, math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at, balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
-     FROM orders ORDER BY created_at DESC LIMIT 10`
+    `SELECT ${ORDER_LIST_SELECT}, 0 AS escalation_level
+     FROM orders o ORDER BY o.created_at DESC LIMIT 10`
   );
 
   const result = {
@@ -1520,7 +1715,13 @@ app.post('/reminders', async (request, reply) => {
     await query(
       `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'active')
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (order_id, stage) DO UPDATE SET
+         group_chat_id=EXCLUDED.group_chat_id,
+         message=EXCLUDED.message,
+         frequency=EXCLUDED.frequency,
+         next_run_at=EXCLUDED.next_run_at,
+         status='active',
+         updated_at=NOW()`,
       [body.order_id, body.stage, body.group_chat_id, body.message, body.frequency, body.next_run_at]
     );
   } else {
@@ -1804,27 +2005,92 @@ app.get('/bot-logs', async (request) => {
 // ── Clients ─────────────────────────────────────────────────────────
 
 const clientSchema = z.object({
-  client_name: z.string().min(1),
-  delivery_address: z.string().optional(),
-  contact_number: z.string().optional(),
-  authorized_receiver_name: z.string().optional(),
-  authorized_receiver_contact: z.string().optional(),
-  notes: z.string().optional(),
+  client_name: z.string().min(1).transform((v) => v.trim()),
+  delivery_address: z.string().nullable().optional(),
+  contact_number: z.string().nullable().optional(),
+  authorized_receiver_name: z.string().nullable().optional(),
+  authorized_receiver_contact: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
+
+const clientUpdateSchema = clientSchema.partial().extend({
+  propagate_to_orders: z.boolean().optional().default(true),
+});
+
+const CLIENT_NORMALIZED_SQL = (alias: string) =>
+  `btrim(regexp_replace(lower(COALESCE(${alias}.client_name, '')), '[^a-z0-9]+', ' ', 'g'))`;
+
+const CLIENT_WITH_STATS_SELECT = `
+  c.*,
+  COUNT(DISTINCT o.id)::int AS order_count,
+  COUNT(DISTINCT o.id) FILTER (WHERE o.status = 'active')::int AS active_order_count,
+  MAX(o.created_at) AS latest_order_at
+`;
+
+const CLIENT_ORDER_MATCH_SQL = `
+  (o.client_id = c.id OR (
+    o.client_id IS NULL
+    AND o.client_name IS NOT NULL
+    AND ${CLIENT_NORMALIZED_SQL('o')} = ${CLIENT_NORMALIZED_SQL('c')}
+  ))
+`;
+
+function normalizeClientName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function nullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+async function getClientByDeterministicName(clientName: string) {
+  const normalized = normalizeClientName(clientName);
+  const exact = await query(
+    `SELECT * FROM clients c WHERE ${CLIENT_NORMALIZED_SQL('c')} = $1 ORDER BY c.updated_at DESC, c.client_name ASC LIMIT 1`,
+    [normalized]
+  );
+  if (exact[0]) return exact[0];
+
+  const fallback = await query(
+    `SELECT *, similarity(client_name, $1) AS match_score
+     FROM clients
+     WHERE client_name ILIKE $2
+     ORDER BY match_score DESC, client_name ASC
+     LIMIT 1`,
+    [clientName.trim(), `%${clientName.trim()}%`]
+  );
+  return fallback[0] ?? null;
+}
 
 async function autoLinkClientToOrder(orderId: string, clientName: string | null) {
   if (!clientName) return;
-  const clients = await query(
-    `SELECT id, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact FROM clients WHERE client_name ILIKE $1 LIMIT 1`,
-    [clientName.trim()]
-  );
-  if (clients[0]) {
-    const client = clients[0];
+  const client = await getClientByDeterministicName(clientName);
+  if (client) {
     await query(
-      `UPDATE orders SET client_id = $1, delivery_address = COALESCE(delivery_address, $2), contact_number = COALESCE(contact_number, $3), authorized_receiver_name = COALESCE(authorized_receiver_name, $4), authorized_receiver_contact = COALESCE(authorized_receiver_contact, $5), updated_at = NOW() WHERE id = $6`,
+      `UPDATE orders SET
+         client_id = $1,
+         delivery_address = COALESCE(delivery_address, $2),
+         contact_number = COALESCE(contact_number, $3),
+         authorized_receiver_name = COALESCE(authorized_receiver_name, $4),
+         authorized_receiver_contact = COALESCE(authorized_receiver_contact, $5),
+         updated_at = NOW()
+       WHERE id = $6`,
       [client.id, client.delivery_address ?? null, client.contact_number ?? null, client.authorized_receiver_name ?? null, client.authorized_receiver_contact ?? null, orderId]
     );
   }
+}
+
+function clientStatsQuery(where = '', limit = 500): string {
+  return `SELECT ${CLIENT_WITH_STATS_SELECT}
+          FROM clients c
+          LEFT JOIN orders o ON ${CLIENT_ORDER_MATCH_SQL}
+          ${where}
+          GROUP BY c.id
+          ORDER BY c.client_name ASC
+          LIMIT ${limit}`;
 }
 
 app.post('/clients', async (request, reply) => {
@@ -1840,9 +2106,16 @@ app.post('/clients', async (request, reply) => {
        notes = COALESCE(EXCLUDED.notes, clients.notes),
        updated_at = NOW()
      RETURNING *`,
-    [body.client_name, body.delivery_address ?? null, body.contact_number ?? null, body.authorized_receiver_name ?? null, body.authorized_receiver_contact ?? null, body.notes ?? null]
+    [
+      body.client_name,
+      nullableText(body.delivery_address) ?? null,
+      nullableText(body.contact_number) ?? null,
+      nullableText(body.authorized_receiver_name) ?? null,
+      nullableText(body.authorized_receiver_contact) ?? null,
+      nullableText(body.notes) ?? null,
+    ]
   );
-  await invalidateCache(['clients:*', 'dashboard:*']);
+  await invalidateCache(['clients:*', '/clients', 'dashboard:*']);
   broadcastSSE('client_updated', { id: rows[0].id });
   return reply.send(rows[0]);
 });
@@ -1850,43 +2123,70 @@ app.post('/clients', async (request, reply) => {
 app.get('/clients', async () => {
   const cached = await cacheGet<object[]>('clients:all');
   if (cached) return cached;
-  const rows = await query(`SELECT * FROM clients ORDER BY client_name ASC LIMIT 500`);
+  const rows = await query(clientStatsQuery());
   await cacheSet('clients:all', rows);
   return rows;
 });
 
 app.get('/clients/search', async (request) => {
-  const q = z.object({ q: z.string() }).parse(request.query).q;
+  const q = z.object({ q: z.string().min(1) }).parse(request.query).q.trim();
+  const normalized = normalizeClientName(q);
   const rows = await query(
-    `SELECT * FROM clients WHERE client_name ILIKE $1 ORDER BY client_name ASC LIMIT 20`,
-    [`%${q}%`]
+    `SELECT ${CLIENT_WITH_STATS_SELECT},
+            CASE
+              WHEN ${CLIENT_NORMALIZED_SQL('c')} = $1 THEN 0
+              WHEN c.client_name ILIKE $2 THEN 1
+              ELSE 2
+            END AS rank
+     FROM clients c
+     LEFT JOIN orders o ON ${CLIENT_ORDER_MATCH_SQL}
+     WHERE ${CLIENT_NORMALIZED_SQL('c')} = $1 OR c.client_name ILIKE $3
+     GROUP BY c.id
+     ORDER BY rank ASC, similarity(c.client_name, $4) DESC, c.client_name ASC
+     LIMIT 50`,
+    [normalized, `${q}%`, `%${q}%`, q]
   );
   return rows;
 });
 
 app.get('/clients/lookup/:name', async (request, reply) => {
   const params = z.object({ name: z.string() }).parse(request.params);
+  const client = await getClientByDeterministicName(params.name);
+  if (!client) return reply.code(404).send({ error: 'Client not found' });
+  return client;
+});
+
+app.get('/clients/:id/orders', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const clientRows = await query(`SELECT * FROM clients WHERE id=$1`, [params.id]);
+  if (!clientRows[0]) return reply.code(404).send({ error: 'Client not found' });
+  const normalized = normalizeClientName(clientRows[0].client_name);
   const rows = await query(
-    `SELECT * FROM clients WHERE client_name ILIKE $1 LIMIT 1`,
-    [params.name.trim()]
+    `SELECT id, quotation_number, client_name, sales_agent, total_amount, current_stage, status,
+            deposit_paid, balance_paid, delivery_address, contact_number,
+            authorized_receiver_name, authorized_receiver_contact, created_at, updated_at
+     FROM orders o
+     WHERE o.client_id = $1 OR (o.client_id IS NULL AND ${CLIENT_NORMALIZED_SQL('o')} = $2)
+     ORDER BY o.created_at DESC
+     LIMIT 50`,
+    [params.id, normalized]
   );
-  if (!rows[0]) return reply.code(404).send({ error: 'Client not found' });
-  return rows[0];
+  return rows;
 });
 
 app.patch('/clients/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
-  const body = clientSchema.partial().parse(request.body);
+  const body = clientUpdateSchema.parse(request.body);
 
   const fields: string[] = [];
   const values: any[] = [];
   let idx = 1;
   if (body.client_name !== undefined) { fields.push(`client_name=$${idx++}`); values.push(body.client_name); }
-  if (body.delivery_address !== undefined) { fields.push(`delivery_address=$${idx++}`); values.push(body.delivery_address); }
-  if (body.contact_number !== undefined) { fields.push(`contact_number=$${idx++}`); values.push(body.contact_number); }
-  if (body.authorized_receiver_name !== undefined) { fields.push(`authorized_receiver_name=$${idx++}`); values.push(body.authorized_receiver_name); }
-  if (body.authorized_receiver_contact !== undefined) { fields.push(`authorized_receiver_contact=$${idx++}`); values.push(body.authorized_receiver_contact); }
-  if (body.notes !== undefined) { fields.push(`notes=$${idx++}`); values.push(body.notes); }
+  if (body.delivery_address !== undefined) { fields.push(`delivery_address=$${idx++}`); values.push(nullableText(body.delivery_address)); }
+  if (body.contact_number !== undefined) { fields.push(`contact_number=$${idx++}`); values.push(nullableText(body.contact_number)); }
+  if (body.authorized_receiver_name !== undefined) { fields.push(`authorized_receiver_name=$${idx++}`); values.push(nullableText(body.authorized_receiver_name)); }
+  if (body.authorized_receiver_contact !== undefined) { fields.push(`authorized_receiver_contact=$${idx++}`); values.push(nullableText(body.authorized_receiver_contact)); }
+  if (body.notes !== undefined) { fields.push(`notes=$${idx++}`); values.push(nullableText(body.notes)); }
 
   if (fields.length === 0) {
     return reply.status(400).send({ error: 'No fields to update' });
@@ -1901,23 +2201,68 @@ app.patch('/clients/:id', async (request, reply) => {
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Client not found' });
+  const updated = rows[0];
 
-  await invalidateCache(['clients:*', 'dashboard:*']);
+  if (body.propagate_to_orders !== false) {
+    await query(
+      `UPDATE orders SET
+         client_name = $2,
+         delivery_address = $3,
+         contact_number = $4,
+         authorized_receiver_name = $5,
+         authorized_receiver_contact = $6,
+         updated_at = NOW()
+       WHERE client_id = $1 AND status = 'active'`,
+      [
+        params.id,
+        updated.client_name,
+        updated.delivery_address ?? null,
+        updated.contact_number ?? null,
+        updated.authorized_receiver_name ?? null,
+        updated.authorized_receiver_contact ?? null,
+      ]
+    );
+  }
+
+  await invalidateCache(['clients:*', '/clients', 'orders:*', 'dashboard:*']);
   broadcastSSE('client_updated', { id: params.id });
-  return reply.send(rows[0]);
+  return reply.send(updated);
 });
 
 app.delete('/clients/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const queryParams = z.object({ force: z.coerce.boolean().optional().default(false) }).parse(request.query);
+  const body = (request.body ?? {}) as any;
+  const force = queryParams.force || body.force === true;
+
+  const clientRows = await query(`SELECT * FROM clients WHERE id=$1`, [params.id]);
+  if (!clientRows[0]) return reply.code(404).send({ error: 'Client not found' });
+
+  const activeRows = await query(
+    `SELECT COUNT(*)::int AS count FROM orders WHERE client_id=$1 AND status='active'`,
+    [params.id]
+  );
+  const activeOrderCount = Number(activeRows[0]?.count ?? 0);
+
+  if (activeOrderCount > 0 && !force) {
+    return reply.code(409).send({
+      error: 'Cannot delete client with active linked orders',
+      active_order_count: activeOrderCount,
+      force_available: true,
+    });
+  }
+
+  if (force) {
+    await query(`UPDATE orders SET client_id=NULL, updated_at=NOW() WHERE client_id=$1`, [params.id]);
+  }
+
   const rows = await query(`DELETE FROM clients WHERE id=$1 RETURNING *`, [params.id]);
-  if (!rows[0]) return reply.code(404).send({ error: 'Client not found' });
-  await invalidateCache(['clients:*', 'dashboard:*']);
+  await invalidateCache(['clients:*', '/clients', 'orders:*', 'dashboard:*']);
   broadcastSSE('client_deleted', { id: params.id });
-  return reply.send({ ok: true, deleted: rows[0] });
+  return reply.send({ ok: true, deleted: rows[0], active_order_count: activeOrderCount, forced: force });
 });
 
-// ── SSE Endpoint ────────────────────────────────────────────────────
-// Dashboard clients connect here for real-time cache invalidation events
+// SSE Endpoint
 app.get('/events', (request, reply) => {
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -1955,7 +2300,61 @@ app.get('/events', (request, reply) => {
   });
 });
 
+// ── Auto-Migrations ─────────────────────────────────────────────────
+// Runs all .sql files in database/migrations/ on startup so the schema
+// never drifts from the codebase. Safe to run repeatedly (idempotent SQL).
+
+import { readdir, readFile } from 'fs/promises';
+import { resolve, join } from 'path';
+
+const MIGRATION_PATHS = [
+  '/app/database/migrations',                 // Docker
+  resolve(process.cwd(), 'database/migrations'), // Project root
+  resolve(process.cwd(), '../../database/migrations'), // apps/api cwd
+];
+
+async function runMigrations(): Promise<void> {
+  let migrationsDir: string | null = null;
+  for (const p of MIGRATION_PATHS) {
+    try {
+      await readdir(p);
+      migrationsDir = p;
+      break;
+    } catch { /* ignore */ }
+  }
+
+  if (!migrationsDir) {
+    console.warn('[migrations] No migrations directory found. Skipping.');
+    return;
+  }
+
+  const files = (await readdir(migrationsDir))
+    .filter((f) => f.endsWith('.sql'))
+    .sort((a, b) => a.localeCompare(b));
+
+  if (files.length === 0) {
+    console.log('[migrations] No migration files found.');
+    return;
+  }
+
+  console.log(`[migrations] Found ${files.length} migration(s) in ${migrationsDir}`);
+
+  for (const file of files) {
+    const sql = await readFile(join(migrationsDir, file), 'utf-8');
+    try {
+      await query(sql);
+      console.log(`[migrations] ✓ ${file}`);
+    } catch (err: any) {
+      console.error(`[migrations] ✗ ${file} failed: ${err.message}`);
+      // Continue with other migrations — don't crash the server for one bad file.
+      // If a migration truly fails, the admin needs to fix it manually.
+    }
+  }
+}
+
 // ── Start ───────────────────────────────────────────────────────────
+
+await runMigrations();
 
 const port = Number(process.env.PORT ?? 8080);
 

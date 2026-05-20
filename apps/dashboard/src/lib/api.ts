@@ -33,6 +33,7 @@ export interface Order {
   authorized_receiver_contact: string | null;
   created_at: string;
   updated_at: string;
+  escalation_level: number;
 }
 
 export interface StageUpdate {
@@ -109,6 +110,52 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   return fetchJson<DashboardStats>('/dashboard/stats');
 }
 
+export async function createOrder(data: {
+  quotation_number?: string;
+  client_name?: string;
+  sales_agent?: string;
+  total_amount?: number;
+}): Promise<Order> {
+  return fetchJson<Order>('/orders', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function recordDeposit(data: {
+  quotation_number: string;
+  amount: number;
+  deposit_paid_at?: string;
+}): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/deposits', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function payBalance(data: {
+  quotation_number: string;
+  amount: number;
+}): Promise<{ ok: boolean; overpayment?: number }> {
+  return fetchJson<{ ok: boolean; overpayment?: number }>('/pay-balance', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function recordStageUpdate(data: {
+  quotation_number: string;
+  stage: string;
+  status: string;
+  remarks?: string;
+  updated_by?: string;
+}): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/stage-updates', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getOrders(): Promise<Order[]> {
   return fetchJson<Order[]>('/orders');
 }
@@ -143,6 +190,49 @@ export async function deleteOrder(id: string, actionToken: string): Promise<{ ok
     method: 'DELETE',
     body: JSON.stringify({ action_token: actionToken }),
   });
+}
+
+export async function setProduction(
+  id: string,
+  data: { production_started: boolean; estimated_production_days?: number }
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/set-production`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function reportProductionStatus(
+  id: string,
+  data: { on_time: boolean; delay_days?: number }
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/report-production-status`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function finishProduction(
+  id: string,
+  data: { delivery_estimated_days: number }
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/finish-production`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function recalcProductionReminders(
+  id: string,
+  data: { estimated_production_days: number }
+): Promise<{ ok: boolean; message: string; midpoint_date: string; finish_date: string }> {
+  return fetchJson<{ ok: boolean; message: string; midpoint_date: string; finish_date: string }>(
+    `/orders/${encodeURIComponent(id)}/recalc-production-reminders`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
 }
 
 export async function sendOtpForAction(email: string): Promise<{ ok: boolean }> {
@@ -317,6 +407,9 @@ export interface Client {
   authorized_receiver_name: string | null;
   authorized_receiver_contact: string | null;
   notes: string | null;
+  order_count?: number;
+  active_order_count?: number;
+  latest_order_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -351,11 +444,12 @@ export async function updateClient(
   id: string,
   data: {
     client_name?: string;
-    delivery_address?: string;
-    contact_number?: string;
-    authorized_receiver_name?: string;
-    authorized_receiver_contact?: string;
-    notes?: string;
+    delivery_address?: string | null;
+    contact_number?: string | null;
+    authorized_receiver_name?: string | null;
+    authorized_receiver_contact?: string | null;
+    notes?: string | null;
+    propagate_to_orders?: boolean;
   }
 ): Promise<Client> {
   return fetchJson<Client>(`/clients/${encodeURIComponent(id)}`, {
@@ -364,8 +458,12 @@ export async function updateClient(
   });
 }
 
-export async function deleteClient(id: string): Promise<{ ok: boolean }> {
-  return fetchJson<{ ok: boolean }>(`/clients/${encodeURIComponent(id)}`, {
+export async function getClientOrders(id: string): Promise<Order[]> {
+  return fetchJson<Order[]>(`/clients/${encodeURIComponent(id)}/orders`);
+}
+
+export async function deleteClient(id: string, force = false): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/clients/${encodeURIComponent(id)}${force ? '?force=true' : ''}`, {
     method: 'DELETE',
   });
 }

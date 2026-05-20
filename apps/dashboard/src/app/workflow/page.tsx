@@ -274,20 +274,26 @@ function StageNode({
   index,
   count,
   isLast,
+  onJump,
 }: {
   stage: string;
   index: number;
   count: number;
   isLast: boolean;
+  onJump: (stage: string) => void;
 }) {
   const config = STAGE_CONFIG[stage];
   const info = STAGE_INFO[stage];
   return (
     <div className="flex items-start gap-0">
-      {/* Stage card */}
-      <div className={`min-w-[180px] flex-1 rounded-xl border-2 p-4 transition-shadow hover:shadow-md ${
-        info?.autoAdvance ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'
-      }`}>
+      {/* Stage card — clickable to jump to Working Tree filtered by this stage */}
+      <button
+        onClick={() => onJump(stage)}
+        className={`min-w-[180px] flex-1 rounded-xl border-2 p-4 text-left transition-shadow hover:shadow-md ${
+          count > 0 ? 'cursor-pointer hover:border-[#2490ef]/40' : 'cursor-default'
+        } ${info?.autoAdvance ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}
+        title={count > 0 ? `View ${count} order(s) at this stage` : 'No orders here'}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-lg">{config?.icon ?? '📋'}</span>
@@ -298,7 +304,7 @@ function StageNode({
               </p>
             </div>
           </div>
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-600">
+          <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
             {count}
           </span>
         </div>
@@ -316,7 +322,7 @@ function StageNode({
             {info.exitCondition}
           </div>
         )}
-      </div>
+      </button>
 
       {/* Arrow connector */}
       {!isLast && (
@@ -328,8 +334,20 @@ function StageNode({
   );
 }
 
-function AgentMappingCard({ mapping, health }: { mapping: AgentMapping; health?: AgentHealth }) {
+function AgentMappingCard({
+  mapping,
+  health,
+  stageGroups,
+}: {
+  mapping: AgentMapping;
+  health?: AgentHealth;
+  stageGroups: Record<string, { id: string }[]>;
+}) {
   const Icon = mapping.icon;
+  const totalMonitored = mapping.monitors.reduce(
+    (sum, s) => sum + (stageGroups[s]?.length ?? 0),
+    0,
+  );
   return (
     <div className={`rounded-xl border-2 ${mapping.color} p-4 transition-shadow hover:shadow-md`}>
       <div className="flex items-start justify-between">
@@ -344,27 +362,42 @@ function AgentMappingCard({ mapping, health }: { mapping: AgentMapping; health?:
             <p className="text-[10px] text-gray-500">{mapping.description}</p>
           </div>
         </div>
-        {health && (
-          health.healthy ? (
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          ) : (
-            <AlertCircle className="h-4 w-4 text-red-500" />
-          )
-        )}
+        <div className="flex items-center gap-2">
+          {totalMonitored > 0 && (
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[9px] font-bold text-gray-700">
+              {totalMonitored} active
+            </span>
+          )}
+          {health && (
+            health.healthy ? (
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-red-500" />
+            )
+          )}
+        </div>
       </div>
 
-      {/* Monitored stages */}
+      {/* Monitored stages with live counts */}
       <div className="mt-3">
         <p className="mb-1 text-[10px] font-medium text-gray-600">Monitors:</p>
         <div className="flex flex-wrap gap-1">
-          {mapping.monitors.map((s) => (
-            <span
-              key={s}
-              className="rounded-md bg-white/70 px-2 py-0.5 text-[9px] font-medium text-gray-600"
-            >
-              {STAGE_CONFIG[s]?.icon} {STAGE_CONFIG[s]?.label ?? s}
-            </span>
-          ))}
+          {mapping.monitors.map((s) => {
+            const cnt = stageGroups[s]?.length ?? 0;
+            return (
+              <span
+                key={s}
+                className={`rounded-md px-2 py-0.5 text-[9px] font-medium ${cnt > 0 ? 'bg-white text-gray-800 ring-1 ring-inset ring-gray-200' : 'bg-white/50 text-gray-400'}`}
+              >
+                {STAGE_CONFIG[s]?.icon} {STAGE_CONFIG[s]?.label ?? s}
+                {cnt > 0 && (
+                  <span className="ml-1 rounded-full bg-blue-100 px-1 text-[8px] font-bold text-blue-700">
+                    {cnt}
+                  </span>
+                )}
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -400,12 +433,32 @@ function AgentMappingCard({ mapping, health }: { mapping: AgentMapping; health?:
   );
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function daysInStage(updatedAt: string): number {
+  return Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86_400_000);
+}
+
+function EscalationDots({ level }: { level: number }) {
+  if (!level) return null;
+  const dots = Math.min(level, 3);
+  return (
+    <span className="flex items-center gap-0.5" title={`Escalation level ${level}`}>
+      {Array.from({ length: dots }).map((_, i) => (
+        <span key={i} className="h-2 w-2 rounded-full bg-red-500" />
+      ))}
+    </span>
+  );
+}
+
 // ── Main Page ───────────────────────────────────────────────────────
 export default function WorkflowPage() {
   const { data: orders = [], isLoading: ordersLoading } = useOrders();
   const { data: agents } = useAgents();
   const { data: healthData, mutate: refreshHealth } = useAgentHealth();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'agents' | 'orders'>('pipeline');
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   // Parse health data
   const healthMap: Record<string, AgentHealth> = {};
@@ -420,14 +473,25 @@ export default function WorkflowPage() {
     }
   }
 
-  // Group orders by stage
+  // Group orders by stage, sorted by urgency (escalation desc, then oldest first)
   const stageGroups: Record<string, typeof orders> = {};
   STAGE_ORDER.forEach((stage) => {
-    stageGroups[stage] = orders.filter((o) => o.current_stage === stage);
+    stageGroups[stage] = orders
+      .filter((o) => o.current_stage === stage)
+      .sort((a, b) =>
+        (b.escalation_level ?? 0) - (a.escalation_level ?? 0) ||
+        new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+      );
   });
 
   const activeOrders = orders.filter((o) => o.status === 'active');
   const completedOrders = orders.filter((o) => o.status === 'completed');
+
+  function jumpToStage(stage: string) {
+    setStageFilter(stage);
+    setSearch('');
+    setActiveTab('orders');
+  }
 
   const TABS = [
     { key: 'pipeline' as const, label: 'Stage Pipeline', icon: ClipboardList },
@@ -480,18 +544,24 @@ export default function WorkflowPage() {
       {activeTab === 'pipeline' && (
         <div className="space-y-6">
           {/* Pipeline visualization */}
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-sm font-semibold text-gray-800">Stage Flow</h2>
-            <div className="flex gap-0" style={{ minWidth: '1100px' }}>
-              {STAGE_ORDER.map((stage, index) => (
-                <StageNode
-                  key={stage}
-                  stage={stage}
-                  index={index}
-                  count={stageGroups[stage]?.length ?? 0}
-                  isLast={index === STAGE_ORDER.length - 1}
-                />
-              ))}
+          <div className="rounded-xl border border-gray-200 bg-white p-6">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-800">Stage Flow</h2>
+              <span className="text-[10px] text-gray-400">← scroll to see all stages →</span>
+            </div>
+            <div className="overflow-x-auto">
+              <div className="flex gap-0" style={{ minWidth: '1100px' }}>
+                {STAGE_ORDER.map((stage, index) => (
+                  <StageNode
+                    key={stage}
+                    stage={stage}
+                    index={index}
+                    count={stageGroups[stage]?.length ?? 0}
+                    isLast={index === STAGE_ORDER.length - 1}
+                    onJump={jumpToStage}
+                  />
+                ))}
+              </div>
             </div>
             <div className="mt-4 flex items-center gap-4 text-[10px] text-gray-400">
               <span className="flex items-center gap-1">
@@ -501,6 +571,9 @@ export default function WorkflowPage() {
               <span className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded border-2 border-gray-200 bg-white" />
                 Manual (team action required)
+              </span>
+              <span className="flex items-center gap-1 text-[#2490ef]">
+                Click any stage node to jump to its orders →
               </span>
             </div>
           </div>
@@ -527,7 +600,12 @@ export default function WorkflowPage() {
                     const info = STAGE_INFO[stage];
                     const count = stageGroups[stage]?.length ?? 0;
                     return (
-                      <tr key={stage} className="hover:bg-gray-50">
+                      <tr
+                        key={stage}
+                        className="cursor-pointer hover:bg-gray-50"
+                        onClick={() => count > 0 && jumpToStage(stage)}
+                        title={count > 0 ? `View ${count} order(s) at this stage` : undefined}
+                      >
                         <td className="py-2.5 pr-4 font-medium text-gray-800">
                           <span className="mr-1">{config?.icon}</span>
                           {config?.label ?? stage}
@@ -548,7 +626,7 @@ export default function WorkflowPage() {
                           )}
                         </td>
                         <td className="py-2.5 pr-4">
-                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-medium text-gray-600">
+                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                             {count}
                           </span>
                         </td>
@@ -572,6 +650,7 @@ export default function WorkflowPage() {
                 key={mapping.name}
                 mapping={mapping}
                 health={healthMap[mapping.name]}
+                stageGroups={stageGroups}
               />
             ))}
           </div>
@@ -641,21 +720,52 @@ export default function WorkflowPage() {
       {/* ── Tab: Working Tree ───────────────────────────────────── */}
       {activeTab === 'orders' && (
         <div className="space-y-6">
-          {/* Summary cards */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <p className="text-xs text-gray-500">Total Orders</p>
-              <p className="text-2xl font-bold text-gray-900">{orders.length}</p>
+          {/* Summary cards + search */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="grid flex-1 grid-cols-3 gap-3">
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Total</p>
+                <p className="text-2xl font-bold text-gray-900">{orders.length}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Active</p>
+                <p className="text-2xl font-bold text-blue-600">{activeOrders.length}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Completed</p>
+                <p className="text-2xl font-bold text-green-600">{completedOrders.length}</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <p className="text-xs text-gray-500">Active</p>
-              <p className="text-2xl font-bold text-blue-600">{activeOrders.length}</p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <p className="text-xs text-gray-500">Completed</p>
-              <p className="text-2xl font-bold text-green-600">{completedOrders.length}</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search orders…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setStageFilter(null); }}
+                className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+              />
+              {(stageFilter || search) && (
+                <button
+                  onClick={() => { setStageFilter(null); setSearch(''); }}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-500 hover:bg-gray-50"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Active stage filter pill */}
+          {stageFilter && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
+                {STAGE_CONFIG[stageFilter]?.icon} {STAGE_CONFIG[stageFilter]?.label ?? stageFilter}
+              </span>
+              <button onClick={() => setStageFilter(null)} className="text-xs text-gray-400 hover:text-gray-600">
+                × show all
+              </button>
+            </div>
+          )}
 
           {/* Orders grouped by stage */}
           {ordersLoading && orders.length === 0 ? (
@@ -663,10 +773,25 @@ export default function WorkflowPage() {
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
             </div>
           ) : (
-            STAGE_ORDER.map((stage) => {
+            STAGE_ORDER.filter((stage) => !stageFilter || stage === stageFilter).map((stage) => {
               const config = STAGE_CONFIG[stage];
-              const stageOrders = stageGroups[stage] ?? [];
+              let stageOrders = stageGroups[stage] ?? [];
+
+              // Apply search filter across all visible stages
+              if (search.trim()) {
+                const q = search.toLowerCase();
+                stageOrders = stageOrders.filter(
+                  (o) =>
+                    o.quotation_number?.toLowerCase().includes(q) ||
+                    o.client_name?.toLowerCase().includes(q) ||
+                    o.sales_agent?.toLowerCase().includes(q),
+                );
+              }
+
               if (stageOrders.length === 0) return null;
+
+              const hasEscalated = stageOrders.some((o) => (o.escalation_level ?? 0) > 0);
+
               return (
                 <div key={stage} className="rounded-xl border border-gray-200 bg-white p-5">
                   <div className="mb-3 flex items-center gap-2">
@@ -677,36 +802,55 @@ export default function WorkflowPage() {
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
                       {stageOrders.length}
                     </span>
+                    {hasEscalated && (
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-medium text-red-700">
+                        escalated
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {stageOrders.map((order) => (
-                      <a
-                        key={order.id}
-                        href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`}
-                        className="block rounded-lg border border-gray-100 bg-gray-50 p-3 transition-colors hover:border-gray-200 hover:bg-white"
-                      >
-                        <p className="text-xs font-medium text-gray-900">
-                          {order.quotation_number ?? '—'}
-                        </p>
-                        <p className="mt-0.5 text-[10px] text-gray-500">
-                          {order.client_name ?? 'Unknown'}
-                        </p>
-                        {order.total_amount != null && (
-                          <p className="mt-0.5 text-[10px] font-medium text-gray-600">
-                            ₱{Number(order.total_amount).toLocaleString()}
+                    {stageOrders.map((order) => {
+                      const days = daysInStage(order.updated_at);
+                      const escalation = order.escalation_level ?? 0;
+                      const isStale = days >= 3 && escalation === 0;
+                      return (
+                        <a
+                          key={order.id}
+                          href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`}
+                          className={`block rounded-lg border p-3 transition-colors hover:bg-white ${
+                            escalation > 0
+                              ? 'border-red-200 bg-red-50/40 hover:border-red-300'
+                              : isStale
+                                ? 'border-amber-200 bg-amber-50/30 hover:border-amber-300'
+                                : 'border-gray-100 bg-gray-50 hover:border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-1">
+                            <p className="text-xs font-medium text-gray-900">
+                              {order.quotation_number ?? '—'}
+                            </p>
+                            <EscalationDots level={escalation} />
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-gray-500">
+                            {order.client_name ?? 'Unknown'}
                           </p>
-                        )}
-                        <div className="mt-1 flex items-center gap-2 text-[9px] text-gray-400">
-                          <Clock className="h-3 w-3" />
-                          <span>
-                            {new Date(order.created_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
-                        </div>
-                      </a>
-                    ))}
+                          {order.total_amount != null && (
+                            <p className="mt-0.5 text-[10px] font-medium text-gray-600">
+                              ₱{Number(order.total_amount).toLocaleString()}
+                            </p>
+                          )}
+                          <div className="mt-1.5 flex items-center justify-between text-[9px]">
+                            <span className={`flex items-center gap-1 ${days >= 7 ? 'font-semibold text-red-500' : days >= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+                              <Clock className="h-3 w-3" />
+                              {days === 0 ? 'Today' : `${days}d in stage`}
+                            </span>
+                            {order.sales_agent && (
+                              <span className="text-gray-400">{order.sales_agent}</span>
+                            )}
+                          </div>
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -720,6 +864,24 @@ export default function WorkflowPage() {
               <p className="text-sm">No orders in the system yet</p>
             </div>
           )}
+
+          {/* No search results */}
+          {!ordersLoading && orders.length > 0 && search.trim() &&
+            STAGE_ORDER.every((stage) => {
+              const q = search.toLowerCase();
+              return (stageGroups[stage] ?? []).filter(
+                (o) =>
+                  o.quotation_number?.toLowerCase().includes(q) ||
+                  o.client_name?.toLowerCase().includes(q) ||
+                  o.sales_agent?.toLowerCase().includes(q),
+              ).length === 0;
+            }) && (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <MapPin className="mb-3 h-12 w-12" />
+                <p className="text-sm">No orders match "{search}"</p>
+              </div>
+            )
+          }
         </div>
       )}
     </div>

@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OrderDetailPage() {
@@ -34,6 +34,8 @@ export default function OrderDetailPage() {
   if (!order) return null;
 
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
+  const daysInStage = Math.floor((Date.now() - new Date(order.updated_at).getTime()) / 86_400_000);
+  const escalation = order.escalation_level ?? 0;
 
   return (
     <div className="space-y-6">
@@ -69,9 +71,21 @@ export default function OrderDetailPage() {
                 )}
               </div>
             </div>
-            <p className="mt-1 text-sm text-gray-500">
-              Created {new Date(order.created_at).toLocaleString()}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-gray-500">
+                Created {new Date(order.created_at).toLocaleString()}
+              </span>
+              <span className={`flex items-center gap-1 text-xs font-medium ${daysInStage >= 7 ? 'text-red-500' : daysInStage >= 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+                <Clock className="h-3.5 w-3.5" />
+                {daysInStage === 0 ? 'Updated today' : `${daysInStage}d in current stage`}
+              </span>
+              {escalation > 0 && (
+                <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                  <AlertTriangle className="h-3 w-3" />
+                  Escalation level {escalation}
+                </span>
+              )}
+            </div>
           </div>
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium ${

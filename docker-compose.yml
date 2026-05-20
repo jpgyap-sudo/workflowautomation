@@ -51,6 +51,7 @@ services:
     volumes:
       - ./credentials:/app/credentials:ro
       - /var/run/docker.sock:/var/run/docker.sock:rw
+      - ./database/migrations:/app/database/migrations:ro
     depends_on:
       - postgres
       - redis

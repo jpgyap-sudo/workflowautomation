@@ -27,6 +27,7 @@ The web dashboard provides a full ERPNext-style interface for managing the quota
 | **Inventory** | Inventory arrival tracking |
 | **Delivery** | Scheduled & delivered order tracking |
 | **Collection** | Counter, payment received, confirmed & completed orders |
+| **Clients** | Client database with delivery addresses & authorized receivers |
 | **Stage Pipeline** | Kanban-style pipeline across all 11 stages |
 | **Agent Logs** | Quotation checker & agent execution logs |
 
@@ -87,6 +88,37 @@ Open:
 | Dashboard | `https://track.abcx124.xyz` |
 | n8n | `http://165.22.110.111:5678` |
 | API health | `http://165.22.110.111:8080/health` |
+
+## Database Migrations
+
+Migrations run **automatically** when the API container starts. Place new `.sql` files in `database/migrations/` and they will execute in order on the next deploy.
+
+```
+database/migrations/
+├── 001_initial.sql
+├── 002_indexes_and_cache.sql
+├── 003_balance_payment.sql
+├── 004_agent_indexes.sql
+├── 005_calendar_notes.sql
+├── 006_bot_logs.sql
+├── 007_vision_uploads.sql
+├── 008_production_tracking.sql
+├── 009_date_fields.sql
+└── 010_clients.sql
+```
+
+- Files are executed in **alphanumeric order** (001 → 002 → ...)
+- SQL is **idempotent** — `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` are safe to rerun
+- If a migration fails, the API logs the error but **continues to start**
+- The migrations directory is mounted read-only into the API container via `docker-compose.yml`
+
+**To add a new migration:**
+
+1. Create `database/migrations/011_your_change.sql`
+2. Rebuild & restart the API container
+3. Watch the API logs for `[migrations] ✓ 011_your_change.sql`
+
+No manual `psql` required.
 
 ## Automated Database Backup (Supabase)
 

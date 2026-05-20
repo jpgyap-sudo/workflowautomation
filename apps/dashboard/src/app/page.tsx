@@ -7,6 +7,7 @@ import {
   TrendingUp,
   CreditCard,
   Scale,
+  AlertTriangle,
 } from 'lucide-react';
 import { useDashboardStats, useRealtimeSubscription } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
@@ -74,7 +75,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Orders"
           value={stats?.total_orders ?? 0}
@@ -99,6 +100,8 @@ export default function DashboardPage() {
           icon={Scale}
           color="bg-violet-100 text-violet-600"
         />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Pending Purchasing"
           value={stats?.pending_purchasing ?? 0}
@@ -110,6 +113,19 @@ export default function DashboardPage() {
           value={stats?.pending_collection ?? 0}
           icon={DollarSign}
           color="bg-rose-100 text-rose-600"
+        />
+        <StatCard
+          title="Pending Delivery"
+          value={stats?.pending_delivery ?? 0}
+          icon={FileText}
+          color="bg-purple-100 text-purple-600"
+        />
+        <StatCard
+          title="Overdue Reminders"
+          value={stats?.overdue_reminders ?? 0}
+          icon={AlertTriangle}
+          color={(stats?.overdue_reminders ?? 0) > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}
+          subtitle={(stats?.overdue_reminders ?? 0) > 0 ? 'Reminders past due — check agents' : 'All reminders on time'}
         />
       </div>
 

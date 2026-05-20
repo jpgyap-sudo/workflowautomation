@@ -23,12 +23,14 @@ import {
   MessageSquare,
   X,
   Users,
+  Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/orders', label: 'All Orders', icon: FileText },
+  { href: '/actions', label: 'Quick Actions', icon: Zap },
   { href: '/clients', label: 'Clients', icon: Users },
   { href: '/purchasing', label: 'Purchasing', icon: ShoppingCart },
   { href: '/inventory', label: 'Inventory', icon: Package },

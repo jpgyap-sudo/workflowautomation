@@ -4,10 +4,82 @@ import { useState } from 'react';
 import { useOrders } from '@/lib/useApi';
 import { STAGE_CONFIG } from '@/lib/api';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder } from '@/lib/api';
+import { updateOrder, deleteOrder, createOrder } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
-import { X, Check } from 'lucide-react';
+import { X, Check, Plus, Loader2 } from 'lucide-react';
+
+function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [qn, setQn] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [salesAgent, setSalesAgent] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!qn.trim()) { setError('Quotation number is required.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const data: Parameters<typeof createOrder>[0] = { quotation_number: qn.trim() };
+      if (clientName.trim()) data.client_name = clientName.trim();
+      if (salesAgent.trim()) data.sales_agent = salesAgent.trim();
+      if (totalAmount.trim()) data.total_amount = parseFloat(totalAmount.replace(/,/g, ''));
+      await createOrder(data);
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to create order.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+          <h2 className="text-base font-semibold text-gray-800">New Order</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">Quotation Number <span className="text-red-500">*</span></label>
+            <input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">Client Name</label>
+            <input className={inputCls} placeholder="Juan dela Cruz" value={clientName} onChange={e => setClientName(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">Sales Agent</label>
+            <input className={inputCls} placeholder="Agent name" value={salesAgent} onChange={e => setSalesAgent(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">Total Amount (₱)</label>
+            <input className={inputCls} placeholder="20000" value={totalAmount} onChange={e => setTotalAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Create Order
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function EditForm({ order, onSave, onCancel, saving }: {
   order: Order;
@@ -79,6 +151,7 @@ function EditForm({ order, onSave, onCancel, saving }: {
 export default function OrdersPage() {
   const { data: orders = [], error, isLoading, mutate } = useOrders();
   const [filter, setFilter] = useState<string>('all');
+  const [showNewOrder, setShowNewOrder] = useState(false);
 
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -207,7 +280,16 @@ export default function OrdersPage() {
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2 className="text-base font-semibold text-gray-800">All Orders</h2>
-          <span className="text-xs text-gray-400">{filtered.length} orders</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">{filtered.length} orders</span>
+            <button
+              onClick={() => setShowNewOrder(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Order
+            </button>
+          </div>
         </div>
         <OrderTable orders={filtered} onEdit={handleEdit} onDelete={handleDeleteClick} />
         {editingOrder && (
@@ -231,6 +313,11 @@ export default function OrdersPage() {
           (window as any).__pendingEditData = null;
         }}
       />
+
+      {/* New Order Modal */}
+      {showNewOrder && (
+        <NewOrderModal onClose={() => setShowNewOrder(false)} onCreated={() => mutate()} />
+      )}
 
       {/* Deleting overlay */}
       {deleting && (
