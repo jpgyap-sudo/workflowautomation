@@ -193,6 +193,37 @@ SERVICES=(api dashboard telegram-bot)
 
 cd "$DEPLOY_PATH"
 
+# ── Isolation safeguard: verify we're in the right project ──
+# The compose project name is derived from the directory name.
+# Running compose from /opt/quotation-automation only affects our containers.
+# Other projects (e.g. trading-bot, superroo2) have their own compose files.
+if [ ! -f "docker-compose.yml" ]; then
+  echo "ERROR: No docker-compose.yml found at $DEPLOY_PATH"
+  echo "       Refusing to deploy — wrong project directory?"
+  exit 72
+fi
+
+# Verify compose can see our expected services (not someone else's)
+COMPOSE_SERVICES=$(docker-compose ps --services 2>/dev/null || true)
+if [ -n "$COMPOSE_SERVICES" ]; then
+  for svc in api dashboard telegram-bot postgres redis; do
+    if ! echo "$COMPOSE_SERVICES" | grep -qx "$svc"; then
+      echo "WARNING: Expected service '$svc' not found in compose project"
+      echo "         Services found: $COMPOSE_SERVICES"
+    fi
+  done
+  # Warn about unexpected services
+  for svc in $COMPOSE_SERVICES; do
+    case "$svc" in
+      api|dashboard|telegram-bot|postgres|redis) ;;
+      *)
+        echo "WARNING: Unexpected service '$svc' in compose project"
+        echo "         This may belong to another project sharing the Docker daemon"
+        ;;
+    esac
+  done
+fi
+
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "Deployment lock is already held:"
   cat "$LOCK_INFO" 2>/dev/null || true

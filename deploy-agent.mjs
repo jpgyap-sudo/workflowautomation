@@ -165,7 +165,33 @@ function deployContainers() {
   const composeBin = isV1 ? 'docker-compose' : 'docker compose';
   console.log(`Using: ${composeBin}`);
 
-  // Build and start
+  // ── Isolation safeguard: verify we're in the right project ──
+  // Ensure docker-compose only manages containers defined in THIS project's compose file.
+  // The compose project name is derived from the directory name ("quotation-automation"),
+  // so running compose from /opt/quotation-automation will only affect our containers.
+  const projectCheck = runCapture('Verifying project isolation',
+    sshCmd(`cd ${CONFIG.vpsPath} && ${composeBin} ps --services 2>/dev/null`),
+    { ignoreError: true, timeout: 15_000 });
+
+  if (projectCheck) {
+    const expectedServices = ['api', 'dashboard', 'telegram-bot', 'postgres', 'redis'];
+    const actualServices = projectCheck.split('\n').map(s => s.trim()).filter(Boolean);
+    const missing = expectedServices.filter(s => !actualServices.includes(s));
+    if (missing.length > 0) {
+      console.log(`⚠  Some expected services not found by compose: ${missing.join(', ')}`);
+      console.log('   This may be a first-time deploy or the project directory is wrong.');
+    }
+    // Warn if we see services that don't belong to this project
+    const unexpected = actualServices.filter(s => !expectedServices.includes(s));
+    if (unexpected.length > 0) {
+      console.log(`⚠  Unexpected services detected: ${unexpected.join(', ')}`);
+      console.log('   These belong to another project sharing this Docker daemon.');
+    }
+  }
+
+  // ── Build and start (scoped to this project's compose file) ──
+  // docker-compose up -d --build only affects services defined in the local docker-compose.yml.
+  // Other projects' containers, images, and networks are NOT touched.
   run('Building and starting containers',
     sshCmd(`cd ${CONFIG.vpsPath} && ${composeBin} up -d --build`),
     { timeout: 600_000 });
