@@ -493,6 +493,7 @@ export interface InventoryItem {
   product_name: string;
   description: string | null;
   dimension: string | null;
+  category: string | null;
   quantity: number;
   image_url: string | null;
   created_at: string;
@@ -504,6 +505,7 @@ export interface InventoryDraft {
   product_name: string | null;
   description: string | null;
   dimension: string | null;
+  category: string | null;
   quantity: number | null;
   image_url: string | null;
   source_type: string;
@@ -546,6 +548,7 @@ export async function createInventoryItem(data: {
   product_name: string;
   description?: string | null;
   dimension?: string | null;
+  category?: string | null;
   quantity?: number;
   image_url?: string | null;
 }): Promise<InventoryItem> {
@@ -561,6 +564,7 @@ export async function updateInventoryItem(
     product_name?: string;
     description?: string | null;
     dimension?: string | null;
+    category?: string | null;
     quantity?: number;
     image_url?: string | null;
   }
@@ -605,6 +609,7 @@ export async function updateInventoryDraft(
     product_name?: string;
     description?: string | null;
     dimension?: string | null;
+    category?: string | null;
     quantity?: number;
   }
 ): Promise<InventoryDraft> {

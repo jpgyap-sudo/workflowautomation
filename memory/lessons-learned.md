@@ -1006,3 +1006,61 @@ When reviewing a full-stack feature for gaps, check these layers systematically:
 bugfix, inventory, full-stack, type-mismatch, data-url, pagination, error-handling
 
 ---
+
+### Lesson: [workflowautomation] feat: inventory tab gap fixes + en route stage tracking
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit cc1f1ac4ce8985fe38dbb3af73aa95709756eeec
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** cc1f1ac4ce8985fe38dbb3af73aa95709756eeec
+**Files:** apps/api/src/agents/escalationAgent.ts,apps/api/src/server.ts,apps/api/src/services/agentRunner.ts,apps/api/src/services/geminiVision.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/app/workflow/page.tsx,apps/dashboard/src/lib/api.ts,apps/dashboard/src/lib/useApi.ts,apps/telegram-bot/src/bot.ts,database/migrations/011_inventory_en_route.sql,database/migrations/012_inventory_items.sql,database/schema.sql,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+- Gaps in inventory tab UI (missing or misaligned data display).  
+- Added en route stage tracking for inventory items.  
+- Updated API services, database migrations, and bot logic to support the new stage.  
+
+**Why it broke:**  
+- The original inventory schema lacked an "en route" status, causing items in transit to be invisible or miscategorized.  
+- UI components assumed only "in stock" and "ordered" states, leading to display gaps.  
+
+**Reusable takeaway:**  
+- Always model the full lifecycle of a tracked entity (e.g., inventory: ordered → en route → received → in stock).  
+- When adding a new state, update schema, API, UI, and bot logic in one atomic commit to avoid partial breakage.  
+- Document the state machine in `lessons-learned.md` for future reference.
+
+---
+*Original commit message: feat: inventory tab gap fixes + en route stage tracking*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Gaps in inventory tab UI (missing or misaligned data display).  
+- Added en route stage tracking for inventory items.  
+- Updated API services, database migrations, and bot logic to support the new stage.  
+
+**Why it broke:**  
+- The original inventory schema lacked an "en route" status, causing items in transit to be invisible or miscategorized.  
+- UI components assumed only "in stock" and "ordered" states, leading to display gaps.  
+
+**Reusable takeaway:**  
+- Always model the full lifecycle of a tracked entity (e.g., inventory: ordered → en route → received → in stock).  
+- When adding a new state, update schema, API, UI, and bot logic in one atomic commit to avoid partial breakage.  
+- Document the state machine in `lessons-learned.md` for future reference.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

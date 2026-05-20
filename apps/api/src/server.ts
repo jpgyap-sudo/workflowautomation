@@ -2401,12 +2401,13 @@ app.post('/inventory', async (request, reply) => {
     dimension: z.string().optional(),
     quantity: z.number().int().min(0).default(0),
     image_url: z.string().optional(),
+    category: z.string().optional(),
   }).parse(request.body);
 
   const rows = await query(
-    `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [body.product_name, body.description ?? null, body.dimension ?? null, body.quantity, body.image_url ?? null]
+    `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url, category)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [body.product_name, body.description ?? null, body.dimension ?? null, body.quantity, body.image_url ?? null, body.category ?? null]
   );
   await invalidateCache(['inventory:*', '/inventory']);
   broadcastSSE('inventory_updated', { id: rows[0].id });
@@ -2421,6 +2422,7 @@ app.patch('/inventory/:id', async (request, reply) => {
     dimension: z.string().optional(),
     quantity: z.number().int().min(0).optional(),
     image_url: z.string().optional(),
+    category: z.string().optional(),
   }).parse(request.body);
 
   const fields: string[] = [];
@@ -2431,6 +2433,7 @@ app.patch('/inventory/:id', async (request, reply) => {
   if (body.dimension !== undefined) { fields.push(`dimension=$${idx++}`); values.push(body.dimension ?? null); }
   if (body.quantity !== undefined) { fields.push(`quantity=$${idx++}`); values.push(body.quantity); }
   if (body.image_url !== undefined) { fields.push(`image_url=$${idx++}`); values.push(body.image_url ?? null); }
+  if (body.category !== undefined) { fields.push(`category=$${idx++}`); values.push(body.category ?? null); }
 
   if (fields.length === 0) return reply.status(400).send({ error: 'No fields to update' });
   fields.push(`updated_at=NOW()`);
@@ -2579,6 +2582,7 @@ app.patch('/inventory/drafts/:id', async (request, reply) => {
     description: z.string().optional(),
     dimension: z.string().optional(),
     quantity: z.number().int().min(0).optional(),
+    category: z.string().optional(),
   }).parse(request.body);
 
   const fields: string[] = [];
@@ -2588,6 +2592,7 @@ app.patch('/inventory/drafts/:id', async (request, reply) => {
   if (body.description !== undefined) { fields.push(`description=$${idx++}`); values.push(body.description ?? null); }
   if (body.dimension !== undefined) { fields.push(`dimension=$${idx++}`); values.push(body.dimension ?? null); }
   if (body.quantity !== undefined) { fields.push(`quantity=$${idx++}`); values.push(body.quantity); }
+  if (body.category !== undefined) { fields.push(`category=$${idx++}`); values.push(body.category ?? null); }
 
   if (fields.length === 0) return reply.status(400).send({ error: 'No fields to update' });
   fields.push(`updated_at=NOW()`);
@@ -2608,9 +2613,9 @@ app.post('/inventory/drafts/:id/approve', async (request, reply) => {
   const draft = draftRows[0];
 
   const itemRows = await query(
-    `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url]
+    `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url, category)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url, draft.category]
   );
   await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [params.id]);
   await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
@@ -2623,9 +2628,9 @@ app.post('/inventory/drafts/approve-all', async (_request, reply) => {
   const items: any[] = [];
   for (const draft of draftRows) {
     const itemRows = await query(
-      `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url]
+      `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url, category)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url, draft.category]
     );
     await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [draft.id]);
     items.push(itemRows[0]);

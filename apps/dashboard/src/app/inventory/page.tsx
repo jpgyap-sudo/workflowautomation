@@ -45,6 +45,7 @@ interface DraftEditState {
     product_name: string;
     description: string;
     dimension: string;
+    category: string;
     quantity: string;
   };
 }
@@ -61,6 +62,7 @@ export default function InventoryPage() {
     product_name: '',
     description: '',
     dimension: '',
+    category: '',
     quantity: '0',
     image_url: '',
   });
@@ -87,7 +89,7 @@ export default function InventoryPage() {
 
   // Edit item inline
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', quantity: '0' });
+  const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
 
   // Initialize draft edits when drafts load
   useEffect(() => {
@@ -97,6 +99,7 @@ export default function InventoryPage() {
         product_name: d.product_name ?? '',
         description: d.description ?? '',
         dimension: d.dimension ?? '',
+        category: d.category ?? '',
         quantity: d.quantity !== null && d.quantity !== undefined ? String(d.quantity) : '',
       };
     }
@@ -109,7 +112,8 @@ export default function InventoryPage() {
     return (
       item.product_name.toLowerCase().includes(q) ||
       (item.description ?? '').toLowerCase().includes(q) ||
-      (item.dimension ?? '').toLowerCase().includes(q)
+      (item.dimension ?? '').toLowerCase().includes(q) ||
+      (item.category ?? '').toLowerCase().includes(q)
     );
   });
 
@@ -168,12 +172,13 @@ export default function InventoryPage() {
         product_name: addForm.product_name.trim(),
         description: addForm.description.trim() || null,
         dimension: addForm.dimension.trim() || null,
+        category: addForm.category.trim() || null,
         quantity: Number(addForm.quantity) || 0,
         image_url: addForm.image_url || null,
       });
       mutateItems();
       setModal('none');
-      setAddForm({ product_name: '', description: '', dimension: '', quantity: '0', image_url: '' });
+      setAddForm({ product_name: '', description: '', dimension: '', category: '', quantity: '0', image_url: '' });
       setAddPreview(null);
       setAddFileName('');
     } catch (err) {
@@ -258,6 +263,7 @@ export default function InventoryPage() {
         product_name: edits.product_name.trim() || undefined,
         description: edits.description.trim() || null,
         dimension: edits.dimension.trim() || null,
+        category: edits.category.trim() || null,
         quantity: edits.quantity ? Number(edits.quantity) : undefined,
       });
       mutateDrafts();
@@ -321,6 +327,7 @@ export default function InventoryPage() {
       product_name: item.product_name,
       description: item.description ?? '',
       dimension: item.dimension ?? '',
+      category: item.category ?? '',
       quantity: String(item.quantity),
     });
   }
@@ -331,6 +338,7 @@ export default function InventoryPage() {
         product_name: editForm.product_name.trim(),
         description: editForm.description.trim() || null,
         dimension: editForm.dimension.trim() || null,
+        category: editForm.category.trim() || null,
         quantity: Number(editForm.quantity) || 0,
       });
       mutateItems();
@@ -443,6 +451,7 @@ export default function InventoryPage() {
                   <th className="px-4 py-3">Product Name</th>
                   <th className="px-4 py-3">Description</th>
                   <th className="px-4 py-3">Dimension</th>
+                  <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Quantity</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -494,6 +503,22 @@ export default function InventoryPage() {
                         />
                       ) : (
                         item.dimension ?? '—'
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {editingId === item.id ? (
+                        <input
+                          value={editForm.category}
+                          onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                          className="w-full rounded border border-gray-200 px-2 py-1 text-sm"
+                          placeholder="e.g. Raw Material"
+                        />
+                      ) : item.category ? (
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                          {item.category}
+                        </span>
+                      ) : (
+                        '—'
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -600,6 +625,15 @@ export default function InventoryPage() {
                   onChange={(e) => setAddForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="e.g. Hand-painted blue ceramic vase"
                   rows={2}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Category</label>
+                <input
+                  value={addForm.category}
+                  onChange={(e) => setAddForm((f) => ({ ...f, category: e.target.value }))}
+                  placeholder="e.g. Raw Material, Finished Good, Packaging"
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
                 />
               </div>
@@ -788,6 +822,7 @@ export default function InventoryPage() {
                           <th className="px-3 py-2">Product Name</th>
                           <th className="px-3 py-2">Description</th>
                           <th className="px-3 py-2">Dimension</th>
+                          <th className="px-3 py-2">Category</th>
                           <th className="px-3 py-2 w-24">Quantity</th>
                           <th className="px-3 py-2 text-right">Actions</th>
                         </tr>
@@ -798,6 +833,7 @@ export default function InventoryPage() {
                             product_name: draft.product_name ?? '',
                             description: draft.description ?? '',
                             dimension: draft.dimension ?? '',
+                            category: draft.category ?? '',
                             quantity: draft.quantity !== null ? String(draft.quantity) : '',
                           };
                           return (
@@ -829,6 +865,14 @@ export default function InventoryPage() {
                                   onChange={(e) => updateDraftField(draft.id, 'dimension', e.target.value)}
                                   className="w-full rounded border border-gray-200 px-2 py-1 text-sm"
                                   placeholder="Dimension"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  value={edits.category}
+                                  onChange={(e) => updateDraftField(draft.id, 'category', e.target.value)}
+                                  className="w-full rounded border border-gray-200 px-2 py-1 text-sm"
+                                  placeholder="Category"
                                 />
                               </td>
                               <td className="px-3 py-2">
