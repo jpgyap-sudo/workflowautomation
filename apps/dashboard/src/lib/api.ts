@@ -428,11 +428,12 @@ export async function lookupClientByName(name: string): Promise<Client> {
 
 export async function createClient(data: {
   client_name: string;
-  delivery_address?: string;
-  contact_number?: string;
-  authorized_receiver_name?: string;
-  authorized_receiver_contact?: string;
-  notes?: string;
+  delivery_address?: string | null;
+  contact_number?: string | null;
+  authorized_receiver_name?: string | null;
+  authorized_receiver_contact?: string | null;
+  notes?: string | null;
+  propagate_to_orders?: boolean;
 }): Promise<Client> {
   return fetchJson<Client>('/clients', {
     method: 'POST',

@@ -869,3 +869,91 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: Client tab linked orders and safe delete improvements
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Implemented deterministic client lookup, order-count stats, linked-order endpoint, update propagation to active linked orders, safe client delete with force unlink, server-side client search in dashboard, expandable client rows with notes/orders, and delete warnings. Verified API and dashboard builds.
+
+#### Lesson Learned
+
+Implemented deterministic client lookup, order-count stats, linked-order endpoint, update propagation to active linked orders, safe client delete with force unlink, server-side client search in dashboard, expandable client rows with notes/orders, and delete warnings. Verified API and dashboard builds.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Client tab improvements verified
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Client backend now returns order stats, deterministic lookup/search, linked order endpoint, propagation of client edits to active linked orders, and safe delete with force unlink. Client dashboard now uses server-side search, expanded linked orders and notes, order counts/latest order, clearable edit fields, and active order delete warning. Builds passed for API and dashboard.
+
+#### Lesson Learned
+
+Client backend now returns order stats, deterministic lookup/search, linked order endpoint, propagation of client edits to active linked orders, and safe delete with force unlink. Client dashboard now uses server-side search, expanded linked orders and notes, order counts/latest order, clearable edit fields, and active order delete warning. Builds passed for API and dashboard.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: align handleAdd and handleEditSave types with ClientFormProps onSave
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4568deaf28b46b1543fe6309f087e03084ba5e49
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4568deaf28b46b1543fe6309f087e03084ba5e49
+**Files:** apps/dashboard/src/app/clients/page.tsx
+
+**Summary:**
+**What was fixed:** Type mismatch between `handleAdd`/`handleEditSave` functions and the `onSave` prop expected by `ClientFormProps`.
+
+**Why it broke:** The `onSave` prop in `ClientFormProps` likely expects a specific function signature (e.g., `(data: ClientData) => void`), but the local handlers had incompatible parameter types or return types. This caused TypeScript compilation errors or runtime type coercion issues.
+
+**Reusable takeaway:** Always align callback signatures (parameter types, return types) between parent components and child props. When a child component defines a typed prop like `onSave`, ensure the parent’s handler matches exactly—especially when passing data objects or using generic types. Use TypeScript’s `typeof` or explicit type annotations on handlers to catch mismatches early. This prevents silent bugs and maintains type safety across component boundaries.
+
+---
+*Original commit message: fix: align handleAdd and handleEditSave types with ClientFormProps onSave*
+
+#### Lesson Learned
+
+**What was fixed:** Type mismatch between `handleAdd`/`handleEditSave` functions and the `onSave` prop expected by `ClientFormProps`.
+
+**Why it broke:** The `onSave` prop in `ClientFormProps` likely expects a specific function signature (e.g., `(data: ClientData) => void`), but the local handlers had incompatible parameter types or return types. This caused TypeScript compilation errors or runtime type coercion issues.
+
+**Reusable takeaway:** Always align callback signatures (parameter types, return types) between parent components and child props. When a child component defines a typed prop like `onSave`, ensure the parent’s handler matches exactly—especially when passing data objects or using generic types. Use TypeScript’s `typeof` or explicit type annotations on handlers to catch mismatches early. This prevents silent bugs and maintains type safety across component boundaries.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

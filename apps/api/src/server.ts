@@ -2231,9 +2231,9 @@ app.patch('/clients/:id', async (request, reply) => {
 
 app.delete('/clients/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
-  const queryParams = z.object({ force: z.coerce.boolean().optional().default(false) }).parse(request.query);
+  const queryParams = z.object({ force: z.string().optional() }).parse(request.query);
   const body = (request.body ?? {}) as any;
-  const force = queryParams.force || body.force === true;
+  const force = queryParams.force === 'true' || queryParams.force === '1' || body.force === true;
 
   const clientRows = await query(`SELECT * FROM clients WHERE id=$1`, [params.id]);
   if (!clientRows[0]) return reply.code(404).send({ error: 'Client not found' });
