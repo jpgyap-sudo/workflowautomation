@@ -2485,6 +2485,8 @@ bot.command('unlink', async (ctx) => {
 async function launchWithRetry(maxRetries = 30, baseDelayMs = 5000): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Reset any lingering polling lock before each attempt
+      await (bot.telegram as any).callApi('close').catch(() => {});
       // Clear any lingering webhook before each attempt
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
       await bot.launch();
