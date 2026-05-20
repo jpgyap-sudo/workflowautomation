@@ -48,7 +48,16 @@ type UserStep =
   | { action: 'awaiting_order_number_for_link' }
   | { action: 'awaiting_file_upload' }
   | { action: 'awaiting_vision_process'; imageBase64: string; mimeType: string; fileName: string }
-  | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string };
+  | { action: 'awaiting_vision_extract'; imageBase64: string; mimeType: string; fileName: string }
+  | {
+      action: 'awaiting_upload_retry';
+      imageBase64: string;
+      mimeType: string;
+      fileName: string;
+      quotationNumber?: string | null;
+      telegramMessageId?: string;
+      uploadedBy?: string;
+    };
 
 interface UserSession {
   step: UserStep;
@@ -78,6 +87,41 @@ function resetStep(chatId: string) {
 
 function escapeMarkdown(value: unknown): string {
   return String(value ?? '').replace(/([_*`[\]\\])/g, '\\$1');
+}
+
+function retryUploadKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔁 Retry upload', 'upload:retry')],
+    [Markup.button.callback('❌ Cancel', 'action:cancel')],
+  ]);
+}
+
+async function uploadFileAndRecord(params: {
+  chatId: string;
+  imageBase64: string;
+  mimeType: string;
+  fileName: string;
+  quotationNumber?: string | null;
+  telegramMessageId?: string;
+  uploadedBy?: string;
+}) {
+  const fileBuffer = Buffer.from(params.imageBase64, 'base64');
+  const driveResult = await uploadToDrive(fileBuffer, params.fileName, params.mimeType);
+
+  const payload: Record<string, unknown> = {
+    file_type: params.mimeType,
+    original_filename: params.fileName,
+    mime_type: params.mimeType,
+    file_data: params.imageBase64,
+    telegram_chat_id: params.chatId,
+    uploaded_by: params.uploadedBy,
+  };
+
+  if (params.telegramMessageId) payload.telegram_message_id = params.telegramMessageId;
+  if (params.quotationNumber) payload.quotation_number = params.quotationNumber;
+
+  await postJson('/drive/upload', payload);
+  return driveResult;
 }
 
 // ── Inline Keyboard Builders ───────────────────────────────────────────
@@ -925,38 +969,91 @@ bot.action('vision:upload', async (ctx) => {
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
-  const fileBuffer = Buffer.from(imageBase64, 'base64');
+  const uploadedBy = ctx.from?.username ?? String(ctx.from?.id);
 
   try {
     await ctx.editMessageText(`📤 Uploading to Google Drive...`);
 
-    const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
-
-    const payload: Record<string, unknown> = {
-      file_type: mimeType,
-      original_filename: fileName,
-      mime_type: mimeType,
-      file_data: imageBase64,
-      telegram_chat_id: chatId,
-      uploaded_by: ctx.from?.username ?? String(ctx.from?.id),
-    };
-
-    await fetch(`${apiBaseUrl}/drive/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    const driveResult = await uploadFileAndRecord({
+      chatId,
+      imageBase64,
+      mimeType,
+      fileName,
+      uploadedBy,
     });
 
     resetStep(chatId);
     await ctx.editMessageText(
-      `✅ *File uploaded to Google Drive!*\n📄 ${escapeMarkdown(fileName)}\n🔗 ${escapeMarkdown(driveResult.webViewLink)}`,
+      `✅ *File uploaded to Google Drive!*
+📄 ${escapeMarkdown(fileName)}
+🔗 ${escapeMarkdown(driveResult.webViewLink)}`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (error: any) {
     console.error('[vision] Upload error:', error);
-    resetStep(chatId);
-    await ctx.editMessageText(`❌ Upload failed: ${String(error.message ?? error)}`, {
+    setStep(chatId, {
+      action: 'awaiting_upload_retry',
+      imageBase64,
+      mimeType,
+      fileName,
+      uploadedBy,
+    });
+    await ctx.editMessageText(`❌ Upload failed: ${String(error.message ?? error)}
+
+Tap Retry upload to try again.`, {
+      ...retryUploadKeyboard(),
+    });
+  }
+});
+
+bot.action('upload:retry', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+
+  if (session.step.action !== 'awaiting_upload_retry') {
+    return ctx.editMessageText('⏳ Retry session expired. Please upload the file again.', {
       ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName, quotationNumber, telegramMessageId, uploadedBy } = session.step;
+
+  try {
+    await ctx.editMessageText('📤 Retrying upload to Google Drive...');
+    const driveResult = await uploadFileAndRecord({
+      chatId,
+      imageBase64,
+      mimeType,
+      fileName,
+      quotationNumber,
+      telegramMessageId,
+      uploadedBy: uploadedBy ?? ctx.from?.username ?? String(ctx.from?.id),
+    });
+
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *File uploaded to Google Drive!*
+📄 ${escapeMarkdown(fileName)}
+🔗 ${escapeMarkdown(driveResult.webViewLink)}` +
+        (quotationNumber ? `
+📦 Linked to order: ${escapeMarkdown(quotationNumber)}` : ''),
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (error: any) {
+    console.error('[upload:retry] Upload error:', error);
+    setStep(chatId, {
+      action: 'awaiting_upload_retry',
+      imageBase64,
+      mimeType,
+      fileName,
+      quotationNumber,
+      telegramMessageId,
+      uploadedBy,
+    });
+    await ctx.editMessageText(`❌ Upload failed again: ${String(error.message ?? error)}
+
+Tap Retry upload to try again.`, {
+      ...retryUploadKeyboard(),
     });
   }
 });
@@ -985,6 +1082,7 @@ bot.on(['document', 'photo'], async (ctx) => {
   let fileId: string;
   let fileName: string;
   let mimeType: string;
+  let imageBase64: string | null = null;
 
   const msg = ctx.message as any;
   if (msg.document) {
@@ -1009,62 +1107,81 @@ bot.on(['document', 'photo'], async (ctx) => {
     const response = await fetch(link.href);
     if (!response.ok) throw new Error(`Telegram download failed: ${response.status}`);
     const fileBuffer = Buffer.from(await response.arrayBuffer());
-    const imageBase64 = fileBuffer.toString('base64');
+    imageBase64 = fileBuffer.toString('base64');
 
     // Step 2: Ask user if they want to process this file
-      // For images and PDFs, offer the vision workflow
-      const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
-      if (isProcessable) {
-        setStep(chatId, {
-          action: 'awaiting_vision_process',
-          imageBase64,
-          mimeType,
-          fileName,
-        });
+    // For images and PDFs, offer the vision workflow
+    const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
+    if (isProcessable) {
+      setStep(chatId, {
+        action: 'awaiting_vision_process',
+        imageBase64,
+        mimeType,
+        fileName,
+      });
 
-        await ctx.reply(
-          `📎 *File received:* ${escapeMarkdown(fileName)}\n\nDo you want me to process this order?`,
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.callback('✅ Yes, process this order', 'vision:process_yes')],
-              [Markup.button.callback('❌ No, do nothing', 'vision:process_no')],
-            ]),
-          }
-        );
-      } else {
-        // Non-image/PDF: just upload to Drive as before
-        await ctx.reply(`📤 Uploading to Google Drive...`);
-        const quotationNumber = session.linkedOrder;
-        const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
+      await ctx.reply(
+        `📎 *File received:* ${escapeMarkdown(fileName)}
 
-        const payload: Record<string, unknown> = {
-          file_type: mimeType,
-          original_filename: fileName,
-          mime_type: mimeType,
-          file_data: imageBase64,
-          telegram_chat_id: chatId,
-          telegram_message_id: messageId,
-          uploaded_by: from,
-        };
-        if (quotationNumber) payload.quotation_number = quotationNumber;
-        await postJson('/drive/upload', payload);
+Do you want me to process this order?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Yes, process this order', 'vision:process_yes')],
+            [Markup.button.callback('❌ No, do nothing', 'vision:process_no')],
+          ]),
+        }
+      );
+    } else {
+      // Non-image/PDF: upload directly to Drive and keep retry data if it fails.
+      await ctx.reply(`📤 Uploading to Google Drive...`);
+      const quotationNumber = session.linkedOrder;
+      const driveResult = await uploadFileAndRecord({
+        chatId,
+        imageBase64,
+        mimeType,
+        fileName,
+        quotationNumber,
+        telegramMessageId: messageId,
+        uploadedBy: from,
+      });
 
-        await ctx.reply(
-          `✅ *File uploaded to Google Drive!*\n📄 ${escapeMarkdown(fileName)}\n🔗 ${escapeMarkdown(driveResult.webViewLink)}` +
-            (quotationNumber ? `\n📦 Linked to order: ${escapeMarkdown(quotationNumber)}` : ''),
-          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-        );
-      }
-    } catch (error: any) {
+      await ctx.reply(
+        `✅ *File uploaded to Google Drive!*
+📄 ${escapeMarkdown(fileName)}
+🔗 ${escapeMarkdown(driveResult.webViewLink)}` +
+          (quotationNumber ? `
+📦 Linked to order: ${escapeMarkdown(quotationNumber)}` : ''),
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    }
+  } catch (error: any) {
     console.error('Upload error:', error);
+    if (imageBase64) {
+      setStep(chatId, {
+        action: 'awaiting_upload_retry',
+        imageBase64,
+        mimeType,
+        fileName,
+        quotationNumber: session.linkedOrder,
+        telegramMessageId: messageId,
+        uploadedBy: from,
+      });
+      await ctx.reply(`❌ Upload failed: ${String(error.message ?? error)}
+
+Tap Retry upload to try again.`, {
+        ...retryUploadKeyboard(),
+      });
+      return;
+    }
+
     await ctx.reply(`❌ Upload failed: ${String(error.message ?? error)}`, {
       ...cancelButton(),
     });
   }
 });
 
-// ── Help Command ──────────────────────────────────────────────────────
+// Help Command
 bot.command('help', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   resetStep(chatId);
