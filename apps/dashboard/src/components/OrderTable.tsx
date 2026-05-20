@@ -50,9 +50,18 @@ export default function OrderTable({
             <article key={order.id} className="space-y-3 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-gray-900">
-                    {order.quotation_number ?? '—'}
-                  </p>
+                  {order.google_drive_folder_id ? (
+                    <a
+                      href={`https://drive.google.com/drive/folders/${order.google_drive_folder_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate text-sm font-semibold text-[#2490ef] hover:underline"
+                    >
+                      {order.quotation_number ?? '—'}
+                    </a>
+                  ) : (
+                    <p className="truncate text-sm font-semibold text-gray-900">{order.quotation_number ?? '—'}</p>
+                  )}
                   {showClient && <p className="truncate text-xs text-gray-500">{order.client_name ?? 'No client'}</p>}
                 </div>
                 <StageBadge stage={order.current_stage} />
@@ -155,7 +164,20 @@ export default function OrderTable({
           <tbody className="divide-y divide-gray-100">
             {orders.map((order) => (
               <tr key={order.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">{order.quotation_number ?? '—'}</td>
+                <td className="px-4 py-3 font-medium">
+                  {order.google_drive_folder_id ? (
+                    <a
+                      href={`https://drive.google.com/drive/folders/${order.google_drive_folder_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#2490ef] hover:underline"
+                    >
+                      {order.quotation_number ?? '—'}
+                    </a>
+                  ) : (
+                    <span className="text-gray-900">{order.quotation_number ?? '—'}</span>
+                  )}
+                </td>
                 {showClient && <td className="px-4 py-3 text-gray-600">{order.client_name ?? '—'}</td>}
                 {showAgent && <td className="px-4 py-3 text-gray-600">{order.sales_agent ?? '—'}</td>}
                 <td className="px-4 py-3"><StageBadge stage={order.current_stage} /></td>
