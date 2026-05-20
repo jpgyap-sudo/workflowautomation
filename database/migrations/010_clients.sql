@@ -1,4 +1,6 @@
 -- Client Database for delivery purposes
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS clients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_name TEXT NOT NULL UNIQUE,
