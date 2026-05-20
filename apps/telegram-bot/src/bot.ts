@@ -2471,32 +2471,53 @@ bot.command('unlink', async (ctx) => {
 // ── Start ─────────────────────────────────────────────────────────────
 
 /**
- * Launch the bot with retry logic for 409 Conflict errors.
+ * Launch the bot with retry logic for 409 Conflict and 429 rate-limit errors.
  *
  * When a container restarts, Telegram's polling lock from the previous
  * instance may still be active. deleteWebhook does NOT clear polling locks,
- * so we use the Telegram Bot API `close` method to terminate any existing
- * session before launching. If a 409 still occurs, we retry with exponential
- * backoff (capped at 60s) up to 12 times (~5 minutes total).
+ * so we attempt to call the Telegram Bot API `close` method to terminate
+ * any existing session before launching (non-fatal if it fails).
+ *
+ * If a 409 still occurs, we retry with exponential backoff (capped at 60s)
+ * up to 12 times (~5 minutes total). 429 rate-limit errors also trigger
+ * a retry using the recommended retry_after value.
  */
 async function launchWithRetry(maxRetries = 12, baseDelayMs = 5000): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // 1) Clear any lingering webhook
-      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-      // 2) Close any existing bot session (releases polling lock)
-      await bot.telegram.callApi('close', {});
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
+      // 2) Attempt to close any existing bot session (releases polling lock).
+      //    This may fail with 429 if rate-limited — that's non-fatal.
+      await bot.telegram.callApi('close', {}).catch(() => {});
       // 3) Launch
       await bot.launch();
       console.log(`[bot] Launched successfully on attempt ${attempt}`);
       return;
     } catch (err: any) {
-      const is409 = err?.code === 409 || (err?.message && err.message.includes('409'));
-      if (!is409 || attempt === maxRetries) {
+      const errCode = err?.response?.error_code ?? err?.code ?? 0;
+      const errMsg = err?.message ?? '';
+      const is409 = errCode === 409 || errMsg.includes('409');
+      const is429 = errCode === 429 || errMsg.includes('429');
+      const retryAfter = err?.response?.parameters?.retry_after;
+
+      if (attempt === maxRetries) {
         throw err;
       }
-      const delay = Math.min(baseDelayMs * Math.pow(1.5, attempt - 1), 60_000);
-      console.log(`[bot] 409 Conflict on attempt ${attempt}, retrying in ${delay}ms...`);
+
+      let delay: number;
+      if (is429 && retryAfter) {
+        // Use Telegram's recommended wait time + 1s buffer
+        delay = (retryAfter + 1) * 1000;
+        console.log(`[bot] 429 Rate Limited on attempt ${attempt}, waiting ${retryAfter}s as recommended...`);
+      } else if (is409) {
+        delay = Math.min(baseDelayMs * Math.pow(1.5, attempt - 1), 60_000);
+        console.log(`[bot] 409 Conflict on attempt ${attempt}, retrying in ${delay}ms...`);
+      } else {
+        // Unknown error — throw immediately
+        throw err;
+      }
+
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
