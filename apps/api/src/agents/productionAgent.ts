@@ -11,12 +11,20 @@ import {
   getGroupChatId,
 } from '../services/agentRunner.js';
 import { query } from '../db.js';
+import {
+  analyzeProductionOrder,
+  type HermesProductionContext,
+  isHermesAvailable,
+} from '../services/hermesClaw.js';
 
 /**
  * production-agent  (Hermes Claw)
  *
- * "Hermes Claw" = adaptive-frequency messenger that closes in on deadlines.
- * The closer an order is to its production deadline, the tighter the reminder grip.
+ * "Hermes Claw" = adaptive-frequency messenger with AI-powered analysis.
+ * Uses Gemini API to analyze production context, detect patterns, recall past
+ * notes, and generate smarter, context-aware messages.
+ *
+ * Falls back to rule-based logic when Gemini is unavailable.
  *
  * Frequency bands:
  *   > 50% time remaining  → 24h (daily)
@@ -46,6 +54,35 @@ function adaptiveLabel(pctElapsed: number, isOverdue: boolean): string {
   if (pctElapsed >= 80) return '🟠 URGENT';
   if (pctElapsed >= 50) return '🟡 DUE SOON';
   return '🟢 ON TRACK';
+}
+
+// ── Build Hermes context from order row ───────────────────────────────
+
+function buildHermesContext(
+  order: OrderRow,
+  daysInStage: number,
+  pctElapsed: number,
+  isOverdue: boolean,
+  escalationLevel: number,
+): HermesProductionContext {
+  return {
+    quotation_number: order.quotation_number,
+    client_name: order.client_name,
+    sales_agent: order.sales_agent,
+    stage: order.current_stage,
+    production_started: order.production_started,
+    production_started_at: order.production_started_at,
+    estimated_production_days: order.estimated_production_days,
+    production_delayed: order.production_delayed,
+    production_finished: order.production_finished,
+    production_finished_at: order.production_finished_at,
+    en_route_confirmed: order.en_route_confirmed,
+    estimated_arrival_days: order.estimated_arrival_days,
+    days_in_stage: daysInStage,
+    pct_elapsed: pctElapsed,
+    is_overdue: isOverdue,
+    escalation_level: escalationLevel,
+  };
 }
 
 // ── Upsert reminder with adaptive next_run_at ─────────────────────────
@@ -125,13 +162,22 @@ async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
     const statusLabel = adaptiveLabel(pctElapsed, isOverdue);
     const nextRunMs = adaptiveNextRunMs(pctElapsed, isOverdue);
 
-    let message: string;
-    if (isOverdue) {
-      const overdueDays = daysElapsed - order.estimated_production_days;
-      message = `${statusLabel} — Production for #${order.quotation_number ?? 'unknown'} is ${overdueDays} day(s) overdue (${order.estimated_production_days} days estimated). Is it finished yet?`;
-    } else {
-      message = `${statusLabel} — Production for #${order.quotation_number ?? 'unknown'}: ${pctElapsed}% elapsed, ~${daysRemaining} day(s) remaining. Still on track?`;
-    }
+    // ── Hermes Claw AI analysis ──────────────────────────────────────
+    const hermesCtx = buildHermesContext(
+      order,
+      daysElapsed,
+      pctElapsed,
+      isOverdue,
+      escalationLevel,
+    );
+    const hermesAnalysis = await analyzeProductionOrder(hermesCtx, order.id);
+
+    // Use Hermes message if available, otherwise fall back to rule-based
+    const message = hermesAnalysis
+      ? `${statusLabel} — ${hermesAnalysis.message}`
+      : isOverdue
+        ? `${statusLabel} — Production for #${order.quotation_number ?? 'unknown'} is ${daysElapsed - order.estimated_production_days} day(s) overdue (${order.estimated_production_days} days estimated). Is it finished yet?`
+        : `${statusLabel} — Production for #${order.quotation_number ?? 'unknown'}: ${pctElapsed}% elapsed, ~${daysRemaining} day(s) remaining. Still on track?`;
 
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
@@ -184,12 +230,22 @@ async function checkEnRoute(order: OrderRow): Promise<AgentResult> {
     const nextRunMs = adaptiveNextRunMs(pctElapsed, isOverdue);
     const statusLabel = adaptiveLabel(pctElapsed, isOverdue);
 
-    let message: string;
-    if (isOverdue) {
-      message = `${statusLabel} — Order #${order.quotation_number ?? 'unknown'} is ${daysWaiting - estimatedDays}d past estimated arrival. Has inventory arrived yet?`;
-    } else {
-      message = `${statusLabel} — Order #${order.quotation_number ?? 'unknown'} is en route. ~${daysRemaining} day(s) until estimated arrival. Confirm when inventory arrives.`;
-    }
+    // ── Hermes Claw AI analysis ──────────────────────────────────────
+    const hermesCtx = buildHermesContext(
+      order,
+      daysWaiting,
+      pctElapsed,
+      isOverdue,
+      escalationLevel,
+    );
+    const hermesAnalysis = await analyzeProductionOrder(hermesCtx, order.id);
+
+    // Use Hermes message if available, otherwise fall back to rule-based
+    const message = hermesAnalysis
+      ? `${statusLabel} — ${hermesAnalysis.message}`
+      : isOverdue
+        ? `${statusLabel} — Order #${order.quotation_number ?? 'unknown'} is ${daysWaiting - estimatedDays}d past estimated arrival. Has inventory arrived yet?`
+        : `${statusLabel} — Order #${order.quotation_number ?? 'unknown'} is en route. ~${daysRemaining} day(s) until estimated arrival. Confirm when inventory arrives.`;
 
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
@@ -242,8 +298,22 @@ async function checkPartialProduction(order: PartialOrder): Promise<AgentResult>
         ? '🟠 NEEDS ATTENTION'
         : '🟡 PENDING';
 
+    // ── Hermes Claw AI analysis for partial production ───────────────
+    const hermesCtx = buildHermesContext(
+      order,
+      daysPending,
+      0, // No timeline pct for partial
+      daysPending >= 7,
+      escalationLevel,
+    );
+    const hermesAnalysis = await analyzeProductionOrder(hermesCtx, order.id);
+
     const itemList = items.map(i => `• ${i}`).join('\n');
-    const message = `${urgency} — Partial production for #${order.quotation_number ?? 'unknown'} (${daysPending}d pending).\n\nItems not yet produced:\n${itemList}\n\nUpdate via Telegram: reply which items are now done.`;
+
+    // Use Hermes message if available, otherwise fall back to rule-based
+    const message = hermesAnalysis
+      ? `${urgency} — ${hermesAnalysis.message}\n\nItems not yet produced:\n${itemList}\n\nUpdate via Telegram: reply which items are now done.`
+      : `${urgency} — Partial production for #${order.quotation_number ?? 'unknown'} (${daysPending}d pending).\n\nItems not yet produced:\n${itemList}\n\nUpdate via Telegram: reply which items are now done.`;
 
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
@@ -278,6 +348,13 @@ async function checkPartialProduction(order: PartialOrder): Promise<AgentResult>
 
 export async function runProductionAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
+
+  const hermesAvailable = isHermesAvailable();
+  if (hermesAvailable) {
+    console.log('[ProductionAgent] 🧠 Hermes Claw AI is active — using Gemini for smarter analysis');
+  } else {
+    console.log('[ProductionAgent] Hermes Claw AI unavailable — using rule-based fallback');
+  }
 
   // 1. Production confirmed — adaptive frequency
   const confirmedOrders = await getActiveOrdersByStage('production_confirmed');
