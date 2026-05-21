@@ -320,6 +320,105 @@ export async function confirmEnRoute(
   );
 }
 
+// ── Order Items (Item-Level Production Tracking) ─────────────────────
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  name: string;
+  quantity: number;
+  production_status: 'pending' | 'in_progress' | 'finished';
+  en_route_status: 'not_yet' | 'en_route' | 'arrived';
+  estimated_arrival_days: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductionUpdateLog {
+  id: string;
+  order_item_id: string | null;
+  order_id: string;
+  note: string;
+  log_type: 'user' | 'agent' | 'system';
+  created_by: string | null;
+  created_at: string;
+  item_name: string | null;
+}
+
+export interface ItemCompletion {
+  order_id: string;
+  production_completion_pct: number;
+  en_route_completion_pct: number;
+  inventory_completion_pct: number;
+}
+
+export async function getOrderItems(orderId: string): Promise<{ ok: boolean; items: OrderItem[] }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[] }>(`/orders/${encodeURIComponent(orderId)}/items`);
+}
+
+export async function upsertOrderItems(
+  orderId: string,
+  items: { name: string; quantity: number; production_status?: string; en_route_status?: string; estimated_arrival_days?: number | null }[]
+): Promise<{ ok: boolean; items: OrderItem[] }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[] }>(
+    `/orders/${encodeURIComponent(orderId)}/items`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }
+  );
+}
+
+export async function updateOrderItem(
+  orderId: string,
+  itemId: string,
+  data: {
+    name?: string;
+    quantity?: number;
+    production_status?: string;
+    en_route_status?: string;
+    estimated_arrival_days?: number | null;
+  }
+): Promise<{ ok: boolean; item: OrderItem }> {
+  return fetchJson<{ ok: boolean; item: OrderItem }>(
+    `/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function getItemCompletion(orderId: string): Promise<{ ok: boolean } & ItemCompletion> {
+  return fetchJson<{ ok: boolean } & ItemCompletion>(
+    `/orders/${encodeURIComponent(orderId)}/items/completion`
+  );
+}
+
+export async function getProductionLogs(orderId: string): Promise<{ ok: boolean; logs: ProductionUpdateLog[] }> {
+  return fetchJson<{ ok: boolean; logs: ProductionUpdateLog[] }>(
+    `/orders/${encodeURIComponent(orderId)}/production-logs`
+  );
+}
+
+export async function addProductionLog(
+  orderId: string,
+  data: {
+    order_item_id?: string | null;
+    note: string;
+    log_type?: string;
+    created_by?: string;
+  }
+): Promise<{ ok: boolean; log: ProductionUpdateLog }> {
+  return fetchJson<{ ok: boolean; log: ProductionUpdateLog }>(
+    `/orders/${encodeURIComponent(orderId)}/production-logs`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 export async function sendOtpForAction(email: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/auth/send-otp', {
     method: 'POST',

@@ -1001,6 +1001,227 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   return reply.send({ ok: true, order: rows[0] });
 });
 
+// ── Order Items (Item-Level Production Tracking) ─────────────────────
+// Phase 2: API endpoints for item-level production tracking
+// These endpoints manage order_items and production_update_logs tables.
+
+const orderItemSchema = z.object({
+  name: z.string().min(1),
+  quantity: z.number().int().positive(),
+  production_status: z.enum(['pending', 'in_progress', 'finished']).optional(),
+  en_route_status: z.enum(['not_yet', 'en_route', 'arrived']).optional(),
+  estimated_arrival_days: z.number().int().positive().nullable().optional(),
+});
+
+const bulkUpsertItemsSchema = z.object({
+  items: z.array(orderItemSchema).min(1),
+});
+
+const updateItemSchema = z.object({
+  name: z.string().min(1).optional(),
+  quantity: z.number().int().positive().optional(),
+  production_status: z.enum(['pending', 'in_progress', 'finished']).optional(),
+  en_route_status: z.enum(['not_yet', 'en_route', 'arrived']).optional(),
+  estimated_arrival_days: z.number().int().positive().nullable().optional(),
+});
+
+const addProductionLogSchema = z.object({
+  order_item_id: z.string().uuid().nullable().optional(),
+  note: z.string().min(1),
+  log_type: z.enum(['user', 'agent', 'system']).optional(),
+  created_by: z.string().optional(),
+});
+
+// GET /orders/:id/items — Get all items for an order
+app.get('/orders/:id/items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  const rows = await query(
+    `SELECT oi.id, oi.order_id, oi.name, oi.quantity,
+            oi.production_status, oi.en_route_status,
+            oi.estimated_arrival_days, oi.created_at, oi.updated_at
+     FROM order_items oi
+     WHERE oi.order_id = $1
+     ORDER BY oi.created_at ASC`,
+    [id]
+  );
+
+  return reply.send({ ok: true, items: rows });
+});
+
+// POST /orders/:id/items — Bulk upsert items (from Hermes extraction or manual)
+app.post('/orders/:id/items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkUpsertItemsSchema.parse(request.body);
+
+  // Verify order exists
+  const orderRows = await query(
+    `SELECT id, quotation_number FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  // Delete existing items and re-insert (bulk replace)
+  await query(`DELETE FROM order_items WHERE order_id = $1`, [id]);
+
+  for (const item of body.items) {
+    await query(
+      `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status, estimated_arrival_days)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, item.name, item.quantity,
+       item.production_status ?? 'pending',
+       item.en_route_status ?? 'not_yet',
+       item.estimated_arrival_days ?? null]
+    );
+  }
+
+  // Log the action
+  await query(
+    `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+     VALUES ($1, $2, 'system', 'api')`,
+    [id, `Items updated: ${body.items.map(i => `${i.name} x${i.quantity}`).join(', ')}`]
+  );
+
+  // Fetch and return the new items
+  const items = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, items });
+});
+
+// PATCH /orders/:order_id/items/:item_id — Update a single item
+app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
+  const { order_id, item_id } = request.params as { order_id: string; item_id: string };
+  const body = updateItemSchema.parse(request.body);
+
+  // Build dynamic SET clause
+  const setClauses: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  if (body.name !== undefined) {
+    setClauses.push(`name = $${idx++}`);
+    values.push(body.name);
+  }
+  if (body.quantity !== undefined) {
+    setClauses.push(`quantity = $${idx++}`);
+    values.push(body.quantity);
+  }
+  if (body.production_status !== undefined) {
+    setClauses.push(`production_status = $${idx++}`);
+    values.push(body.production_status);
+  }
+  if (body.en_route_status !== undefined) {
+    setClauses.push(`en_route_status = $${idx++}`);
+    values.push(body.en_route_status);
+  }
+  if (body.estimated_arrival_days !== undefined) {
+    setClauses.push(`estimated_arrival_days = $${idx++}`);
+    values.push(body.estimated_arrival_days);
+  }
+
+  if (setClauses.length === 0) {
+    return reply.code(400).send({ error: 'No fields to update' });
+  }
+
+  setClauses.push(`updated_at = NOW()`);
+  values.push(item_id);
+  values.push(order_id);
+
+  const rows = await query(
+    `UPDATE order_items SET ${setClauses.join(', ')}
+     WHERE id = $${idx++} AND order_id = $${idx}
+     RETURNING id, order_id, name, quantity, production_status, en_route_status,
+               estimated_arrival_days, created_at, updated_at`,
+    values
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { order_id });
+  return reply.send({ ok: true, item: rows[0] });
+});
+
+// GET /orders/:id/items/completion — Get completion percentages
+app.get('/orders/:id/items/completion', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  const rows = await query(
+    `SELECT
+       get_production_completion_pct($1) AS production_pct,
+       get_en_route_completion_pct($1) AS en_route_pct,
+       get_inventory_completion_pct($1) AS inventory_pct`,
+    [id]
+  );
+
+  return reply.send({
+    ok: true,
+    order_id: id,
+    production_completion_pct: rows[0]?.production_pct ?? 0,
+    en_route_completion_pct: rows[0]?.en_route_pct ?? 0,
+    inventory_completion_pct: rows[0]?.inventory_pct ?? 0,
+  });
+});
+
+// GET /orders/:id/production-logs — Get production update logs
+app.get('/orders/:id/production-logs', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  const rows = await query(
+    `SELECT pl.id, pl.order_item_id, pl.order_id, pl.note, pl.log_type,
+            pl.created_by, pl.created_at,
+            oi.name AS item_name
+     FROM production_update_logs pl
+     LEFT JOIN order_items oi ON oi.id = pl.order_item_id
+     WHERE pl.order_id = $1
+     ORDER BY pl.created_at DESC
+     LIMIT 100`,
+    [id]
+  );
+
+  return reply.send({ ok: true, logs: rows });
+});
+
+// POST /orders/:id/production-logs — Add a production update log
+app.post('/orders/:id/production-logs', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = addProductionLogSchema.parse(request.body);
+
+  // Verify order exists
+  const orderRows = await query(
+    `SELECT id FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  // If order_item_id provided, verify it belongs to this order
+  if (body.order_item_id) {
+    const itemRows = await query(
+      `SELECT id FROM order_items WHERE id = $1 AND order_id = $2`,
+      [body.order_item_id, id]
+    );
+    if (!itemRows[0]) return reply.code(404).send({ error: 'Item not found for this order' });
+  }
+
+  const rows = await query(
+    `INSERT INTO production_update_logs (order_item_id, order_id, note, log_type, created_by)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, order_item_id, order_id, note, log_type, created_by, created_at`,
+    [body.order_item_id ?? null, id, body.note, body.log_type ?? 'user', body.created_by ?? null]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, log: rows[0] });
+});
+
 // ── Recalculate Production Reminders ─────────────────────────────────
 // When estimated_production_days changes, recalculate midpoint and due reminders
 const recalcProductionRemindersSchema = z.object({

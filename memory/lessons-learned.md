@@ -1959,3 +1959,99 @@ When adding new workflow types, always audit all branching logic (case/switch, i
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add production_pending reminder after deposit verification — production agent now reminds production group to start
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c3c1efe071853044a7569c97c217be6f11e480b3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c3c1efe071853044a7569c97c217be6f11e480b3
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts
+
+**Summary:**
+**What was fixed:**  
+A missing reminder notification for the production group after a deposit was verified. The production agent now triggers a `production_pending` reminder to the production team to begin work.
+
+**Why it broke:**  
+The deposit verification flow completed without notifying the production group. The reminder scheduler lacked a trigger for the `production_pending` state, so the production team was never informed to start production.
+
+**Reusable takeaway:**  
+When designing multi-step workflows, ensure every state transition that requires human action has an explicit notification trigger. Do not assume downstream teams will be automatically aware of upstream completions. Always map state changes to required notifications, especially in asynchronous, multi-actor systems.
+
+---
+*Original commit message: fix: add production_pending reminder after deposit verification — production agent now reminds production group to start production*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing reminder notification for the production group after a deposit was verified. The production agent now triggers a `production_pending` reminder to the production team to begin work.
+
+**Why it broke:**  
+The deposit verification flow completed without notifying the production group. The reminder scheduler lacked a trigger for the `production_pending` state, so the production team was never informed to start production.
+
+**Reusable takeaway:**  
+When designing multi-step workflows, ensure every state transition that requires human action has an explicit notification trigger. Do not assume downstream teams will be automatically aware of upstream completions. Always map state changes to required notifications, especially in asynchronous, multi-actor systems.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: verify-deposit stage advancement for quotation_received orders — add quotation_received to deposit_pending CASE and
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e0aa6432717cbb888d3f4df56cd042772dc1ef1c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e0aa6432717cbb888d3f4df56cd042772dc1ef1c
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+The `verify-deposit` stage was not advancing for orders with status `quotation_received`. The `deposit_pending` CASE statement and `nextStage` logic both lacked handling for this status.
+
+**Why it broke:**  
+The workflow assumed deposit verification only applied to orders in a narrower set of prior states, omitting `quotation_received`. This caused a silent skip in stage progression for valid orders.
+
+**Reusable takeaway:**  
+When implementing state-machine workflows, always audit all possible predecessor states for each transition. Use exhaustive CASE statements or a state-transition matrix to avoid missing edge cases. Consider adding a unit test that enumerates all valid state transitions to catch gaps early.
+
+---
+*Original commit message: fix: verify-deposit stage advancement for quotation_received orders — add quotation_received to deposit_pending CASE and broaden nextStage logic*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `verify-deposit` stage was not advancing for orders with status `quotation_received`. The `deposit_pending` CASE statement and `nextStage` logic both lacked handling for this status.
+
+**Why it broke:**  
+The workflow assumed deposit verification only applied to orders in a narrower set of prior states, omitting `quotation_received`. This caused a silent skip in stage progression for valid orders.
+
+**Reusable takeaway:**  
+When implementing state-machine workflows, always audit all possible predecessor states for each transition. Use exhaustive CASE statements or a state-transition matrix to avoid missing edge cases. Consider adding a unit test that enumerates all valid state transitions to catch gaps early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
