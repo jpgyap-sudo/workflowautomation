@@ -65,7 +65,7 @@ fi
 
 # ── Step 1: Tag current images for rollback ──
 echo "=== Step 1: Tag current images for rollback ==="
-for svc in api telegram-bot dashboard; do
+for svc in api telegram-bot dashboard backup-agent; do
   img=$(docker inspect --format='{{.Config.Image}}' "qas_${svc}" 2>/dev/null || true)
   if [ -n "$img" ]; then
     docker tag "$img" "${img}:${ROLLBACK_TAG}" 2>/dev/null || true
@@ -127,7 +127,7 @@ recreate_service() {
   fi
 }
 
-# Recreate in dependency order: postgres & redis stay up, then api, dashboard, telegram-bot
+# Recreate in dependency order: postgres & redis stay up, then api, dashboard, telegram-bot, backup-agent
 # postgres and redis are data services — only recreate if their images changed
 recreate_service "api"           "qas_api"           "http://127.0.0.1:8080/health" || FAILED=1
 if [ $FAILED -eq 0 ]; then
@@ -135,6 +135,9 @@ if [ $FAILED -eq 0 ]; then
 fi
 if [ $FAILED -eq 0 ]; then
   recreate_service "telegram-bot"  "qas_telegram_bot"  ""                               || FAILED=1
+fi
+if [ $FAILED -eq 0 ]; then
+  recreate_service "backup-agent"  "qas_backup_agent"  ""                               || FAILED=1
 fi
 echo ""
 
@@ -164,10 +167,11 @@ else
   echo "=== ❌ Deployment failed ==="
   echo ""
   echo "To rollback to the previous working state:"
-  echo "  docker stop qas_api qas_dashboard qas_telegram_bot 2>/dev/null; docker rm qas_api qas_dashboard qas_telegram_bot 2>/dev/null"
-  echo "  docker run -d --name qas_api       --restart unless-stopped --network quotation-automation_default ghcr.io/jpgyap-sudo/workflowautomation/api:${ROLLBACK_TAG}"
-  echo "  docker run -d --name qas_dashboard  --restart unless-stopped --network quotation-automation_default ghcr.io/jpgyap-sudo/workflowautomation/dashboard:${ROLLBACK_TAG}"
-  echo "  docker run -d --name qas_telegram_bot --restart unless-stopped --network quotation-automation_default --env-file .env ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:${ROLLBACK_TAG}"
+  echo "  docker stop qas_api qas_dashboard qas_telegram_bot qas_backup_agent 2>/dev/null; docker rm qas_api qas_dashboard qas_telegram_bot qas_backup_agent 2>/dev/null"
+  echo "  docker run -d --name qas_api          --restart unless-stopped --network quotation-automation_default ghcr.io/jpgyap-sudo/workflowautomation/api:${ROLLBACK_TAG}"
+  echo "  docker run -d --name qas_dashboard     --restart unless-stopped --network quotation-automation_default ghcr.io/jpgyap-sudo/workflowautomation/dashboard:${ROLLBACK_TAG}"
+  echo "  docker run -d --name qas_telegram_bot  --restart unless-stopped --network quotation-automation_default --env-file .env ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:${ROLLBACK_TAG}"
+  echo "  docker run -d --name qas_backup_agent  --restart unless-stopped --network quotation-automation_default --env-file .env ghcr.io/jpgyap-sudo/workflowautomation/backup-agent:${ROLLBACK_TAG}"
   echo ""
   $COMPOSE_CMD -f "$PROJECT_DIR/docker-compose.yml" ps
   echo ""

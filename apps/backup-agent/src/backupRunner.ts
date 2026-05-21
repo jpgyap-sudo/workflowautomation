@@ -1,18 +1,17 @@
+/**
+ * Backup Runner — runs in a separate container, independent of the API.
+ *
+ * This container:
+ * 1. Has Docker CLI access (to run `docker exec pg_dump` on the postgres container)
+ * 2. Runs pg_dump → gzip → upload to Supabase Storage on a configurable schedule
+ * 3. Sends Telegram alerts on failure (if BACKUP_ALERT_CHAT_ID is set)
+ * 4. Is completely independent of the API container — survives quarantine/restarts
+ */
+
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync, readdirSync, statSync, existsSync, rmdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { logAgentAction, sendTelegramMessage } from '../services/agentRunner.js';
-
-// ── Types ──────────────────────────────────────────────────────────────
-
-export interface SupabaseBackupResult {
-  status: 'ok' | 'error';
-  message: string;
-  backup_file?: string;
-  file_size_bytes?: number;
-  bucket?: string;
-}
 
 // ── Configuration ──────────────────────────────────────────────────────
 
@@ -22,9 +21,9 @@ const SUPABASE_BACKUP_BUCKET = process.env.SUPABASE_BACKUP_BUCKET ?? 'db-backups
 const CONTAINER = process.env.CONTAINER ?? 'qas_postgres';
 const DB_USER = process.env.POSTGRES_USER ?? 'n8n';
 const DB_NAME = process.env.POSTGRES_DB ?? 'quotation_automation';
-
-// Telegram notification chat ID (optional — set env var to enable alerts)
+const BACKUP_INTERVAL_MS = parseInt(process.env.BACKUP_INTERVAL_MS ?? '21600000', 10); // default: 6 hours
 const BACKUP_ALERT_CHAT_ID = process.env.BACKUP_ALERT_CHAT_ID ?? '';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 
 // ── Helper: Execute Command ────────────────────────────────────────────
 
@@ -80,7 +79,6 @@ async function supabaseRequest(
 // ── Helper: Ensure Bucket Exists ───────────────────────────────────────
 
 async function ensureBucket(): Promise<boolean> {
-  // Check if bucket exists
   const check = await supabaseRequest(
     'GET',
     `/storage/v1/buckets/${SUPABASE_BACKUP_BUCKET}`,
@@ -91,7 +89,6 @@ async function ensureBucket(): Promise<boolean> {
   }
 
   if (check.status === 404) {
-    // Create the bucket
     const create = await supabaseRequest(
       'POST',
       '/storage/v1/buckets',
@@ -126,37 +123,43 @@ async function uploadBackup(filePath: string, filename: string): Promise<boolean
   }
 }
 
+// ── Helper: Send Telegram Alert ────────────────────────────────────────
+
+async function sendTelegramAlert(message: string): Promise<void> {
+  if (!BACKUP_ALERT_CHAT_ID || !TELEGRAM_BOT_TOKEN) return;
+
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: BACKUP_ALERT_CHAT_ID,
+        text: message,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (err) {
+    console.error('[BackupRunner] Failed to send Telegram alert:', err);
+  }
+}
+
 // ── Main Backup Function ───────────────────────────────────────────────
 
-export async function runSupabaseBackup(): Promise<SupabaseBackupResult[]> {
-  const result: SupabaseBackupResult = {
-    status: 'ok',
-    message: '',
-  };
-
-  // ── Validation ─────────────────────────────────────────────────────
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    result.status = 'error';
-    result.message = 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment';
-    await logAgentAction('supabase-backup', {}, result, 'error', undefined, result.message);
-    return [result];
-  }
-
-  // ── Step 1: Dump database (pipe directly to gzip) ──────────────────
+async function runBackup(): Promise<{ ok: boolean; message: string }> {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const backupFilename = `db_${stamp}.sql.gz`;
   const tempDir = mkdtempSync(join(tmpdir(), 'supabase-backup-'));
   const tempBackupPath = join(tempDir, backupFilename);
 
   try {
-    console.log(`[SupabaseBackupAgent] Dumping database ${DB_NAME} from container ${CONTAINER}...`);
+    console.log(`[BackupRunner] Dumping database ${DB_NAME} from container ${CONTAINER}...`);
 
-    // Pipe pg_dump directly through gzip — single step, no intermediate uncompressed file
+    // Pipe pg_dump directly through gzip
     exec(
       `docker exec "${CONTAINER}" pg_dump -U "${DB_USER}" "${DB_NAME}" | gzip > "${tempBackupPath}"`,
     );
 
-    // Verify the gzipped file was created and has content
     if (!existsSync(tempBackupPath)) {
       throw new Error('Backup file was not created');
     }
@@ -166,47 +169,30 @@ export async function runSupabaseBackup(): Promise<SupabaseBackupResult[]> {
       throw new Error('Backup file is empty');
     }
 
-    console.log(`[SupabaseBackupAgent] Backup size: ${fileSize} bytes`);
+    console.log(`[BackupRunner] Backup size: ${fileSize} bytes`);
 
-    // ── Step 2: Ensure bucket exists ─────────────────────────────────
-    console.log(`[SupabaseBackupAgent] Ensuring bucket ${SUPABASE_BACKUP_BUCKET} exists...`);
+    // Ensure bucket exists
+    console.log(`[BackupRunner] Ensuring bucket ${SUPABASE_BACKUP_BUCKET} exists...`);
     const bucketReady = await ensureBucket();
     if (!bucketReady) {
       throw new Error(`Failed to create or verify bucket ${SUPABASE_BACKUP_BUCKET}`);
     }
 
-    // ── Step 3: Upload backup ────────────────────────────────────────
-    console.log(`[SupabaseBackupAgent] Uploading ${backupFilename}...`);
+    // Upload backup
+    console.log(`[BackupRunner] Uploading ${backupFilename}...`);
     const uploaded = await uploadBackup(tempBackupPath, backupFilename);
     if (!uploaded) {
       throw new Error(`Failed to upload backup ${backupFilename}`);
     }
 
-    console.log(`[SupabaseBackupAgent] Upload successful: ${backupFilename}`);
-
-    // ── Success ──────────────────────────────────────────────────────
-    result.status = 'ok';
-    result.message = `Backup uploaded successfully to ${SUPABASE_BACKUP_BUCKET}/${backupFilename}`;
-    result.backup_file = backupFilename;
-    result.file_size_bytes = fileSize;
-    result.bucket = SUPABASE_BACKUP_BUCKET;
-
-    await logAgentAction('supabase-backup', { db: DB_NAME, container: CONTAINER }, result, 'ok');
+    console.log(`[BackupRunner] Upload successful: ${backupFilename}`);
+    return { ok: true, message: `Backup uploaded: ${backupFilename} (${fileSize} bytes)` };
 
   } catch (err) {
-    result.status = 'error';
-    result.message = `Backup failed: ${err instanceof Error ? err.message : String(err)}`;
-    console.error(`[SupabaseBackupAgent] ${result.message}`);
+    const msg = `Backup failed: ${err instanceof Error ? err.message : String(err)}`;
+    console.error(`[BackupRunner] ${msg}`);
+    return { ok: false, message: msg };
 
-    await logAgentAction('supabase-backup', { db: DB_NAME, container: CONTAINER }, result, 'error', undefined, result.message);
-
-    // Send Telegram alert if configured
-    if (BACKUP_ALERT_CHAT_ID) {
-      await sendTelegramMessage(
-        BACKUP_ALERT_CHAT_ID,
-        `🚨 *Supabase Backup Failed*\n\n${result.message}`,
-      );
-    }
   } finally {
     // Cleanup temp files
     try {
@@ -217,6 +203,50 @@ export async function runSupabaseBackup(): Promise<SupabaseBackupResult[]> {
       try { rmdirSync(tempDir); } catch { /* ignore */ }
     } catch { /* ignore */ }
   }
-
-  return [result];
 }
+
+// ── Scheduler ──────────────────────────────────────────────────────────
+
+async function tick(): Promise<void> {
+  console.log(`[BackupRunner] Running backup at ${new Date().toISOString()}...`);
+  const result = await runBackup();
+
+  if (result.ok) {
+    console.log(`[BackupRunner] ✓ ${result.message}`);
+  } else {
+    console.error(`[BackupRunner] ✗ ${result.message}`);
+    await sendTelegramAlert(`🚨 *Supabase Backup Failed*\n\n${result.message}`);
+  }
+}
+
+// ── Startup ────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  console.log('═══════════════════════════════════════════════');
+  console.log('  Supabase Backup Runner (separate container)');
+  console.log('═══════════════════════════════════════════════');
+  console.log(`  Container:    ${CONTAINER}`);
+  console.log(`  Database:     ${DB_NAME}`);
+  console.log(`  Bucket:       ${SUPABASE_BACKUP_BUCKET}`);
+  console.log(`  Interval:     ${BACKUP_INTERVAL_MS}ms (${BACKUP_INTERVAL_MS / 60000} min)`);
+  console.log(`  Supabase URL: ${SUPABASE_URL ? '✓ configured' : '✗ MISSING'}`);
+  console.log(`  Service Key:  ${SUPABASE_SERVICE_ROLE_KEY ? '✓ configured' : '✗ MISSING'}`);
+  console.log('═══════════════════════════════════════════════\n');
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[BackupRunner] FATAL: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
+    process.exit(1);
+  }
+
+  // Run immediately on startup
+  await tick();
+
+  // Then run on schedule
+  console.log(`[BackupRunner] Next backup in ${BACKUP_INTERVAL_MS / 60000} minutes`);
+  setInterval(tick, BACKUP_INTERVAL_MS);
+}
+
+main().catch((err) => {
+  console.error('[BackupRunner] Fatal error:', err);
+  process.exit(1);
+});

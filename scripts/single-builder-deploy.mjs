@@ -189,7 +189,7 @@ DEPLOY_PATH="${config.remotePath}"
 SHA="${sha}"
 LOCK_DIR="$DEPLOY_PATH/.deploy.lock"
 LOCK_INFO="$LOCK_DIR/info"
-SERVICES=(api dashboard telegram-bot)
+SERVICES=(api dashboard telegram-bot backup-agent)
 
 cd "$DEPLOY_PATH"
 
@@ -258,6 +258,7 @@ deploy_service() {
     api) docker tag ghcr.io/jpgyap-sudo/workflowautomation/api:latest "ghcr.io/jpgyap-sudo/workflowautomation/api:$SHA" || true ;;
     dashboard) docker tag ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest "ghcr.io/jpgyap-sudo/workflowautomation/dashboard:$SHA" || true ;;
     telegram-bot) docker tag ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest "ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:$SHA" || true ;;
+    backup-agent) docker tag ghcr.io/jpgyap-sudo/workflowautomation/backup-agent:latest "ghcr.io/jpgyap-sudo/workflowautomation/backup-agent:$SHA" || true ;;
   esac
 
   echo "---- Recreating $service ----"
