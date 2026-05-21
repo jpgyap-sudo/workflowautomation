@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List } from 'lucide-react';
 import Link from 'next/link';
 
 function DaysInStage({ updatedAt }: { updatedAt: string }) {
@@ -348,6 +348,9 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
+      {/* Item-Level Tracking */}
+      <ItemTrackingSection orderId={order.id} currentStage={order.current_stage} />
+
       {/* Agent Notes */}
       <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} />
 
@@ -373,6 +376,182 @@ export default function OrderDetailPage() {
                     Open in Drive
                   </a>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Item-Level Tracking Section ────────────────────────────────────────
+
+function ItemTrackingSection({ orderId, currentStage }: { orderId: string; currentStage: string }) {
+  const [items, setItems] = useState<OrderItem[]>([]);
+  const [completion, setCompletion] = useState<ItemCompletion | null>(null);
+  const [logs, setLogs] = useState<ProductionUpdateLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
+
+  useEffect(() => {
+    if (!stagesWithItems.includes(currentStage)) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      getOrderItems(orderId),
+      getItemCompletion(orderId),
+      getProductionLogs(orderId),
+    ]).then(([itemsRes, compRes, logsRes]) => {
+      if (cancelled) return;
+      if (itemsRes.ok) setItems(itemsRes.items);
+      if (compRes.ok) setCompletion(compRes);
+      if (logsRes.ok) setLogs(logsRes.logs);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+    return () => { cancelled = true; };
+  }, [orderId, currentStage]);
+
+  if (!stagesWithItems.includes(currentStage)) return null;
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="flex items-center justify-center py-8">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0 && logs.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <List className="h-4 w-4 text-gray-500" />
+        <h2 className="text-base font-semibold text-gray-800">Item-Level Tracking</h2>
+        {completion && (
+          <span className="ml-auto text-xs text-gray-500">
+            {items.length} item{items.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Completion bars */}
+      {completion && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-600">
+              <Factory className="h-3 w-3" /> Production
+            </div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-indigo-200">
+                <div className={`h-full rounded-full transition-all duration-500 ${completion.production_completion_pct >= 100 ? 'bg-green-500' : completion.production_completion_pct >= 50 ? 'bg-amber-500' : 'bg-indigo-400'}`}
+                  style={{ width: `${Math.min(completion.production_completion_pct, 100)}%` }} />
+              </div>
+              <span className={`text-xs font-semibold ${completion.production_completion_pct >= 100 ? 'text-green-600' : completion.production_completion_pct >= 50 ? 'text-amber-600' : 'text-indigo-600'}`}>
+                {completion.production_completion_pct}%
+              </span>
+            </div>
+          </div>
+          <div className="rounded-lg border border-sky-100 bg-sky-50/50 p-3">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-sky-600">
+              <Truck className="h-3 w-3" /> En Route
+            </div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-sky-200">
+                <div className={`h-full rounded-full transition-all duration-500 ${completion.en_route_completion_pct >= 100 ? 'bg-green-500' : completion.en_route_completion_pct >= 50 ? 'bg-amber-500' : 'bg-sky-400'}`}
+                  style={{ width: `${Math.min(completion.en_route_completion_pct, 100)}%` }} />
+              </div>
+              <span className={`text-xs font-semibold ${completion.en_route_completion_pct >= 100 ? 'text-green-600' : completion.en_route_completion_pct >= 50 ? 'text-amber-600' : 'text-sky-600'}`}>
+                {completion.en_route_completion_pct}%
+              </span>
+            </div>
+          </div>
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
+              <Package className="h-3 w-3" /> Inventory
+            </div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-emerald-200">
+                <div className={`h-full rounded-full transition-all duration-500 ${completion.inventory_completion_pct >= 100 ? 'bg-green-500' : completion.inventory_completion_pct >= 50 ? 'bg-amber-500' : 'bg-emerald-400'}`}
+                  style={{ width: `${Math.min(completion.inventory_completion_pct, 100)}%` }} />
+              </div>
+              <span className={`text-xs font-semibold ${completion.inventory_completion_pct >= 100 ? 'text-green-600' : completion.inventory_completion_pct >= 50 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                {completion.inventory_completion_pct}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Items table */}
+      {items.length > 0 && (
+        <div className="mb-4 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-gray-200 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <th className="py-2 pr-3">Item</th>
+                <th className="py-2 pr-3">Qty</th>
+                <th className="py-2 pr-3">Production</th>
+                <th className="py-2 pr-3">En Route</th>
+                <th className="py-2 pr-3">Arrival Est.</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {items.map((item) => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="py-2 pr-3 font-medium text-gray-800">{item.name}</td>
+                  <td className="py-2 pr-3 text-gray-600">{item.quantity}</td>
+                  <td className="py-2 pr-3">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      item.production_status === 'finished' ? 'bg-green-100 text-green-700'
+                      : item.production_status === 'in_progress' ? 'bg-amber-100 text-amber-700'
+                      : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {item.production_status === 'finished' ? '✓ Finished'
+                        : item.production_status === 'in_progress' ? '⟳ In Progress'
+                        : '○ Pending'}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700'
+                      : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700'
+                      : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {item.en_route_status === 'arrived' ? '✓ Arrived'
+                        : item.en_route_status === 'en_route' ? '⟳ En Route'
+                        : '○ Not Yet'}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3 text-gray-600">
+                    {item.estimated_arrival_days != null ? `${item.estimated_arrival_days}d` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Production update logs */}
+      {logs.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Update Logs</h3>
+          <div className="max-h-48 space-y-1.5 overflow-y-auto">
+            {logs.map((log) => (
+              <div key={log.id} className="rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
+                <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                  <span className="font-medium text-gray-600">{log.created_by ?? 'system'}</span>
+                  {log.item_name && <span className="text-gray-400">· {log.item_name}</span>}
+                  <span className="ml-auto">{new Date(log.created_at).toLocaleString()}</span>
+                </div>
+                <p className="mt-0.5 text-xs text-gray-800">{log.note}</p>
               </div>
             ))}
           </div>

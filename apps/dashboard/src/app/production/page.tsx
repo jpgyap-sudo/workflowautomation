@@ -1,18 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
-import type { Order } from '@/lib/api';
+import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
   reportProductionStatus, finishProduction, confirmEnRoute,
+  getItemCompletion, getOrderItems,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  RefreshCw, Package, FileText, Eye,
+  RefreshCw, Package, FileText, Eye, List,
 } from 'lucide-react';
 import { getOrderFiles, getOrderFileDownloadUrl, type OrderFile } from '@/lib/api';
 
@@ -59,9 +60,51 @@ function getProductionProgress(order: Order) {
   return { pct, remainingDays, isOverdue, isDueSoon };
 }
 
+// ── Item Completion Bar ───────────────────────────────────────────────
+
+function ItemCompletionBar({ pct, label, color }: { pct: number; label: string; color: string }) {
+  return (
+    <div className="rounded-lg bg-white p-2.5 shadow-sm">
+      <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+        <Package className={`h-3 w-3 ${color}`} /> {label}
+      </span>
+      <div className="mt-1.5 flex items-center gap-2">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-gray-400'}`}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+        <span className={`text-xs font-semibold ${pct >= 100 ? 'text-green-600' : pct >= 50 ? 'text-amber-600' : 'text-gray-500'}`}>
+          {pct}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── Production Info Cards ─────────────────────────────────────────────
 
 function ProductionInfoCards({ order }: { order: Order }) {
+  const [completion, setCompletion] = useState<ItemCompletion | null>(null);
+  const [loadingCompletion, setLoadingCompletion] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (order.production_started || order.current_stage === 'en_route') {
+      setLoadingCompletion(true);
+      getItemCompletion(order.id).then((res) => {
+        if (!cancelled) {
+          setCompletion(res.ok ? res : null);
+          setLoadingCompletion(false);
+        }
+      }).catch(() => {
+        if (!cancelled) setLoadingCompletion(false);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [order.id, order.production_started, order.current_stage]);
+
   if (!order.production_started && !order.partial_production_items?.length) return null;
   const finishDate = computeFinishDate(order);
   const progress = getProductionProgress(order);
@@ -153,6 +196,32 @@ function ProductionInfoCards({ order }: { order: Order }) {
               <p className="mt-1 font-semibold text-gray-800">{order.estimated_arrival_days} days</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Item-level completion bars */}
+      {completion && (
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <ItemCompletionBar
+            pct={completion.production_completion_pct}
+            label="Production %"
+            color="text-indigo-500"
+          />
+          <ItemCompletionBar
+            pct={completion.en_route_completion_pct}
+            label="En Route %"
+            color="text-sky-500"
+          />
+          <ItemCompletionBar
+            pct={completion.inventory_completion_pct}
+            label="Inventory %"
+            color="text-emerald-500"
+          />
+        </div>
+      )}
+      {loadingCompletion && !completion && (
+        <div className="mt-3 flex items-center justify-center py-2">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
         </div>
       )}
 

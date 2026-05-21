@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
-import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, setProduction } from '@/lib/api';
+import type { Order, ItemCompletion } from '@/lib/api';
+import { updateOrder, deleteOrder, setProduction, getItemCompletion } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import {
   ShoppingCart, Clock, Package, ExternalLink,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  AlertTriangle, RefreshCw,
+  AlertTriangle, RefreshCw, List,
 } from 'lucide-react';
 
 function DriveLink({ folderId }: { folderId: string | null }) {
@@ -36,6 +36,15 @@ interface OrderRowProps {
 
 function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [inventoryPct, setInventoryPct] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (order.current_stage === 'inventory_arrived') {
+      getItemCompletion(order.id).then((res) => {
+        if (res.ok) setInventoryPct(res.inventory_completion_pct);
+      }).catch(() => {});
+    }
+  }, [order.id, order.current_stage]);
 
   return (
     <div>
@@ -51,6 +60,13 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps)
                 {Array.from({ length: Math.min(order.escalation_level ?? 0, 3) }).map((_, i) => (
                   <span key={i} className="h-2 w-2 rounded-full bg-red-500" />
                 ))}
+              </span>
+            )}
+            {inventoryPct != null && (
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                inventoryPct >= 100 ? 'bg-green-100 text-green-700' : inventoryPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+              }`}>
+                <Package className="h-3 w-3" /> Inv: {inventoryPct}%
               </span>
             )}
           </div>
@@ -99,6 +115,28 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps)
               Mark Production Started
             </button>
           )}
+
+          {/* Inventory completion bar for inventory_arrived orders */}
+          {order.current_stage === 'inventory_arrived' && inventoryPct != null && (
+            <div className="w-full">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <Package className="h-3 w-3 text-emerald-500" />
+                <span>Inventory Arrival</span>
+                <span className={`ml-auto font-semibold ${
+                  inventoryPct >= 100 ? 'text-green-600' : inventoryPct >= 50 ? 'text-amber-600' : 'text-gray-500'
+                }`}>{inventoryPct}%</span>
+              </div>
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    inventoryPct >= 100 ? 'bg-green-500' : inventoryPct >= 50 ? 'bg-amber-500' : 'bg-gray-400'
+                  }`}
+                  style={{ width: `${Math.min(inventoryPct, 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <span className="self-center text-xs text-gray-500">
             Downpayment: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
             {' · '}
