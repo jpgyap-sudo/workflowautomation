@@ -333,27 +333,75 @@ export async function completeOrderReminders(orderId: string): Promise<void> {
   );
 }
 
+let reminderTimer: NodeJS.Timeout | null = null;
+let reminderRunning = false;
+let reminderShuttingDown = false;
+
+function scheduleNext(intervalMs: number): void {
+  if (reminderShuttingDown) return;
+  reminderTimer = setTimeout(() => {
+    runReminderTick(intervalMs);
+  }, intervalMs);
+}
+
+async function runReminderTick(intervalMs: number): Promise<void> {
+  if (reminderRunning || reminderShuttingDown) {
+    scheduleNext(intervalMs);
+    return;
+  }
+  reminderRunning = true;
+  try {
+    const count = await processDueReminders();
+    if (count > 0) {
+      console.log(`[ReminderScheduler] Sent ${count} reminder(s)`);
+    }
+  } catch (err) {
+    console.error('[ReminderScheduler] Error:', err);
+  } finally {
+    reminderRunning = false;
+    scheduleNext(intervalMs);
+  }
+}
+
 /**
  * Start the reminder scheduler loop.
  * Checks for due reminders every 60 seconds.
+ * Uses setTimeout instead of setInterval to prevent overlapping runs.
  */
-export function startReminderScheduler(intervalMs: number = 60_000): NodeJS.Timeout {
+export function startReminderScheduler(intervalMs: number = 60_000): void {
   console.log(`[ReminderScheduler] Started — checking every ${intervalMs / 1000}s`);
+  reminderShuttingDown = false;
 
   // Run immediately on start
   processDueReminders().then((count) => {
     if (count > 0) console.log(`[ReminderScheduler] Sent ${count} reminder(s) on startup`);
+  }).finally(() => {
+    scheduleNext(intervalMs);
   });
+}
 
-  // Then run on interval
-  return setInterval(async () => {
-    try {
-      const count = await processDueReminders();
-      if (count > 0) {
-        console.log(`[ReminderScheduler] Sent ${count} reminder(s)`);
+export function stopReminderScheduler(): void {
+  reminderShuttingDown = true;
+  if (reminderTimer) {
+    clearTimeout(reminderTimer);
+    reminderTimer = null;
+    console.log('[ReminderScheduler] Stopped');
+  }
+}
+
+export async function waitForReminders(timeoutMs = 30_000): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!reminderRunning || Date.now() - start > timeoutMs) {
+        if (reminderRunning) {
+          console.warn('[ReminderScheduler] Still running after timeout — forcing shutdown');
+        }
+        resolve();
+      } else {
+        setTimeout(check, 500);
       }
-    } catch (err) {
-      console.error('[ReminderScheduler] Error:', err);
-    }
-  }, intervalMs);
+    };
+    check();
+  });
 }
