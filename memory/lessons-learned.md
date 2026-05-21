@@ -1767,3 +1767,51 @@ Avoid broad file-type ignores (e.g., `*.json`) in root `.gitignore` when subdire
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: add lesson for file-store container and Google Drive removal
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 07a15230d2c7dc3abe7e0ecebb9dab0dde9679ff
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 07a15230d2c7dc3abe7e0ecebb9dab0dde9679ff
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Added a documented lesson about removing the file-store container and Google Drive integration from the workflow automation system.
+
+**Why it broke:**  
+The file-store container and Google Drive integration were removed without updating the corresponding documentation or lesson index, leaving a gap in the project's institutional memory. This caused confusion for future developers about why these components were removed and how to handle similar deprecations.
+
+**Reusable takeaway:**  
+When removing any component from a system, immediately document the removal rationale, affected dependencies, and migration path in a lessons-learned file. Always update the lesson index to maintain a searchable record of architectural decisions. This prevents knowledge loss and ensures future contributors understand the context of past changes.
+
+---
+*Original commit message: docs: add lesson for file-store container and Google Drive removal*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added a documented lesson about removing the file-store container and Google Drive integration from the workflow automation system.
+
+**Why it broke:**  
+The file-store container and Google Drive integration were removed without updating the corresponding documentation or lesson index, leaving a gap in the project's institutional memory. This caused confusion for future developers about why these components were removed and how to handle similar deprecations.
+
+**Reusable takeaway:**  
+When removing any component from a system, immediately document the removal rationale, affected dependencies, and migration path in a lessons-learned file. Always update the lesson index to maintain a searchable record of architectural decisions. This prevents knowledge loss and ensures future contributors understand the context of past changes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

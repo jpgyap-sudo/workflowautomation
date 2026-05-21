@@ -2849,7 +2849,39 @@ async function getClientByDeterministicName(clientName: string) {
 
 async function autoLinkClientToOrder(orderId: string, clientName: string | null) {
   if (!clientName) return;
-  const client = await getClientByDeterministicName(clientName);
+  const trimmed = clientName.trim();
+  if (!trimmed) return;
+
+  // Try exact match first (normalized)
+  const normalized = normalizeClientName(trimmed);
+  const exactRows = await query(
+    `SELECT * FROM clients c WHERE ${CLIENT_NORMALIZED_SQL('c')} = $1 ORDER BY c.updated_at DESC, c.client_name ASC LIMIT 1`,
+    [normalized]
+  );
+
+  let client = exactRows[0] ?? null;
+
+  // Auto-create client if no exact match exists
+  if (!client) {
+    const inserted = await query(
+      `INSERT INTO clients (client_name, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact, notes)
+       VALUES ($1, NULL, NULL, NULL, NULL, NULL)
+       ON CONFLICT (client_name) DO NOTHING
+       RETURNING *`,
+      [trimmed]
+    );
+    if (inserted[0]) {
+      client = inserted[0];
+    } else {
+      // Another request created it concurrently — fetch it
+      const conflictRows = await query(
+        `SELECT * FROM clients c WHERE ${CLIENT_NORMALIZED_SQL('c')} = $1 ORDER BY c.updated_at DESC, c.client_name ASC LIMIT 1`,
+        [normalized]
+      );
+      client = conflictRows[0] ?? null;
+    }
+  }
+
   if (client) {
     await query(
       `UPDATE orders SET

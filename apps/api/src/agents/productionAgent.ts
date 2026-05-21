@@ -77,6 +77,7 @@ function buildHermesContext(
     production_finished: order.production_finished,
     production_finished_at: order.production_finished_at,
     en_route_confirmed: order.en_route_confirmed,
+    quotation_text: null,
     estimated_arrival_days: order.estimated_arrival_days,
     days_in_stage: daysInStage,
     pct_elapsed: pctElapsed,
