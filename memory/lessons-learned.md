@@ -1911,3 +1911,51 @@ When sending user-generated text to Telegram, prefer `HTML` over `MarkdownV2` to
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add deposit_verification and balance_verification cases to escalation agent and reminder scheduler
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4914ac72d6e9e43d355191b7682f405f2332a991
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4914ac72d6e9e43d355191b7682f405f2332a991
+**Files:** apps/api/src/agents/escalationAgent.ts,apps/api/src/services/reminderScheduler.ts
+
+**Summary:**
+**What was fixed:**  
+Added missing `deposit_verification` and `balance_verification` case handlers to the escalation agent and reminder scheduler.
+
+**Why it broke:**  
+These two workflow types were omitted from the case/switch logic, causing the system to skip escalation or reminders for deposit and balance verification workflows.
+
+**Reusable takeaway:**  
+When adding new workflow types, always audit all branching logic (case/switch, if-else chains, routing tables) across related services—especially escalation, scheduling, and notification modules—to prevent silent failures.
+
+---
+*Original commit message: fix: add deposit_verification and balance_verification cases to escalation agent and reminder scheduler*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added missing `deposit_verification` and `balance_verification` case handlers to the escalation agent and reminder scheduler.
+
+**Why it broke:**  
+These two workflow types were omitted from the case/switch logic, causing the system to skip escalation or reminders for deposit and balance verification workflows.
+
+**Reusable takeaway:**  
+When adding new workflow types, always audit all branching logic (case/switch, if-else chains, routing tables) across related services—especially escalation, scheduling, and notification modules—to prevent silent failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -1238,7 +1238,7 @@ app.post('/deposits', async (request, reply) => {
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
      SELECT $1, 'deposit_verification', r.group_chat_id,
             'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
-            'daily', NOW() + INTERVAL '1 hour', 'active'
+            'daily', NOW() + INTERVAL '5 minutes', 'active'
      FROM reminders r
      WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
      LIMIT 1
@@ -1277,12 +1277,90 @@ app.post('/deposits', async (request, reply) => {
 const matchDepositSchema = z.object({
   amount: z.number().positive(),
   client_name: z.string().optional(),
+  quotation_number: z.string().optional(),
   image_url: z.string().optional(),
   deposit_paid_at: z.string().optional(),
 });
 
 app.post('/deposits/match-and-record', async (request, reply) => {
   const body = matchDepositSchema.parse(request.body);
+
+  // If quotation_number is provided (bot already knows the order), record directly
+  if (body.quotation_number) {
+    const orders = await query(
+      `SELECT id, quotation_number, client_name, total_amount, current_stage
+       FROM orders
+       WHERE quotation_number = $1 AND status = 'active'
+       LIMIT 1`,
+      [body.quotation_number]
+    );
+
+    if (orders.length === 0) {
+      return reply.code(404).send({
+        ok: false,
+        error: `No active order found for quotation "${body.quotation_number}".`,
+      });
+    }
+
+    const order = orders[0];
+    const expectedDeposit = order.total_amount != null
+      ? Number(order.total_amount) / 2
+      : null;
+
+    // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
+    await query(
+      `UPDATE orders SET
+         deposit_paid=TRUE,
+         deposit_verified=FALSE,
+         deposit_amount=$1,
+         deposit_image_url=COALESCE($2, deposit_image_url),
+         deposit_paid_at=COALESCE($4, deposit_paid_at),
+         current_stage=CASE
+           WHEN current_stage IN ('order_confirmation_received', 'math_verified')
+           THEN 'deposit_pending'
+           ELSE current_stage
+         END,
+         updated_at=NOW()
+       WHERE id=$3`,
+      [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
+    );
+
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
+      [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+    );
+
+    // Complete any deposit reminders
+    await query(
+      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+      [order.id]
+    );
+
+    // Create a deposit_verification reminder
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       SELECT $1, 'deposit_verification', r.group_chat_id,
+              'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
+              'daily', NOW() + INTERVAL '5 minutes', 'active'
+       FROM reminders r
+       WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
+       LIMIT 1
+       ON CONFLICT DO NOTHING`,
+      [order.id]
+    );
+
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+
+    return reply.send({
+      ok: true,
+      matched: true,
+      quotation_number: order.quotation_number,
+      client_name: order.client_name,
+      amount: body.amount,
+      expected_deposit: expectedDeposit,
+    });
+  }
 
   // If client_name is provided, find order by client name and record deposit
   if (body.client_name) {
@@ -1343,7 +1421,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
        SELECT $1, 'deposit_verification', r.group_chat_id,
               'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
-              'daily', NOW() + INTERVAL '1 hour', 'active'
+              'daily', NOW() + INTERVAL '5 minutes', 'active'
        FROM reminders r
        WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
        LIMIT 1
@@ -1664,7 +1742,7 @@ app.post('/pay-balance', async (request, reply) => {
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
      SELECT $1, 'balance_verification', r.group_chat_id,
             'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
-            'daily', NOW() + INTERVAL '1 hour', 'active'
+            'daily', NOW() + INTERVAL '5 minutes', 'active'
      FROM reminders r
      WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
      LIMIT 1
