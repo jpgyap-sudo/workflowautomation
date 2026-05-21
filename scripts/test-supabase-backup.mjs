@@ -10,9 +10,11 @@ import { execSync } from 'child_process';
 import { resolve } from 'path';
 import { homedir } from 'os';
 
-const SSH_KEY = resolve(homedir(), '.ssh', 'id_ed25519_roo');
-const SSH_HOST = process.argv[2] || '100.86.182.7';
-const SSH_USER = 'root';
+const SSH_KEY = process.env.QAS_DEPLOY_KEY ?? resolve(homedir(), '.ssh', 'id_rsa');
+const SSH_HOST = process.argv[2] || process.env.QAS_VPS_HOST;
+const SSH_USER = process.env.QAS_SSH_USER || 'deploy';
+
+if (!SSH_HOST) { console.error('Set QAS_VPS_HOST or pass host as argument'); process.exit(1); }
 
 function runRemote(cmd) {
   const fullCmd = `ssh -i "${SSH_KEY}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${SSH_USER}@${SSH_HOST} "${cmd}"`;

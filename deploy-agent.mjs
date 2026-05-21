@@ -3,12 +3,7 @@
 /**
  * Deploy Agent — Quotation Automation System
  *
- * ╔══════════════════════════════════════════════════════════════╗
- * ║  VPS: 165.22.110.111  (Tailscale: 100.86.182.7)            ║
- * ║  Website: https://track.abcx124.xyz                        ║
- * ║  Repo: /opt/quotation-automation                           ║
- * ║  SSH: root@165.22.110.111 (key: id_ed25519_roo)            ║
- * ╚══════════════════════════════════════════════════════════════╝
+ * Configure via env vars: QAS_VPS_HOST, QAS_SSH_USER, QAS_DEPLOY_KEY
  *
  * Usage:
  *   node deploy-agent.mjs              # Full deploy (sync + build + up)
@@ -25,12 +20,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Configuration ──────────────────────────────────────────────
 const CONFIG = {
-  // Tailscale IP of the VPS (ubuntu-s-1vcpu-1gb-sgp1)
-  sshHost: '100.86.182.7',
-  // SSH user (root works because we use root's key)
-  sshUser: 'root',
-  // Path to SSH identity file
-  sshIdentityFile: resolve(process.env.HOME || 'C:\\Users\\User', '.ssh', 'id_ed25519_roo'),
+  sshHost: process.env.QAS_VPS_HOST ?? '127.0.0.1',
+  sshUser: process.env.QAS_SSH_USER ?? 'deploy',
+  sshIdentityFile: process.env.QAS_DEPLOY_KEY ?? resolve(process.env.HOME || process.env.USERPROFILE || '.', '.ssh', 'id_rsa'),
   // Target directory on VPS
   vpsPath: '/opt/quotation-automation',
   // Health check endpoint

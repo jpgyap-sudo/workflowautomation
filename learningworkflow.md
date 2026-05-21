@@ -2,26 +2,19 @@
 
 ## VPS Deployment
 
-**⚠️ CRITICAL: This project's VPS is 165.22.110.111 — NOT 104.248.225.250**
-
 | Property | Value |
 |----------|-------|
-| Public IP | `165.22.110.111` |
-| Tailscale IP | `100.86.182.7` |
-| SSH User | `root` |
-| SSH Key | `id_ed25519_roo` |
+| Public IP | configured via `QAS_VPS_HOST` env var or team docs |
+| SSH User | configured via `QAS_SSH_USER` env var or team docs |
+| SSH Key | `~/.ssh/` — set `QAS_DEPLOY_KEY` env var to override |
 | Repo Path | `/opt/quotation-automation` |
-| Website | `https://track.abcx124.xyz` |
+| Website | configured via `DASHBOARD_BASE_URL` in `.env` |
 | Docker Compose | v1 (use `down --remove-orphans` before `up -d`) |
 
 ### SSH Commands
 
 ```bash
-# Direct (preferred)
-ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111
-
-# Via Tailscale
-ssh -i ~/.ssh/id_ed25519_roo root@100.86.182.7
+ssh <deploy-user>@<your-vps-ip>
 ```
 
 ### Deploy Steps

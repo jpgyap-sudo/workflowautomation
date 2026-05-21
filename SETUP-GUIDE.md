@@ -336,9 +336,9 @@ The system includes a Supabase Storage backup script that uploads your database 
 **Step 1 — Create a Supabase project**
 
 1. Go to [supabase.com](https://supabase.com) and create a new project
-2. Note your **Project ID** from the dashboard URL (e.g. `zetmxacmioodgxxmursa`)
+2. Note your **Project ID** from the dashboard URL (e.g. `your-supabase-project-id`)
 3. Go to **Project Settings → API** and copy:
-   - **Project URL** (e.g. `https://zetmxacmioodgxxmursa.supabase.co`)
+   - **Project URL** (e.g. `https://your-supabase-project-id.supabase.co`)
    - **`service_role` key** (NOT the anon/public key)
 
 **Step 2 — Configure `.env`**
@@ -346,7 +346,7 @@ The system includes a Supabase Storage backup script that uploads your database 
 Add these to your `.env` file:
 
 ```bash
-SUPABASE_URL=https://zetmxacmioodgxxmursa.supabase.co
+SUPABASE_URL=https://your-supabase-project-id.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 SUPABASE_BACKUP_BUCKET=db-backups
 BACKUP_RETENTION_DAYS=30
@@ -397,12 +397,12 @@ The [`scripts/backup-to-supabase.sh`](scripts/backup-to-supabase.sh) script:
 ```bash
 # List available backups
 curl -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  "https://zetmxacmioodgxxmursa.supabase.co/storage/v1/object/list/db-backups"
+  "https://your-supabase-project-id.supabase.co/storage/v1/object/list/db-backups"
 
 # Download a specific backup
 curl -o db_backup.sql.gz \
   -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  "https://zetmxacmioodgxxmursa.supabase.co/storage/v1/object/db-backups/db_20260519_030000.sql.gz"
+  "https://your-supabase-project-id.supabase.co/storage/v1/object/db-backups/db_20260519_030000.sql.gz"
 
 # Restore to local database
 gunzip -c db_backup.sql.gz | docker exec -i qas_postgres psql -U n8n -d quotation_automation

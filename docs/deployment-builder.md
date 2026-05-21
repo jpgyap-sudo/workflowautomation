@@ -135,9 +135,8 @@ Optional extra checks after major releases:
 
 | Property | Value |
 |---|---|
-| Website | `https://track.abcx124.xyz` |
-| VPS Tailscale IP | `100.86.182.7` |
-| VPS public IP | `165.22.110.111` |
-| SSH user | `root` |
-| SSH key | `C:\Users\User\.ssh\id_ed25519_roo` |
+| Website | configured via `DASHBOARD_BASE_URL` in `.env` |
+| VPS IP | configured via `QAS_VPS_HOST` env var or team docs |
+| SSH user | configured in deploy scripts |
+| SSH key | `~/.ssh/` — set `QAS_DEPLOY_KEY` env var to override |
 | Remote path | `/opt/quotation-automation` |

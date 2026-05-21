@@ -26,7 +26,7 @@ Act as a reliable database backup operator. Ensure the PostgreSQL database is du
 
 | Variable | Description |
 |----------|-------------|
-| `SUPABASE_URL` | Supabase project URL (e.g. https://zetmxacmioodgxxmursa.supabase.co) |
+| `SUPABASE_URL` | Supabase project URL (e.g. https://your-project-id.supabase.co) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin storage access |
 | `SUPABASE_BACKUP_BUCKET` | Storage bucket name (default: db-backups) |
 | `POSTGRES_USER` | Database user (default: n8n) |

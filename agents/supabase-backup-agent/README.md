@@ -42,12 +42,12 @@ Implemented as an API function in `apps/api/src/agents/supabaseBackupAgent.ts`. 
 ```bash
 # List available backups
 curl -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  "https://zetmxacmioodgxxmursa.supabase.co/storage/v1/object/list/db-backups"
+  "$SUPABASE_URL/storage/v1/object/list/db-backups"
 
 # Download a specific backup
 curl -o db_backup.sql.gz \
   -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  "https://zetmxacmioodgxxmursa.supabase.co/storage/v1/object/db-backups/db_20260519_030000.sql.gz"
+  "$SUPABASE_URL/storage/v1/object/db-backups/db_20260519_030000.sql.gz"
 
 # Restore to local database
 gunzip -c db_backup.sql.gz | docker exec -i qas_postgres psql -U n8n -d quotation_automation

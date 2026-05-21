@@ -33,11 +33,11 @@ The web dashboard provides a full ERPNext-style interface for managing the quota
 
 ## VPS
 
-**Production VPS:** `165.22.110.111` (root user, SSH key: `id_ed25519_roo`)
+**Production VPS:** `<your-vps-ip>` (deploy user, SSH key: configured in `~/.ssh/`)
 
 **Repo path on VPS:** `/opt/quotation-automation`
 
-**Website:** `https://track.abcx124.xyz`
+**Website:** `https://<your-domain>`
 
 ## Single-Builder Deployment
 
@@ -75,7 +75,7 @@ Full details: [`docs/deployment-builder.md`](docs/deployment-builder.md)
 **Deprecated manual deploy:** Use only for emergency investigation; do not use when multiple agents are active.
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111
+ssh <deploy-user>@<your-vps-ip>
 cd /opt/quotation-automation
 git fetch origin && git reset --hard origin/master
 docker-compose ps
@@ -85,9 +85,9 @@ Open:
 
 | Service | URL |
 |---|---|
-| Dashboard | `https://track.abcx124.xyz` |
-| n8n | `http://165.22.110.111:5678` |
-| API health | `http://165.22.110.111:8080/health` |
+| Dashboard | `https://<your-domain>` |
+| n8n | `http://<your-vps-ip>:5678` |
+| API health | `http://<your-vps-ip>:8080/health` |
 
 ## Database Migrations
 
@@ -130,7 +130,7 @@ The database is automatically backed up to **Supabase Storage** every **24 hours
 - **Manual trigger:** `POST /agents/run/supabase-backup`
 - **Script fallback:** `sh scripts/backup-to-supabase.sh` (runs via shell, useful for cron)
 
-**Supabase project:** [`zetmxacmioodgxxmursa`](https://supabase.com/dashboard/project/zetmxacmioodgxxmursa)
+**Supabase project:** configured via `SUPABASE_URL` in `.env`
 
 ## MVP flow
 
@@ -144,13 +144,4 @@ The database is automatically backed up to **Supabase Storage** every **24 hours
 
 ## Suggested production domain
 
-```txt
-automation.abcx124.xyz
-```
-
-or
-
-```txt
-ops.homeu.ph
-```
-"# Hook test - verifying lesson extraction"  
+Set your domain in `.env` as `PUBLIC_WEBHOOK_BASE_URL` and `DASHBOARD_BASE_URL`.

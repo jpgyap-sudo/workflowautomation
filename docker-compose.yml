@@ -75,7 +75,7 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       API_BASE_URL: http://api:8080
-      PUBLIC_WEBHOOK_BASE_URL: ${PUBLIC_WEBHOOK_BASE_URL:-https://track.abcx124.xyz}
+      PUBLIC_WEBHOOK_BASE_URL: ${PUBLIC_WEBHOOK_BASE_URL:-https://your-domain.example.com}
       WEBHOOK_PORT: 8443
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
       PURCHASING_GROUP_ID: ${PURCHASING_GROUP_ID}
@@ -89,7 +89,7 @@ services:
       GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET}
       GOOGLE_DRIVE_OAUTH_TOKEN_PATH: ${GOOGLE_DRIVE_OAUTH_TOKEN_PATH}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-https://track.abcx124.xyz}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-https://your-domain.example.com}
     volumes:
       - ./credentials:/app/credentials:ro
     depends_on:
