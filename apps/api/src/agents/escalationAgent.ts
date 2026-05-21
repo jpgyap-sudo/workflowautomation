@@ -162,6 +162,13 @@ export async function notifyEscalation(
           ],
         ]);
         break;
+      case 'deposit_verification':
+        keyboard = inlineKeyboard([
+          [
+            { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${id}:${qn}` },
+          ],
+        ]);
+        break;
       case 'inventory_arrived':
         keyboard = inlineKeyboard([
           [
@@ -175,6 +182,13 @@ export async function notifyEscalation(
           [
             { text: '✅ Client Paid Balance', callback_data: `balance:paid:${id}:${qn}` },
             { text: '❌ Not Yet', callback_data: `balance:not_paid:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'balance_verification':
+        keyboard = inlineKeyboard([
+          [
+            { text: '🔍 Verify Balance', callback_data: `verify:balance:${id}:${qn}` },
           ],
         ]);
         break;

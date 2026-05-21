@@ -99,6 +99,7 @@ export async function processDueReminders(): Promise<number> {
   // Fetch all active reminders where next_run_at <= now
   const dueReminders = await query(
     `SELECT r.*, o.quotation_number, o.client_name, o.current_stage, o.deposit_paid, o.balance_paid,
+            o.deposit_verified, o.balance_verified,
             COALESCE(o.partial_production_items, '[]'::jsonb) AS partial_production_items
      FROM reminders r
      JOIN orders o ON o.id = r.order_id
@@ -113,12 +114,14 @@ export async function processDueReminders(): Promise<number> {
 
   let sent = 0;
 
-  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean })[]) {
+  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean; deposit_verified: boolean; balance_verified: boolean })[]) {
     // ── Auto-complete stale reminders ──────────────────────────────────
     // Skip + complete reminders that are no longer relevant based on order state
     let stale = false;
     if (reminder.stage === 'deposit_pending' && reminder.deposit_paid) stale = true;
+    if (reminder.stage === 'deposit_verification' && reminder.deposit_paid && reminder.deposit_verified) stale = true;
     if ((reminder.stage === 'balance_due' || reminder.stage === 'delivered' || reminder.stage === 'countered') && reminder.balance_paid) stale = true;
+    if (reminder.stage === 'balance_verification' && reminder.balance_paid && reminder.balance_verified) stale = true;
     if (reminder.stage === 'delivery_scheduled' && ['delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
@@ -146,10 +149,12 @@ export async function processDueReminders(): Promise<number> {
       production_midpoint: '🏭 Production Midpoint Check',
       production_due: '🏭 Production Due',
       deposit_pending: '💳 Deposit Pending',
+      deposit_verification: '🔍 Deposit Verification',
       en_route: '🚚 En Route',
       en_route_reminder: '🚚 En Route',
       inventory_arrived: '📦 Inventory Arrived',
       balance_due: '⚖️ Balance Due',
+      balance_verification: '🔍 Balance Verification',
       delivery_scheduled: '🚚 Delivery Scheduled',
       delivered: '✅ Delivered',
       countered: '🔄 Countered',
@@ -229,6 +234,13 @@ export async function processDueReminders(): Promise<number> {
           { text: '❌ Not Yet', callback_data: `deposit:no:${orderId}:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'deposit_verification') {
+      // Deposit verification: ask team to verify the deposit
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${orderId}:${quotationNumber}` },
+        ],
+      ]);
     } else if (reminder.stage === 'inventory_arrived') {
       // Inventory arrived: ask if ready for delivery / balance payment
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
@@ -243,6 +255,13 @@ export async function processDueReminders(): Promise<number> {
         [
           { text: '✅ Yes, Client Paid', callback_data: `balance:paid:${orderId}:${quotationNumber}` },
           { text: '❌ Not Yet', callback_data: `balance:not_paid:${orderId}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'balance_verification') {
+      // Balance verification: ask team to verify the balance payment
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '🔍 Verify Balance', callback_data: `verify:balance:${orderId}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'delivery_scheduled') {
