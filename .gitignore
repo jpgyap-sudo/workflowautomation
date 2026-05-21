@@ -8,6 +8,7 @@ apps/**/.env
 backups/
 logs/
 *.json
+!apps/file-store/package.json
 *.jsonl
 test-*.txt
 console.log*
