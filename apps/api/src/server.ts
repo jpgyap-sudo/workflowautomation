@@ -1316,7 +1316,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
          deposit_image_url=COALESCE($2, deposit_image_url),
          deposit_paid_at=COALESCE($4, deposit_paid_at),
          current_stage=CASE
-           WHEN current_stage IN ('order_confirmation_received', 'math_verified')
+           WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
            THEN 'deposit_pending'
            ELSE current_stage
          END,
@@ -1395,7 +1395,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
          deposit_image_url=COALESCE($2, deposit_image_url),
          deposit_paid_at=COALESCE($4, deposit_paid_at),
          current_stage=CASE
-           WHEN current_stage IN ('order_confirmation_received', 'math_verified')
+           WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
            THEN 'deposit_pending'
            ELSE current_stage
          END,
@@ -1803,8 +1803,10 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   }
 
   // Determine next stage based on whether the order needs purchasing
-  // If the order is at deposit_pending, advance to production_pending or purchasing_pending
-  const nextStage = order.current_stage === 'deposit_pending'
+  // If the order is at any pre-production stage (quotation_received, deposit_pending, etc.),
+  // advance to production_pending after deposit verification
+  const preProductionStages = ['quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending'];
+  const nextStage = preProductionStages.includes(order.current_stage)
     ? 'production_pending'
     : order.current_stage;
 
