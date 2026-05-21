@@ -1833,6 +1833,20 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id],
   );
 
+  // Create a production_pending reminder — production agent will remind the production group to start production
+  // Uses the production group chat ID from the completed deposit_verification reminder
+  await query(
+    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+     SELECT $1, 'production_pending', r.group_chat_id,
+            'Deposit has been verified. Production should start now. Has production started for this order?',
+            'daily', NOW() + INTERVAL '5 minutes', 'active'
+     FROM reminders r
+     WHERE r.order_id = $1 AND r.stage = 'deposit_verification' AND r.status = 'completed'
+     LIMIT 1
+     ON CONFLICT DO NOTHING`,
+    [id],
+  );
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });

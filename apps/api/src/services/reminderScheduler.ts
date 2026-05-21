@@ -99,7 +99,7 @@ export async function processDueReminders(): Promise<number> {
   // Fetch all active reminders where next_run_at <= now
   const dueReminders = await query(
     `SELECT r.*, o.quotation_number, o.client_name, o.current_stage, o.deposit_paid, o.balance_paid,
-            o.deposit_verified, o.balance_verified,
+            o.deposit_verified, o.balance_verified, o.production_started,
             COALESCE(o.partial_production_items, '[]'::jsonb) AS partial_production_items
      FROM reminders r
      JOIN orders o ON o.id = r.order_id
@@ -114,7 +114,7 @@ export async function processDueReminders(): Promise<number> {
 
   let sent = 0;
 
-  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean; deposit_verified: boolean; balance_verified: boolean })[]) {
+  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean; deposit_verified: boolean; balance_verified: boolean; production_started: boolean })[]) {
     // ── Auto-complete stale reminders ──────────────────────────────────
     // Skip + complete reminders that are no longer relevant based on order state
     let stale = false;
@@ -126,6 +126,7 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if ((reminder.stage === 'production_confirmed' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'production_pending' && (reminder.production_started || ['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
     if ((reminder.stage === 'purchasing_pending') && ['production_confirmed', 'production_pending', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
 
     if (stale) {
@@ -145,6 +146,7 @@ export async function processDueReminders(): Promise<number> {
       order_confirmation_received: '📄 Order Confirmation Received',
       math_verified: '✅ Math Verified',
       purchasing_pending: '🛒 Purchasing Pending',
+      production_pending: '🏭 Production Pending',
       production_confirmed: '🏭 Production Confirmed',
       production_midpoint: '🏭 Production Midpoint Check',
       production_due: '🏭 Production Due',
@@ -225,6 +227,15 @@ export async function processDueReminders(): Promise<number> {
         [
           { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId}:${quotationNumber}` },
         ],
+      ]);
+    } else if (reminder.stage === 'production_pending') {
+      // Production pending: ask if production has started
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Yes, started', callback_data: `produce:yes:${quotationNumber}` },
+          { text: '⚠️ Partial', callback_data: `produce:partial:${quotationNumber}` },
+        ],
+        [{ text: '⏳ Not yet', callback_data: `produce:no:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'deposit_pending') {
       // Deposit pending: ask if deposit has been collected
