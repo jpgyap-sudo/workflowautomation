@@ -45,6 +45,9 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
   // ── Phase 2: Final Payment Collection (delivered/countered) ──
   const paymentOrders = await getActiveOrdersByStages(['delivered', 'countered']);
   for (const order of paymentOrders) {
+    // Skip if balance already paid (e.g., full payment upfront or paid at inventory_arrived stage)
+    if (order.balance_paid) continue;
+
     const result = await checkCollection(order);
     if (result.reminder_needed) {
       const groupChatId = getGroupChatId('collection-agent');
@@ -128,6 +131,20 @@ export async function checkCollection(order: OrderRow): Promise<AgentResult> {
   };
 
   try {
+    // If balance is already paid, no reminder needed
+    if (order.balance_paid) {
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ Balance already paid for #${order.quotation_number ?? 'unknown'}. No collection action needed.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: 0,
+      };
+
+      await logAgentAction('collection-agent', input, result, 'completed', order.id);
+      return result;
+    }
+
     const escalationLevel = await getEscalationLevel(order.id, order.current_stage);
 
     // Calculate expected payment
@@ -195,11 +212,12 @@ export async function notifyCollection(
           { text: '⏳ Not Yet', callback_data: `deposit:no:${id}:${qn}` },
         ],
       ]);
-    } else {
+    } else if (!order.balance_paid) {
       keyboard = inlineKeyboard([
         [{ text: '💵 Record Payment', callback_data: `pick:payment:${qn}` }],
       ]);
     }
+    // If both deposit_paid and balance_paid are true, no buttons needed — payment is complete
   }
 
   await sendTelegramMessage(groupChatId, msg, keyboard);
