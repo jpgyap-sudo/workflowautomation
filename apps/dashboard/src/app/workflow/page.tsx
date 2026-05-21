@@ -48,7 +48,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     monitors: ['order_confirmation_received'],
     triggers: [
       { from: 'order_confirmation_received', to: 'math_verified', condition: 'Math matches (auto)' },
-      { from: 'order_confirmation_received', to: 'purchasing_pending', condition: 'Math verified → auto-advance' },
+      { from: 'order_confirmation_received', to: 'production_pending', condition: 'Math verified → auto-advance' },
     ],
     notificationGroup: 'Sales / Purchasing',
   },
@@ -57,12 +57,12 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     icon: ShoppingCart,
     color: 'border-amber-200 bg-amber-50',
     headingColor: 'text-amber-700',
-    description: 'Monitors purchasing pending orders and sends daily reminders until production starts',
-    monitors: ['purchasing_pending'],
+    description: 'Monitors production pending orders and sends daily reminders to production group until production starts',
+    monitors: ['production_pending'],
     triggers: [
-      { from: 'purchasing_pending', to: 'production_confirmed', condition: 'Team replies /produce yes' },
+      { from: 'production_pending', to: 'production_confirmed', condition: 'Team replies /produce yes' },
     ],
-    notificationGroup: 'Purchasing',
+    notificationGroup: 'Production',
   },
   {
     name: 'production-agent',
@@ -121,7 +121,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     color: 'border-rose-200 bg-rose-50',
     headingColor: 'text-rose-700',
     description: 'Escalates stale orders that have not progressed',
-    monitors: ['purchasing_pending', 'production_confirmed', 'en_route', 'deposit_pending', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'countered'],
+    monitors: ['purchasing_pending', 'production_pending', 'production_confirmed', 'en_route', 'deposit_pending', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'countered'],
     triggers: [
       { from: '*', to: '*', condition: 'Escalation level increases per missed reminder' },
     ],
@@ -188,17 +188,25 @@ const STAGE_INFO: Record<string, StageInfo> = {
   purchasing_pending: {
     stage: 'purchasing_pending',
     entryAction: 'Reminder sent to Purchasing group daily',
-    exitCondition: 'Team confirms production started (/produce yes)',
+    exitCondition: 'Downpayment recorded (/deposit)',
     triggeredBy: 'Purchasing Agent / Team',
     responsibleParty: 'Purchasing Team',
+    autoAdvance: false,
+  },
+  production_pending: {
+    stage: 'production_pending',
+    entryAction: 'Reminder sent to Production group asking if production started',
+    exitCondition: 'Team confirms production started (/produce yes)',
+    triggeredBy: 'Purchasing Agent / Team',
+    responsibleParty: 'Production Team',
     autoAdvance: false,
   },
   production_confirmed: {
     stage: 'production_confirmed',
     entryAction: 'Production timeline recorded',
-    exitCondition: 'Downpayment recorded (/deposit)',
+    exitCondition: 'Production finished',
     triggeredBy: 'Team',
-    responsibleParty: 'Purchasing Team',
+    responsibleParty: 'Production Team',
     autoAdvance: false,
   },
   en_route: {

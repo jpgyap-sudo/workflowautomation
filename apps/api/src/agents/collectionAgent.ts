@@ -25,8 +25,8 @@ import {
 export async function runCollectionAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // ── Phase 1: Deposit Collection (purchasing_pending without deposit) ──
-  const depositOrders = await getActiveOrdersByStage('purchasing_pending');
+  // ── Phase 1: Deposit Collection (production_pending without deposit) ──
+  const depositOrders = await getActiveOrdersByStage('production_pending');
   for (const order of depositOrders) {
     // Only process orders that haven't paid deposit yet
     if (order.deposit_paid) continue;

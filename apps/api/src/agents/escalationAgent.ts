@@ -33,6 +33,7 @@ export async function runEscalationAgent(): Promise<AgentResult[]> {
     'order_confirmation_received',
     'math_verified',
     'purchasing_pending',
+    'production_pending',
     'production_confirmed',
     'en_route',
     'deposit_pending',

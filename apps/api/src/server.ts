@@ -25,6 +25,8 @@ import {
   createStageReminder,
   completeOrderReminders,
   startReminderScheduler,
+  stopReminderScheduler,
+  waitForReminders,
 } from './services/reminderScheduler.js';
 import { checkQuotation } from './agents/quotationChecker.js';
 import { checkPurchasing } from './agents/purchasingAgent.js';
@@ -34,6 +36,8 @@ import { checkCollection } from './agents/collectionAgent.js';
 import { checkEscalation } from './agents/escalationAgent.js';
 import {
   startAgentScheduler,
+  stopAgentScheduler,
+  waitForAgents,
   runAgentByName,
   listAgents,
   getAgentHealth,
@@ -57,7 +61,7 @@ const ORDER_LIST_SELECT = `
   o.created_at, o.updated_at
 `;
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
 await app.register(cors, { origin: true });
 
 // ── Redis Cache ──────────────────────────────────────────────────────
@@ -1142,7 +1146,7 @@ app.post('/deposits', async (request, reply) => {
   const orderId = orders[0].id;
   const quotationNumber = orders[0].quotation_number;
 
-  // Update deposit fields. Only advance early/deposit-stage orders to purchasing_pending;
+  // Update deposit fields. Only advance early/deposit-stage orders to production_pending;
   // do not move orders backwards if production or later work already started.
   await query(
     `UPDATE orders SET
@@ -1152,7 +1156,7 @@ app.post('/deposits', async (request, reply) => {
        deposit_paid_at=COALESCE($4, deposit_paid_at),
        current_stage=CASE
          WHEN current_stage IN ('order_confirmation_received', 'math_verified', 'deposit_pending')
-         THEN 'purchasing_pending'
+         THEN 'production_pending'
          ELSE current_stage
        END,
        updated_at=NOW()
@@ -3531,3 +3535,55 @@ const AGENT_CHECK_INTERVAL_MS = Number(process.env.AGENT_CHECK_INTERVAL_MS ?? 60
 startAgentScheduler(AGENT_CHECK_INTERVAL_MS);
 
 await app.listen({ port, host: '0.0.0.0' });
+console.log(`[server] Listening on port ${port}`);
+
+// ── Memory Monitoring ────────────────────────────────────────────────
+const MEM_CHECK_INTERVAL_MS = Number(process.env.MEM_CHECK_INTERVAL_MS ?? 60_000);
+const MEM_WARN_MB = Number(process.env.MEM_WARN_MB ?? 512);
+const MEM_CRIT_MB = Number(process.env.MEM_CRIT_MB ?? 768);
+
+setInterval(() => {
+  const usage = process.memoryUsage();
+  const rssMb = Math.round(usage.rss / 1024 / 1024);
+  const heapMb = Math.round(usage.heapUsed / 1024 / 1024);
+
+  if (rssMb > MEM_CRIT_MB) {
+    console.error(`[memory] CRITICAL — RSS ${rssMb}MB, Heap ${heapMb}MB. Consider restarting.`);
+  } else if (rssMb > MEM_WARN_MB) {
+    console.warn(`[memory] WARNING — RSS ${rssMb}MB, Heap ${heapMb}MB`);
+  }
+}, MEM_CHECK_INTERVAL_MS);
+
+// ── Graceful Shutdown ────────────────────────────────────────────────
+async function shutdown(signal: string): Promise<void> {
+  console.log(`[server] Received ${signal}. Shutting down gracefully...`);
+
+  // Stop accepting new connections
+  app.server?.close(() => {
+    console.log('[server] HTTP server closed');
+  });
+
+  // Stop schedulers from firing new work
+  stopReminderScheduler();
+  stopAgentScheduler();
+
+  // Wait for in-flight work to finish (with timeout)
+  console.log('[server] Waiting for agents and reminders to finish...');
+  await Promise.race([
+    Promise.all([waitForAgents(30_000), waitForReminders(30_000)]),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Shutdown timeout')), 35_000)),
+  ]).catch((err) => {
+    console.warn('[server] Graceful shutdown timed out:', err.message);
+  });
+
+  // Close Redis
+  if (cacheClient?.isOpen) {
+    try { await cacheClient.quit(); } catch { /* ignore */ }
+  }
+
+  console.log('[server] Goodbye');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

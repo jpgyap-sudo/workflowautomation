@@ -15,8 +15,8 @@ import {
 /**
  * purchasing-agent
  *
- * Role: Tracks purchasing/production status for orders at purchasing_pending stage.
- * - Sends daily reminders to the purchasing group
+ * Role: Tracks production start status for orders at production_pending stage.
+ * - Sends daily reminders to the production group asking "Has production started?"
  * - Escalates after 3 reminders with no update
  * - Auto-advances when team confirms via /produce command (handled by bot.ts)
  * - Monitors production midpoint and due reminders for orders with production tracking
@@ -24,16 +24,16 @@ import {
 export async function runPurchasingAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // Check orders stuck at purchasing_pending
-  const orders = await getActiveOrdersByStage('purchasing_pending');
+  // Check orders stuck at production_pending
+  const orders = await getActiveOrdersByStage('production_pending');
 
   for (const order of orders) {
     const result = await checkPurchasing(order);
-    // Create reminder if needed
+    // Create reminder if needed — send to production group since this is about production start
     if (result.reminder_needed) {
-      const groupChatId = getGroupChatId('purchasing-agent');
+      const groupChatId = getGroupChatId('production-agent');
       if (groupChatId) {
-        await createReminder(order.id, 'purchasing_pending', groupChatId, result.message);
+        await createReminder(order.id, 'production_pending', groupChatId, result.message);
         await notifyPurchasing(groupChatId, order, result);
       }
     }
@@ -58,7 +58,7 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
   };
 
   try {
-    const escalationLevel = await getEscalationLevel(order.id, 'purchasing_pending');
+    const escalationLevel = await getEscalationLevel(order.id, 'production_pending');
     const daysWaiting = daysSince(order.created_at);
 
     // If production is finished → stop reminding entirely

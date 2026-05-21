@@ -10,6 +10,33 @@ if (!token) throw new Error('TELEGRAM_BOT_TOKEN is required');
 
 const bot = new Telegraf(token);
 
+// ── Global callback query answer ───────────────────────────────────────
+// Prevents ALL inline keyboard buttons from showing a loading spinner
+// when clicked. Telegram requires answerCbQuery within 10 seconds.
+bot.use(async (ctx, next) => {
+  if (ctx.callbackQuery) {
+    await ctx.answerCbQuery().catch(() => {});
+  }
+  return next();
+});
+
+// ── Global error handler for callback queries ──────────────────────────
+// Catches unhandled errors in any action handler and gives user feedback.
+bot.use(async (ctx, next) => {
+  try {
+    return await next();
+  } catch (err: any) {
+    console.error('[bot] Unhandled error in handler:', err);
+    if (ctx.callbackQuery) {
+      await ctx.reply(
+        '❌ Something went wrong. Please try again or contact support if the problem persists.',
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+    throw err;
+  }
+});
+
 // ── AsyncLocalStorage for implicit context propagation ─────────────────
 // Lets setStep/setLock read the current Telegraf ctx without passing it
 // through every call site.
@@ -125,6 +152,7 @@ bot.use(async (ctx, next) => {
       if (chatType === 'private') {
         await ctx.reply(`⏳ Please wait ${rate.retryAfterSec}s before sending another message.`, { parse_mode: 'Markdown' }).catch(() => {});
       }
+      // For callback queries, already answered by global middleware above
       return;
     }
   }
@@ -1758,7 +1786,7 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
   if (status === 'no') {
     await postJson('/stage-updates', {
       quotation_number: quotationNumber,
-      stage: 'purchasing_pending',
+      stage: 'production_pending',
       status: 'no',
       remarks: 'Not yet started',
       updated_by: ctx.from?.username ?? String(ctx.from?.id),
@@ -2519,6 +2547,7 @@ bot.action('vision:process_no', async (ctx) => {
 
 // Step 2: User said Yes to extract → call Gemini Vision, share to dashboard
 bot.action('vision:extract_yes', async (ctx) => {
+  await ctx.answerCbQuery('🤖 Analyzing...');
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
   const userId = String(ctx.from?.id ?? '');
@@ -2568,7 +2597,8 @@ bot.action('vision:extract_yes', async (ctx) => {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Vision API error' }));
+      const text = await res.text().catch(() => '');
+      const err = text ? JSON.parse(text) : { error: `Vision API error (HTTP ${res.status})` };
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
@@ -3320,6 +3350,7 @@ bot.action('vision:ignore', async (ctx) => {
 
 // Retry extraction after a vision API failure
 bot.action('vision:retry_extract', async (ctx) => {
+  await ctx.answerCbQuery('🤖 Retrying...');
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
   const userId = String(ctx.from?.id ?? '');
@@ -3369,7 +3400,8 @@ bot.action('vision:retry_extract', async (ctx) => {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Vision API error' }));
+      const text = await res.text().catch(() => '');
+      const err = text ? JSON.parse(text) : { error: `Vision API error (HTTP ${res.status})` };
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
