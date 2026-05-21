@@ -1698,3 +1698,72 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: replace Google Drive upload with local file-store container for Hermes agent quotation reference
+
+Date: 2026-05-21
+
+#### Task Summary
+Replaced Google Drive upload for quotations with a local file-store container on the VPS. Quotation text (extracted via Gemini Vision) is stored as plain text files in a dedicated Fastify container, accessible only to the Hermes agent for production analysis. Deposit slips are no longer stored anywhere. Auto-deletion of quotation text occurs after 90 days via a built-in cleanup agent.
+
+#### Lesson Learned
+1. **Text-only storage is sufficient for AI context**: Storing extracted quotation text (~1-5KB) instead of bulky PDFs/images saves significant disk space while providing all the context Hermes needs for production analysis.
+2. **Separate container per concern**: The file-store container is independently deployable, has its own volume, and can be scaled/restarted without affecting other services.
+3. **Auto-cleanup via file age**: Using file modification time (mtime) for cleanup is simpler and more reliable than database-driven retention — no cron jobs or complex queries needed.
+4. **Deposit slips should never be stored**: Per user requirements, deposit slips contain sensitive financial information and should only be used ephemerally during the deposit confirmation flow.
+5. **Gitignore gotcha with *.json**: The project's `.gitignore` had `*.json` which excluded `package.json` from git tracking. Must use `!apps/file-store/package.json` negation pattern to override.
+6. **Google Drive removal is multi-layered**: Removing Drive integration requires changes in: API server (endpoints + imports), Telegram bot (upload calls), dashboard (API client + page components), and docker-compose (env vars).
+
+#### Tags
+
+file-store, google-drive-removal, hermes-agent, quotation-storage, auto-cleanup, gitignore, vps-deployment
+
+---
+
+### Lesson: [workflowautomation] fix: add apps/file-store/package.json to git tracking (was excluded by *.json gitignore)
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6e4b6bf702ed018d2021ff49ff3f682c9a28cfac
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6e4b6bf702ed018d2021ff49ff3f682c9a28cfac
+**Files:** .gitignore,apps/file-store/package.json
+
+**Summary:**
+**What was fixed:**  
+A missing `apps/file-store/package.json` file was added to Git tracking, enabling proper dependency resolution and build for the `file-store` app.
+
+**Why it broke:**  
+The root `.gitignore` contained a blanket `*.json` rule, which inadvertently excluded all JSON files—including critical `package.json` files in subdirectories. This caused the `file-store` app’s dependencies to be untracked and missing in CI or fresh clones.
+
+**Reusable takeaway:**  
+Avoid broad file-type ignores (e.g., `*.json`) in root `.gitignore` when subdirectories contain essential config files. Instead, scope ignores to specific directories or use negative patterns (e.g., `!apps/*/package.json`) to preserve critical files. Always verify that global ignore rules don’t accidentally exclude project-required assets.
+
+---
+*Original commit message: fix: add apps/file-store/package.json to git tracking (was excluded by *.json gitignore)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing `apps/file-store/package.json` file was added to Git tracking, enabling proper dependency resolution and build for the `file-store` app.
+
+**Why it broke:**  
+The root `.gitignore` contained a blanket `*.json` rule, which inadvertently excluded all JSON files—including critical `package.json` files in subdirectories. This caused the `file-store` app’s dependencies to be untracked and missing in CI or fresh clones.
+
+**Reusable takeaway:**  
+Avoid broad file-type ignores (e.g., `*.json`) in root `.gitignore` when subdirectories contain essential config files. Instead, scope ignores to specific directories or use negative patterns (e.g., `!apps/*/package.json`) to preserve critical files. Always verify that global ignore rules don’t accidentally exclude project-required assets.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
