@@ -2085,6 +2085,99 @@ bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
   }
 });
 
+// ── Item-Level Production Callback Handlers ──────────────────────────────
+// These handle the process-of-elimination item-by-item production tracking.
+// Callback format: item_prod:{status}:{itemId}:{orderId}
+//   status = finished | in_progress | pending
+
+bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const newStatus = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderId = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `item_prod:${newStatus}:${itemId}:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Update the item's production status via API
+    await postJson(`/orders/${orderId}/items/${itemId}`, {
+      production_status: newStatus,
+    });
+
+    // Add a production update log
+    const statusLabels: Record<string, string> = {
+      finished: '✅ Finished',
+      in_progress: '🔄 In Progress',
+      pending: '⏳ Not Yet Started',
+    };
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `Item production status updated to: ${statusLabels[newStatus]}`,
+      log_type: 'telegram',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    // Fetch updated completion and items to show next question
+    const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
+    const completion = await completionRes.json();
+
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const items = await itemsRes.json();
+
+    // Find the next unfinished item (process of elimination)
+    const unfinishedItem = items?.items?.find(
+      (item: any) => item.production_status !== 'finished'
+    );
+
+    if (!unfinishedItem) {
+      // All items finished! Advance the order
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: null,
+        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Order ready to advance.`,
+        log_type: 'telegram',
+        created_by: username ?? `user_${userId}`,
+      });
+
+      await ctx.editMessageText(
+        `✅ *All Items Production Finished!*\n\nOrder #${orderId.slice(0, 8)}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nThe production agent will auto-advance the order to 🚚 En Route.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      // Ask about the next unfinished item (process of elimination)
+      const finishedCount = items.items.filter((i: any) => i.production_status === 'finished').length;
+      const totalCount = items.items.length;
+      const prodPct = completion?.production_pct ?? 0;
+
+      const progressBar = '█'.repeat(Math.round(prodPct / 10)) + '░'.repeat(10 - Math.round(prodPct / 10));
+
+      let msg = `🏗️ *Item-Level Production*\n\n`;
+      msg += `Progress: ${prodPct}% complete ${progressBar}\n`;
+      msg += `Items: ${finishedCount}/${totalCount} finished\n\n`;
+      msg += `*Process of Elimination:*\n`;
+      msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
+      msg += `Has *${unfinishedItem.name}* started or finished production?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id}:${orderId}`)],
+          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id}:${orderId}`)],
+          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id}:${orderId}`)],
+        ]),
+      });
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error updating item production: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
 // Delivery timeline: Standard (4 weeks)
 bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);

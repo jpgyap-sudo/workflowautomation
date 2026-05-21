@@ -9,6 +9,9 @@ import {
   getEscalationLevel,
   daysSince,
   getGroupChatId,
+  advanceStage,
+  addAgentNote,
+  inlineKeyboard,
 } from '../services/agentRunner.js';
 import { query } from '../db.js';
 import {
@@ -36,7 +39,27 @@ import {
  *   1. production_confirmed — tracks timeline, sends adaptive reminders
  *   2. en_route             — daily check until inventory arrives
  *   3. partial_production   — daily check for pending items (purchasing_pending with items)
+ *   4. item-level tracking  — item-by-item production tracking with process of elimination
+ *      (production_confirmed orders that have order_items)
  */
+
+// ── Item-level tracking types ─────────────────────────────────────────
+
+interface OrderItemRow {
+  id: string;
+  order_id: string;
+  name: string;
+  quantity: number;
+  production_status: 'pending' | 'in_progress' | 'finished';
+  en_route_status: 'not_yet' | 'en_route' | 'arrived';
+  estimated_arrival_days: number | null;
+}
+
+interface CompletionRow {
+  get_production_completion_pct: number;
+  get_en_route_completion_pct: number;
+  get_inventory_completion_pct: number;
+}
 
 const AGENT_NAME = 'production-agent';
 
@@ -345,6 +368,188 @@ async function checkPartialProduction(order: PartialOrder): Promise<AgentResult>
   }
 }
 
+// ── 4. Item-level production tracking (process of elimination) ────────
+
+/**
+ * Fetch order_items for a given order.
+ */
+async function getOrderItems(orderId: string): Promise<OrderItemRow[]> {
+  return query<OrderItemRow>(
+    `SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [orderId],
+  );
+}
+
+/**
+ * Fetch completion percentages for a given order.
+ */
+async function getCompletionPct(orderId: string): Promise<CompletionRow | null> {
+  const rows = await query<CompletionRow>(
+    `SELECT
+       get_production_completion_pct($1::uuid) AS get_production_completion_pct,
+       get_en_route_completion_pct($1::uuid) AS get_en_route_completion_pct,
+       get_inventory_completion_pct($1::uuid) AS get_inventory_completion_pct`,
+    [orderId],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Add a production update log entry.
+ */
+async function addProductionLog(
+  orderItemId: string | null,
+  orderId: string,
+  note: string,
+  logType: string = 'agent',
+  createdBy: string = AGENT_NAME,
+): Promise<void> {
+  await query(
+    `INSERT INTO production_update_logs (order_item_id, order_id, note, log_type, created_by)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [orderItemId, orderId, note, logType, createdBy],
+  );
+}
+
+/**
+ * Check item-level production tracking with process of elimination.
+ *
+ * Strategy:
+ * 1. Fetch all order_items for the order
+ * 2. Calculate overall completion %
+ * 3. Find the first unfinished item (pending or in_progress)
+ * 4. Ask about that specific item (process of elimination)
+ * 5. If all items finished → advance order to next stage
+ * 6. If no items exist → skip (no item-level tracking needed)
+ */
+async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | null> {
+  const input = {
+    quotation_number: order.quotation_number,
+    stage: order.current_stage,
+  };
+
+  try {
+    // Only run for production_confirmed orders that have started production
+    if (order.current_stage !== 'production_confirmed') return null;
+    if (!order.production_started) return null;
+
+    // Fetch items and completion
+    const items = await getOrderItems(order.id);
+    if (items.length === 0) return null; // No items to track — skip
+
+    const completion = await getCompletionPct(order.id);
+    const prodPct = completion?.get_production_completion_pct ?? 0;
+    const escalationLevel = await getEscalationLevel(order.id, 'item_level_production');
+
+    // Find the first unfinished item (process of elimination)
+    const unfinishedItem = items.find(
+      (item) => item.production_status !== 'finished',
+    );
+
+    // If all items are finished — advance the order
+    if (!unfinishedItem) {
+      const qn = order.quotation_number ?? 'unknown';
+      const client = order.client_name ?? 'Unknown';
+
+      // Log the completion
+      await addProductionLog(null, order.id, `✅ All items production finished (${prodPct}% complete). Auto-advancing order.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) production finished. Auto-advancing to en_route.`);
+
+      // Advance to en_route
+      await advanceStage(order.id, 'en_route', qn, `All items production finished (${prodPct}% complete)`);
+
+      // Send notification to production group
+      const groupChatId = getGroupChatId(AGENT_NAME);
+      if (groupChatId) {
+        const msg = `✅ <b>All Items Production Finished</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) completed (${prodPct}%).\nOrder auto-advanced to 🚚 En Route.`;
+        await sendTelegramMessage(groupChatId, msg);
+      }
+
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ All items production finished for #${qn}. Auto-advanced to en_route.`,
+        next_stage: 'en_route',
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
+      return result;
+    }
+
+    // ── Process of elimination: ask about the next unfinished item ──
+    const finishedCount = items.filter((i) => i.production_status === 'finished').length;
+    const totalCount = items.length;
+
+    // Build the message with completion indicator
+    const qn = order.quotation_number ?? 'unknown';
+    const client = order.client_name ?? 'Unknown';
+    const progressBar = buildProgressBar(prodPct);
+
+    let message = `🏗️ <b>Item-Level Production Check</b>\n`;
+    message += `Order: #${qn} (${client})\n`;
+    message += `Progress: ${prodPct}% complete ${progressBar}\n`;
+    message += `Items: ${finishedCount}/${totalCount} finished\n\n`;
+    message += `<b>Process of Elimination:</b>\n`;
+    message += `Next item: <b>${unfinishedItem.name}</b> x${unfinishedItem.quantity}\n\n`;
+    message += `Has <b>${unfinishedItem.name}</b> started or finished production?`;
+
+    // Build inline keyboard for this specific item
+    const keyboard = inlineKeyboard([
+      [
+        { text: `✅ ${unfinishedItem.name} — Finished`, callback_data: `item_prod:finished:${unfinishedItem.id}:${order.id}` },
+      ],
+      [
+        { text: `🔄 ${unfinishedItem.name} — In Progress`, callback_data: `item_prod:in_progress:${unfinishedItem.id}:${order.id}` },
+      ],
+      [
+        { text: `⏳ ${unfinishedItem.name} — Not Yet`, callback_data: `item_prod:pending:${unfinishedItem.id}:${order.id}` },
+      ],
+    ]);
+
+    // Send the message to the production group chat
+    const groupChatId = getGroupChatId(AGENT_NAME);
+    if (groupChatId) {
+      await sendTelegramMessage(groupChatId, message, keyboard);
+    }
+
+    // Upsert a reminder for the next check (24h default for item-level)
+    if (groupChatId) {
+      const reminderMsg = `🏗️ Item-Level Production: #${qn} — ${finishedCount}/${totalCount} items finished (${prodPct}%). Next item: ${unfinishedItem.name}`;
+      await upsertProductionReminder(order.id, 'item_level_production', groupChatId, reminderMsg, 24 * 60 * 60 * 1000);
+    }
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Item-level production check for #${qn}: ${finishedCount}/${totalCount} finished (${prodPct}%). Asking about "${unfinishedItem.name}".`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+    await logAgentAction(AGENT_NAME, input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking item-level production for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: false,
+      escalation_level: 0,
+    };
+    await logAgentAction(AGENT_NAME, input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Build a simple text-based progress bar.
+ */
+function buildProgressBar(pct: number, width: number = 10): string {
+  const filled = Math.round((pct / 100) * width);
+  const empty = width - filled;
+  return '█'.repeat(filled) + '░'.repeat(empty);
+}
+
 // ── Main Runner ───────────────────────────────────────────────────────
 
 export async function runProductionAgent(): Promise<AgentResult[]> {
@@ -381,6 +586,14 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
   );
   for (const order of partialRows) {
     results.push(await checkPartialProduction(order));
+  }
+
+  // 4. Item-level production tracking — production_confirmed orders with order_items
+  for (const order of confirmedOrders) {
+    const itemResult = await checkItemLevelProduction(order);
+    if (itemResult) {
+      results.push(itemResult);
+    }
   }
 
   return results;
