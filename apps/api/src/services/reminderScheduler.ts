@@ -98,7 +98,7 @@ export async function processDueReminders(): Promise<number> {
 
   // Fetch all active reminders where next_run_at <= now
   const dueReminders = await query(
-    `SELECT r.*, o.quotation_number, o.client_name,
+    `SELECT r.*, o.quotation_number, o.client_name, o.current_stage, o.deposit_paid, o.balance_paid,
             COALESCE(o.partial_production_items, '[]'::jsonb) AS partial_production_items
      FROM reminders r
      JOIN orders o ON o.id = r.order_id
@@ -113,7 +113,25 @@ export async function processDueReminders(): Promise<number> {
 
   let sent = 0;
 
-  for (const reminder of dueReminders as Reminder[]) {
+  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean })[]) {
+    // ── Auto-complete stale reminders ──────────────────────────────────
+    // Skip + complete reminders that are no longer relevant based on order state
+    let stale = false;
+    if (reminder.stage === 'deposit_pending' && reminder.deposit_paid) stale = true;
+    if ((reminder.stage === 'balance_due' || reminder.stage === 'delivered' || reminder.stage === 'countered') && reminder.balance_paid) stale = true;
+    if (reminder.stage === 'delivery_scheduled' && ['delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'en_route' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'production_confirmed' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'purchasing_pending') && ['production_confirmed', 'production_pending', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+
+    if (stale) {
+      await query(
+        `UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+        [reminder.id]
+      );
+      continue;
+    }
     // Build the reminder message
     const orderRef = reminder.quotation_number
       ? `*${reminder.quotation_number}*`
