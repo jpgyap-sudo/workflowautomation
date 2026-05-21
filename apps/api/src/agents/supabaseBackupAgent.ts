@@ -80,10 +80,10 @@ async function supabaseRequest(
 // ── Helper: Ensure Bucket Exists ───────────────────────────────────────
 
 async function ensureBucket(): Promise<boolean> {
-  // Check if bucket exists
+  // NOTE: Supabase Storage API uses singular /bucket (not /buckets)
   const check = await supabaseRequest(
     'GET',
-    `/storage/v1/buckets/${SUPABASE_BACKUP_BUCKET}`,
+    `/storage/v1/bucket/${SUPABASE_BACKUP_BUCKET}`,
   );
 
   if (check.status === 200) {
@@ -94,10 +94,10 @@ async function ensureBucket(): Promise<boolean> {
     // Create the bucket
     const create = await supabaseRequest(
       'POST',
-      '/storage/v1/buckets',
+      '/storage/v1/bucket',
       JSON.stringify({ name: SUPABASE_BACKUP_BUCKET, public: false }),
     );
-    return create.status === 200;
+    return create.status === 200 || create.status === 409;
   }
 
   return false;
