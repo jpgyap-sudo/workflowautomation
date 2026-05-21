@@ -226,6 +226,13 @@ export async function deleteOrder(id: string, actionToken: string): Promise<{ ok
   });
 }
 
+export async function bulkDeleteOrders(ids: string[], actionToken: string): Promise<{ ok: boolean; deleted: number }> {
+  return fetchJson<{ ok: boolean; deleted: number }>('/orders/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids, action_token: actionToken }),
+  });
+}
+
 export async function setProduction(
   id: string,
   data: { production_started: boolean; estimated_production_days?: number }

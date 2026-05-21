@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { useOrders } from '@/lib/useApi';
 import { STAGE_CONFIG } from '@/lib/api';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, createOrder } from '@/lib/api';
+import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
-import { X, Check, Plus, Loader2 } from 'lucide-react';
+import { X, Check, Plus, Loader2, Trash2 } from 'lucide-react';
 
 function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [qn, setQn] = useState('');
@@ -161,12 +161,16 @@ export default function OrdersPage() {
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   // OTP modal state
   const [otpModal, setOtpModal] = useState<{
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete';
+    pendingAction: 'edit' | 'delete' | 'bulk-delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const filtered = filter === 'all' ? orders : orders.filter((o) => o.current_stage === filter);
@@ -230,11 +234,64 @@ export default function OrdersPage() {
     }
   }
 
+  // ── Bulk selection handlers ──
+  function handleSelect(id: string, selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function handleSelectAll(selected: boolean) {
+    if (selected) {
+      setSelectedIds(new Set(filtered.map((o) => o.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }
+
+  function handleBulkDeleteClick() {
+    if (selectedIds.size === 0) return;
+    const names = filtered
+      .filter((o) => selectedIds.has(o.id))
+      .map((o) => o.quotation_number ?? o.id)
+      .slice(0, 5)
+      .join(', ');
+    const more = selectedIds.size > 5 ? ` and ${selectedIds.size - 5} more` : '';
+    setOtpModal({
+      open: true,
+      title: 'Bulk Delete Orders',
+      description: `You are about to permanently delete ${selectedIds.size} order(s): ${names}${more}. This will also remove all stage updates, files, and reminders. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulk-delete',
+    });
+  }
+
+  async function handleBulkDeleteVerified(actionToken: string) {
+    setBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await bulkDeleteOrders(ids, actionToken);
+      setSelectedIds(new Set());
+      mutate();
+    } catch (err: any) {
+      alert('Failed to delete orders: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') {
       handleEditVerified(actionToken);
     } else if (otpModal.pendingAction === 'delete') {
       handleDeleteVerified(actionToken);
+    } else if (otpModal.pendingAction === 'bulk-delete') {
+      handleBulkDeleteVerified(actionToken);
     }
   }
 
@@ -276,6 +333,22 @@ export default function OrdersPage() {
         </button>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2.5">
+          <span className="text-sm font-medium text-red-700">
+            {selectedIds.size} order{selectedIds.size > 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={handleBulkDeleteClick}
+            className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete Selected
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
@@ -291,7 +364,15 @@ export default function OrdersPage() {
             </button>
           </div>
         </div>
-        <OrderTable orders={filtered} onEdit={handleEdit} onDelete={handleDeleteClick} />
+        <OrderTable
+          orders={filtered}
+          onEdit={handleEdit}
+          onDelete={handleDeleteClick}
+          selectable
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
+          onSelectAll={handleSelectAll}
+        />
         {editingOrder && (
           <EditForm
             order={editingOrder}
@@ -325,6 +406,16 @@ export default function OrdersPage() {
           <div className="rounded-xl bg-white p-6 text-center shadow-xl">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
             <p className="text-sm text-gray-600">Deleting order...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk deleting overlay */}
+      {bulkDeleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
+            <p className="text-sm text-gray-600">Deleting {selectedIds.size} orders...</p>
           </div>
         </div>
       )}

@@ -629,6 +629,54 @@ app.delete('/orders/:id', async (request, reply) => {
   return reply.send({ ok: true, deleted: rows[0] });
 });
 
+// ── Bulk Delete Orders (requires action token) ──────────────────────
+app.post('/orders/bulk-delete', async (request, reply) => {
+  const body = z.object({
+    ids: z.array(z.string()).min(1).max(100),
+    action_token: z.string(),
+  }).parse(request.body);
+
+  // Verify action token once
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
+  const ids = body.ids;
+
+  // Delete related records using ANY
+  await query(`DELETE FROM stage_updates WHERE order_id = ANY($1)`, [ids]);
+  await query(`DELETE FROM files WHERE order_id = ANY($1)`, [ids]);
+  await query(`DELETE FROM reminders WHERE order_id = ANY($1)`, [ids]);
+  const rows = await query<{ id: string; quotation_number: string | null; client_name: string | null }>(
+    `DELETE FROM orders WHERE id = ANY($1) RETURNING id, quotation_number, client_name`,
+    [ids]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', 'order:detail:*', 'calendar:*', 'sales:*']);
+  for (const row of rows) {
+    broadcastSSE('order_deleted', { id: row.id });
+  }
+
+  const names = rows
+    .map((r) => r.quotation_number ?? r.id)
+    .slice(0, 5)
+    .join(', ');
+  const more = rows.length > 5 ? ` and ${rows.length - 5} more` : '';
+
+  await notifyManualChange(
+    `🗑️ ${rows.length} order(s) deleted via dashboard (bulk)`,
+    `Deleted: ${names}${more}`,
+  );
+
+  return reply.send({ ok: true, deleted: rows.length });
+});
+
 // ── Production Tracking ─────────────────────────────────────────────
 
 const setProductionSchema = z.object({
