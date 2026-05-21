@@ -63,48 +63,59 @@ function findPostgresContainer(): string {
   return CONTAINER_HINT;
 }
 
-// ── Helper: HTTP Request ───────────────────────────────────────────────
+// ── Helper: HTTP Request (uses curl instead of fetch to work around
+//     Node.js 20 HTTP client mangling JWT in Alpine containers) ─────────
 
-async function supabaseRequest(
+function supabaseRequest(
   method: string,
   path: string,
   body?: string,
-): Promise<{ status: number; data: any }> {
+): { status: number; data: any } {
   try {
     const url = `${SUPABASE_URL}${path}`;
-    const headers: Record<string, string> = {
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      'apikey': SUPABASE_SERVICE_ROLE_KEY,
-    };
+    const authHeader = `Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+    const apiKeyHeader = `apikey: ${SUPABASE_SERVICE_ROLE_KEY}`;
+
+    let curlCmd = `curl -s -w '\\n%{http_code}' -X ${method} '${url}' -H '${authHeader}' -H '${apiKeyHeader}'`;
+
     if (body) {
-      headers['Content-Type'] = 'application/json';
+      // Write body to a temp file to avoid shell escaping issues
+      const tmpBody = join(tmpdir(), `supa-req-body-${Date.now()}.json`);
+      writeFileSync(tmpBody, body, 'utf-8');
+      curlCmd += ` -H 'Content-Type: application/json' --data-binary '@${tmpBody}'`;
+      const result = exec(curlCmd);
+      try { unlinkSync(tmpBody); } catch { /* ignore */ }
+      return parseCurlResponse(result);
     }
 
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: body ?? undefined,
-    });
-
-    const text = await res.text();
-    let data: any;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-
-    return { status: res.status, data };
+    const result = exec(curlCmd);
+    return parseCurlResponse(result);
   } catch (err) {
     return { status: 0, data: { error: String(err) } };
   }
 }
 
+function parseCurlResponse(result: { stdout: string; stderr: string }): { status: number; data: any } {
+  const lines = result.stdout.split('\n').filter(Boolean);
+  if (lines.length === 0) {
+    return { status: 0, data: { error: result.stderr || 'Empty response from curl' } };
+  }
+  const httpCode = parseInt(lines[lines.length - 1], 10);
+  const bodyRaw = lines.slice(0, -1).join('\n');
+  let data: any;
+  try {
+    data = JSON.parse(bodyRaw);
+  } catch {
+    data = bodyRaw;
+  }
+  return { status: isNaN(httpCode) ? 0 : httpCode, data };
+}
+
 // ── Helper: Ensure Bucket Exists ───────────────────────────────────────
 
-async function ensureBucket(): Promise<boolean> {
+function ensureBucket(): boolean {
   // NOTE: Supabase Storage API uses singular /bucket (not /buckets)
-  const check = await supabaseRequest(
+  const check = supabaseRequest(
     'GET',
     `/storage/v1/bucket/${SUPABASE_BACKUP_BUCKET}`,
   );
@@ -114,7 +125,7 @@ async function ensureBucket(): Promise<boolean> {
   }
 
   if (check.status === 404) {
-    const create = await supabaseRequest(
+    const create = supabaseRequest(
       'POST',
       '/storage/v1/bucket',
       JSON.stringify({ name: SUPABASE_BACKUP_BUCKET, public: false }),
@@ -125,24 +136,18 @@ async function ensureBucket(): Promise<boolean> {
   return false;
 }
 
-// ── Helper: Upload File ────────────────────────────────────────────────
+// ── Helper: Upload File (uses curl instead of fetch) ───────────────────
 
-async function uploadBackup(filePath: string, filename: string): Promise<boolean> {
-  const fileBuffer = readFileSync(filePath);
-
+function uploadBackup(filePath: string, filename: string): boolean {
   try {
     const url = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BACKUP_BUCKET}/${filename}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'apikey': SUPABASE_SERVICE_ROLE_KEY,
-        'Content-Type': 'application/gzip',
-      },
-      body: fileBuffer,
-    });
+    const authHeader = `Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+    const apiKeyHeader = `apikey: ${SUPABASE_SERVICE_ROLE_KEY}`;
 
-    return res.ok;
+    const curlCmd = `curl -s -w '\\n%{http_code}' -X POST '${url}' -H '${authHeader}' -H '${apiKeyHeader}' -H 'Content-Type: application/gzip' --data-binary '@${filePath}'`;
+    const result = exec(curlCmd);
+    const parsed = parseCurlResponse(result);
+    return parsed.status >= 200 && parsed.status < 300;
   } catch {
     return false;
   }
@@ -202,14 +207,14 @@ async function runBackup(): Promise<{ ok: boolean; message: string }> {
 
     // Ensure bucket exists
     console.log(`[BackupRunner] Ensuring bucket ${SUPABASE_BACKUP_BUCKET} exists...`);
-    const bucketReady = await ensureBucket();
+    const bucketReady = ensureBucket();
     if (!bucketReady) {
       throw new Error(`Failed to create or verify bucket ${SUPABASE_BACKUP_BUCKET}`);
     }
 
     // Upload backup
     console.log(`[BackupRunner] Uploading ${backupFilename}...`);
-    const uploaded = await uploadBackup(tempBackupPath, backupFilename);
+    const uploaded = uploadBackup(tempBackupPath, backupFilename);
     if (!uploaded) {
       throw new Error(`Failed to upload backup ${backupFilename}`);
     }
