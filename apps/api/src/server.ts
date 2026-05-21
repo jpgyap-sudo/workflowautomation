@@ -926,35 +926,46 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
     [id, `Production finished; delivery availability estimated in ${body.delivery_estimated_days} day(s)`]
   );
 
+  // Complete item-level production reminder if it exists
   await query(
     `UPDATE reminders SET status = 'completed', updated_at = NOW()
-     WHERE order_id = $1 AND status = 'active' AND stage IN ('production_midpoint', 'production_due', 'production_confirmed')`,
+     WHERE order_id = $1 AND status = 'active' AND stage = 'item_level_production'`,
     [id]
   );
 
-  // Create an en_route reminder — daily reminder asking "Is the order en route?"
-  const groupChatId = process.env.PURCHASING_GROUP_ID;
-  if (groupChatId) {
-    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
-    const client = rows[0].client_name ?? 'Unknown';
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    await query(
-      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-       VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
-       ON CONFLICT (order_id, stage) DO UPDATE SET
-         group_chat_id=EXCLUDED.group_chat_id,
-         message=EXCLUDED.message,
-         frequency=EXCLUDED.frequency,
-         next_run_at=EXCLUDED.next_run_at,
-         status='active',
-         escalation_level=0,
-         updated_at=NOW()`,
-      [id, groupChatId,
-       `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
-       tomorrow.toISOString()]
-    );
+  // Check if order has item-level tracking items
+  const itemRows = await query(
+    `SELECT COUNT(*)::int AS cnt FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+  const hasItems = itemRows[0]?.cnt > 0;
+
+  // Only create legacy en_route reminder if order does NOT have item-level tracking
+  // (item-level en-route tracking is handled by the production agent's checkItemLevelEnRoute)
+  if (!hasItems) {
+    const groupChatId = process.env.PURCHASING_GROUP_ID;
+    if (groupChatId) {
+      const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+      const client = rows[0].client_name ?? 'Unknown';
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
+         ON CONFLICT (order_id, stage) DO UPDATE SET
+           group_chat_id=EXCLUDED.group_chat_id,
+           message=EXCLUDED.message,
+           frequency=EXCLUDED.frequency,
+           next_run_at=EXCLUDED.next_run_at,
+           status='active',
+           escalation_level=0,
+           updated_at=NOW()`,
+        [id, groupChatId,
+         `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
+         tomorrow.toISOString()]
+      );
+    }
   }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
@@ -989,10 +1000,10 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
     [id, `En route confirmed; estimated arrival in ${body.estimated_arrival_days} day(s)`]
   );
 
-  // Complete the en_route_reminder
+  // Complete the en_route_reminder (legacy) and item_level_en_route (item-level tracking)
   await query(
     `UPDATE reminders SET status = 'completed', updated_at = NOW()
-     WHERE order_id = $1 AND stage = 'en_route_reminder' AND status = 'active'`,
+     WHERE order_id = $1 AND status = 'active' AND stage IN ('en_route_reminder', 'item_level_en_route')`,
     [id]
   );
 

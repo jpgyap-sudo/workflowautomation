@@ -2120,7 +2120,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     await postJson(`/orders/${orderId}/production-logs`, {
       order_item_id: itemId,
       note: `Item production status updated to: ${statusLabels[newStatus]}`,
-      log_type: 'telegram',
+      log_type: 'user',
       created_by: username ?? `user_${userId}`,
     });
 
@@ -2141,7 +2141,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
         note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
-        log_type: 'telegram',
+        log_type: 'user',
         created_by: username ?? `user_${userId}`,
       });
 
@@ -2226,7 +2226,7 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
     await postJson(`/orders/${orderId}/production-logs`, {
       order_item_id: itemId,
       note: `Item en-route status updated to: ${statusLabels[newStatus]}`,
-      log_type: 'telegram',
+      log_type: 'user',
       created_by: username ?? `user_${userId}`,
     });
 
@@ -2255,7 +2255,7 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
         note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_arrived.`,
-        log_type: 'telegram',
+        log_type: 'user',
         created_by: username ?? `user_${userId}`,
       });
 
@@ -2571,7 +2571,7 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
     await postJson(`/orders/${orderId}/production-logs`, {
       order_item_id: itemId,
       note: `Item inventory status updated to: ${statusLabels[newStatus]}`,
-      log_type: 'telegram',
+      log_type: 'user',
       created_by: username ?? `user_${userId}`,
     });
 
@@ -2599,7 +2599,7 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
         note: `✅ All items arrived at inventory (${inventoryPct}% of qty). Ready for delivery confirmation.`,
-        log_type: 'telegram',
+        log_type: 'user',
         created_by: username ?? `user_${userId}`,
       });
 
