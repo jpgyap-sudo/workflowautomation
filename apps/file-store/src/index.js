@@ -1,9 +1,9 @@
 /**
- * File Store — Hermes Agent Quotation Reference Storage
+ * File Store — Hermes Agent Quotation Reference Storage + Binary File Storage
  *
  * Stores extracted quotation text as .txt files organized by YYYY-MM/QTN-XXXX.txt
+ * Also stores binary files (images, PDFs) for dashboard viewing.
  * Auto-deletes files 3 months after order delivery completion.
- * No bulky files (PDFs/images) — only extracted text for Hermes agent analysis.
  */
 
 import Fastify from 'fastify';
@@ -29,6 +29,50 @@ function getFilePath(quotationNumber) {
   const now = new Date();
   const monthDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   return join(DATA_DIR, monthDir, `${quotationNumber}.txt`);
+}
+
+/**
+ * Get the binary file path for a given order's uploaded file.
+ * Structure: /data/files/binaries/YYYY-MM/QTN-XXXX.{ext}
+ */
+function getBinaryFilePath(quotationNumber, mimeType, originalFilename) {
+  const now = new Date();
+  const monthDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // Determine extension from mime type or original filename
+  let ext = 'bin';
+  if (mimeType) {
+    if (mimeType.includes('pdf')) ext = 'pdf';
+    else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
+    else if (mimeType.includes('png')) ext = 'png';
+    else if (mimeType.includes('gif')) ext = 'gif';
+    else if (mimeType.includes('webp')) ext = 'webp';
+  }
+  if (originalFilename && originalFilename.includes('.')) {
+    const parts = originalFilename.split('.');
+    ext = parts[parts.length - 1];
+  }
+  return join(DATA_DIR, 'binaries', monthDir, `${quotationNumber}.${ext}`);
+}
+
+/**
+ * Search for any binary file matching a quotation number across all month dirs.
+ */
+async function findBinaryFile(quotationNumber) {
+  const binaryDir = join(DATA_DIR, 'binaries');
+  if (!existsSync(binaryDir)) return null;
+  const dirs = await readdir(binaryDir).catch(() => []);
+  for (const dir of dirs) {
+    const dirPath = join(binaryDir, dir);
+    try {
+      const entries = await readdir(dirPath);
+      for (const entry of entries) {
+        if (entry.startsWith(`${quotationNumber}.`)) {
+          return join(dirPath, entry);
+        }
+      }
+    } catch { continue; }
+  }
+  return null;
 }
 
 /**
@@ -162,6 +206,7 @@ app.get('/files/list', async (request, reply) => {
   const files = [];
 
   for (const dir of dirs) {
+    if (dir === 'binaries') continue;
     const dirPath = join(DATA_DIR, dir);
     try {
       const entries = await readdir(dirPath);
@@ -187,6 +232,87 @@ app.get('/files/list', async (request, reply) => {
   return reply.send({ ok: true, count: files.length, files });
 });
 
+/**
+ * POST /files/store-binary
+ * Store a binary file (image, PDF) for an order.
+ * Body: { order_id, quotation_number, file_data (base64), mime_type, original_filename }
+ */
+app.post('/files/store-binary', async (request, reply) => {
+  const body = request.body || {};
+  const orderId = String(body.order_id ?? '');
+  const quotationNumber = String(body.quotation_number ?? '');
+  const fileData = String(body.file_data ?? '');
+  const mimeType = String(body.mime_type ?? '');
+  const originalFilename = String(body.original_filename ?? '');
+
+  if (!orderId || !quotationNumber || !fileData) {
+    return reply.code(400).send({ error: 'order_id, quotation_number, and file_data are required' });
+  }
+
+  const filePath = getBinaryFilePath(quotationNumber, mimeType, originalFilename);
+  await ensureDir(filePath);
+
+  const buffer = Buffer.from(fileData, 'base64');
+  await writeFile(filePath, buffer);
+
+  app.log.info(`Stored binary file for ${quotationNumber} at ${filePath} (${buffer.length} bytes)`);
+
+  return reply.send({
+    ok: true,
+    path: filePath,
+    size_bytes: buffer.length,
+    mime_type: mimeType,
+  });
+});
+
+/**
+ * GET /files/binary/:quotation_number
+ * Retrieve a stored binary file for a given quotation number.
+ */
+app.get('/files/binary/:quotation_number', async (request, reply) => {
+  const params = request.params || {};
+  const quotationNumber = params.quotation_number;
+
+  if (!quotationNumber) {
+    return reply.code(400).send({ error: 'quotation_number is required' });
+  }
+
+  const filePath = await findBinaryFile(quotationNumber);
+  if (!filePath) {
+    return reply.code(404).send({ error: 'File not found', quotation_number: quotationNumber });
+  }
+
+  // Determine mime type from extension
+  let mimeType = 'application/octet-stream';
+  if (filePath.endsWith('.pdf')) mimeType = 'application/pdf';
+  else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) mimeType = 'image/jpeg';
+  else if (filePath.endsWith('.png')) mimeType = 'image/png';
+  else if (filePath.endsWith('.gif')) mimeType = 'image/gif';
+  else if (filePath.endsWith('.webp')) mimeType = 'image/webp';
+
+  const buffer = await readFile(filePath);
+  reply.header('Content-Type', mimeType);
+  reply.header('Content-Length', buffer.length);
+  reply.header('Cache-Control', 'public, max-age=3600');
+  return reply.send(buffer);
+});
+
+/**
+ * HEAD /files/binary/:quotation_number
+ * Check if a binary file exists without downloading it.
+ */
+app.head('/files/binary/:quotation_number', async (request, reply) => {
+  const params = request.params || {};
+  const quotationNumber = params.quotation_number;
+  const filePath = await findBinaryFile(quotationNumber);
+  if (!filePath) {
+    return reply.code(404).send({ error: 'File not found' });
+  }
+  const stats = await stat(filePath);
+  reply.header('Content-Length', stats.size);
+  return reply.code(200).send();
+});
+
 // ── Cleanup Agent ──────────────────────────────────────────────────────
 
 /**
@@ -198,8 +324,10 @@ async function runCleanup() {
   const maxAgeMs = RETENTION_DAYS * 24 * 60 * 60 * 1000;
   let deleted = 0;
 
+  // Cleanup text files
   const dirs = await readdir(DATA_DIR).catch(() => []);
   for (const dir of dirs) {
+    if (dir === 'binaries') continue;
     const dirPath = join(DATA_DIR, dir);
     try {
       const entries = await readdir(dirPath);
@@ -224,6 +352,37 @@ async function runCleanup() {
       }
     } catch {
       continue;
+    }
+  }
+
+  // Cleanup binary files
+  const binaryDir = join(DATA_DIR, 'binaries');
+  if (existsSync(binaryDir)) {
+    const binaryMonthDirs = await readdir(binaryDir).catch(() => []);
+    for (const dir of binaryMonthDirs) {
+      const dirPath = join(binaryDir, dir);
+      try {
+        const entries = await readdir(dirPath);
+        for (const entry of entries) {
+          const filePath = join(dirPath, entry);
+          try {
+            const stats = await stat(filePath);
+            if (now - stats.mtimeMs > maxAgeMs) {
+              await unlink(filePath);
+              app.log.info(`[cleanup] Deleted expired binary: ${filePath}`);
+              deleted++;
+            }
+          } catch {
+            continue;
+          }
+        }
+        const remaining = await readdir(dirPath).catch(() => []);
+        if (remaining.length === 0) {
+          await unlink(dirPath).catch(() => {});
+        }
+      } catch {
+        continue;
+      }
     }
   }
 

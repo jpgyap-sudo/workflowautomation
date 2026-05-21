@@ -63,10 +63,15 @@ export interface StageUpdate {
 
 export interface OrderFile {
   id: string;
+  order_id?: string;
   original_filename: string | null;
   file_type: string | null;
   google_drive_file_id: string | null;
   google_drive_url?: string | null;
+  storage_backend?: string | null;
+  local_file_path?: string | null;
+  mime_type?: string | null;
+  extracted_text?: string | null;
   created_at?: string;
 }
 
@@ -739,6 +744,16 @@ export async function clearProcessedDrafts(): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/inventory/drafts/clear', {
     method: 'POST',
   });
+}
+
+// ── Order Files ────────────────────────────────────────────────────────
+
+export async function getOrderFiles(orderId: string): Promise<{ ok: boolean; files: OrderFile[] }> {
+  return fetchJson<{ ok: boolean; files: OrderFile[] }>(`/orders/${encodeURIComponent(orderId)}/files`);
+}
+
+export function getOrderFileDownloadUrl(orderId: string, fileId: string): string {
+  return `${API_BASE}/orders/${encodeURIComponent(orderId)}/files/${encodeURIComponent(fileId)}/download`;
 }
 
 // ── Google Drive Upload ────────────────────────────────────────────────

@@ -1985,6 +1985,48 @@ app.get('/orders/:order_id/notes', async (request, reply) => {
   );
 });
 
+// ── Order Files ───────────────────────────────────────────────────────
+
+app.get('/orders/:order_id/files', async (request, reply) => {
+  const params = z.object({ order_id: z.string().uuid() }).parse(request.params);
+  const rows = await query(
+    `SELECT id, order_id, file_type, original_filename, storage_backend, local_file_path, mime_type, extracted_text, created_at
+     FROM files WHERE order_id=$1 ORDER BY created_at DESC`,
+    [params.order_id]
+  );
+  return reply.send({ ok: true, files: rows });
+});
+
+/**
+ * GET /orders/:order_id/files/:file_id/download
+ * Proxy binary file download from file-store service.
+ */
+app.get('/orders/:order_id/files/:file_id/download', async (request, reply) => {
+  const params = z.object({ order_id: z.string().uuid(), file_id: z.string().uuid() }).parse(request.params);
+  const fileRows = await query(
+    `SELECT f.*, o.quotation_number FROM files f JOIN orders o ON o.id = f.order_id WHERE f.id=$1 AND f.order_id=$2`,
+    [params.file_id, params.order_id]
+  );
+  if (!fileRows[0]) return reply.code(404).send({ error: 'File not found' });
+
+  const quotationNumber = fileRows[0].quotation_number;
+  const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
+  try {
+    const res = await fetch(`${FILE_STORE_URL}/files/binary/${encodeURIComponent(quotationNumber)}`);
+    if (!res.ok) return reply.code(404).send({ error: 'File not found in store' });
+
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const buffer = Buffer.from(await res.arrayBuffer());
+    reply.header('Content-Type', contentType);
+    reply.header('Content-Length', buffer.length);
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.send(buffer);
+  } catch (err) {
+    console.error('[FileDownload] Failed to proxy file from file-store:', err);
+    return reply.code(502).send({ error: 'Failed to retrieve file' });
+  }
+});
+
 app.post('/orders/:order_id/notes', async (request, reply) => {
   const params = z.object({ order_id: z.string() }).parse(request.params);
   const body = z.object({
@@ -2540,10 +2582,11 @@ const fileUploadSchema = z.object({
  */
 app.post('/drive/upload', async (request, reply) => {
   const body = fileUploadSchema.parse(request.body);
+  const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
+  let localFilePath: string | null = null;
 
   // Forward quotation text to file-store for Hermes agent reference
   if (body.file_type === 'quotation' && body.quotation_number && body.extracted_text) {
-    const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
     try {
       await fetch(`${FILE_STORE_URL}/files/store`, {
         method: 'POST',
@@ -2560,23 +2603,48 @@ app.post('/drive/upload', async (request, reply) => {
     }
   }
 
-  // Store file reference in DB (still record the upload metadata)
+  // Store binary file to file-store for dashboard viewing
+  if (body.file_data && body.quotation_number) {
+    try {
+      const res = await fetch(`${FILE_STORE_URL}/files/store-binary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: body.order_id,
+          quotation_number: body.quotation_number,
+          file_data: body.file_data,
+          mime_type: body.mime_type,
+          original_filename: body.original_filename,
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json() as { path?: string };
+        localFilePath = result.path ?? null;
+      }
+    } catch (err) {
+      console.error('[DriveUpload] Failed to store binary in file-store:', err);
+    }
+  }
+
+  // Store file reference in DB
   const fileRecord = await query(
-    `INSERT INTO files (order_id, file_type, original_filename, storage_backend, extracted_text)
-     VALUES ($1, $2, $3, 'local', $4)
+    `INSERT INTO files (order_id, file_type, original_filename, storage_backend, extracted_text, local_file_path, mime_type)
+     VALUES ($1, $2, $3, 'local', $4, $5, $6)
      RETURNING *`,
     [
       body.order_id ?? null,
       body.file_type,
       body.original_filename,
       body.extracted_text ?? null,
+      localFilePath,
+      body.mime_type ?? null,
     ]
   );
 
   return reply.send({
     ok: true,
     file: fileRecord[0],
-    note: 'Google Drive upload disabled. Quotation text stored locally for Hermes agent reference.',
+    note: 'File stored locally.',
   });
 });
 
