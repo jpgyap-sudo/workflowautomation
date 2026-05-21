@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useCalendarEvents, useCalendarNotes } from '@/lib/useApi';
 import { CalendarEvent, CalendarNote, createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/lib/api';
+import OtpModal from '@/components/OtpModal';
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -100,6 +101,9 @@ export default function CalendarPage() {
   const [noteContent, setNoteContent] = useState('');
   const [noteColor, setNoteColor] = useState('#2490ef');
   const [savingNote, setSavingNote] = useState(false);
+  const [otpModal, setOtpModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete';
+  }>({ open: false, title: '', description: '', pendingAction: 'save' });
 
 
 
@@ -177,23 +181,29 @@ export default function CalendarPage() {
     setShowNoteEditor(true);
   }
 
-  async function handleSaveNote() {
+  function handleSaveNote() {
+    if (!noteTitle.trim() || !selectedDate) return;
+    const isEdit = !!editingNote;
+    (window as any).__pendingNoteData = { isEdit, dateKey: formatDateKey(selectedDate) };
+    setOtpModal({
+      open: true,
+      title: isEdit ? 'Edit Note' : 'Save Note',
+      description: `You are about to ${isEdit ? 'edit' : 'create'} the note "${noteTitle.trim()}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'save',
+    });
+  }
+
+  async function handleSaveVerified(actionToken: string) {
     if (!noteTitle.trim() || !selectedDate) return;
     setSavingNote(true);
     try {
-      const dateKey = formatDateKey(selectedDate);
       if (editingNote) {
         await updateCalendarNote(editingNote.id, {
-          title: noteTitle.trim(),
-          content: noteContent,
-          color: noteColor,
+          title: noteTitle.trim(), content: noteContent, color: noteColor, action_token: actionToken,
         });
       } else {
         await createCalendarNote({
-          note_date: dateKey,
-          title: noteTitle.trim(),
-          content: noteContent,
-          color: noteColor,
+          note_date: formatDateKey(selectedDate), title: noteTitle.trim(), content: noteContent, color: noteColor,
         });
       }
       await mutate('/calendar/notes');
@@ -202,19 +212,38 @@ export default function CalendarPage() {
       console.error('Failed to save note', e);
     } finally {
       setSavingNote(false);
+      (window as any).__pendingNoteData = null;
     }
   }
 
-  async function handleDeleteNote(noteId: string) {
+  function handleDeleteNote(noteId: string) {
+    const note = notes.find((n) => n.id === noteId);
+    (window as any).__pendingNoteDelete = noteId;
+    setOtpModal({
+      open: true,
+      title: 'Delete Note',
+      description: `You are about to delete the note "${note?.title ?? noteId}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'delete',
+    });
+  }
+
+  async function handleDeleteVerified(actionToken: string) {
+    const noteId = (window as any).__pendingNoteDelete;
+    if (!noteId) return;
     try {
-      await deleteCalendarNote(noteId);
+      await deleteCalendarNote(noteId, actionToken);
       await mutate('/calendar/notes');
-      if (editingNote?.id === noteId) {
-        setShowNoteEditor(false);
-      }
+      if (editingNote?.id === noteId) setShowNoteEditor(false);
     } catch (e) {
       console.error('Failed to delete note', e);
+    } finally {
+      (window as any).__pendingNoteDelete = null;
     }
+  }
+
+  function handleOtpVerified(actionToken: string) {
+    if (otpModal.pendingAction === 'save') handleSaveVerified(actionToken);
+    else handleDeleteVerified(actionToken);
   }
 
   function navigateToOrder(event: CalendarEvent) {
@@ -626,6 +655,18 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
+
+      <OtpModal
+        open={otpModal.open}
+        title={otpModal.title}
+        description={otpModal.description}
+        onVerified={handleOtpVerified}
+        onClose={() => {
+          setOtpModal({ ...otpModal, open: false });
+          (window as any).__pendingNoteData = null;
+          (window as any).__pendingNoteDelete = null;
+        }}
+      />
     </div>
   );
 }

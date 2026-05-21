@@ -134,6 +134,29 @@ async function notifyManualChange(action: string, details: string): Promise<void
   } catch { /* non-fatal */ }
 }
 
+async function verifyActionTokenOrReply(actionToken: string | undefined, reply: any): Promise<boolean> {
+  if (!actionToken) {
+    reply.status(401).send({ error: 'Action token required. Please verify OTP first.' });
+    return false;
+  }
+  if (!cacheClient?.isOpen) {
+    reply.status(503).send({ error: 'Action verification unavailable' });
+    return false;
+  }
+  const tokenKey = `action_token:${actionToken}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    return false;
+  }
+  await cacheClient.del(tokenKey);
+  return true;
+}
+
+function isDashboardQuickAction(updatedBy?: string | null): boolean {
+  return updatedBy === 'dashboard_quick_action';
+}
+
 // ── Email (OTP) ──────────────────────────────────────────────────────
 const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -1028,10 +1051,12 @@ const stageUpdateSchema = z.object({
   remarks: z.string().optional(),
   delivery_date: z.string().nullable().optional(),
   updated_by: z.string().optional(),
+  action_token: z.string().optional(),
 });
 
 app.post('/stage-updates', async (request, reply) => {
   const body = stageUpdateSchema.parse(request.body);
+  if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
   const orders = await query(`SELECT id, total_amount, deposit_amount, balance_paid, current_stage FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
@@ -1080,6 +1105,14 @@ app.post('/stage-updates', async (request, reply) => {
 
   // Invalidate caches after stage update
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      'Quick Action: Stage updated',
+      `Quotation: *${body.quotation_number}*\nStage: ${body.stage}\nStatus: ${body.status}\nRemarks: ${body.remarks ?? '-'}`,
+    );
+  }
+
   return { ok: true };
 });
 
@@ -1091,6 +1124,7 @@ const depositSchema = z.object({
   image_url: z.string().optional(),
   updated_by: z.string().optional(),
   deposit_paid_at: z.string().optional(),
+  action_token: z.string().optional(),
 });
 
 /**
@@ -1101,6 +1135,7 @@ const depositSchema = z.object({
  */
 app.post('/deposits', async (request, reply) => {
   const body = depositSchema.parse(request.body);
+  if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
   const orders = await query(`SELECT id, current_stage, quotation_number FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
@@ -1152,6 +1187,13 @@ app.post('/deposits', async (request, reply) => {
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      'Quick Action: Downpayment recorded',
+      `Quotation: *${quotationNumber ?? body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nDate: ${body.deposit_paid_at ?? 'now'}`,
+    );
+  }
 
   return reply.send({ ok: true, quotation_number: body.quotation_number, amount: body.amount });
 });
@@ -1482,10 +1524,12 @@ const payBalanceSchema = z.object({
   quotation_number: z.string(),
   amount: z.number().positive(),
   updated_by: z.string().optional(),
+  action_token: z.string().optional(),
 });
 
 app.post('/pay-balance', async (request, reply) => {
   const body = payBalanceSchema.parse(request.body);
+  if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
   const orders = await query(
     `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid FROM orders WHERE quotation_number=$1`,
     [body.quotation_number]
@@ -1543,6 +1587,13 @@ app.post('/pay-balance', async (request, reply) => {
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      'Quick Action: Balance payment recorded',
+      `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nExpected balance: PHP ${expectedBalance.toLocaleString()}\nOverpayment: PHP ${overpayment.toLocaleString()}`,
+    );
+  }
 
   return reply.send({
     ok: true,
@@ -3151,15 +3202,32 @@ app.patch('/inventory/:id', async (request, reply) => {
   if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
   await invalidateCache(['inventory:*', '/inventory']);
   broadcastSSE('inventory_updated', { id: params.id });
+  await notifyManualChange(
+    `✏️ Inventory item edited via dashboard`,
+    `Item: *${rows[0].product_name}*`,
+  );
   return rows[0];
 });
 
 app.delete('/inventory/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = (request.body ?? {}) as any;
+
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
+    const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
+    if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    await cacheClient.del(`action_token:${body.action_token}`);
+  }
+
   const rows = await query(`DELETE FROM inventory_items WHERE id=$1 RETURNING *`, [params.id]);
   if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
   await invalidateCache(['inventory:*', '/inventory']);
   broadcastSSE('inventory_deleted', { id: params.id });
+  await notifyManualChange(
+    `🗑️ Inventory item deleted via dashboard`,
+    `Item: *${rows[0].product_name}*`,
+  );
   return { ok: true };
 });
 

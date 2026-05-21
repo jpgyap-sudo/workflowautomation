@@ -149,6 +149,8 @@ export async function recordDeposit(data: {
   quotation_number: string;
   amount: number;
   deposit_paid_at?: string;
+  updated_by?: string;
+  action_token?: string;
 }): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/deposits', {
     method: 'POST',
@@ -159,6 +161,8 @@ export async function recordDeposit(data: {
 export async function payBalance(data: {
   quotation_number: string;
   amount: number;
+  updated_by?: string;
+  action_token?: string;
 }): Promise<{ ok: boolean; overpayment?: number }> {
   return fetchJson<{ ok: boolean; overpayment?: number }>('/pay-balance', {
     method: 'POST',
@@ -173,6 +177,7 @@ export async function recordStageUpdate(data: {
   remarks?: string;
   delivery_date?: string | null;
   updated_by?: string;
+  action_token?: string;
 }): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/stage-updates', {
     method: 'POST',
@@ -414,7 +419,7 @@ export async function createCalendarNote(note: {
 
 export async function updateCalendarNote(
   id: string,
-  data: { title?: string; content?: string; color?: string }
+  data: { title?: string; content?: string; color?: string; action_token?: string }
 ): Promise<CalendarNote> {
   return fetchJson<CalendarNote>(`/calendar/notes/${id}`, {
     method: 'PATCH',
@@ -422,9 +427,10 @@ export async function updateCalendarNote(
   });
 }
 
-export async function deleteCalendarNote(id: string): Promise<{ ok: boolean }> {
+export async function deleteCalendarNote(id: string, actionToken?: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>(`/calendar/notes/${id}`, {
     method: 'DELETE',
+    body: JSON.stringify({ action_token: actionToken }),
   });
 }
 
@@ -516,6 +522,7 @@ export async function updateClient(
     authorized_receiver_contact?: string | null;
     notes?: string | null;
     propagate_to_orders?: boolean;
+    action_token?: string;
   }
 ): Promise<Client> {
   return fetchJson<Client>(`/clients/${encodeURIComponent(id)}`, {
@@ -528,9 +535,14 @@ export async function getClientOrders(id: string): Promise<Order[]> {
   return fetchJson<Order[]>(`/clients/${encodeURIComponent(id)}/orders`);
 }
 
-export async function deleteClient(id: string, force = false): Promise<{ ok: boolean }> {
+export async function deleteClient(
+  id: string,
+  force = false,
+  actionToken?: string,
+): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>(`/clients/${encodeURIComponent(id)}${force ? '?force=true' : ''}`, {
     method: 'DELETE',
+    body: JSON.stringify({ force, action_token: actionToken }),
   });
 }
 
@@ -615,6 +627,7 @@ export async function updateInventoryItem(
     category?: string | null;
     quantity?: number;
     image_url?: string | null;
+    action_token?: string;
   }
 ): Promise<InventoryItem> {
   return fetchJson<InventoryItem>(`/inventory/${encodeURIComponent(id)}`, {
@@ -623,9 +636,10 @@ export async function updateInventoryItem(
   });
 }
 
-export async function deleteInventoryItem(id: string): Promise<{ ok: boolean }> {
+export async function deleteInventoryItem(id: string, actionToken?: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>(`/inventory/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    body: JSON.stringify({ action_token: actionToken }),
   });
 }
 

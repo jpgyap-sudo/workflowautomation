@@ -6,6 +6,7 @@ import type { Client } from '@/lib/api';
 import { createClient, updateClient, deleteClient, searchClients, getClientOrders } from '@/lib/api';
 import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import { useEffect } from 'react';
+import OtpModal from '@/components/OtpModal';
 
 interface ClientFormProps {
   client?: Client | null;
@@ -145,6 +146,9 @@ export default function ClientsPage() {
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [clientOrders, setClientOrders] = useState<Record<string, any[]>>({});
   const [loadingOrders, setLoadingOrders] = useState<Record<string, boolean>>({});
+  const [otpModal, setOtpModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
+  }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   useEffect(() => {
     const q = search.trim();
@@ -210,7 +214,7 @@ export default function ClientsPage() {
     }
   }
 
-  async function handleEditSave(data: {
+  function handleEditSave(data: {
     client_name: string;
     delivery_address?: string | null;
     contact_number?: string | null;
@@ -220,29 +224,42 @@ export default function ClientsPage() {
     propagate_to_orders?: boolean;
   }) {
     if (!editingClient) return;
+    (window as any).__pendingClientEdit = { clientId: editingClient.id, data };
+    setOtpModal({ open: true, title: 'Edit Client',
+      description: `You are about to edit client "${editingClient.client_name}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'edit' });
+  }
+
+  async function handleEditVerified(actionToken: string) {
+    const pending = (window as any).__pendingClientEdit;
+    if (!pending) return;
     setSaving(true);
     try {
-      await updateClient(editingClient.id, data);
+      await updateClient(pending.clientId, { ...pending.data, action_token: actionToken });
       setEditingClient(null);
       mutate();
       if (search.trim()) setSearchResults(await searchClients(search.trim()));
-      setClientOrders((prev) => {
-        const next = { ...prev };
-        delete next[editingClient.id];
-        return next;
-      });
+      setClientOrders((prev) => { const next = { ...prev }; delete next[pending.clientId]; return next; });
     } catch (err: any) {
       alert('Failed to update client: ' + (err.message ?? 'Unknown error'));
     } finally {
       setSaving(false);
+      (window as any).__pendingClientEdit = null;
     }
   }
 
-  async function handleDeleteConfirm() {
+  function handleDeleteClick() {
+    if (!deletingClient) return;
+    setOtpModal({ open: true, title: 'Delete Client',
+      description: `You are about to permanently delete client "${deletingClient.client_name}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'delete' });
+  }
+
+  async function handleDeleteVerified(actionToken: string) {
     if (!deletingClient) return;
     setSaving(true);
     try {
-      await deleteClient(deletingClient.id, forceDelete);
+      await deleteClient(deletingClient.id, forceDelete, actionToken);
       setDeletingClient(null);
       setForceDelete(false);
       mutate();
@@ -252,6 +269,11 @@ export default function ClientsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleOtpVerified(actionToken: string) {
+    if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
+    else handleDeleteVerified(actionToken);
   }
 
   if (isLoading && clients.length === 0) {
@@ -492,16 +514,24 @@ export default function ClientsPage() {
                 Cancel
               </button>
               <button
-                onClick={handleDeleteConfirm}
+                onClick={handleDeleteClick}
                 disabled={saving || ((deletingClient.active_order_count ?? 0) > 0 && !forceDelete)}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
-                {saving ? 'Deleting...' : 'Delete'}
+                Delete
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <OtpModal
+        open={otpModal.open}
+        title={otpModal.title}
+        description={otpModal.description}
+        onVerified={handleOtpVerified}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingClientEdit = null; }}
+      />
     </div>
   );
 }

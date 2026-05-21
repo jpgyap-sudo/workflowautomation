@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import OtpModal from '@/components/OtpModal';
 import { useInventory, useInventoryDrafts } from '@/lib/useApi';
 import {
   createInventoryItem,
@@ -90,6 +91,9 @@ export default function InventoryPage() {
   // Edit item inline
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
+  const [otpModal, setOtpModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
+  }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Initialize draft edits when drafts load
   useEffect(() => {
@@ -332,30 +336,59 @@ export default function InventoryPage() {
     });
   }
 
-  async function saveEdit(id: string) {
+  function saveEdit(id: string) {
+    const item = items.find((i) => i.id === id);
+    (window as any).__pendingInventoryEdit = { id, form: { ...editForm } };
+    setOtpModal({ open: true, title: 'Edit Inventory Item',
+      description: `You are about to edit "${item?.product_name ?? id}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'edit' });
+  }
+
+  async function handleEditVerified(actionToken: string) {
+    const pending = (window as any).__pendingInventoryEdit;
+    if (!pending) return;
     try {
-      await updateInventoryItem(id, {
-        product_name: editForm.product_name.trim(),
-        description: editForm.description.trim() || null,
-        dimension: editForm.dimension.trim() || null,
-        category: editForm.category.trim() || null,
-        quantity: Number(editForm.quantity) || 0,
+      await updateInventoryItem(pending.id, {
+        product_name: pending.form.product_name.trim(),
+        description: pending.form.description.trim() || null,
+        dimension: pending.form.dimension.trim() || null,
+        category: pending.form.category.trim() || null,
+        quantity: Number(pending.form.quantity) || 0,
+        action_token: actionToken,
       });
       mutateItems();
       setEditingId(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      (window as any).__pendingInventoryEdit = null;
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this item?')) return;
+  function handleDelete(id: string) {
+    const item = items.find((i) => i.id === id);
+    (window as any).__pendingInventoryDelete = id;
+    setOtpModal({ open: true, title: 'Delete Inventory Item',
+      description: `You are about to delete "${item?.product_name ?? id}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'delete' });
+  }
+
+  async function handleDeleteVerified(actionToken: string) {
+    const id = (window as any).__pendingInventoryDelete;
+    if (!id) return;
     try {
-      await deleteInventoryItem(id);
+      await deleteInventoryItem(id, actionToken);
       mutateItems();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      (window as any).__pendingInventoryDelete = null;
     }
+  }
+
+  function handleOtpVerified(actionToken: string) {
+    if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
+    else handleDeleteVerified(actionToken);
   }
 
   function closeModal() {
@@ -936,6 +969,18 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      <OtpModal
+        open={otpModal.open}
+        title={otpModal.title}
+        description={otpModal.description}
+        onVerified={handleOtpVerified}
+        onClose={() => {
+          setOtpModal({ ...otpModal, open: false });
+          (window as any).__pendingInventoryEdit = null;
+          (window as any).__pendingInventoryDelete = null;
+        }}
+      />
     </div>
   );
 }
