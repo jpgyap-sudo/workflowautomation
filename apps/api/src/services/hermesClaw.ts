@@ -1,6 +1,20 @@
 import { query } from '../db.js';
 import { addAgentNote } from './agentRunner.js';
 
+// ── Item Extraction Types ────────────────────────────────────────────
+
+export interface ExtractedOrderItem {
+  name: string;
+  quantity: number;
+}
+
+export interface ItemExtractionResult {
+  ok: boolean;
+  items: ExtractedOrderItem[];
+  raw_text: string;
+  error?: string;
+}
+
 // ── Configuration ──────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
@@ -467,6 +481,271 @@ function fallbackAnalysis(ctx: HermesProductionContext): HermesAnalysis {
     suggested_action: null,
     should_escalate: false,
     anomaly: null,
+  };
+}
+
+// ── Item Extraction from Quotation (Gemini Vision) ───────────────────
+
+const ITEM_EXTRACTION_PROMPT = `You are a data extraction assistant. Analyze the quotation image and extract ALL line items/products listed.
+
+For each item, provide:
+- name: The product/item name (string)
+- quantity: The quantity ordered (number, default 1 if not specified)
+
+Return a JSON array of items:
+[
+  { "name": "Item Name", "quantity": 2 },
+  { "name": "Another Item", "quantity": 1 }
+]
+
+Rules:
+- Return ONLY valid JSON array, no extra text or markdown.
+- Extract ALL items listed in the quotation, including variations (size, color, etc.).
+- If quantity is not specified, default to 1.
+- Be thorough — include every line item.
+- If the image is not a quotation or contains no items, return an empty array [].`;
+
+/**
+ * Call Gemini Vision API with an image to extract items.
+ * Uses the same pattern as geminiVision.ts but specialized for item extraction.
+ */
+async function callGeminiVisionForItems(
+  imageBase64: string,
+  mimeType: string
+): Promise<string> {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
+  const url = `${API_BASE}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: ITEM_EXTRACTION_PROMPT },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: imageBase64,
+            },
+          },
+        ],
+      },
+    ],
+    generation_config: {
+      temperature: 0.1,
+      max_output_tokens: 2048,
+    },
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HERMES_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => 'unknown error');
+      throw new Error(`Gemini API error ${res.status}: ${errText}`);
+    }
+
+    const data = (await res.json()) as GeminiResponse;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error('Gemini returned empty response');
+    }
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Parse the JSON array of items from the Gemini response.
+ */
+function parseExtractedItems(raw: string): ExtractedOrderItem[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item: any) => item && typeof item.name === 'string' && item.name.trim().length > 0)
+        .map((item: any) => ({
+          name: item.name.trim(),
+          quantity: typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1,
+        }));
+    }
+    return [];
+  } catch {
+    // Try extracting JSON array from markdown code block
+    const jsonMatch = raw.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1].trim());
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((item: any) => item && typeof item.name === 'string' && item.name.trim().length > 0)
+            .map((item: any) => ({
+              name: item.name.trim(),
+              quantity: typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1,
+            }));
+        }
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+}
+
+/**
+ * Fetch a binary file (image/PDF) from the file-store for a given quotation number.
+ * Returns base64 data and mime type, or null if not found.
+ */
+async function fetchQuotationImage(quotationNumber: string): Promise<{ data: string; mimeType: string } | null> {
+  try {
+    const res = await fetch(
+      `${FILE_STORE_URL}/files/binary/${encodeURIComponent(quotationNumber)}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!res.ok) return null;
+
+    const mimeType = res.headers.get('content-type') ?? 'image/jpeg';
+    const buffer = await res.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+
+    return { data: base64, mimeType };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract order items from a quotation using Gemini Vision.
+ *
+ * Strategy:
+ * 1. Try fetching the binary image/PDF from file-store for the quotation number
+ * 2. If found, use Gemini Vision to extract items from the image
+ * 3. If no binary file, try fetching the quotation text and use text-based extraction
+ * 4. If neither works, return empty result with error
+ *
+ * @param quotationNumber - The quotation number to look up
+ * @returns Structured extraction result with items array
+ */
+export async function extractItemsFromQuotation(
+  quotationNumber: string
+): Promise<ItemExtractionResult> {
+  // Strategy 1: Try fetching binary image from file-store
+  const imageData = await fetchQuotationImage(quotationNumber);
+
+  if (imageData) {
+    try {
+      const rawText = await callGeminiVisionForItems(imageData.data, imageData.mimeType);
+      const items = parseExtractedItems(rawText);
+
+      return {
+        ok: items.length > 0,
+        items,
+        raw_text: rawText,
+        error: items.length === 0 ? 'No items could be extracted from the quotation image' : undefined,
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[HermesClaw] Gemini Vision extraction failed for ${quotationNumber}: ${errorMsg}`);
+      // Fall through to text-based extraction
+    }
+  }
+
+  // Strategy 2: Try fetching quotation text from file-store
+  const quotationText = await fetchQuotationText(quotationNumber);
+
+  if (quotationText) {
+    // Use text-based extraction via Gemini (no image needed)
+    const textPrompt = `Extract all items/products from this quotation text. Return a JSON array of { "name": string, "quantity": number }.
+
+QUOTATION TEXT:
+${quotationText.slice(0, 4000)}
+
+Return ONLY valid JSON array, no extra text.`;
+
+    try {
+      const rawText = await callGemini(textPrompt);
+      const items = parseExtractedItems(rawText);
+
+      return {
+        ok: items.length > 0,
+        items,
+        raw_text: rawText,
+        error: items.length === 0 ? 'No items could be extracted from the quotation text' : undefined,
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[HermesClaw] Text extraction failed for ${quotationNumber}: ${errorMsg}`);
+    }
+  }
+
+  // Strategy 3: Try OpenRouter fallback with image if available
+  if (imageData && OPENROUTER_API_KEY) {
+    try {
+      const openRouterBody = {
+        model: OPENROUTER_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: ITEM_EXTRACTION_PROMPT },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${imageData.mimeType};base64,${imageData.data}`,
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: 2048,
+      };
+
+      const res = await fetch(OPENROUTER_API_BASE, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(openRouterBody),
+        signal: AbortSignal.timeout(HERMES_TIMEOUT_MS),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as OpenRouterResponse;
+        const text = data.choices?.[0]?.message?.content;
+        if (text) {
+          const items = parseExtractedItems(text);
+          return {
+            ok: items.length > 0,
+            items,
+            raw_text: text,
+            error: items.length === 0 ? 'No items could be extracted via OpenRouter' : undefined,
+          };
+        }
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[HermesClaw] OpenRouter extraction failed for ${quotationNumber}: ${errorMsg}`);
+    }
+  }
+
+  return {
+    ok: false,
+    items: [],
+    raw_text: '',
+    error: `No quotation file found for ${quotationNumber} and all extraction methods failed`,
   };
 }
 

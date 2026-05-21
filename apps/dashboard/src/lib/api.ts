@@ -419,6 +419,19 @@ export async function addProductionLog(
   );
 }
 
+// ── Item Extraction ──────────────────────────────────────────────────
+
+export async function extractOrderItems(
+  orderId: string
+): Promise<{ ok: boolean; items: OrderItem[]; extracted: { name: string; quantity: number }[]; raw_text: string }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[]; extracted: { name: string; quantity: number }[]; raw_text: string }>(
+    `/orders/${encodeURIComponent(orderId)}/extract-items`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
 export async function sendOtpForAction(email: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/auth/send-otp', {
     method: 'POST',

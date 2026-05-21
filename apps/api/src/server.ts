@@ -1222,6 +1222,72 @@ app.post('/orders/:id/production-logs', async (request, reply) => {
   return reply.send({ ok: true, log: rows[0] });
 });
 
+// ── Item Extraction from Quotation ────────────────────────────────────
+// Phase 3: Hermes Claw extracts items from quotation using Gemini Vision
+
+app.post('/orders/:id/extract-items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  // Get the order's quotation number
+  const orderRows = await query(
+    `SELECT id, quotation_number, client_name FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0] as any;
+
+  if (!order.quotation_number) {
+    return reply.code(400).send({ error: 'Order has no quotation number — cannot extract items' });
+  }
+
+  // Dynamically import to avoid circular dependency at module level
+  const { extractItemsFromQuotation } = await import('./services/hermesClaw.js');
+
+  const result = await extractItemsFromQuotation(order.quotation_number);
+
+  if (!result.ok) {
+    return reply.send({
+      ok: false,
+      items: [],
+      error: result.error ?? 'Failed to extract items from quotation',
+      raw_text: result.raw_text,
+    });
+  }
+
+  // Auto-upsert extracted items into order_items table
+  if (result.items.length > 0) {
+    // Delete existing items and re-insert
+    await query(`DELETE FROM order_items WHERE order_id = $1`, [id]);
+
+    for (const item of result.items) {
+      await query(
+        `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status)
+         VALUES ($1, $2, $3, 'pending', 'not_yet')`,
+        [id, item.name, item.quantity]
+      );
+    }
+
+    // Log the extraction
+    await query(
+      `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+       VALUES ($1, $2, 'agent', 'Hermes Claw')`,
+      [id, `🧠 Hermes Claw extracted ${result.items.length} item(s) from quotation: ${result.items.map(i => `${i.name} x${i.quantity}`).join(', ')}`]
+    );
+  }
+
+  // Fetch the saved items
+  const items = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, items, extracted: result.items, raw_text: result.raw_text });
+});
+
 // ── Recalculate Production Reminders ─────────────────────────────────
 // When estimated_production_days changes, recalculate midpoint and due reminders
 const recalcProductionRemindersSchema = z.object({
