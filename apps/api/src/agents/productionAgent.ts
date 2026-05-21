@@ -714,13 +714,29 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
   // 1. Production confirmed — adaptive frequency
   const confirmedOrders = await getActiveOrdersByStage('production_confirmed');
   for (const order of confirmedOrders) {
-    results.push(await checkProductionConfirmed(order));
+    // Check if order has item-level tracking items
+    const items = await getOrderItems(order.id);
+    if (items.length > 0) {
+      // Skip legacy check — item-level tracking handles this order
+      console.log(`[ProductionAgent] Skipping legacy check for #${order.quotation_number} — using item-level tracking`);
+    } else {
+      // No items — use legacy check
+      results.push(await checkProductionConfirmed(order));
+    }
   }
 
   // 2. En route — adaptive frequency
   const enRouteOrders = await getActiveOrdersByStage('en_route');
   for (const order of enRouteOrders) {
-    results.push(await checkEnRoute(order));
+    // Check if order has item-level tracking items
+    const items = await getOrderItems(order.id);
+    if (items.length > 0) {
+      // Skip legacy check — item-level tracking handles this order
+      console.log(`[ProductionAgent] Skipping legacy en-route check for #${order.quotation_number} — using item-level tracking`);
+    } else {
+      // No items — use legacy check
+      results.push(await checkEnRoute(order));
+    }
   }
 
   // 3. Partial production — purchasing_pending with pending items

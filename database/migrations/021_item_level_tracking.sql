@@ -82,7 +82,7 @@ BEGIN
 
     SELECT COALESCE(SUM(quantity), 0) INTO en_route_qty
     FROM order_items
-    WHERE order_id = p_order_id AND en_route_status = 'en_route';
+    WHERE order_id = p_order_id AND en_route_status IN ('en_route', 'arrived');
 
     RETURN ROUND((en_route_qty::NUMERIC / total_qty::NUMERIC) * 100);
 END;

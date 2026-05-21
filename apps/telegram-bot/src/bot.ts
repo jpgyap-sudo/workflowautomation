@@ -2137,16 +2137,21 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     );
 
     if (!unfinishedItem) {
-      // All items finished! Advance the order
+      // All items finished! Advance the order immediately
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
-        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Order ready to advance.`,
+        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
         log_type: 'telegram',
         created_by: username ?? `user_${userId}`,
       });
 
+      // Use standard 28-day delivery estimate (same default used by the production agent)
+      await postJson(`/orders/${orderId}/finish-production`, {
+        delivery_estimated_days: 28,
+      });
+
       await ctx.editMessageText(
-        `✅ *All Items Production Finished!*\n\nOrder #${orderId.slice(0, 8)}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nThe production agent will auto-advance the order to 🚚 En Route.`,
+        `✅ *All Items Production Finished!*\n\nOrder #${orderId.slice(0, 8)}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
@@ -2246,16 +2251,21 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
     );
 
     if (!notEnRouteItem) {
-      // All items en route! Notify that agent will auto-advance
+      // All items en route! Advance the order immediately
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
-        note: `✅ All items en route (${enRoutePct}% of qty). Order ready to advance to inventory_arrived.`,
+        note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_arrived.`,
         log_type: 'telegram',
         created_by: username ?? `user_${userId}`,
       });
 
+      // Use standard 28-day arrival estimate (same default used by the production agent)
+      await postJson(`/orders/${orderId}/confirm-en-route`, {
+        estimated_arrival_days: 28,
+      });
+
       await ctx.editMessageText(
-        `✅ *All Items En Route!*\n\nOrder #${orderId.slice(0, 8)}\nAll items en route (${enRoutePct}% of qty).\n\nThe production agent will auto-advance the order to 📦 Inventory Arrived.`,
+        `✅ *All Items En Route!*\n\nOrder #${orderId.slice(0, 8)}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 📦 Inventory Arrived.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
