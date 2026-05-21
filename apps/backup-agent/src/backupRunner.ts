@@ -42,24 +42,21 @@ function exec(cmd: string): { stdout: string; stderr: string } {
 // ── Helper: Auto-detect Postgres Container ─────────────────────────────
 
 function findPostgresContainer(): string {
-  // Try docker compose first (preferred — uses service name)
-  const composeResult = exec(
-    `docker compose -p quotation-automation ps --format '{{.Name}}' 2>/dev/null || true`,
-  );
-  if (composeResult.stdout) {
-    const lines = composeResult.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-    // Look for a container whose name ends with 'postgres' or contains 'postgres'
-    const pg = lines.find((name) => name.includes('postgres'));
-    if (pg) return pg;
-  }
-
-  // Fallback: list all containers running postgres image
+  // List all running containers and find the one running postgres image
   const psResult = exec(
-    `docker ps --filter "ancestor=postgres" --format '{{.Names}}' 2>/dev/null || true`,
+    `docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null || true`,
   );
   if (psResult.stdout) {
-    const names = psResult.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-    if (names.length > 0) return names[0];
+    const lines = psResult.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    // Match any container whose image name contains 'postgres'
+    const pg = lines.find((line) => {
+      const [, image] = line.split('|');
+      return image && image.toLowerCase().includes('postgres');
+    });
+    if (pg) {
+      const [name] = pg.split('|');
+      return name;
+    }
   }
 
   // Last resort: use the hint from env
