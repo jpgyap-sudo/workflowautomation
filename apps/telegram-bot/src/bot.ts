@@ -2526,6 +2526,111 @@ bot.action(/^inventory:waiting:(.+):(.+)$/, async (ctx) => {
   );
 });
 
+// ── Item-Level Inventory Arrival Callback Handlers ──────────────────────
+// These handle the process-of-elimination item-by-item inventory tracking.
+// Callback format: item_inventory:{status}:{itemId}:{orderId}
+//   status = arrived | en_route | not_yet
+
+bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const newStatus = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderId = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `item_inventory:${newStatus}:${itemId}:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Update the item's en_route_status via API
+    await postJson(`/orders/${orderId}/items/${itemId}`, {
+      en_route_status: newStatus,
+    });
+
+    // Add a production update log
+    const statusLabels: Record<string, string> = {
+      arrived: '📦 Arrived at Inventory',
+      en_route: '🚚 En Route to Inventory',
+      not_yet: '⏳ Not Yet Arrived',
+    };
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `Item inventory status updated to: ${statusLabels[newStatus]}`,
+      log_type: 'telegram',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    // Fetch updated completion and items to show next question
+    const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
+    const completion = await completionRes.json();
+
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const items = await itemsRes.json();
+
+    // Calculate inventory % based on quantity
+    const totalQty = items.items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const arrivedQty = items.items
+      .filter((i: any) => i.en_route_status === 'arrived')
+      .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const inventoryPct = totalQty > 0 ? Math.round((arrivedQty / totalQty) * 100) : 0;
+
+    // Find the next item not yet arrived (process of elimination)
+    const notArrivedItem = items.items?.find(
+      (item: any) => item.en_route_status !== 'arrived'
+    );
+
+    if (!notArrivedItem) {
+      // All items arrived! Notify ready for delivery
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: null,
+        note: `✅ All items arrived at inventory (${inventoryPct}% of qty). Ready for delivery confirmation.`,
+        log_type: 'telegram',
+        created_by: username ?? `user_${userId}`,
+      });
+
+      await ctx.editMessageText(
+        `✅ *All Items Arrived at Inventory!*\n\nOrder #${orderId.slice(0, 8)}\nAll items arrived (${inventoryPct}% of qty).\n\nReady for delivery! Please confirm below:`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Ready for Delivery', `inventory:ready:${orderId}:${orderId.slice(0, 8)}`)],
+            [Markup.button.callback('⏳ Still Waiting', `inventory:waiting:${orderId}:${orderId.slice(0, 8)}`)],
+          ]),
+        }
+      );
+    } else {
+      // Ask about the next not-arrived item (process of elimination)
+      const arrivedCount = items.items.filter((i: any) => i.en_route_status === 'arrived').length;
+      const totalCount = items.items.length;
+
+      const progressBar = '█'.repeat(Math.round(inventoryPct / 10)) + '░'.repeat(10 - Math.round(inventoryPct / 10));
+
+      let msg = `📦 *Item-Level Inventory Check*\n\n`;
+      msg += `Inventory: ${inventoryPct}% arrived ${progressBar}\n`;
+      msg += `Items: ${arrivedCount}/${totalCount} arrived\n\n`;
+      msg += `*Process of Elimination:*\n`;
+      msg += `Next item: *${notArrivedItem.name}* x${notArrivedItem.quantity}\n\n`;
+      msg += `Has *${notArrivedItem.name}* arrived at inventory?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`📦 ${notArrivedItem.name} — Arrived`, `item_inventory:arrived:${notArrivedItem.id}:${orderId}`)],
+          [Markup.button.callback(`🚚 ${notArrivedItem.name} — En Route`, `item_inventory:en_route:${notArrivedItem.id}:${orderId}`)],
+          [Markup.button.callback(`⏳ ${notArrivedItem.name} — Not Yet`, `item_inventory:not_yet:${notArrivedItem.id}:${orderId}`)],
+        ]),
+      });
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error updating item inventory: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
 // ── Balance Payment Callback Handlers ────────────────────────────────
 
 // User confirmed client paid the balance → ask for proof of payment photo
