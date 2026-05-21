@@ -11,6 +11,12 @@ const HERMES_MAX_TOKENS = parseInt(process.env.HERMES_MAX_TOKENS ?? '1024', 10);
 
 const API_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${HERMES_MODEL}`;
 
+// ── OpenRouter Fallback Configuration ──────────────────────────────────
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.0-flash-001';
+const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1/chat/completions';
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export interface HermesProductionContext {
@@ -139,6 +145,67 @@ async function callGemini(prompt: string): Promise<string> {
   }
 }
 
+// ── OpenRouter Fallback ────────────────────────────────────────────────
+
+interface OpenRouterResponse {
+  choices?: {
+    message?: {
+      content?: string;
+    };
+  }[];
+}
+
+/**
+ * Call Gemini via OpenRouter as a fallback when the direct Gemini API
+ * is rate-limited (free tier quota exhausted).
+ */
+async function callOpenRouter(prompt: string): Promise<string> {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY is not configured');
+  }
+
+  const body = {
+    model: OPENROUTER_MODEL,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    temperature: HERMES_TEMPERATURE,
+    max_tokens: HERMES_MAX_TOKENS,
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HERMES_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(OPENROUTER_API_BASE, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => 'unknown error');
+      throw new Error(`OpenRouter API error ${res.status}: ${errText}`);
+    }
+
+    const data = (await res.json()) as OpenRouterResponse;
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) {
+      throw new Error('OpenRouter returned empty response');
+    }
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // ── Parse JSON from LLM response ───────────────────────────────────────
 
 function parseAnalysis(raw: string): HermesAnalysis | null {
@@ -207,16 +274,52 @@ Provide your analysis as JSON with these fields:
 // ── Main Analysis Function ─────────────────────────────────────────────
 
 /**
- * Analyze a production order using Hermes Claw (Gemini API).
+ * Try calling an AI model, falling back through providers:
+ * 1. Gemini direct (free tier)
+ * 2. OpenRouter (paid, same model)
+ * 3. Rule-based fallback
+ */
+async function callAiWithFallback(prompt: string): Promise<string | null> {
+  // Try 1: Gemini direct
+  if (GEMINI_API_KEY) {
+    try {
+      return await callGemini(prompt);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[HermesClaw] Gemini direct failed: ${msg}`);
+      // If it's a 429 (rate limit), try OpenRouter next
+      if (!msg.includes('429') && !msg.includes('RESOURCE_EXHAUSTED')) {
+        // Non-rate-limit error — don't try OpenRouter, return null for rule-based
+        return null;
+      }
+    }
+  }
+
+  // Try 2: OpenRouter fallback
+  if (OPENROUTER_API_KEY) {
+    try {
+      console.log('[HermesClaw] Falling back to OpenRouter...');
+      return await callOpenRouter(prompt);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[HermesClaw] OpenRouter fallback also failed: ${msg}`);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Analyze a production order using Hermes Claw (Gemini API with OpenRouter fallback).
  * Returns a structured analysis with message, insight, and suggested action.
- * Falls back to a basic analysis if Gemini is unavailable.
+ * Falls back to a basic analysis if all AI providers are unavailable.
  */
 export async function analyzeProductionOrder(
   ctx: HermesProductionContext,
   orderId: string,
 ): Promise<HermesAnalysis> {
-  // Fallback: if no Gemini API key, return a basic rule-based analysis
-  if (!GEMINI_API_KEY) {
+  // If no AI provider is configured at all, skip straight to rule-based
+  if (!GEMINI_API_KEY && !OPENROUTER_API_KEY) {
     return fallbackAnalysis(ctx);
   }
 
@@ -228,11 +331,17 @@ export async function analyzeProductionOrder(
     ]);
 
     const prompt = buildProductionPrompt(ctx, recentNotes, clientNotes);
-    const raw = await callGemini(prompt);
+    const raw = await callAiWithFallback(prompt);
+
+    // If all AI providers failed, use rule-based
+    if (!raw) {
+      console.warn('[HermesClaw] All AI providers failed — using rule-based fallback');
+      return fallbackAnalysis(ctx);
+    }
 
     const analysis = parseAnalysis(raw);
     if (!analysis) {
-      console.warn('[HermesClaw] Failed to parse Gemini response — using fallback. Raw:', raw.slice(0, 200));
+      console.warn('[HermesClaw] Failed to parse AI response — using fallback. Raw:', raw.slice(0, 200));
       return fallbackAnalysis(ctx);
     }
 
@@ -250,7 +359,7 @@ export async function analyzeProductionOrder(
     return analysis;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[HermesClaw] Gemini call failed: ${errorMsg} — using fallback`);
+    console.error(`[HermesClaw] Unexpected error: ${errorMsg} — using fallback`);
     return fallbackAnalysis(ctx);
   }
 }
