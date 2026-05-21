@@ -1,0 +1,15 @@
+{
+  "name": "backup-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/backupRunner.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
