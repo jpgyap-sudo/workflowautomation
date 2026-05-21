@@ -4,6 +4,7 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  inlineKeyboard,
   createReminder,
   getActiveOrdersByStage,
   getEscalationLevel,
@@ -161,11 +162,20 @@ export async function notifyPurchasing(
   order: OrderRow,
   result: AgentResult,
 ): Promise<void> {
-  const msg = buildAgentMessage(
-    'Purchasing Agent',
-    order,
-    result.message,
-    result.escalation_level,
-  );
-  await sendTelegramMessage(groupChatId, msg);
+  const msg = buildAgentMessage('Purchasing Agent', order, result.message, result.escalation_level);
+  const qn = order.quotation_number;
+
+  // Show Yes / Partial / No buttons when asking about production start
+  const keyboard =
+    qn && result.status === 'needs_review' && !order.production_started
+      ? inlineKeyboard([
+          [
+            { text: '✅ Yes, started', callback_data: `produce:yes:${qn}` },
+            { text: '⚠️ Partial', callback_data: `produce:partial:${qn}` },
+          ],
+          [{ text: '⏳ Not yet', callback_data: `produce:no:${qn}` }],
+        ])
+      : undefined;
+
+  await sendTelegramMessage(groupChatId, msg, keyboard);
 }

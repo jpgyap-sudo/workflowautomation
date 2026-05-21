@@ -3,6 +3,30 @@ import { query } from '../db.js';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
+/**
+ * Returns the next reminder fire time: 10:00 AM or 4:00 PM PHT (UTC+8).
+ * If current PHT time is already past 4 PM, returns tomorrow 10 AM PHT.
+ */
+function nextPhtReminderTime(): Date {
+  const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const phtNow = new Date(Date.now() + PHT_OFFSET_MS);
+  const phtHour = phtNow.getUTCHours();
+
+  const target = new Date(phtNow.getTime());
+  target.setUTCMinutes(0, 0, 0);
+
+  if (phtHour < 10) {
+    target.setUTCHours(10);
+  } else if (phtHour < 16) {
+    target.setUTCHours(16);
+  } else {
+    target.setUTCDate(target.getUTCDate() + 1);
+    target.setUTCHours(10);
+  }
+
+  return new Date(target.getTime() - PHT_OFFSET_MS);
+}
+
 interface Reminder {
   id: string;
   order_id: string;
@@ -127,15 +151,22 @@ export async function processDueReminders(): Promise<number> {
       text += `${level} *Escalation Level ${reminder.escalation_level}*\n`;
     }
 
-    text += `_Use /status ${reminder.quotation_number ?? ''} to check details._`;
-
     // Determine if this reminder needs inline keyboard buttons
     const quotationNumber = reminder.quotation_number ?? '';
     const orderId = reminder.order_id;
 
     let ok = false;
 
-    if (reminder.stage === 'production_midpoint') {
+    if (reminder.stage === 'purchasing_pending') {
+      // Has production started?
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Yes, started', callback_data: `produce:yes:${quotationNumber}` },
+          { text: '⚠️ Partial', callback_data: `produce:partial:${quotationNumber}` },
+        ],
+        [{ text: '⏳ Not yet', callback_data: `produce:no:${quotationNumber}` }],
+      ]);
+    } else if (reminder.stage === 'production_midpoint') {
       // Midpoint check: ask if on time or delayed
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
@@ -220,6 +251,11 @@ export async function processDueReminders(): Promise<number> {
           { text: '⏳ Still Pending', callback_data: `payment:pending:${orderId}:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'delivered') {
+      // Delivered: prompt to record payment
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [{ text: '💵 Record Payment', callback_data: `pick:payment:${quotationNumber}` }],
+      ]);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);
@@ -236,19 +272,7 @@ export async function processDueReminders(): Promise<number> {
           [reminder.id]
         );
       } else {
-        // Calculate next run time based on frequency
-        const nextRun = new Date();
-        switch (reminder.frequency) {
-          case 'hourly':
-            nextRun.setHours(nextRun.getHours() + 1);
-            break;
-          case 'daily':
-          default:
-            nextRun.setDate(nextRun.getDate() + 1);
-            break;
-        }
-
-        // Escalate if overdue (after 3 reminders without update)
+        const nextRun = nextPhtReminderTime();
         const newEscalation = reminder.escalation_level + 1;
 
         await query(
@@ -260,6 +284,18 @@ export async function processDueReminders(): Promise<number> {
           [nextRun.toISOString(), newEscalation, reminder.id]
         );
       }
+    } else {
+      // Send failed — reschedule for 1 hour later to retry instead of leaving it stuck forever
+      console.error(`[processDueReminders] Failed to send reminder ${reminder.id} (stage: ${reminder.stage}) to chat ${reminder.group_chat_id} — rescheduling in 1 hour`);
+      const retryAt = new Date();
+      retryAt.setHours(retryAt.getHours() + 1);
+      await query(
+        `UPDATE reminders
+         SET next_run_at = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [retryAt.toISOString(), reminder.id]
+      );
     }
   }
 
@@ -276,10 +312,7 @@ export async function createStageReminder(
   message: string,
   frequency: string = 'daily'
 ): Promise<void> {
-  const now = new Date();
-
-  // Start first reminder 1 hour from now (give time for manual update)
-  const firstRun = new Date(now.getTime() + 60 * 60 * 1000);
+  const firstRun = nextPhtReminderTime();
 
   await query(
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)

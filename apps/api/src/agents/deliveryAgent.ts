@@ -4,6 +4,7 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  inlineKeyboard,
   createReminder,
   getActiveOrdersByStage,
   getEscalationLevel,
@@ -235,7 +236,7 @@ export async function checkScheduledDelivery(order: OrderRow): Promise<AgentResu
 
     const result: AgentResult = {
       status: 'needs_review',
-      message: `Has the delivery been completed? Scheduled delivery is pending${dateInfo}. Please confirm with /delivered.`,
+      message: `Has the delivery been completed? Scheduled delivery is pending${dateInfo}.`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,
@@ -282,7 +283,7 @@ export async function checkDelivered(order: OrderRow): Promise<AgentResult> {
 
     const result: AgentResult = {
       status: 'needs_review',
-      message: `Item has been delivered. Has payment been received? Please update with /payment.`,
+      message: `Item has been delivered. Has payment been received?`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,
@@ -319,11 +320,44 @@ export async function notifyDelivery(
   order: OrderRow,
   result: AgentResult,
 ): Promise<void> {
-  const msg = buildAgentMessage(
-    'Delivery Agent',
-    order,
-    result.message,
-    result.escalation_level,
-  );
-  await sendTelegramMessage(groupChatId, msg);
+  const msg = buildAgentMessage('Delivery Agent', order, result.message, result.escalation_level);
+  const qn = order.quotation_number;
+  const id = order.id;
+
+  let keyboard: Record<string, unknown> | undefined;
+  if (qn && result.status === 'needs_review') {
+    switch (order.current_stage) {
+      case 'inventory_arrived':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${id}:${qn}` },
+            { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'balance_due':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Client Paid Balance', callback_data: `balance:paid:${id}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `balance:not_paid:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'delivery_scheduled':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `delivery:no:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'delivered':
+        keyboard = inlineKeyboard([
+          [{ text: '💵 Record Payment', callback_data: `pick:payment:${qn}` }],
+        ]);
+        break;
+    }
+  }
+
+  await sendTelegramMessage(groupChatId, msg, keyboard);
 }

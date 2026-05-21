@@ -89,6 +89,20 @@ export interface MonthlySales {
   monthly: MonthlySalesRow[];
 }
 
+export interface SalesByAgent {
+  agent: string;
+  order_count: number;
+  total_sales: number;
+  computed_sales: number;
+}
+
+export interface SalesByClient {
+  client: string;
+  order_count: number;
+  total_sales: number;
+  computed_sales: number;
+}
+
 export interface OrderDetail extends Order {
   stage_updates: StageUpdate[];
   files: OrderFile[];
@@ -157,6 +171,7 @@ export async function recordStageUpdate(data: {
   stage: string;
   status: string;
   remarks?: string;
+  delivery_date?: string | null;
   updated_by?: string;
 }): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/stage-updates', {
@@ -190,6 +205,7 @@ export async function updateOrder(id: string, data: {
   sales_agent?: string;
   total_amount?: number;
   quotation_number?: string;
+  delivery_date?: string | null;
   action_token: string;
 }): Promise<Order> {
   return fetchJson<Order>(`/orders/${encodeURIComponent(id)}`, {
@@ -381,6 +397,8 @@ export async function getCalendarNotes(): Promise<CalendarNote[]> {
 export async function getCalendarNotesByDate(date: string): Promise<CalendarNote[]> {
   return fetchJson<CalendarNote[]>(`/calendar/notes/${date}`);
 }
+
+
 
 export async function createCalendarNote(note: {
   note_date: string;

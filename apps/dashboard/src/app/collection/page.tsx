@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, uploadToDrive } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2 } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -102,12 +102,25 @@ function OrderPaymentInfo({ order }: { order: Order }) {
 export default function CollectionPage() {
   const { data: inventoryArrivedOrders = [], isLoading: loadingArrived, mutate: mutateArrived } = useOrdersByStage('inventory_arrived');
   const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
+  const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
   const { data: counteredOrders = [], isLoading: loadingCountered, mutate: mutateCountered } = useOrdersByStage('countered');
   const { data: paymentReceivedOrders = [], isLoading: loadingReceived, mutate: mutateReceived } = useOrdersByStage('payment_received');
   const { data: paymentConfirmedOrders = [], isLoading: loadingConfirmed, mutate: mutateConfirmed } = useOrdersByStage('payment_confirmed');
   const { data: completedOrders = [], isLoading: loadingCompleted, mutate: mutateCompleted } = useOrdersByStage('completed');
+  // Fetch unsynced orders — balance_paid=TRUE but stage still balance_due (legacy gap)
+  const [unsyncedOrders, setUnsyncedOrders] = useState<Order[]>([]);
+  const [loadingUnsynced, setLoadingUnsynced] = useState(true);
 
-  const loading = loadingArrived && loadingBalanceDue && loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted;
+  // Fetch unsynced payments on mount
+  useEffect(() => {
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    fetch(`${API_BASE}/orders/unsynced-payments`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setUnsyncedOrders(data); setLoadingUnsynced(false); })
+      .catch(() => setLoadingUnsynced(false));
+  }, []);
+
+  const loading = loadingArrived && loadingBalanceDue && loadingDelivered && loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted && loadingUnsynced;
 
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -176,6 +189,7 @@ export default function CollectionPage() {
       setEditingOrder(null);
       mutateArrived();
       mutateBalanceDue();
+      mutateDelivered();
       mutateCountered();
       mutateReceived();
       mutateConfirmed();
@@ -206,6 +220,7 @@ export default function CollectionPage() {
       setDeletingOrder(null);
       mutateArrived();
       mutateBalanceDue();
+      mutateDelivered();
       mutateCountered();
       mutateReceived();
       mutateConfirmed();
@@ -315,6 +330,7 @@ export default function CollectionPage() {
       setDepositSlipFile(null);
       mutateArrived();
       mutateBalanceDue();
+      mutateDelivered();
       mutateCountered();
       mutateReceived();
       mutateConfirmed();
@@ -333,7 +349,7 @@ export default function CollectionPage() {
     setDepositSlipFile(null);
   }
 
-  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0) {
+  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && deliveredOrders.length === 0 && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0 && unsyncedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -374,6 +390,30 @@ export default function CollectionPage() {
           <div className="flex items-center gap-3">
             <StageBadge stage={order.current_stage} />
             <div className="flex items-center gap-1">
+              {/* Mark as Payment Received — for delivered stage (skip countered) */}
+              {order.current_stage === 'delivered' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await recordStageUpdate({
+                        quotation_number: order.quotation_number ?? '',
+                        stage: 'payment_received',
+                        status: 'received',
+                        remarks: 'Payment received (delivered → payment_received, skipped countered)',
+                        updated_by: 'dashboard',
+                      });
+                      mutateDelivered();
+                      mutateReceived();
+                    } catch (err: any) {
+                      alert('Failed to mark payment received: ' + (err.message ?? 'Unknown error'));
+                    }
+                  }}
+                  className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  title="Mark as Payment Received (skip countered)"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
               {/* Payment Confirmed button — only for inventory_arrived / balance_due */}
               {(order.current_stage === 'inventory_arrived' || order.current_stage === 'balance_due') && (
                 <button
@@ -513,13 +553,77 @@ export default function CollectionPage() {
           <Clock className="h-4 w-4 text-emerald-500" />
           <h2 className="text-base font-semibold text-gray-800">Payment Received (Pending Confirmation)</h2>
           <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-            {paymentReceivedOrders.length}
+            {paymentReceivedOrders.length + unsyncedOrders.length}
           </span>
         </div>
-        {paymentReceivedOrders.length === 0 ? (
+        {paymentReceivedOrders.length === 0 && unsyncedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No pending payment confirmations</div>
         ) : (
           <div className="divide-y divide-gray-100">
+            {/* Unsynced orders — balance_paid=TRUE but stage stuck at balance_due (legacy gap) */}
+            {unsyncedOrders.length > 0 && (
+              <>
+                <div className="bg-amber-50/50 px-6 py-2">
+                  <p className="text-xs font-medium text-amber-700">
+                    ⚠️ Legacy — Balance paid but not yet synced to Payment Received stage
+                  </p>
+                </div>
+                {unsyncedOrders.map((order) => (
+                  <div key={order.id}>
+                    <div className="flex items-center justify-between px-6 py-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        </div>
+                        <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                        {order.sales_agent && (
+                          <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+                        )}
+                        <OrderPaymentInfo order={order} />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <StageBadge stage={order.current_stage} />
+                        <button
+                          onClick={async () => {
+                            try {
+                              const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+                              await fetch(`${API_BASE}/stage-updates`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  quotation_number: order.quotation_number ?? '',
+                                  stage: 'payment_received',
+                                  status: 'balance_paid',
+                                  remarks: 'Synced from legacy — balance was already paid but stage was not updated',
+                                  updated_by: 'dashboard',
+                                }),
+                              });
+                              // Also update the order's current_stage
+                              await fetch(`${API_BASE}/orders/unsynced-payments/sync`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ order_id: order.id }),
+                              });
+                              // Re-fetch unsynced list
+                              const res = await fetch(`${API_BASE}/orders/unsynced-payments`);
+                              const data = res.ok ? await res.json() : [];
+                              setUnsyncedOrders(data);
+                              mutateReceived();
+                            } catch (err: any) {
+                              alert('Failed to sync: ' + (err.message ?? 'Unknown error'));
+                            }
+                          }}
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+                          title="Sync this order to Payment Received stage"
+                        >
+                          Sync to Payment Received
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
             {paymentReceivedOrders.map((order) => renderOrderRow(order, [mutateReceived]))}
           </div>
         )}

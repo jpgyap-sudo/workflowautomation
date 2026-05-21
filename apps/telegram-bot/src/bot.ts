@@ -381,6 +381,95 @@ function escapeMarkdown(value: unknown): string {
   return String(value ?? '').replace(/([_*`[\]\\])/g, '\\$1');
 }
 
+// ── Order Picker Helpers ───────────────────────────────────────────────
+
+async function getOrdersForAction(action: string): Promise<{ id: string; quotation_number: string; client_name: string | null }[]> {
+  try {
+    const data = await getJson(`/orders/picker?action=${encodeURIComponent(action)}`);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+async function showOrderPicker(
+  ctx: any,
+  chatId: string,
+  action: string,
+  title: string,
+  fallbackPrompt: string,
+  stepToSet: UserStep,
+) {
+  setStep(chatId, stepToSet);
+  const orders = await getOrdersForAction(action);
+
+  const buttons: any[][] = [];
+  if (orders.length > 0) {
+    for (const o of orders.slice(0, 5)) {
+      const label = `${o.quotation_number}${o.client_name ? ` — ${o.client_name}` : ''}`.substring(0, 60);
+      buttons.push([Markup.button.callback(label, `pick:${action}:${o.quotation_number}`)]);
+    }
+    if (orders.length > 5) {
+      buttons.push([Markup.button.callback(`+${orders.length - 5} more — type number below`, 'noop')]);
+    }
+  }
+  buttons.push([Markup.button.callback('❌ Cancel', 'action:cancel')]);
+
+  const text = orders.length > 0
+    ? `${title}\n\nTap an order or type the quotation number:`
+    : `${title}\n\n${fallbackPrompt}`;
+
+  await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) })
+    .catch(() => ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }));
+}
+
+// ── Delivery Date Picker Helpers ───────────────────────────────────────
+
+function getDeliveryDateButtons(quotationNumber: string) {
+  const now = new Date(Date.now() + 8 * 60 * 60 * 1000); // PHT
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+
+  const today = new Date(now);
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const plus2 = new Date(now); plus2.setDate(now.getDate() + 2);
+
+  const dow = now.getDay();
+  const daysToFri = dow <= 5 ? 5 - dow : 6;
+  const nextFri = new Date(now); nextFri.setDate(now.getDate() + (daysToFri || 7));
+
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`📅 Today — ${fmt(today)}`, `date:today:${quotationNumber}`)],
+    [Markup.button.callback(`📅 Tomorrow — ${fmt(tomorrow)}`, `date:tomorrow:${quotationNumber}`)],
+    [Markup.button.callback(`📅 ${fmt(plus2)}`, `date:plus2:${quotationNumber}`)],
+    [Markup.button.callback(`📅 ${fmt(nextFri)} (Fri)`, `date:friday:${quotationNumber}`)],
+    [Markup.button.callback('✏️ Custom date...', `date:custom:${quotationNumber}`)],
+    [Markup.button.callback('❌ Cancel', 'action:cancel')],
+  ]);
+}
+
+async function showDeliveryDatePicker(ctx: any, chatId: string, quotationNumber: string, order: any, isEdit: boolean) {
+  setStep(chatId, { action: 'awaiting_delivery_date', quotationNumber });
+
+  let clientInfo = '';
+  const client = order?.client_name ? await lookupClient(order.client_name).catch(() => null) : null;
+  if (client) {
+    const info = formatClientInfo(client);
+    if (info) clientInfo = `\n\n🚚 *Delivery Info:*\n${info}`;
+  } else if (order?.delivery_address) {
+    clientInfo = `\n\n🚚 *Delivery Info:*\n📍 *Address:* ${order.delivery_address}`;
+    if (order.contact_number) clientInfo += `\n📞 *Contact:* ${order.contact_number}`;
+  }
+
+  const text = `🚚 *Schedule Delivery for ${quotationNumber}*${clientInfo}\n\nSelect a delivery date:`;
+  if (isEdit) {
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...getDeliveryDateButtons(quotationNumber) })
+      .catch(() => ctx.reply(text, { parse_mode: 'Markdown', ...getDeliveryDateButtons(quotationNumber) }));
+  } else {
+    await ctx.reply(text, { parse_mode: 'Markdown', ...getDeliveryDateButtons(quotationNumber) });
+  }
+}
+
 function retryUploadKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🔁 Retry upload', 'upload:retry')],
@@ -508,123 +597,69 @@ bot.action(/^menu:(.+)$/, async (ctx) => {
       break;
 
     case 'status':
-      setStep(chatId, { action: 'awaiting_order_number_for_status' });
-      await ctx.editMessageText(
-        '📋 *Check Order Status*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '📋 *Check Order Status*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'status',
+        '📋 *Check Order Status*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_status' });
       break;
 
     case 'produce':
-      setStep(chatId, { action: 'awaiting_order_number_for_produce', status: 'yes' });
-      await ctx.editMessageText(
-        '🛒 *Purchasing / Production*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '🛒 *Purchasing / Production*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'produce',
+        '🛒 *Purchasing / Production*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_produce', status: 'yes' });
       break;
 
     case 'deposit':
-      setStep(chatId, { action: 'awaiting_order_number_for_deposit' });
-      await ctx.editMessageText(
-        '💳 *Record Downpayment*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '💳 *Record Downpayment*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'deposit',
+        '💳 *Record Downpayment*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_deposit' });
       break;
 
     case 'paybalance':
-      setStep(chatId, { action: 'awaiting_order_number_for_paybalance' });
-      await ctx.editMessageText(
-        '💰 *Pay Balance*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '💰 *Pay Balance*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'paybalance',
+        '💰 *Pay Balance*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_paybalance' });
       break;
 
     case 'deliverydate':
-      setStep(chatId, { action: 'awaiting_order_number_for_delivered' });
-      await ctx.editMessageText(
-        '🚚 *Schedule Delivery*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '🚚 *Schedule Delivery*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'deliverydate',
+        '🚚 *Schedule Delivery*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_delivered' });
       break;
 
     case 'delivered':
-      setStep(chatId, { action: 'awaiting_order_number_for_mark_delivered' });
-      await ctx.editMessageText(
-        '✅ *Mark as Delivered*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '✅ *Mark as Delivered*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'delivered',
+        '✅ *Mark as Delivered*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_mark_delivered' });
       break;
 
     case 'payment':
-      setStep(chatId, { action: 'awaiting_order_number_for_payment' });
-      await ctx.editMessageText(
-        '💵 *Record Payment*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '💵 *Record Payment*\n\nPlease enter the quotation number:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'payment',
+        '💵 *Record Payment*',
+        'Enter the quotation number:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_payment' });
       break;
 
     case 'link':
-      setStep(chatId, { action: 'awaiting_order_number_for_link' });
-      await ctx.editMessageText(
-        '🔗 *Link Order*\n\nPlease enter the quotation number to link for file uploads:\n\nExample: `QTN-2026-001`',
-        { parse_mode: 'Markdown', ...cancelButton() }
-      ).catch(() =>
-        ctx.reply(
-          '🔗 *Link Order*\n\nPlease enter the quotation number to link for file uploads:\n\nExample: `QTN-2026-001`',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
-      );
+      await showOrderPicker(ctx, chatId, 'link',
+        '🔗 *Link Order for Upload*',
+        'Enter the quotation number to link:\n\nExample: `QTN-2026-001`',
+        { action: 'awaiting_order_number_for_link' });
       break;
 
     case 'upload':
       {
         const session = getSession(chatId);
         if (!session.linkedOrder) {
-          setStep(chatId, { action: 'awaiting_order_number_for_link' });
-          await ctx.editMessageText(
-            '📎 *Upload File*\n\nNo order is linked yet. Please enter the quotation number first:\n\nExample: `QTN-2026-001`',
-            { parse_mode: 'Markdown', ...cancelButton() }
-          ).catch(() =>
-            ctx.reply(
-              '📎 *Upload File*\n\nNo order is linked yet. Please enter the quotation number first:\n\nExample: `QTN-2026-001`',
-              { parse_mode: 'Markdown', ...cancelButton() }
-            )
-          );
+          await showOrderPicker(ctx, chatId, 'link',
+            '📎 *Upload File*\n\nNo order linked yet. Select one to link:',
+            'Enter the quotation number to link:\n\nExample: `QTN-2026-001`',
+            { action: 'awaiting_order_number_for_link' });
         } else {
           setStep(chatId, { action: 'awaiting_file_upload' });
           await ctx.editMessageText(
@@ -643,18 +678,310 @@ bot.action(/^menu:(.+)$/, async (ctx) => {
     case 'clients':
       setStep(chatId, { action: 'awaiting_client_search' });
       await ctx.editMessageText(
-        '👤 *Clients*\n\nEnter a client name to search their delivery details, or type *list* to see all clients:',
-        { parse_mode: 'Markdown', ...cancelButton() }
+        '👤 *Clients*\n\nTap to view all, or type a client name to search:',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📋 View All Clients', 'clients:list')],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
       ).catch(() =>
-        ctx.reply(
-          '👤 *Clients*\n\nEnter a client name to search their delivery details, or type *list* to see all clients:',
-          { parse_mode: 'Markdown', ...cancelButton() }
-        )
+        ctx.reply('👤 *Clients*\n\nTap to view all, or type a client name to search:', {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📋 View All Clients', 'clients:list')],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        })
       );
       break;
 
     default:
       await ctx.answerCbQuery('Unknown option');
+  }
+});
+
+// ── No-op (info-only buttons like "+ N more") ──────────────────────────
+
+bot.action('noop', async (ctx) => { await ctx.answerCbQuery(); });
+
+// ── Order Picker Callback ─────────────────────────────────────────────
+// Fired when user taps a quick-pick order button instead of typing.
+// Jumps directly to the next step for the chosen action.
+
+bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const action = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `pick:${action}:${quotationNumber}`, direction: 'incoming' });
+
+  switch (action) {
+    case 'status': {
+      try {
+        const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+        if (!res.ok) {
+          resetStep(chatId);
+          await ctx.editMessageText(`❌ Order *${quotationNumber}* not found.`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+          return;
+        }
+        const order: any = await res.json();
+        const totalAmount = Number(order.total_amount ?? 0);
+        const depositAmount = Number(order.deposit_amount ?? 0);
+        const balance = totalAmount - depositAmount;
+        let msg =
+          `📋 *${order.quotation_number}*\n` +
+          `Stage: ${order.current_stage}\nStatus: ${order.status}\nMath: ${order.math_status}\n` +
+          `Total: ₱${totalAmount.toLocaleString()}\n` +
+          `Downpayment: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
+          `Balance: ${order.balance_paid ? '✅ Paid' : `⏳ ₱${balance.toLocaleString()}`}`;
+        const client = order.client_name ? await lookupClient(order.client_name) : null;
+        if (client || order.delivery_address) {
+          msg += `\n\n🚚 *Delivery Info:*`;
+          if (client) { const info = formatClientInfo(client); if (info) msg += `\n${info}`; }
+          else {
+            if (order.delivery_address) msg += `\n📍 *Address:* ${order.delivery_address}`;
+            if (order.contact_number) msg += `\n📞 *Contact:* ${order.contact_number}`;
+          }
+        }
+        resetStep(chatId);
+        await ctx.editMessageText(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+      } catch {
+        resetStep(chatId);
+        await ctx.editMessageText(`❌ Error fetching order *${quotationNumber}*.`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+      }
+      break;
+    }
+
+    case 'produce': {
+      setStep(chatId, { action: 'awaiting_produce_status', quotationNumber });
+      await ctx.editMessageText(
+        `🛒 *Production for ${quotationNumber}*\n\nHas production/purchasing started?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Yes, started', `produce:yes:${quotationNumber}`)],
+            [Markup.button.callback('⚠️ Partial — some items started', `produce:partial:${quotationNumber}`)],
+            [Markup.button.callback('⏳ Not yet', `produce:no:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
+      );
+      break;
+    }
+
+    case 'deposit': {
+      setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
+      await ctx.editMessageText(
+        `💳 *Downpayment for ${quotationNumber}*\n\nEnter the downpayment amount in PHP:\n\nExample: \`5000\``,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      break;
+    }
+
+    case 'paybalance': {
+      setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+      await ctx.editMessageText(
+        `💰 *Balance Payment for ${quotationNumber}*\n\nEnter the balance amount in PHP:\n\nExample: \`15000\``,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      break;
+    }
+
+    case 'deliverydate': {
+      let order: any;
+      try {
+        order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+        const totalAmount = Number(order.total_amount ?? 0);
+        const depositAmount = Number(order.deposit_amount ?? 0);
+        const balance = totalAmount - depositAmount;
+        if (!order.balance_paid && balance > 0) {
+          resetStep(chatId);
+          await ctx.editMessageText(
+            `❌ *Balance not yet paid for ${quotationNumber}*\n\n` +
+            `Total: ₱${totalAmount.toLocaleString()}\nDeposit: ₱${depositAmount.toLocaleString()}\nBalance Due: ₱${balance.toLocaleString()}\n\n` +
+            `Please pay the balance first via *Pay Balance*.`,
+            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+          );
+          return;
+        }
+      } catch {
+        resetStep(chatId);
+        await ctx.editMessageText(`❌ Order *${quotationNumber}* not found.`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+        return;
+      }
+      await showDeliveryDatePicker(ctx, chatId, quotationNumber, order, true);
+      break;
+    }
+
+    case 'delivered': {
+      setStep(chatId, { action: 'awaiting_delivered_remarks', quotationNumber });
+      await ctx.editMessageText(
+        `✅ *Mark as Delivered — ${quotationNumber}*\n\nAdd delivery remarks, or skip:`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('⏭ Skip remarks', `skip_remarks:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
+      );
+      break;
+    }
+
+    case 'payment': {
+      setStep(chatId, { action: 'awaiting_payment_status', quotationNumber });
+      await ctx.editMessageText(
+        `💵 *Payment for ${quotationNumber}*\n\nHas the payment been confirmed?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Confirmed', `payment:confirmed:${quotationNumber}`)],
+            [Markup.button.callback('⏳ Received (pending confirm)', `payment:pending:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
+      );
+      break;
+    }
+
+    case 'link': {
+      try {
+        const order: any = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+        const sess = getSession(chatId);
+        sess.linkedOrder = order.quotation_number;
+        resetStep(chatId);
+        await ctx.editMessageText(
+          `🔗 *Linked to ${order.quotation_number}*\n\nFiles sent here will be attached to this order.\n\nSend a document or photo to upload, or choose another action.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch {
+        resetStep(chatId);
+        await ctx.editMessageText(`❌ Order *${quotationNumber}* not found.`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    default:
+      await ctx.answerCbQuery('Unknown action');
+  }
+});
+
+// ── Clients: View All ─────────────────────────────────────────────────
+
+bot.action('clients:list', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  try {
+    const clients: any[] = await getJson('/clients');
+    if (clients.length === 0) {
+      resetStep(chatId);
+      await ctx.editMessageText('👤 No clients found.', { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+      return;
+    }
+    const list = clients.slice(0, 20).map((c) => `• *${escapeMarkdown(c.client_name)}*`).join('\n');
+    resetStep(chatId);
+    await ctx.editMessageText(`👤 *All Clients:*\n\n${list}`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+  } catch {
+    await ctx.editMessageText('❌ Error fetching clients.', { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── Delivery Date Picker Callback ─────────────────────────────────────
+
+bot.action(/^date:(today|tomorrow|plus2|friday|custom):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const dateKey = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `date:${dateKey}:${quotationNumber}`, direction: 'incoming' });
+
+  if (dateKey === 'custom') {
+    setStep(chatId, { action: 'awaiting_delivery_date', quotationNumber });
+    await ctx.editMessageText(
+      `🚚 *Schedule Delivery for ${quotationNumber}*\n\nEnter the delivery date:\n\nExample: \`May 22 2026\``,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+    return;
+  }
+
+  const now = new Date(Date.now() + 8 * 60 * 60 * 1000); // PHT
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+
+  let dateText: string;
+  switch (dateKey) {
+    case 'today':
+      dateText = fmt(now);
+      break;
+    case 'tomorrow': {
+      const d = new Date(now); d.setDate(now.getDate() + 1);
+      dateText = fmt(d);
+      break;
+    }
+    case 'plus2': {
+      const d = new Date(now); d.setDate(now.getDate() + 2);
+      dateText = fmt(d);
+      break;
+    }
+    case 'friday': {
+      const dow = now.getDay();
+      const daysToFri = dow <= 5 ? 5 - dow : 6;
+      const d = new Date(now); d.setDate(now.getDate() + (daysToFri || 7));
+      dateText = fmt(d);
+      break;
+    }
+    default:
+      dateText = 'Unknown date';
+  }
+
+  try {
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'delivery_scheduled',
+      status: 'scheduled',
+      remarks: dateText,
+      updated_by: username ?? String(userId),
+    });
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `🚚 *Delivery Scheduled*\n\nOrder: *${quotationNumber}*\nDate: ${dateText}`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error scheduling delivery: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── Skip Delivery Remarks ─────────────────────────────────────────────
+
+bot.action(/^skip_remarks:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `skip_remarks:${quotationNumber}`, direction: 'incoming' });
+
+  try {
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'delivered',
+      status: 'delivered',
+      remarks: '',
+      updated_by: username ?? String(userId),
+    });
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *Delivered*\n\nOrder: *${quotationNumber}*`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
   }
 });
 
@@ -975,28 +1302,7 @@ Midpoint and due reminders are now scheduled.`,
         });
         return;
       }
-      setStep(chatId, { action: 'awaiting_delivery_date', quotationNumber });
-
-      // Auto-detect client delivery info
-      let clientInfo = '';
-      const client = order.client_name ? await lookupClient(order.client_name) : null;
-      if (client || order.delivery_address || order.contact_number) {
-        clientInfo = `\n\n🚚 *Detected Delivery Info:*`;
-        if (client) {
-          const info = formatClientInfo(client);
-          if (info) clientInfo += `\n${info}`;
-        } else {
-          if (order.delivery_address) clientInfo += `\n📍 *Address:* ${order.delivery_address}`;
-          if (order.contact_number) clientInfo += `\n📞 *Contact:* ${order.contact_number}`;
-          if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${order.authorized_receiver_name}${order.authorized_receiver_contact ? ` (${order.authorized_receiver_contact})` : ''}`;
-        }
-        clientInfo += `\n\n_If the details above look wrong, you can update them in the dashboard Clients tab._\n`;
-      }
-
-      await ctx.reply(
-        `🚚 *Schedule Delivery for ${quotationNumber}*${clientInfo}\nEnter the delivery date:\n\nExample: \`May 22 2026\``,
-        { parse_mode: 'Markdown', ...cancelButton() }
-      );
+      await showDeliveryDatePicker(ctx, chatId, quotationNumber, order, false);
       break;
     }
 
@@ -1046,8 +1352,14 @@ Midpoint and due reminders are now scheduled.`,
       }
       setStep(chatId, { action: 'awaiting_delivered_remarks', quotationNumber });
       await ctx.reply(
-        `✅ *Mark as Delivered — ${quotationNumber}*\n\nEnter any delivery remarks (e.g., recipient name, notes), or send \`-\` to skip:`,
-        { parse_mode: 'Markdown', ...cancelButton() }
+        `✅ *Mark as Delivered — ${quotationNumber}*\n\nAdd delivery remarks (recipient name, notes), or skip:`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('⏭ Skip remarks', `skip_remarks:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
       );
       break;
     }
@@ -1909,9 +2221,14 @@ bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
     await ctx.editMessageText(
       `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
       `Stage advanced to ⚖️ *Balance Due*.\n\n` +
-      `Please ask the client for the balance payment. ` +
-      `You can use /paybalance command or send a photo of the deposit slip.`,
-      { parse_mode: 'Markdown' }
+      `Please collect the balance payment from the client.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('💰 Pay Balance', `pick:paybalance:${quotationNumber}`)],
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
     );
   } catch (err: any) {
     await ctx.editMessageText(
@@ -1937,10 +2254,8 @@ bot.action(/^inventory:waiting:(.+):(.+)$/, async (ctx) => {
   });
 
   await ctx.editMessageText(
-    `⏳ *Still Waiting* — ${quotationNumber}\n\n` +
-    `Noted. The bot will ask again tomorrow. ` +
-    `Please update once the inventory is ready for delivery.`,
-    { parse_mode: 'Markdown' }
+    `⏳ *Still Waiting* — ${quotationNumber}\n\nNoted. The bot will check again tomorrow.\nPlease update once the inventory is ready for delivery.`,
+    { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🏠 Main Menu', 'menu:main')]]) }
   );
 });
 
@@ -1987,10 +2302,8 @@ bot.action(/^balance:not_paid:(.+):(.+)$/, async (ctx) => {
   });
 
   await ctx.editMessageText(
-    `⏳ *Payment Pending* — ${quotationNumber}\n\n` +
-    `Noted. The bot will ask again tomorrow. ` +
-    `Please remind the client about the balance payment.`,
-    { parse_mode: 'Markdown' }
+    `⏳ *Payment Pending* — ${quotationNumber}\n\nNoted. The bot will check again tomorrow.\nPlease remind the client about the balance payment.`,
+    { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🏠 Main Menu', 'menu:main')]]) }
   );
 });
 
@@ -2022,10 +2335,14 @@ bot.action(/^delivery:yes:(.+):(.+)$/, async (ctx) => {
     });
 
     await ctx.editMessageText(
-      `✅ *Delivery Confirmed* — ${quotationNumber}\n\n` +
-      `Stage advanced to 📦 *Delivered*.\n\n` +
-      `Please update payment status using the /payment command.`,
-      { parse_mode: 'Markdown' }
+      `✅ *Delivery Confirmed* — ${quotationNumber}\n\nStage advanced to 📦 *Delivered*.\n\nPlease record the payment status.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('💵 Record Payment', `pick:payment:${quotationNumber}`)],
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
     );
   } catch (err: any) {
     await ctx.editMessageText(
@@ -2051,10 +2368,8 @@ bot.action(/^delivery:no:(.+):(.+)$/, async (ctx) => {
   });
 
   await ctx.editMessageText(
-    `⏳ *Delivery Pending* — ${quotationNumber}\n\n` +
-    `Noted. The bot will ask again tomorrow. ` +
-    `Please update once the item has been delivered.`,
-    { parse_mode: 'Markdown' }
+    `⏳ *Delivery Pending* — ${quotationNumber}\n\nNoted. The bot will check again tomorrow.\nPlease update once the item has been delivered.`,
+    { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🏠 Main Menu', 'menu:main')]]) }
   );
 });
 
@@ -3642,14 +3957,83 @@ bot.command('unlink', async (ctx) => {
  * then try bot.launch(). 429 rate-limit errors use Telegram's recommended
  * retry_after value.
  */
+// ── Webhook mode ─────────────────────────────────────────────────────
+// Use webhook instead of long-polling to avoid 409 Conflict errors
+// caused by another instance polling with the same bot token.
+// The API server proxies Telegram webhook calls to this bot's internal
+// HTTP server.
+
+import * as http from 'http';
+
+const WEBHOOK_PORT = Number(process.env.WEBHOOK_PORT ?? 8443);
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET ?? '';
+
+async function startWebhook(): Promise<void> {
+  // Clear any lingering webhook first
+  await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
+
+  // Set webhook to the public HTTPS endpoint
+  // track.abcx124.xyz proxies /api/telegram-webhook -> http://api:8080/telegram-webhook
+  // The API server then forwards to http://telegram-bot:WEBHOOK_PORT/
+  const publicWebhookUrl =
+    process.env.PUBLIC_WEBHOOK_BASE_URL ??
+    process.env.DASHBOARD_BASE_URL ??
+    'https://track.abcx124.xyz';
+  const webhookUrl = `${publicWebhookUrl.replace(/\/+$/, '')}/api/telegram-webhook`;
+
+  await bot.telegram.setWebhook(webhookUrl, {
+    secret_token: WEBHOOK_SECRET || undefined,
+  });
+  console.log(`[bot] Webhook set to ${webhookUrl}`);
+
+  // Start a simple HTTP server that receives forwarded webhook updates
+  // from the API server and feeds them to the bot
+  const server = http.createServer(async (req, res) => {
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
+
+    // Verify secret token if configured
+    const receivedSecret = req.headers['x-telegram-bot-api-secret-token'];
+    if (WEBHOOK_SECRET && receivedSecret !== WEBHOOK_SECRET) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const update = JSON.parse(body);
+        bot.handleUpdate(update).catch((err) => {
+          console.error('[bot] Error handling update:', err);
+        });
+        res.writeHead(200);
+        res.end('OK');
+      } catch (err) {
+        console.error('[bot] Error parsing webhook body:', err);
+        res.writeHead(400);
+        res.end('Bad Request');
+      }
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.listen(WEBHOOK_PORT, '0.0.0.0', () => {
+      console.log(`[bot] Webhook server listening on port ${WEBHOOK_PORT}`);
+      resolve();
+    });
+    server.once('error', reject);
+  });
+}
+
 async function launchWithRetry(maxRetries = 30, baseDelayMs = 5000): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Reset any lingering polling lock before each attempt
-      await (bot.telegram as any).callApi('close').catch(() => {});
-      // Clear any lingering webhook before each attempt
-      await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
-      await bot.launch();
+      await startWebhook();
       console.log(`[bot] Launched successfully on attempt ${attempt}`);
       return;
     } catch (err: any) {

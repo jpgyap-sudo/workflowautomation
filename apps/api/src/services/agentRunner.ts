@@ -116,8 +116,21 @@ export async function logAgentAction(
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
-export async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
-  if (!TELEGRAM_BOT_TOKEN) return false;
+export function inlineKeyboard(
+  rows: { text: string; callback_data: string }[][]
+): Record<string, unknown> {
+  return { inline_keyboard: rows };
+}
+
+export async function sendTelegramMessage(
+  chatId: string,
+  text: string,
+  replyMarkup?: Record<string, unknown>,
+): Promise<boolean> {
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.error('[sendTelegramMessage] TELEGRAM_BOT_TOKEN is not set');
+    return false;
+  }
   try {
     const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
       method: 'POST',
@@ -126,15 +139,45 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
         chat_id: chatId,
         text,
         parse_mode: 'Markdown',
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       }),
     });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[sendTelegramMessage] Failed for chat ${chatId}: ${res.status} ${res.statusText} — ${body}`);
+    }
     return res.ok;
-  } catch {
+  } catch (err) {
+    console.error(`[sendTelegramMessage] Error sending to chat ${chatId}:`, err);
     return false;
   }
 }
 
 // ── Reminder Helpers ───────────────────────────────────────────────────
+
+/**
+ * Returns the next reminder fire time: 10:00 AM or 4:00 PM PHT (UTC+8).
+ * If the current PHT time is already past 4 PM, returns tomorrow 10 AM PHT.
+ */
+export function nextPhtReminderTime(): Date {
+  const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const phtNow = new Date(Date.now() + PHT_OFFSET_MS);
+  const phtHour = phtNow.getUTCHours();
+
+  const target = new Date(phtNow.getTime());
+  target.setUTCMinutes(0, 0, 0);
+
+  if (phtHour < 10) {
+    target.setUTCHours(10);
+  } else if (phtHour < 16) {
+    target.setUTCHours(16);
+  } else {
+    target.setUTCDate(target.getUTCDate() + 1);
+    target.setUTCHours(10);
+  }
+
+  return new Date(target.getTime() - PHT_OFFSET_MS);
+}
 
 export async function createReminder(
   orderId: string,
@@ -143,8 +186,7 @@ export async function createReminder(
   message: string,
   frequency: string = 'daily',
 ): Promise<void> {
-  const now = new Date();
-  const firstRun = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+  const firstRun = nextPhtReminderTime();
 
   await query(
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)

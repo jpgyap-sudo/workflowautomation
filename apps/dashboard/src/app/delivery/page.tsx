@@ -15,6 +15,78 @@ interface EditFormProps {
   saving: boolean;
 }
 
+interface ScheduleFormProps {
+  order: Order;
+  value: string;
+  remarks: string;
+  onValueChange: (value: string) => void;
+  onRemarksChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+}
+
+function formatDeliveryDate(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const offsetMs = parsed.getTimezoneOffset() * 60_000;
+  return new Date(parsed.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function ScheduleForm({ order, value, remarks, onValueChange, onRemarksChange, onSave, onCancel, saving }: ScheduleFormProps) {
+  return (
+    <div className="flex flex-wrap items-end gap-2 border-t border-gray-100 bg-purple-50/50 px-6 py-3">
+      <div>
+        <label className="mb-1 block text-[11px] font-medium text-purple-700">Delivery date & time</label>
+        <input
+          type="datetime-local"
+          value={value}
+          onChange={(e) => onValueChange(e.target.value)}
+          className="rounded-lg border border-purple-200 px-3 py-1.5 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+        />
+      </div>
+      <div className="min-w-[220px] flex-1">
+        <label className="mb-1 block text-[11px] font-medium text-purple-700">Delay reason / remarks</label>
+        <input
+          value={remarks}
+          onChange={(e) => onRemarksChange(e.target.value)}
+          placeholder={`Optional reason for ${order.delivery_date ? 'delay/reschedule' : 'schedule'}`}
+          className="w-full rounded-lg border border-purple-200 px-3 py-1.5 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving || !value.trim()}
+        className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : order.delivery_date ? 'Save Reschedule' : 'Save Schedule'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-300"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   const [clientName, setClientName] = useState(order.client_name ?? '');
   const [salesAgent, setSalesAgent] = useState(order.sales_agent ?? '');
@@ -91,12 +163,15 @@ export default function DeliveryPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [payAmount, setPayAmount] = useState('');
+  const [schedulingOrder, setSchedulingOrder] = useState<Order | null>(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleRemarks, setScheduleRemarks] = useState('');
 
   const [otpModal, setOtpModal] = useState<{
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function mutateAll() {
@@ -161,6 +236,70 @@ export default function DeliveryPage() {
   }
 
   // ── Mark delivered ──────────────────────────────────────────────────────
+
+
+  // Schedule / reschedule delivery
+  function handleOpenSchedule(order: Order) {
+    setSchedulingOrder(order);
+    setScheduleDate(toDateTimeLocalValue(order.delivery_date));
+    setScheduleRemarks('');
+  }
+
+  function handleScheduleSubmit(order: Order) {
+    if (!scheduleDate.trim()) {
+      alert('Please choose the delivery date and time.');
+      return;
+    }
+    (window as any).__pendingScheduleData = {
+      order,
+      delivery_date: scheduleDate.trim(),
+      remarks: scheduleRemarks.trim(),
+    };
+    setOtpModal({
+      open: true,
+      title: order.delivery_date ? 'Reschedule Delivery' : 'Schedule Delivery',
+      description: `Confirm the delivery schedule for "${order.quotation_number ?? '-'}". Enter the OTP sent to your email to continue.`,
+      pendingAction: 'schedule_delivery',
+    });
+  }
+
+  async function handleScheduleVerified(actionToken: string) {
+    const pending = (window as any).__pendingScheduleData as
+      | { order: Order; delivery_date: string; remarks: string }
+      | undefined;
+    if (!pending) return;
+
+    const { order, delivery_date, remarks } = pending;
+    const wasAlreadyScheduled = order.current_stage === 'delivery_scheduled';
+    const status = wasAlreadyScheduled ? 'rescheduled' : 'scheduled';
+    const formattedDate = formatDeliveryDate(delivery_date) ?? delivery_date;
+    const auditRemarks = [
+      `${wasAlreadyScheduled ? 'Delivery rescheduled' : 'Delivery scheduled'} for ${formattedDate}`,
+      remarks ? `Reason/remarks: ${remarks}` : null,
+    ].filter(Boolean).join(' | ');
+
+    setActionLoading(order.id);
+    try {
+      await updateOrder(order.id, { delivery_date, action_token: actionToken });
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'delivery_scheduled',
+        status,
+        remarks: auditRemarks,
+        delivery_date,
+        updated_by: 'dashboard',
+      });
+      setSchedulingOrder(null);
+      setScheduleDate('');
+      setScheduleRemarks('');
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to update delivery schedule: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+      (window as any).__pendingScheduleData = null;
+    }
+  }
 
   function handleMarkDelivered(order: Order) {
     (window as any).__pendingActionOrder = order;
@@ -278,6 +417,7 @@ export default function DeliveryPage() {
     const order = (window as any).__pendingActionOrder as Order | undefined;
     if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
     if (otpModal.pendingAction === 'delete') { handleDeleteVerified(actionToken); return; }
+    if (otpModal.pendingAction === 'schedule_delivery') { handleScheduleVerified(actionToken); return; }
     if (!order) return;
     if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order);
     else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order);
@@ -516,9 +656,13 @@ export default function DeliveryPage() {
                           Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
                         </p>
                       )}
-                      {order.delivery_date && (
+                      {order.delivery_date ? (
                         <p className="mt-0.5 text-xs font-medium text-purple-700">
-                          📅 {order.delivery_date}
+                          Scheduled for: {formatDeliveryDate(order.delivery_date) ?? order.delivery_date}
+                        </p>
+                      ) : (
+                        <p className="mt-0.5 text-xs font-medium text-amber-600">
+                          Schedule missing - set the delivery date/time before dispatch.
                         </p>
                       )}
                       {hasException && order.delivery_exception_notes && (
@@ -528,6 +672,14 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleOpenSchedule(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
+                        title={order.delivery_date ? 'Reschedule delivery' : 'Schedule delivery'}
+                      >
+                        {order.delivery_date ? 'Reschedule' : 'Schedule'}
+                      </button>
                       <button
                         onClick={() => handleMarkDelivered(order)}
                         disabled={actionLoading === order.id}
@@ -541,6 +693,18 @@ export default function DeliveryPage() {
                   </div>
                   {editingOrder?.id === order.id && (
                     <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                  {schedulingOrder?.id === order.id && (
+                    <ScheduleForm
+                      order={order}
+                      value={scheduleDate}
+                      remarks={scheduleRemarks}
+                      onValueChange={setScheduleDate}
+                      onRemarksChange={setScheduleRemarks}
+                      onSave={() => handleScheduleSubmit(order)}
+                      onCancel={() => setSchedulingOrder(null)}
+                      saving={actionLoading === order.id}
+                    />
                   )}
                 </div>
               );
@@ -579,7 +743,9 @@ export default function DeliveryPage() {
                         </p>
                       )}
                       {order.delivery_date && (
-                        <p className="mt-0.5 text-xs text-gray-400">📅 Delivered: {order.delivery_date}</p>
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Scheduled delivery date: {formatDeliveryDate(order.delivery_date) ?? order.delivery_date}
+                        </p>
                       )}
                       <DeliveryInfo order={order} />
                     </div>
@@ -616,6 +782,7 @@ export default function DeliveryPage() {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingEditData = null;
           (window as any).__pendingActionOrder = null;
+          (window as any).__pendingScheduleData = null;
         }}
       />
 

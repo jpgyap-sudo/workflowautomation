@@ -4,6 +4,7 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  inlineKeyboard,
   createReminder,
   getActiveOrdersByStages,
   getActiveOrdersByStage,
@@ -153,7 +154,7 @@ export async function checkCollection(order: OrderRow): Promise<AgentResult> {
 
     const result: AgentResult = {
       status: 'needs_review',
-      message: `Payment collection pending. ${paymentInfo}. Please update with /payment when received.`,
+      message: `Payment collection pending. ${paymentInfo}.`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,
@@ -181,11 +182,25 @@ export async function notifyCollection(
   order: OrderRow,
   result: AgentResult,
 ): Promise<void> {
-  const msg = buildAgentMessage(
-    'Collection Agent',
-    order,
-    result.message,
-    result.escalation_level,
-  );
-  await sendTelegramMessage(groupChatId, msg);
+  const msg = buildAgentMessage('Collection Agent', order, result.message, result.escalation_level);
+  const qn = order.quotation_number;
+  const id = order.id;
+
+  let keyboard: Record<string, unknown> | undefined;
+  if (qn && result.status === 'needs_review') {
+    if (!order.deposit_paid) {
+      keyboard = inlineKeyboard([
+        [
+          { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${id}:${qn}` },
+          { text: '⏳ Not Yet', callback_data: `deposit:no:${id}:${qn}` },
+        ],
+      ]);
+    } else {
+      keyboard = inlineKeyboard([
+        [{ text: '💵 Record Payment', callback_data: `pick:payment:${qn}` }],
+      ]);
+    }
+  }
+
+  await sendTelegramMessage(groupChatId, msg, keyboard);
 }

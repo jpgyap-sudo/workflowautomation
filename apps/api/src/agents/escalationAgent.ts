@@ -4,6 +4,7 @@ import {
   logAgentAction,
   sendTelegramMessage,
   buildAgentMessage,
+  inlineKeyboard,
   createReminder,
   getActiveOrdersByStages,
   getEscalationLevel,
@@ -136,5 +137,62 @@ export async function notifyEscalation(
     result.message,
     result.escalation_level,
   );
-  await sendTelegramMessage(groupChatId, msg);
+
+  const qn = order.quotation_number;
+  const id = order.id;
+
+  let keyboard: Record<string, unknown> | undefined;
+  if (qn && result.status !== 'ok') {
+    switch (order.current_stage) {
+      case 'purchasing_pending':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Yes, started', callback_data: `produce:yes:${qn}` },
+            { text: '⚠️ Partial', callback_data: `produce:partial:${qn}` },
+            { text: '⏳ Not yet', callback_data: `produce:no:${qn}` },
+          ],
+        ]);
+        break;
+      case 'deposit_pending':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${id}:${qn}` },
+            { text: '⏳ Not Yet', callback_data: `deposit:no:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'inventory_arrived':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${id}:${qn}` },
+            { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'balance_due':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Client Paid Balance', callback_data: `balance:paid:${id}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `balance:not_paid:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'delivery_scheduled':
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `delivery:no:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'delivered':
+      case 'countered':
+        keyboard = inlineKeyboard([
+          [{ text: '💵 Record Payment', callback_data: `pick:payment:${qn}` }],
+        ]);
+        break;
+    }
+  }
+
+  await sendTelegramMessage(groupChatId, msg, keyboard);
 }

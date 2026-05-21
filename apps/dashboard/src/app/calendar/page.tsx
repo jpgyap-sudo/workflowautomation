@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { mutate } from 'swr';
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,9 +17,15 @@ import {
   Pencil,
   Trash2,
   X,
+  CreditCard,
+  Banknote,
+  Factory,
+  Flag,
+  CheckCircle2,
+  Ship,
 } from 'lucide-react';
-import { useCalendarEvents } from '@/lib/useApi';
-import { CalendarEvent, CalendarNote, getCalendarNotes, createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/lib/api';
+import { useCalendarEvents, useCalendarNotes } from '@/lib/useApi';
+import { CalendarEvent, CalendarNote, createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/lib/api';
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -55,6 +63,12 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   stage_update: <ArrowRightLeft className="h-3.5 w-3.5" />,
   reminder: <Bell className="h-3.5 w-3.5" />,
   delivery: <Truck className="h-3.5 w-3.5" />,
+  deposit: <CreditCard className="h-3.5 w-3.5" />,
+  balance: <Banknote className="h-3.5 w-3.5" />,
+  production_start: <Factory className="h-3.5 w-3.5" />,
+  production_finish: <Flag className="h-3.5 w-3.5" />,
+  en_route: <Ship className="h-3.5 w-3.5" />,
+  order_confirmed: <CheckCircle2 className="h-3.5 w-3.5" />,
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -62,16 +76,22 @@ const TYPE_LABELS: Record<string, string> = {
   stage_update: 'Stage Update',
   reminder: 'Reminder',
   delivery: 'Delivery Scheduled',
+  deposit: 'Deposit Paid',
+  balance: 'Balance Paid',
+  production_start: 'Production Started',
+  production_finish: 'Production Finished',
+  en_route: 'Inventory En Route',
+  order_confirmed: 'Order Confirmed',
 };
 
 const NOTE_COLORS = ['#2490ef', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 export default function CalendarPage() {
+  const router = useRouter();
   const { data: events = [], isLoading } = useCalendarEvents();
+  const { data: notes = [], isLoading: notesLoading } = useCalendarNotes();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [notes, setNotes] = useState<CalendarNote[]>([]);
-  const [notesLoading, setNotesLoading] = useState(true);
 
   // Note editor state
   const [showNoteEditor, setShowNoteEditor] = useState(false);
@@ -81,13 +101,7 @@ export default function CalendarPage() {
   const [noteColor, setNoteColor] = useState('#2490ef');
   const [savingNote, setSavingNote] = useState(false);
 
-  // Load notes on mount
-  useEffect(() => {
-    getCalendarNotes()
-      .then((data) => setNotes(data))
-      .catch(() => {})
-      .finally(() => setNotesLoading(false));
-  }, []);
+
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -169,21 +183,20 @@ export default function CalendarPage() {
     try {
       const dateKey = formatDateKey(selectedDate);
       if (editingNote) {
-        const updated = await updateCalendarNote(editingNote.id, {
+        await updateCalendarNote(editingNote.id, {
           title: noteTitle.trim(),
           content: noteContent,
           color: noteColor,
         });
-        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
       } else {
-        const created = await createCalendarNote({
+        await createCalendarNote({
           note_date: dateKey,
           title: noteTitle.trim(),
           content: noteContent,
           color: noteColor,
         });
-        setNotes((prev) => [...prev, created]);
       }
+      await mutate('/calendar/notes');
       setShowNoteEditor(false);
     } catch (e) {
       console.error('Failed to save note', e);
@@ -195,12 +208,18 @@ export default function CalendarPage() {
   async function handleDeleteNote(noteId: string) {
     try {
       await deleteCalendarNote(noteId);
-      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      await mutate('/calendar/notes');
       if (editingNote?.id === noteId) {
         setShowNoteEditor(false);
       }
     } catch (e) {
       console.error('Failed to delete note', e);
+    }
+  }
+
+  function navigateToOrder(event: CalendarEvent) {
+    if (event.title && event.title !== 'Unknown') {
+      router.push(`/orders/${encodeURIComponent(event.title)}`);
     }
   }
 
@@ -434,7 +453,8 @@ export default function CalendarPage() {
                   {selectedEvents.map((event) => (
                     <div
                       key={`${event.type}-${event.event_id}`}
-                      className="rounded-lg border border-gray-100 bg-gray-50 p-3"
+                      onClick={() => navigateToOrder(event)}
+                      className={`rounded-lg border border-gray-100 bg-gray-50 p-3 ${event.title && event.title !== 'Unknown' ? 'cursor-pointer hover:bg-gray-100' : ''}`}
                     >
                       <div className="flex items-start gap-2">
                         <div
@@ -476,6 +496,12 @@ export default function CalendarPage() {
                   { type: 'stage_update', label: 'Stage Update', color: '#8b5cf6' },
                   { type: 'reminder', label: 'Reminder', color: '#ef4444' },
                   { type: 'delivery', label: 'Delivery', color: '#f97316' },
+                  { type: 'deposit', label: 'Deposit Paid', color: '#10b981' },
+                  { type: 'balance', label: 'Balance Paid', color: '#06b6d4' },
+                  { type: 'production_start', label: 'Production Start', color: '#a855f7' },
+                  { type: 'production_finish', label: 'Production Finish', color: '#6366f1' },
+                  { type: 'en_route', label: 'En Route', color: '#14b8a6' },
+                  { type: 'order_confirmed', label: 'Order Confirmed', color: '#84cc16' },
                   { type: 'note', label: 'Manual Note', color: '#10b981' },
                 ].map((item) => (
                   <div key={item.type} className="flex items-center gap-1.5">

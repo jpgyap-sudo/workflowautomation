@@ -15,6 +15,9 @@ import {
   Client,
   InventoryItem,
   InventoryDraft,
+  SalesByAgent,
+  SalesByClient,
+  CalendarNote,
 } from './api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -134,6 +137,11 @@ export function useRealtimeSubscription() {
             swrKeys.push('/calendar/events');
             swrKeys.push('/calendar/notes');
           }
+          if (key.includes('/sales/')) {
+            swrKeys.push('/sales/monthly');
+            swrKeys.push('/sales/by-agent');
+            swrKeys.push('/sales/by-client');
+          }
           if (key.includes('/backups') || key.includes('supabase-backup')) swrKeys.push('/backups');
           if (key.includes('/bot-logs')) swrKeys.push('/bot-logs');
           if (key.includes('/clients')) swrKeys.push('/clients');
@@ -172,6 +180,18 @@ export function useRealtimeSubscription() {
 // ── Hook: Monthly Sales ──────────────────────────────────────────────
 export function useMonthlySales() {
   return useSWR<MonthlySales>('/sales/monthly', fetcher, SWR_CONFIG);
+}
+
+export function useSalesByAgent() {
+  return useSWR<SalesByAgent[]>('/sales/by-agent', fetcher, SWR_CONFIG);
+}
+
+export function useSalesByClient() {
+  return useSWR<SalesByClient[]>('/sales/by-client', fetcher, SWR_CONFIG);
+}
+
+export function useCalendarNotes() {
+  return useSWR<CalendarNote[]>('/calendar/notes', fetcher, SWR_CONFIG);
 }
 
 // ── Hook: Agent List ─────────────────────────────────────────────────

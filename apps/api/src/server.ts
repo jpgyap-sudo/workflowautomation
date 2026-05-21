@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { query } from './db.js';
 import { createClient } from 'redis';
 import { randomUUID, randomInt } from 'crypto';
+import * as http from 'http';
 import nodemailer from 'nodemailer';
 import {
   uploadToDrive,
@@ -51,6 +52,8 @@ const ORDER_LIST_SELECT = `
   o.authorized_receiver_name, o.authorized_receiver_contact,
   o.partial_production_items,
   o.delivery_date,
+  o.delivery_exception, o.delivery_exception_notes,
+  o.delivery_exception_granted_at, o.delivery_exception_granted_by,
   o.created_at, o.updated_at
 `;
 
@@ -120,10 +123,24 @@ const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
+  tls: {
+    rejectUnauthorized: false,
+  },
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+});
+
+// Verify SMTP connection on startup
+smtpTransporter.verify((err) => {
+  if (err) {
+    console.error('[smtp] Connection failed:', err.message);
+    console.error('[smtp] Check that SMTP_USER and SMTP_PASS are set correctly.');
+    console.error('[smtp] For Gmail, SMTP_PASS must be a 16-char App Password (not your regular password).');
+  } else {
+    console.log('[smtp] Connected and ready to send emails');
+  }
 });
 
 const OTP_TTL = 300; // 5 minutes
@@ -137,6 +154,13 @@ app.post('/auth/send-otp', async (request, reply) => {
     return reply.status(503).send({ error: 'OTP service unavailable' });
   }
   await cacheClient.setEx(key, OTP_TTL, JSON.stringify({ otp, attempts: 0 }));
+
+  // If SMTP is not configured, log OTP to console for dev testing
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn(`[otp] SMTP not configured. OTP for ${email}: ${otp}`);
+    return reply.status(503).send({ error: 'Email service not configured. Contact admin.' });
+  }
+
   try {
     await smtpTransporter.sendMail({
       from: `"Quotation System" <${process.env.SMTP_USER}>`,
@@ -145,8 +169,16 @@ app.post('/auth/send-otp', async (request, reply) => {
       text: `Your one-time login code is: ${otp}\n\nIt expires in 5 minutes.`,
       html: `<p>Your one-time login code is:</p><h2 style="letter-spacing:4px">${otp}</h2><p>It expires in 5 minutes.</p>`,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[otp] Failed to send email:', err);
+    const isAuthError = err?.code === 'EAUTH' || err?.response?.includes('535') || err?.message?.includes('Authentication');
+    const isNetworkError = err?.code === 'ECONNECTION' || err?.code === 'ETIMEDOUT';
+    if (isAuthError) {
+      return reply.status(500).send({ error: 'Email authentication failed. Check SMTP credentials.' });
+    }
+    if (isNetworkError) {
+      return reply.status(500).send({ error: 'Email service unreachable. Check network or firewall.' });
+    }
     return reply.status(500).send({ error: 'Failed to send OTP email' });
   }
   return reply.send({ ok: true });
@@ -218,6 +250,61 @@ app.get('/health', async () => {
   };
 });
 
+// ── Telegram Webhook Proxy ─────────────────────────────────────────
+// Proxies incoming Telegram webhook updates to the telegram-bot container.
+// The bot runs an internal HTTP server on port WEBHOOK_PORT (default 8443).
+// Nginx routes POST /api/telegram-webhook -> this route -> http://telegram-bot:8443/
+
+const TELEGRAM_BOT_WEBHOOK_HOST = process.env.TELEGRAM_BOT_WEBHOOK_HOST ?? 'telegram-bot';
+const TELEGRAM_BOT_WEBHOOK_PORT = Number(process.env.TELEGRAM_BOT_WEBHOOK_PORT ?? 8443);
+
+app.post('/telegram-webhook', async (request, reply) => {
+  // Forward the raw request body to the telegram-bot container
+  const body = JSON.stringify(request.body);
+  const secretToken = (request.headers as any)['x-telegram-bot-api-secret-token'] ?? '';
+
+  try {
+    const result = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const options = {
+        hostname: TELEGRAM_BOT_WEBHOOK_HOST,
+        port: TELEGRAM_BOT_WEBHOOK_PORT,
+        path: '/',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          ...(secretToken ? { 'X-Telegram-Bot-Api-Secret-Token': secretToken } : {}),
+        },
+        timeout: 10_000,
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode ?? 200, body: data });
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      req.write(body);
+      req.end();
+    });
+
+    reply.code(result.statusCode);
+    return result.body;
+  } catch (err: any) {
+    console.error('[webhook-proxy] Failed to forward to telegram-bot:', err.message);
+    reply.code(502);
+    return { ok: false, error: 'Failed to forward webhook to bot' };
+  }
+});
+
 // ── Orders ──────────────────────────────────────────────────────────
 
 const createOrderSchema = z.object({
@@ -243,7 +330,7 @@ app.post('/orders', async (request, reply) => {
   }
 
   // Invalidate caches after write
-  await invalidateCache(['dashboard:*', 'orders:*']);
+  await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*', 'sales:*']);
   return reply.send(rows[0]);
 });
 
@@ -316,6 +403,66 @@ app.get('/orders/stage/:stage', async (request, reply) => {
   return rows;
 });
 
+// ── Unsynced Payments: orders where balance_paid=TRUE but stage is still balance_due ──
+// This catches the gap for orders that were paid before the auto-sync fix was deployed.
+app.get('/orders/unsynced-payments', async (request, reply) => {
+  const rows = await query(
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.balance_paid = TRUE
+       AND o.current_stage = 'balance_due'
+       AND o.status = 'active'
+     GROUP BY o.id
+     ORDER BY o.balance_paid_at DESC`, []
+  );
+  return rows;
+});
+
+// Sync a single unsynced order — update current_stage to payment_received
+app.post('/orders/unsynced-payments/sync', async (request, reply) => {
+  const { order_id } = z.object({ order_id: z.string() }).parse(request.body);
+  await query(
+    `UPDATE orders SET current_stage='payment_received', updated_at=NOW() WHERE id=$1 AND balance_paid=TRUE AND current_stage='balance_due'`,
+    [order_id]
+  );
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, 'payment_received', 'balance_paid', 'Synced from legacy — balance was already paid but stage was not updated', 'dashboard')`,
+    [order_id]
+  );
+  await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*', 'sales:*']);
+  return { ok: true };
+});
+
+app.get('/orders/picker', async (request, reply) => {
+  const { action } = z.object({ action: z.string() }).parse(request.query);
+
+  const whereMap: Record<string, string> = {
+    status:       `o.status = 'active'`,
+    produce:      `o.status = 'active' AND o.deposit_paid = true AND (o.production_finished IS NULL OR o.production_finished = false)`,
+    deposit:      `o.status = 'active' AND (o.deposit_paid IS NULL OR o.deposit_paid = false)`,
+    paybalance:   `o.status = 'active' AND o.deposit_paid = true AND (o.balance_paid IS NULL OR o.balance_paid = false)`,
+    deliverydate: `o.status = 'active' AND o.balance_paid = true AND o.current_stage NOT IN ('delivery_scheduled','delivered','payment_received','payment_confirmed')`,
+    delivered:    `o.status = 'active' AND o.current_stage = 'delivery_scheduled'`,
+    payment:      `o.status = 'active' AND o.current_stage IN ('delivered','payment_received')`,
+    link:         `o.status = 'active'`,
+  };
+
+  const where = whereMap[action] ?? `o.status = 'active'`;
+  try {
+    const rows = await query(
+      `SELECT o.id, o.quotation_number, o.client_name, o.current_stage
+       FROM orders o
+       WHERE ${where}
+       ORDER BY o.updated_at DESC LIMIT 10`
+    );
+    return rows;
+  } catch (err: any) {
+    reply.status(500).send({ error: err.message });
+  }
+});
+
 app.get('/orders/:quotation_number', async (request, reply) => {
   const params = z.object({ quotation_number: z.string() }).parse(request.params);
   const cacheKey = `order:detail:${params.quotation_number}`;
@@ -340,6 +487,7 @@ const updateOrderSchema = z.object({
   sales_agent: z.string().optional(),
   total_amount: z.number().optional(),
   quotation_number: z.string().optional(),
+  delivery_date: z.string().nullable().optional(),
   delivery_exception: z.boolean().optional(),
   delivery_exception_notes: z.string().nullable().optional(),
   action_token: z.string(),
@@ -368,6 +516,7 @@ app.patch('/orders/:id', async (request, reply) => {
   if (body.sales_agent !== undefined) { fields.push(`sales_agent=$${idx++}`); values.push(body.sales_agent); }
   if (body.total_amount !== undefined) { fields.push(`total_amount=$${idx++}`); values.push(body.total_amount); }
   if (body.quotation_number !== undefined) { fields.push(`quotation_number=$${idx++}`); values.push(body.quotation_number); }
+  if (body.delivery_date !== undefined) { fields.push(`delivery_date=$${idx++}`); values.push(body.delivery_date); }
   if (body.delivery_exception !== undefined) { fields.push(`delivery_exception=$${idx++}`); values.push(body.delivery_exception); }
   if (body.delivery_exception_notes !== undefined) { fields.push(`delivery_exception_notes=$${idx++}`); values.push(body.delivery_exception_notes); }
 
@@ -390,7 +539,7 @@ app.patch('/orders/:id', async (request, reply) => {
     await autoLinkClientToOrder(params.id, body.client_name);
   }
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: params.id });
   return reply.send(rows[0]);
 });
@@ -419,7 +568,7 @@ app.delete('/orders/:id', async (request, reply) => {
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_deleted', { id: params.id });
   return reply.send({ ok: true, deleted: rows[0] });
 });
@@ -531,7 +680,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
     }
   }
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${updatedOrder.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${updatedOrder.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: updatedOrder });
 });
@@ -589,7 +738,7 @@ app.post('/orders/:id/partial-production', async (request, reply) => {
     );
   }
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true });
 });
@@ -622,7 +771,7 @@ app.post('/orders/:id/partial-production-items', async (request, reply) => {
     );
   }
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, remaining_items: body.remaining_items });
 });
@@ -653,7 +802,7 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
      body.on_time ? 'Production reported on time' : `Production delayed by ${body.delay_days ?? 0} day(s)`]
   );
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
 });
@@ -712,7 +861,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
     );
   }
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
 });
@@ -751,7 +900,7 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
     [id]
   );
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
 });
@@ -832,7 +981,7 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
     [body.estimated_production_days, id]
   );
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({
     ok: true,
@@ -848,6 +997,7 @@ const stageUpdateSchema = z.object({
   stage: z.string(),
   status: z.string(),
   remarks: z.string().optional(),
+  delivery_date: z.string().nullable().optional(),
   updated_by: z.string().optional(),
 });
 
@@ -883,8 +1033,11 @@ app.post('/stage-updates', async (request, reply) => {
   );
   await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [body.stage, orderId]);
 
-  // Capture delivery date from remarks when scheduling delivery
-  if (body.stage === 'delivery_scheduled' && body.remarks) {
+  // Capture delivery date explicitly when scheduling/rescheduling delivery.
+  // Fallback to remarks preserves the existing Telegram /deliverydate behaviour.
+  if (body.stage === 'delivery_scheduled' && body.delivery_date !== undefined) {
+    await query(`UPDATE orders SET delivery_date=$1 WHERE id=$2`, [body.delivery_date, orderId]);
+  } else if (body.stage === 'delivery_scheduled' && body.status === 'scheduled' && body.remarks) {
     await query(`UPDATE orders SET delivery_date=$1 WHERE id=$2`, [body.remarks, orderId]);
   }
 
@@ -897,7 +1050,7 @@ app.post('/stage-updates', async (request, reply) => {
   }
 
   // Invalidate caches after stage update
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
   return { ok: true };
 });
 
@@ -969,7 +1122,7 @@ app.post('/deposits', async (request, reply) => {
   );
 
   // Invalidate caches
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: body.quotation_number, amount: body.amount });
 });
@@ -1065,7 +1218,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       [order.id]
     );
 
-    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
     return reply.send({
       ok: true,
@@ -1338,19 +1491,19 @@ app.post('/pay-balance', async (request, reply) => {
   const orderId = order.id;
   const overpayment = body.amount - expectedBalance;
 
-  // Update balance fields on the order
+  // Update balance fields on the order AND sync current_stage to payment_received
   await query(
-    `UPDATE orders SET balance_paid=TRUE, balance_paid_at=NOW(), updated_at=NOW() WHERE id=$1`,
+    `UPDATE orders SET balance_paid=TRUE, balance_paid_at=NOW(), current_stage='payment_received', updated_at=NOW() WHERE id=$1`,
     [orderId]
   );
 
-  // Record stage update
+  // Record stage update — balance paid → payment_received
   const remarks = overpayment > 0
     ? `Balance of ₱${body.amount.toLocaleString()} paid (overpayment of ₱${overpayment.toLocaleString()})`
     : `Balance of ₱${body.amount.toLocaleString()} paid`;
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-    [orderId, 'balance_due', 'balance_paid', remarks, body.updated_by ?? null]
+    [orderId, 'payment_received', 'balance_paid', remarks, body.updated_by ?? null]
   );
 
   // Complete any balance reminders for this order
@@ -1360,7 +1513,7 @@ app.post('/pay-balance', async (request, reply) => {
   );
 
   // Invalidate caches
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({
     ok: true,
@@ -1403,7 +1556,7 @@ app.post('/orders/delivery-exception', async (request, reply) => {
      body.granted_by ?? null]
   );
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
   return reply.send({ ok: true, order: rows[0] });
 });
@@ -1431,7 +1584,7 @@ app.post('/orders/revoke-delivery-exception', async (request, reply) => {
     [body.order_id, 'delivery_exception', 'revoked', 'Delivery exception revoked.']
   );
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
   return reply.send({ ok: true, order: rows[0] });
 });
@@ -1920,6 +2073,49 @@ app.get('/sales/monthly', async () => {
   return result;
 });
 
+app.get('/sales/by-agent', async () => {
+  const cached = await cacheGet<object[]>('sales:by-agent');
+  if (cached) return cached;
+
+  const rows = await query(`
+    SELECT
+      COALESCE(NULLIF(TRIM(sales_agent), ''), 'Unassigned') AS agent,
+      COUNT(*)::int AS order_count,
+      SUM(total_amount)::numeric(14,2) AS total_sales,
+      SUM(computed_amount)::numeric(14,2) AS computed_sales
+    FROM orders
+    WHERE status = 'active'
+      AND total_amount IS NOT NULL
+    GROUP BY COALESCE(NULLIF(TRIM(sales_agent), ''), 'Unassigned')
+    ORDER BY total_sales DESC NULLS LAST
+  `);
+
+  await cacheSet('sales:by-agent', rows);
+  return rows;
+});
+
+app.get('/sales/by-client', async () => {
+  const cached = await cacheGet<object[]>('sales:by-client');
+  if (cached) return cached;
+
+  const rows = await query(`
+    SELECT
+      COALESCE(NULLIF(TRIM(client_name), ''), 'Unknown') AS client,
+      COUNT(*)::int AS order_count,
+      SUM(total_amount)::numeric(14,2) AS total_sales,
+      SUM(computed_amount)::numeric(14,2) AS computed_sales
+    FROM orders
+    WHERE status = 'active'
+      AND total_amount IS NOT NULL
+    GROUP BY COALESCE(NULLIF(TRIM(client_name), ''), 'Unknown')
+    ORDER BY total_sales DESC NULLS LAST
+    LIMIT 50
+  `);
+
+  await cacheSet('sales:by-client', rows);
+  return rows;
+});
+
 // ── Google Drive ─────────────────────────────────────────────────────
 
 const fileUploadSchema = z.object({
@@ -2213,11 +2409,101 @@ app.get('/calendar/events', async () => {
      WHERE o.current_stage = 'delivery_scheduled'`
   );
 
+  const depositEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'deposit' AS type,
+       'Deposit Paid' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.deposit_paid_at AS event_date,
+       'Deposit: ₱' || o.deposit_amount AS metadata
+     FROM orders o
+     WHERE o.deposit_paid = TRUE
+       AND o.deposit_paid_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const balanceEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'balance' AS type,
+       'Balance Paid' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.balance_paid_at AS event_date,
+       o.current_stage AS metadata
+     FROM orders o
+     WHERE o.balance_paid = TRUE
+       AND o.balance_paid_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const productionStartEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'production_start' AS type,
+       'Production Started' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.production_started_at AS event_date,
+       o.estimated_production_days || ' days estimated' AS metadata
+     FROM orders o
+     WHERE o.production_started = TRUE
+       AND o.production_started_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const productionFinishEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'production_finish' AS type,
+       'Production Finished' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.production_finished_at AS event_date,
+       o.current_stage AS metadata
+     FROM orders o
+     WHERE o.production_finished = TRUE
+       AND o.production_finished_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const enRouteEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'en_route' AS type,
+       'Inventory En Route' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.inventory_en_route_at AS event_date,
+       COALESCE(o.estimated_inventory_arrival_days || ' days to arrival', '') AS metadata
+     FROM orders o
+     WHERE o.inventory_en_route_at IS NOT NULL
+       AND o.inventory_en_route_at > NOW() - INTERVAL '1 year'`
+  );
+
+  const orderConfirmedEvents = await query(
+    `SELECT
+       o.id AS event_id,
+       'order_confirmed' AS type,
+       'Order Confirmed' AS category,
+       COALESCE(o.quotation_number, 'Unknown') AS title,
+       o.client_name AS subtitle,
+       o.order_confirmed_at AS event_date,
+       o.current_stage AS metadata
+     FROM orders o
+     WHERE o.order_confirmed_at IS NOT NULL
+       AND o.order_confirmed_at > NOW() - INTERVAL '1 year'`
+  );
+
   const allEvents = [
-    ...orderEvents.map((e: any) => ({ ...e, color: '#3b82f6' })),      // blue
-    ...stageEvents.map((e: any) => ({ ...e, color: '#8b5cf6' })),      // purple
-    ...reminderEvents.map((e: any) => ({ ...e, color: '#ef4444' })),   // red
-    ...deliveryEvents.map((e: any) => ({ ...e, color: '#f97316' })),   // orange
+    ...orderEvents.map((e: any) => ({ ...e, color: '#3b82f6' })),               // blue
+    ...stageEvents.map((e: any) => ({ ...e, color: '#8b5cf6' })),               // purple
+    ...reminderEvents.map((e: any) => ({ ...e, color: '#ef4444' })),            // red
+    ...deliveryEvents.map((e: any) => ({ ...e, color: '#f97316' })),            // orange
+    ...depositEvents.map((e: any) => ({ ...e, color: '#10b981' })),             // emerald
+    ...balanceEvents.map((e: any) => ({ ...e, color: '#06b6d4' })),             // cyan
+    ...productionStartEvents.map((e: any) => ({ ...e, color: '#a855f7' })),     // violet
+    ...productionFinishEvents.map((e: any) => ({ ...e, color: '#6366f1' })),    // indigo
+    ...enRouteEvents.map((e: any) => ({ ...e, color: '#14b8a6' })),             // teal
+    ...orderConfirmedEvents.map((e: any) => ({ ...e, color: '#84cc16' })),      // lime
   ].sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
 
   await cacheSet('calendar:events', allEvents, 30);

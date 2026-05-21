@@ -1,6 +1,6 @@
 'use client';
 
-import { useMonthlySales } from '@/lib/useApi';
+import { useMonthlySales, useSalesByAgent, useSalesByClient } from '@/lib/useApi';
 import {
   BarChart,
   Bar,
@@ -11,6 +11,14 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import {
+  TrendingUp,
+  TrendingDown,
+  Users,
+  User,
+  BarChart3,
+  Loader2,
+} from 'lucide-react';
 
 const MONTH_COLORS = [
   '#3b82f6', '#14b8a6', '#f59e0b', '#6366f1',
@@ -27,25 +35,11 @@ function formatCurrency(value: number): string {
 }
 
 export default function SalesPage() {
-  const { data, error, isLoading } = useMonthlySales();
+  const { data: monthlyData, error: monthlyError, isLoading: monthlyLoading } = useMonthlySales();
+  const { data: agentData = [], isLoading: agentLoading } = useSalesByAgent();
+  const { data: clientData = [], isLoading: clientLoading } = useSalesByClient();
 
-  if (isLoading && !data) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-sm text-red-500">Failed to load sales data. Retrying...</p>
-      </div>
-    );
-  }
-
-  const monthly = data?.monthly ?? [];
+  const monthly = monthlyData?.monthly ?? [];
 
   // Calculate totals
   const totalOrders = monthly.reduce((sum, r) => sum + r.order_count, 0);
@@ -56,8 +50,32 @@ export default function SalesPage() {
   const chartData = [...monthly].reverse().map((r, i) => ({
     month: r.month,
     total_sales: Number(r.total_sales),
+    computed_sales: Number(r.computed_sales),
     fill: MONTH_COLORS[i % MONTH_COLORS.length],
   }));
+
+  // MoM growth calc
+  const monthlyWithGrowth = monthly.map((row, idx) => {
+    const prev = monthly[idx + 1];
+    const growth = prev ? ((Number(row.total_sales) - Number(prev.total_sales)) / Number(prev.total_sales)) * 100 : null;
+    return { ...row, growth };
+  });
+
+  if (monthlyLoading && !monthlyData) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2490ef]" />
+      </div>
+    );
+  }
+
+  if (monthlyError && !monthlyData) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm text-red-500">Failed to load sales data. Retrying...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -92,7 +110,10 @@ export default function SalesPage() {
                 }
               />
               <Tooltip
-                formatter={(value) => [formatCurrency(Number(value)), 'Total Sales']}
+                formatter={(value, name) => [
+                  formatCurrency(Number(value)),
+                  name === 'total_sales' ? 'Total Sales' : 'Computed Sales',
+                ]}
                 contentStyle={{
                   borderRadius: '8px',
                   border: '1px solid #e2e4e7',
@@ -113,7 +134,7 @@ export default function SalesPage() {
         )}
       </div>
 
-      {/* Monthly Table */}
+      {/* Monthly Table with Growth */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2 className="text-base font-semibold text-gray-800">Monthly Breakdown</h2>
@@ -127,10 +148,11 @@ export default function SalesPage() {
                 <th className="px-6 py-3 text-right">Orders</th>
                 <th className="px-6 py-3 text-right">Total Amount</th>
                 <th className="px-6 py-3 text-right">Computed Amount</th>
+                <th className="px-6 py-3 text-right">MoM Growth</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {monthly.map((row) => (
+              {monthlyWithGrowth.map((row) => (
                 <tr key={row.month} className="hover:bg-gray-50">
                   <td className="px-6 py-3 font-medium text-gray-900">{row.month}</td>
                   <td className="px-6 py-3 text-right text-gray-700">{row.order_count}</td>
@@ -140,17 +162,126 @@ export default function SalesPage() {
                   <td className="px-6 py-3 text-right text-blue-600">
                     {formatCurrency(Number(row.computed_sales))}
                   </td>
+                  <td className="px-6 py-3 text-right">
+                    {row.growth !== null ? (
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${row.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {row.growth >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {row.growth >= 0 ? '+' : ''}{row.growth.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {monthly.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
                     No sales data available yet.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Agent + Client Leaderboards */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* By Agent */}
+        <div className="rounded-xl border border-gray-200 bg-white">
+          <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+            <User className="h-4 w-4 text-purple-500" />
+            <h2 className="text-base font-semibold text-gray-800">Sales by Agent</h2>
+            <span className="ml-auto rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+              {agentData.length}
+            </span>
+          </div>
+          {agentLoading && agentData.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : agentData.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400">No agent data available</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs font-medium text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3">Agent</th>
+                    <th className="px-4 py-3 text-right">Orders</th>
+                    <th className="px-4 py-3 text-right">Total Sales</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {agentData.map((row, idx) => (
+                    <tr key={row.agent} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {idx === 0 && <span className="text-sm">🥇</span>}
+                          {idx === 1 && <span className="text-sm">🥈</span>}
+                          {idx === 2 && <span className="text-sm">🥉</span>}
+                          <span className="font-medium text-gray-900">{row.agent}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700">{row.order_count}</td>
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">
+                        {formatCurrency(Number(row.total_sales))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* By Client */}
+        <div className="rounded-xl border border-gray-200 bg-white">
+          <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+            <Users className="h-4 w-4 text-blue-500" />
+            <h2 className="text-base font-semibold text-gray-800">Top Clients</h2>
+            <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+              {clientData.length}
+            </span>
+          </div>
+          {clientLoading && clientData.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : clientData.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400">No client data available</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs font-medium text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3">Client</th>
+                    <th className="px-4 py-3 text-right">Orders</th>
+                    <th className="px-4 py-3 text-right">Total Sales</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {clientData.slice(0, 10).map((row, idx) => (
+                    <tr key={row.client} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {idx === 0 && <span className="text-sm">🥇</span>}
+                          {idx === 1 && <span className="text-sm">🥈</span>}
+                          {idx === 2 && <span className="text-sm">🥉</span>}
+                          <span className="font-medium text-gray-900">{row.client}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700">{row.order_count}</td>
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">
+                        {formatCurrency(Number(row.total_sales))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
