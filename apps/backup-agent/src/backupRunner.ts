@@ -18,7 +18,7 @@ import { tmpdir } from 'os';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const SUPABASE_BACKUP_BUCKET = process.env.SUPABASE_BACKUP_BUCKET ?? 'db-backups';
-const CONTAINER = process.env.CONTAINER ?? 'qas_postgres';
+const CONTAINER_HINT = process.env.CONTAINER ?? 'postgres';
 const DB_USER = process.env.POSTGRES_USER ?? 'n8n';
 const DB_NAME = process.env.POSTGRES_DB ?? 'quotation_automation';
 const BACKUP_INTERVAL_MS = parseInt(process.env.BACKUP_INTERVAL_MS ?? '21600000', 10); // default: 6 hours
@@ -37,6 +37,33 @@ function exec(cmd: string): { stdout: string; stderr: string } {
       stderr: err.stderr?.toString().trim() ?? err.message ?? String(err),
     };
   }
+}
+
+// ── Helper: Auto-detect Postgres Container ─────────────────────────────
+
+function findPostgresContainer(): string {
+  // Try docker compose first (preferred — uses service name)
+  const composeResult = exec(
+    `docker compose -p quotation-automation ps --format '{{.Name}}' 2>/dev/null || true`,
+  );
+  if (composeResult.stdout) {
+    const lines = composeResult.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    // Look for a container whose name ends with 'postgres' or contains 'postgres'
+    const pg = lines.find((name) => name.includes('postgres'));
+    if (pg) return pg;
+  }
+
+  // Fallback: list all containers running postgres image
+  const psResult = exec(
+    `docker ps --filter "ancestor=postgres" --format '{{.Names}}' 2>/dev/null || true`,
+  );
+  if (psResult.stdout) {
+    const names = psResult.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (names.length > 0) return names[0];
+  }
+
+  // Last resort: use the hint from env
+  return CONTAINER_HINT;
 }
 
 // ── Helper: HTTP Request ───────────────────────────────────────────────
@@ -152,12 +179,16 @@ async function runBackup(): Promise<{ ok: boolean; message: string }> {
   const tempDir = mkdtempSync(join(tmpdir(), 'supabase-backup-'));
   const tempBackupPath = join(tempDir, backupFilename);
 
+  // Auto-detect postgres container on each run (handles container recreation/rename)
+  const container = findPostgresContainer();
+  console.log(`[BackupRunner] Resolved postgres container: ${container}`);
+
   try {
-    console.log(`[BackupRunner] Dumping database ${DB_NAME} from container ${CONTAINER}...`);
+    console.log(`[BackupRunner] Dumping database ${DB_NAME} from container ${container}...`);
 
     // Pipe pg_dump directly through gzip
     exec(
-      `docker exec "${CONTAINER}" pg_dump -U "${DB_USER}" "${DB_NAME}" | gzip > "${tempBackupPath}"`,
+      `docker exec "${container}" pg_dump -U "${DB_USER}" "${DB_NAME}" | gzip > "${tempBackupPath}"`,
     );
 
     if (!existsSync(tempBackupPath)) {
@@ -225,7 +256,7 @@ async function main(): Promise<void> {
   console.log('═══════════════════════════════════════════════');
   console.log('  Supabase Backup Runner (separate container)');
   console.log('═══════════════════════════════════════════════');
-  console.log(`  Container:    ${CONTAINER}`);
+  console.log(`  Container:    ${CONTAINER_HINT} (auto-detected at runtime)`);
   console.log(`  Database:     ${DB_NAME}`);
   console.log(`  Bucket:       ${SUPABASE_BACKUP_BUCKET}`);
   console.log(`  Interval:     ${BACKUP_INTERVAL_MS}ms (${BACKUP_INTERVAL_MS / 60000} min)`);
