@@ -15,7 +15,7 @@ import {
  * collection-agent
  *
  * Role: Tracks payment collection for all stages.
- * - Checks orders at order_confirmation_received → production_pending stages
+ * - Checks orders at quotation_received → production_pending stages
  *   where deposit hasn't been paid
  *   → Sends reminders to the collection group to collect deposit
  * - Checks orders at delivered or countered stage where payment hasn't been received
@@ -27,6 +27,7 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
 
   // ── Phase 1: Deposit Collection (order_confirmation_received → production_pending without deposit) ──
   const depositOrders = await getActiveOrdersByStages([
+    'quotation_received',
     'order_confirmation_received',
     'math_verified',
     'purchasing_pending',
