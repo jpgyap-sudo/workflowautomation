@@ -81,6 +81,8 @@ services:
       COLLECTION_GROUP_CHAT_ID: ${COLLECTION_GROUP_CHAT_ID}
       ESCALATION_GROUP_CHAT_ID: ${ESCALATION_GROUP_CHAT_ID}
       QUOTATION_GROUP_CHAT_ID: ${QUOTATION_GROUP_CHAT_ID}
+      # File-store for Hermes agent quotation text reference
+      FILE_STORE_URL: http://file-store:8090
       # Telegram webhook proxy
       TELEGRAM_BOT_WEBHOOK_HOST: telegram-bot
       TELEGRAM_BOT_WEBHOOK_PORT: 8443
@@ -220,5 +222,35 @@ services:
     stop_grace_period: 15s
     stop_signal: SIGTERM
 
+  file-store:
+    build: ./apps/file-store
+    image: ghcr.io/jpgyap-sudo/workflowautomation/file-store:latest
+    container_name: qas_file_store
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      FILE_STORE_PORT: 8090
+      FILE_STORE_DATA_DIR: /data/files
+      FILE_STORE_RETENTION_DAYS: 90
+      FILE_STORE_CLEANUP_INTERVAL_MS: 3600000
+    volumes:
+      - file_store_data:/data/files
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    stop_grace_period: 10s
+    stop_signal: SIGTERM
+
 volumes:
   postgres_data:
+  file_store_data:

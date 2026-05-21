@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, uploadToDrive } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight } from 'lucide-react';
@@ -307,21 +307,13 @@ export default function CollectionPage() {
 
     setPaymentModal((prev) => ({ ...prev, uploading: true, error: null }));
     try {
-      // Step 1: Upload deposit slip to Google Drive
-      const driveResult = await uploadToDrive({
-        quotation_number: order.quotation_number ?? '',
-        file_type: 'deposit_slip',
-        original_filename: depositSlipFile.name,
-        mime_type: depositSlipFile.mime,
-        file_data: depositSlipFile.data,
-      });
-
-      // Step 2: Record stage update — payment confirmed
+      // Record stage update — payment confirmed
+      // Deposit slips are not stored on VPS (privacy policy)
       await recordStageUpdate({
         quotation_number: order.quotation_number ?? '',
         stage: 'payment_confirmed',
         status: 'confirmed',
-        remarks: `Payment confirmed via dashboard. Deposit slip uploaded to Google Drive.`,
+        remarks: `Payment confirmed via dashboard.`,
         updated_by: 'dashboard',
       });
 

@@ -1,0 +1,45 @@
+# Quotation Automation System — VPS Deployment Rules
+
+## ⚠️ CRITICAL: Correct VPS Identity
+
+This project (Quotation Automation System) deploys to **ONE** VPS:
+
+| Detail | Value |
+|--------|-------|
+| **Public IP** | `165.22.110.111` |
+| **Tailscale IP** | `100.86.182.7` |
+| **SSH User** | `root` |
+| **SSH Key** | `~/.ssh/id_ed25519_roo` |
+| **Repo path** | `/opt/quotation-automation` |
+| **Dashboard** | `https://track.abcx124.xyz` |
+
+## 🚫 FORBIDDEN VPS
+
+The following IPs belong to OTHER projects and must NEVER be used:
+
+| IP | Project |
+|----|---------|
+| `104.248.225.250` | **SuperRoo** (different project) |
+| `143.198.102.243` | (other project) |
+
+## ✅ MANDATORY CHECK BEFORE ANY SSH COMMAND
+
+Before running ANY SSH command, you MUST verify:
+1. The target IP matches `165.22.110.111` or `100.86.182.7`
+2. The SSH key is `~/.ssh/id_ed25519_roo` (NOT `id_ed25519`)
+3. If you see `104.248.225.250` anywhere in the command — **STOP**, it's the wrong VPS
+
+## 🔐 SSH Command Template (CORRECT)
+
+```bash
+ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111 "<command>"
+# OR via Tailscale:
+ssh -i ~/.ssh/id_ed25519_roo root@100.86.182.7 "<command>"
+```
+
+## ❌ SSH Command Template (WRONG — DO NOT USE)
+
+```bash
+ssh -i ~/.ssh/id_ed25519 root@104.248.225.250 "<command>"
+# This targets the SuperRoo VPS, NOT this project!
+```

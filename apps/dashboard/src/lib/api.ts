@@ -715,36 +715,6 @@ export async function clearProcessedDrafts(): Promise<{ ok: boolean }> {
 
 // ── Google Drive Upload ────────────────────────────────────────────────
 
-export interface DriveUploadResult {
-  ok: boolean;
-  file: OrderFile;
-  drive: {
-    fileId: string;
-    webViewLink: string;
-    name: string;
-    mimeType: string;
-    size: number;
-  };
-}
-
-/**
- * Upload a file (base64) to Google Drive, organized under the client's folder.
- * If quotation_number is provided, the file is auto-organized into:
- *   Root → YYYY-MM → ClientName - QTN-XXXX → file
- */
-export async function uploadToDrive(data: {
-  quotation_number: string;
-  file_type: string;
-  original_filename: string;
-  mime_type: string;
-  file_data: string; // base64-encoded file content
-}): Promise<DriveUploadResult> {
-  return fetchJson<DriveUploadResult>('/drive/upload', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
 export interface Reminder {
   id: string;
   order_id: string;

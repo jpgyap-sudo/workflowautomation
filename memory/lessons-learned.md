@@ -1656,3 +1656,45 @@ When integrating with external APIs, always verify the full set of required head
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: reminder scheduler auto-completes stale reminders based on order state
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1dce9d1136069b1d0e4d973b503f6db8cf1bc839
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 1dce9d1136069b1d0e4d973b503f6db8cf1bc839
+**Files:** 
+
+**Summary:**
+**What was fixed:** The reminder scheduler was incorrectly auto-completing stale reminders regardless of the current order state.
+
+**Why it broke:** The scheduler queried reminders by age alone, without checking whether the associated order was still in an active state. Once an order was completed or cancelled, its reminders should have been ignored, but the logic treated all old reminders as actionable.
+
+**Reusable takeaway:** When processing scheduled tasks (e.g., reminders, retries), always filter by the parent entity's lifecycle state. Never rely solely on time-based conditions; stale data can cause false positives. A robust pattern is to join the reminder table with the order table and add a `WHERE order.status IN ('active', 'pending')` clause. This prevents unintended side effects when the underlying business object has already transitioned to a terminal state.
+
+---
+*Original commit message: fix: reminder scheduler auto-completes stale reminders based on order state*
+
+#### Lesson Learned
+
+**What was fixed:** The reminder scheduler was incorrectly auto-completing stale reminders regardless of the current order state.
+
+**Why it broke:** The scheduler queried reminders by age alone, without checking whether the associated order was still in an active state. Once an order was completed or cancelled, its reminders should have been ignored, but the logic treated all old reminders as actionable.
+
+**Reusable takeaway:** When processing scheduled tasks (e.g., reminders, retries), always filter by the parent entity's lifecycle state. Never rely solely on time-based conditions; stale data can cause false positives. A robust pattern is to join the reminder table with the order table and add a `WHERE order.status IN ('active', 'pending')` clause. This prevents unintended side effects when the underlying business object has already transitioned to a terminal state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

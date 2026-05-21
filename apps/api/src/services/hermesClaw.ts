@@ -8,6 +8,7 @@ const HERMES_MODEL = process.env.HERMES_MODEL ?? 'gemini-2.0-flash';
 const HERMES_TIMEOUT_MS = parseInt(process.env.HERMES_TIMEOUT_MS ?? '30000', 10);
 const HERMES_TEMPERATURE = parseFloat(process.env.HERMES_TEMPERATURE ?? '0.3');
 const HERMES_MAX_TOKENS = parseInt(process.env.HERMES_MAX_TOKENS ?? '1024', 10);
+const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
 
 const API_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${HERMES_MODEL}`;
 
@@ -36,6 +37,8 @@ export interface HermesProductionContext {
   pct_elapsed: number;
   is_overdue: boolean;
   escalation_level: number;
+  /** Quotation text fetched from file-store for Hermes agent reference */
+  quotation_text: string | null;
 }
 
 export interface HermesAnalysis {
@@ -71,6 +74,24 @@ async function getRecentNotes(orderId: string, limit = 5): Promise<AgentNoteRow[
      LIMIT $2`,
     [orderId, limit],
   );
+}
+
+/**
+ * Fetch quotation text from the file-store for a given quotation number.
+ * Returns null if not found or if file-store is unreachable.
+ */
+async function fetchQuotationText(quotationNumber: string | null): Promise<string | null> {
+  if (!quotationNumber) return null;
+  try {
+    const res = await fetch(`${FILE_STORE_URL}/files/${encodeURIComponent(quotationNumber)}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { ok: boolean; text?: string };
+    return data.text ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -240,6 +261,10 @@ function buildProductionPrompt(
     ? `\nClient history (other orders):\n${clientNotes.map(n => `[${n.created_at}] ${n.agent_name}: ${n.note}`).join('\n')}`
     : '';
 
+  const quotationSection = ctx.quotation_text
+    ? `\nQUOTATION REFERENCE:\n${ctx.quotation_text.slice(0, 2000)}`
+    : '';
+
   return `You are Hermes Claw, the production monitoring AI for a quotation automation system.
 
 Analyze this production order and provide a concise status update.
@@ -259,7 +284,7 @@ ORDER CONTEXT:
 - Timeline Elapsed: ${ctx.pct_elapsed}%
 - Overdue: ${ctx.is_overdue ? 'Yes' : 'No'}
 - Escalation Level: ${ctx.escalation_level}
-${notesSection}${clientSection}
+${notesSection}${clientSection}${quotationSection}
 
 Provide your analysis as JSON with these fields:
 {
@@ -324,13 +349,22 @@ export async function analyzeProductionOrder(
   }
 
   try {
+    // Fetch quotation text from file-store for Hermes agent reference
+    const quotationText = await fetchQuotationText(ctx.quotation_number);
+
     // Gather context from past notes
     const [recentNotes, clientNotes] = await Promise.all([
       getRecentNotes(orderId),
       ctx.client_name ? getClientHistory(ctx.client_name) : Promise.resolve([]),
     ]);
 
-    const prompt = buildProductionPrompt(ctx, recentNotes, clientNotes);
+    // Include quotation text in context for the prompt
+    const enrichedCtx: HermesProductionContext = {
+      ...ctx,
+      quotation_text: quotationText,
+    };
+
+    const prompt = buildProductionPrompt(enrichedCtx, recentNotes, clientNotes);
     const raw = await callAiWithFallback(prompt);
 
     // If all AI providers failed, use rule-based

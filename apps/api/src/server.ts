@@ -7,14 +7,6 @@ import { randomUUID, randomInt } from 'crypto';
 import * as http from 'http';
 import nodemailer from 'nodemailer';
 import {
-  uploadToDrive,
-  createDriveFolder,
-  getOrCreateFolder,
-  getOrCreateMonthFolder,
-  getOrCreateClientFolder,
-  deleteDriveFile,
-} from './services/googleDrive.js';
-import {
   autoExtract,
   extractQuotation,
   extractPayment,
@@ -1145,6 +1137,21 @@ app.post('/stage-updates', async (request, reply) => {
     await query(`UPDATE orders SET delivery_date=$1 WHERE id=$2`, [body.delivery_date, orderId]);
   } else if (body.stage === 'delivery_scheduled' && body.status === 'scheduled' && body.remarks) {
     await query(`UPDATE orders SET delivery_date=$1 WHERE id=$2`, [body.remarks, orderId]);
+  }
+
+  // Track delivery completion — set delivered_at when order reaches 'delivered' stage
+  if (body.stage === 'delivered') {
+    await query(`UPDATE orders SET delivered_at=NOW(), updated_at=NOW() WHERE id=$1`, [orderId]);
+
+    // Schedule file-store cleanup: delete quotation text after 3 months
+    // The file-store container handles the actual deletion based on file age.
+    // We set retention_until on the files table for tracking.
+    const retentionUntil = new Date();
+    retentionUntil.setDate(retentionUntil.getDate() + 90); // 3 months
+    await query(
+      `UPDATE files SET retention_until=$1 WHERE order_id=$2 AND storage_backend='local'`,
+      [retentionUntil.toISOString(), orderId]
+    );
   }
 
   // Auto-complete reminders for the previous stage when moving forward
@@ -2279,137 +2286,74 @@ const fileUploadSchema = z.object({
   mime_type: z.string(),
   file_data: z.string(), // base64-encoded file content
   folder_id: z.string().optional(), // override parent folder
+  extracted_text: z.string().optional(), // extracted text for local file-store
 });
 
 /**
  * POST /drive/upload
- * Upload a file (base64) to Google Drive using hierarchical folder structure:
- *   Root → YYYY-MM (month) → ClientName - QTN-XXXX (client/project) → files
- * Stores reference in DB and links folder to order.
+ * Store extracted quotation text in the local file-store container.
+ * Google Drive upload is disabled — quotations are stored as text only
+ * for Hermes agent reference during production analysis.
+ * Deposit slips are NOT stored anywhere.
  */
 app.post('/drive/upload', async (request, reply) => {
   const body = fileUploadSchema.parse(request.body);
-  const fileBuffer = Buffer.from(body.file_data, 'base64');
 
-  // Determine target folder: explicit folder_id overrides auto-organization
-  let targetFolderId = body.folder_id;
-
-  // If quotation_number provided, use hierarchical folder structure
-  if (body.quotation_number && !targetFolderId) {
-    const orders = await query(
-      `SELECT id, client_name, google_drive_folder_id FROM orders WHERE quotation_number=$1`,
-      [body.quotation_number]
-    );
-    if (orders[0]) {
-      if (orders[0].google_drive_folder_id) {
-        // Client folder already exists — use it directly
-        targetFolderId = orders[0].google_drive_folder_id;
-      } else {
-        // Build hierarchy: Root → YYYY-MM → ClientName - QTN-XXXX
-        const clientName = orders[0].client_name ?? 'Unknown Client';
-        const monthFolder = await getOrCreateMonthFolder();
-        const clientFolder = await getOrCreateClientFolder(
-          clientName,
-          body.quotation_number,
-          monthFolder.id
-        );
-        targetFolderId = clientFolder.id;
-
-        // Store the client folder ID on the order for future uploads
-        await query(`UPDATE orders SET google_drive_folder_id=$1 WHERE id=$2`, [
-          clientFolder.id,
-          orders[0].id,
-        ]);
-      }
+  // Forward quotation text to file-store for Hermes agent reference
+  if (body.file_type === 'quotation' && body.quotation_number && body.extracted_text) {
+    const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
+    try {
+      await fetch(`${FILE_STORE_URL}/files/store`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: body.order_id,
+          quotation_number: body.quotation_number,
+          extracted_text: body.extracted_text,
+          file_type: body.file_type,
+        }),
+      });
+    } catch (err) {
+      console.error('[DriveUpload] Failed to store quotation text in file-store:', err);
     }
   }
 
-  // Upload to Drive
-  const result = await uploadToDrive(
-    fileBuffer,
-    body.original_filename,
-    body.mime_type,
-    targetFolderId
-  );
-
-  // Store file reference in DB
+  // Store file reference in DB (still record the upload metadata)
   const fileRecord = await query(
-    `INSERT INTO files (order_id, file_type, original_filename, google_drive_file_id, file_url)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO files (order_id, file_type, original_filename, storage_backend, extracted_text)
+     VALUES ($1, $2, $3, 'local', $4)
      RETURNING *`,
     [
       body.order_id ?? null,
       body.file_type,
       body.original_filename,
-      result.fileId,
-      result.webViewLink,
+      body.extracted_text ?? null,
     ]
   );
 
   return reply.send({
     ok: true,
     file: fileRecord[0],
-    drive: result,
+    note: 'Google Drive upload disabled. Quotation text stored locally for Hermes agent reference.',
   });
 });
 
 /**
  * POST /drive/folder
- * Create a folder for an order using hierarchical structure:
- *   Root → YYYY-MM (month) → ClientName - QTN-XXXX (client/project)
+ * Google Drive folder creation is disabled.
+ * Quotation text is stored in the local file-store container instead.
  */
 app.post('/drive/folder', async (request, reply) => {
-  const body = z
-    .object({
-      quotation_number: z.string(),
-      folder_name: z.string().optional(),
-    })
-    .parse(request.body);
-
-  // Look up order to get client name
-  const orders = await query(
-    `SELECT id, client_name, google_drive_folder_id FROM orders WHERE quotation_number=$1`,
-    [body.quotation_number]
-  );
-  if (!orders[0]) {
-    return reply.code(404).send({ error: 'Order not found' });
-  }
-
-  // If folder already exists, return it
-  if (orders[0].google_drive_folder_id) {
-    return reply.send({ ok: true, folder: { id: orders[0].google_drive_folder_id } });
-  }
-
-  // Build hierarchy: Root → YYYY-MM → ClientName - QTN-XXXX
-  const clientName = orders[0].client_name ?? 'Unknown Client';
-  const monthFolder = await getOrCreateMonthFolder();
-  const clientFolder = await getOrCreateClientFolder(
-    clientName,
-    body.quotation_number,
-    monthFolder.id
-  );
-
-  // Link folder to order
-  await query(`UPDATE orders SET google_drive_folder_id=$1 WHERE quotation_number=$2`, [
-    clientFolder.id,
-    body.quotation_number,
-  ]);
-
-  return reply.send({ ok: true, folder: clientFolder });
+  return reply.send({ ok: true, note: 'Google Drive folder creation is disabled.' });
 });
 
 /**
  * DELETE /drive/files/:fileId
- * Delete a file from Google Drive and optionally from DB.
+ * Google Drive file deletion is disabled.
+ * File-store cleanup is handled automatically by the cleanup agent (90-day retention).
  */
 app.delete('/drive/files/:fileId', async (request, reply) => {
-  const params = z.object({ fileId: z.string() }).parse(request.params);
-  await deleteDriveFile(params.fileId);
-
-  // Also remove from files table if linked
-  await query(`DELETE FROM files WHERE google_drive_file_id=$1`, [params.fileId]);
-
-  return reply.send({ ok: true });
+  return reply.send({ ok: true, note: 'Google Drive file deletion is disabled.' });
 });
 
 // ── Reminders ────────────────────────────────────────────────────────

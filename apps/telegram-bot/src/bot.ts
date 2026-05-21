@@ -1,6 +1,5 @@
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
-import { uploadToDrive } from './services/googleDrive.js';
 import { AsyncLocalStorage } from 'async_hooks';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -514,9 +513,6 @@ async function uploadFileAndRecord(params: {
   telegramMessageId?: string;
   uploadedBy?: string;
 }) {
-  const fileBuffer = Buffer.from(params.imageBase64, 'base64');
-  const driveResult = await uploadToDrive(fileBuffer, params.fileName, params.mimeType);
-
   const payload: Record<string, unknown> = {
     file_type: params.mimeType,
     original_filename: params.fileName,
@@ -530,7 +526,7 @@ async function uploadFileAndRecord(params: {
   if (params.quotationNumber) payload.quotation_number = params.quotationNumber;
 
   await postJson('/drive/upload', payload);
-  return driveResult;
+  return { fileId: null, webViewLink: null };
 }
 
 // ── Inline Keyboard Builders ───────────────────────────────────────────
@@ -1542,24 +1538,14 @@ Midpoint and due reminders are now scheduled.`,
       });
 
       try {
-        // Step 1: Upload deposit slip to Google Drive
-        let depositImageUrl: string | null = null;
-        try {
-          const fileBuffer = Buffer.from(imageBase64, 'base64');
-          const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
-          depositImageUrl = driveResult.webViewLink;
-        } catch (driveErr) {
-          console.error('[deposit] Drive upload error (non-fatal):', driveErr);
-        }
-
-        // Step 2: Record deposit via match-and-record with image_url
+        // Record deposit via match-and-record (no Google Drive upload — deposit slips not stored)
         const res = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             amount: depositAmount,
             client_name: clientName,
-            image_url: depositImageUrl,
+            image_url: null,
             deposit_paid_at: paymentDate ?? null,
           }),
         });
@@ -3010,35 +2996,14 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
   });
 
   try {
-    // Step 1: Upload deposit slip to Google Drive in the client's folder
-    let depositImageUrl: string | null = null;
-    try {
-      const fileBuffer = Buffer.from(imageBase64, 'base64');
-      const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
-      depositImageUrl = driveResult.webViewLink;
-
-      // Also record in the API's drive/upload for DB tracking (non-blocking)
-      postJson('/drive/upload', {
-        quotation_number: quotationNumber,
-        file_type: mimeType,
-        original_filename: `deposit_${fileName}`,
-        mime_type: mimeType,
-        file_data: imageBase64,
-        uploaded_by: username ?? userId,
-      }).catch(() => {});
-    } catch (driveErr) {
-      console.error('[deposit] Drive upload error (non-fatal):', driveErr);
-      // Non-fatal — proceed with recording deposit even if Drive upload fails
-    }
-
-    // Step 2: Record the deposit via the existing /deposits endpoint (handles balance_due reminder)
+    // Record the deposit via the existing /deposits endpoint (no Google Drive upload — deposit slips not stored)
     const depositRes = await fetch(`${apiBaseUrl}/deposits`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         quotation_number: quotationNumber,
         amount: depositAmount,
-        image_url: depositImageUrl,
+        image_url: null,
         updated_by: username ?? userId,
         deposit_paid_at: paymentDate ?? null,
       }),
@@ -3055,7 +3020,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       chatId, userId, username,
       messageType: 'deposit',
       content: `deposit_recorded: ${quotationNumber} ₱${depositAmount}`,
-      metadata: { quotationNumber, amount: depositAmount, driveLink: depositImageUrl },
+      metadata: { quotationNumber, amount: depositAmount },
       status: 'success',
     });
 
@@ -3063,7 +3028,6 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       `✅ *Deposit Recorded Successfully!*\n\n` +
       `📋 Order: *${quotationNumber}*\n` +
       `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
-      (depositImageUrl ? `🔗 [View Deposit Slip](${depositImageUrl})\n` : '') +
       `\nProduction can now proceed.`;
 
     await ctx.editMessageText(successMsg, {
@@ -3110,26 +3074,7 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
   });
 
   try {
-    // Step 1: Upload payment proof to Google Drive
-    let paymentImageUrl: string | null = null;
-    try {
-      const fileBuffer = Buffer.from(imageBase64, 'base64');
-      const driveResult = await uploadToDrive(fileBuffer, fileName, mimeType);
-      paymentImageUrl = driveResult.webViewLink;
-
-      postJson('/drive/upload', {
-        quotation_number: quotationNumber,
-        file_type: mimeType,
-        original_filename: `balance_${fileName}`,
-        mime_type: mimeType,
-        file_data: imageBase64,
-        uploaded_by: username ?? userId,
-      }).catch(() => {});
-    } catch (driveErr) {
-      console.error('[balance] Drive upload error (non-fatal):', driveErr);
-    }
-
-    // Step 2: Record the balance payment via /pay-balance
+    // Record the balance payment via /pay-balance (no Google Drive upload — payment proofs not stored)
     const balanceRes = await fetch(`${apiBaseUrl}/pay-balance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3151,7 +3096,7 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
       chatId, userId, username,
       messageType: 'balance',
       content: `balance_recorded: ${quotationNumber} ₱${depositAmount}`,
-      metadata: { quotationNumber, amount: depositAmount, driveLink: paymentImageUrl },
+      metadata: { quotationNumber, amount: depositAmount },
       status: 'success',
     });
 
@@ -3159,7 +3104,6 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
       `✅ *Balance Payment Recorded Successfully!*\n\n` +
       `📋 Order: *${quotationNumber}*\n` +
       `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
-      (paymentImageUrl ? `🔗 [View Payment Proof](${paymentImageUrl})\n` : '') +
       `\nDelivery can now proceed.`;
 
     await ctx.editMessageText(successMsg, {
