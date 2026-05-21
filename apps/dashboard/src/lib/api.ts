@@ -15,8 +15,14 @@ export interface Order {
   deposit_amount: number | null;
   deposit_image_url: string | null;
   deposit_paid_at: string | null;
+  deposit_verified: boolean;
+  deposit_verified_at: string | null;
+  deposit_verified_by: string | null;
   balance_paid: boolean;
   balance_paid_at: string | null;
+  balance_verified: boolean;
+  balance_verified_at: string | null;
+  balance_verified_by: string | null;
   order_confirmed_at: string | null;
   production_started: boolean | null;
   production_started_at: string | null;
@@ -168,6 +174,26 @@ export async function payBalance(data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export async function verifyDeposit(
+  id: string,
+  verified_by?: string,
+): Promise<{ ok: boolean; quotation_number: string; next_stage: string }> {
+  return fetchJson<{ ok: boolean; quotation_number: string; next_stage: string }>(
+    `/orders/${encodeURIComponent(id)}/verify-deposit`,
+    { method: 'POST', body: JSON.stringify({ verified_by }) },
+  );
+}
+
+export async function verifyBalance(
+  id: string,
+  verified_by?: string,
+): Promise<{ ok: boolean; quotation_number: string; next_stage: string }> {
+  return fetchJson<{ ok: boolean; quotation_number: string; next_stage: string }>(
+    `/orders/${encodeURIComponent(id)}/verify-balance`,
+    { method: 'POST', body: JSON.stringify({ verified_by }) },
+  );
 }
 
 export async function recordStageUpdate(data: {
@@ -335,9 +361,11 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   production_pending:    { label: 'Production Pending',    color: 'bg-yellow-100 text-yellow-800',   icon: '🏗️' },
   production_confirmed:  { label: 'Production Confirmed',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
   deposit_pending:       { label: 'Downpayment Pending',   color: 'bg-pink-100 text-pink-800',       icon: '💳' },
+  deposit_verification:  { label: 'Deposit Verification',  color: 'bg-rose-100 text-rose-800',       icon: '🔍' },
   en_route:              { label: 'En Route',               color: 'bg-sky-100 text-sky-800',         icon: '🚚' },
   inventory_arrived:     { label: 'Inventory Arrived',     color: 'bg-cyan-100 text-cyan-800',       icon: '📦' },
   balance_due:           { label: 'Balance Due',            color: 'bg-violet-100 text-violet-800',   icon: '⚖️' },
+  balance_verification:  { label: 'Balance Verification',  color: 'bg-fuchsia-100 text-fuchsia-800', icon: '🔍' },
   delivery_scheduled:    { label: 'Delivery Scheduled',    color: 'bg-purple-100 text-purple-800',   icon: '📅' },
   delivered:             { label: 'Delivered',              color: 'bg-orange-100 text-orange-800',   icon: '🚚' },
   countered:             { label: 'Countered',              color: 'bg-rose-100 text-rose-800',       icon: '📋' },
@@ -743,8 +771,10 @@ export const STAGE_ORDER = [
   'production_confirmed',
   'en_route',
   'deposit_pending',
+  'deposit_verification',
   'inventory_arrived',
   'balance_due',
+  'balance_verification',
   'delivery_scheduled',
   'delivered',
   'countered',

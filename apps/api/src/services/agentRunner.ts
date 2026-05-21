@@ -23,8 +23,14 @@ export interface OrderRow {
   status: string;
   deposit_paid: boolean;
   deposit_amount: string | null;
+  deposit_verified: boolean;
+  deposit_verified_at: string | null;
+  deposit_verified_by: string | null;
   balance_paid: boolean;
   balance_paid_at: string | null;
+  balance_verified: boolean;
+  balance_verified_at: string | null;
+  balance_verified_by: string | null;
   production_started: boolean | null;
   production_started_at: string | null;
   estimated_production_days: number | null;

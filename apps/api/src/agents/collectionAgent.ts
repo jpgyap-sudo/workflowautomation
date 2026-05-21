@@ -10,16 +10,16 @@ import {
   getEscalationLevel,
   getGroupChatId,
 } from '../services/agentRunner.js';
+import { query } from '../db.js';
 
 /**
  * collection-agent
  *
  * Role: Tracks payment collection for all stages.
- * - Checks orders at quotation_received → production_pending stages
- *   where deposit hasn't been paid
- *   → Sends reminders to the collection group to collect deposit
- * - Checks orders at delivered or countered stage where payment hasn't been received
- *   → Sends reminders to collect final payment
+ * Phase 1: Deposit Collection — reminds team to collect downpayment
+ * Phase 2: Deposit Verification — reminds team to verify submitted deposit
+ * Phase 3: Final Payment Collection — reminds team to collect balance
+ * Phase 4: Balance Verification — reminds team to verify submitted balance payment
  * - Escalates after repeated reminders
  */
 export async function runCollectionAgent(): Promise<AgentResult[]> {
@@ -48,7 +48,25 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
-  // ── Phase 2: Final Payment Collection (delivered/countered) ──
+  // ── Phase 2: Deposit Verification (deposit_paid=TRUE, deposit_verified=FALSE) ──
+  const unverifiedDeposits = await query<OrderRow>(
+    `SELECT * FROM orders
+     WHERE deposit_paid = TRUE AND deposit_verified = FALSE AND status = 'active'
+     ORDER BY updated_at ASC`,
+  );
+  for (const order of unverifiedDeposits) {
+    const result = await checkDepositVerification(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('collection-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'deposit_verification', groupChatId, result.message);
+        await notifyCollection(groupChatId, order, result);
+      }
+    }
+    results.push(result);
+  }
+
+  // ── Phase 3: Final Payment Collection (delivered/countered) ──
   const paymentOrders = await getActiveOrdersByStages(['delivered', 'countered']);
   for (const order of paymentOrders) {
     // Skip if balance already paid (e.g., full payment upfront or paid at inventory_arrived stage)
@@ -59,6 +77,24 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
       const groupChatId = getGroupChatId('collection-agent');
       if (groupChatId) {
         await createReminder(order.id, order.current_stage, groupChatId, result.message);
+        await notifyCollection(groupChatId, order, result);
+      }
+    }
+    results.push(result);
+  }
+
+  // ── Phase 4: Balance Verification (balance_paid=TRUE, balance_verified=FALSE) ──
+  const unverifiedBalances = await query<OrderRow>(
+    `SELECT * FROM orders
+     WHERE balance_paid = TRUE AND balance_verified = FALSE AND status = 'active'
+     ORDER BY updated_at ASC`,
+  );
+  for (const order of unverifiedBalances) {
+    const result = await checkBalanceVerification(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('collection-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'balance_verification', groupChatId, result.message);
         await notifyCollection(groupChatId, order, result);
       }
     }
@@ -117,6 +153,124 @@ export async function checkDepositCollection(order: OrderRow): Promise<AgentResu
     const result: AgentResult = {
       status: 'blocked',
       message: `❌ Error checking deposit collection for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('collection-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Check orders where deposit_paid=TRUE but deposit_verified=FALSE.
+ * Reminds the collection group to verify the deposit payment.
+ */
+export async function checkDepositVerification(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+    deposit_paid: order.deposit_paid,
+    deposit_verified: order.deposit_verified,
+    deposit_amount: order.deposit_amount,
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'deposit_verification');
+
+    if (escalationLevel >= 3) {
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🔴 Deposit not yet verified after ${escalationLevel} reminders. Manager intervention required. Deposit amount: ${order.deposit_amount ? `₱${Number(order.deposit_amount).toLocaleString()}` : 'N/A'}.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('collection-agent', input, result, 'blocked', order.id);
+      return result;
+    }
+
+    const depositInfo = order.deposit_amount
+      ? `₱${Number(order.deposit_amount).toLocaleString()}`
+      : 'Amount not recorded';
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `🔍 Deposit verification pending for #${order.quotation_number ?? 'unknown'}. A downpayment of ${depositInfo} has been submitted but NOT yet verified. Please check if the payment went through and verify via the dashboard.`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('collection-agent', input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking deposit verification for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('collection-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Check orders where balance_paid=TRUE but balance_verified=FALSE.
+ * Reminds the collection group to verify the balance payment.
+ */
+export async function checkBalanceVerification(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+    balance_paid: order.balance_paid,
+    balance_verified: order.balance_verified,
+    total_amount: order.total_amount,
+    deposit_amount: order.deposit_amount,
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'balance_verification');
+
+    if (escalationLevel >= 3) {
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🔴 Balance not yet verified after ${escalationLevel} reminders. Manager intervention required.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('collection-agent', input, result, 'blocked', order.id);
+      return result;
+    }
+
+    const total = order.total_amount ? Number(order.total_amount) : null;
+    const deposit = order.deposit_amount ? Number(order.deposit_amount) : 0;
+    const balanceDue = total !== null ? total - deposit : null;
+    const balanceInfo = balanceDue !== null ? `₱${balanceDue.toLocaleString()}` : 'Amount not recorded';
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `🔍 Balance verification pending for #${order.quotation_number ?? 'unknown'}. A balance payment of ${balanceInfo} has been submitted but NOT yet verified. Please check if the payment went through and verify via the dashboard.`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('collection-agent', input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking balance verification for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: 0,
@@ -212,18 +366,33 @@ export async function notifyCollection(
   let keyboard: Record<string, unknown> | undefined;
   if (qn && result.status === 'needs_review') {
     if (!order.deposit_paid) {
+      // Phase 1: Deposit not yet paid — show upload deposit slip button
       keyboard = inlineKeyboard([
         [
           { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${id}:${qn}` },
           { text: '⏳ Not Yet', callback_data: `deposit:no:${id}:${qn}` },
         ],
       ]);
+    } else if (order.deposit_paid && !order.deposit_verified) {
+      // Phase 2: Deposit paid but not verified — show verify button
+      keyboard = inlineKeyboard([
+        [
+          { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${id}:${qn}` },
+        ],
+      ]);
     } else if (!order.balance_paid) {
+      // Phase 3: Balance not yet paid — show record payment button
       keyboard = inlineKeyboard([
         [{ text: '💵 Record Payment', callback_data: `pick:payment:${qn}` }],
       ]);
+    } else if (order.balance_paid && !order.balance_verified) {
+      // Phase 4: Balance paid but not verified — show verify button
+      keyboard = inlineKeyboard([
+        [
+          { text: '🔍 Verify Balance', callback_data: `verify:balance:${id}:${qn}` },
+        ],
+      ]);
     }
-    // If both deposit_paid and balance_paid are true, no buttons needed — payment is complete
   }
 
   await sendTelegramMessage(groupChatId, msg, keyboard);

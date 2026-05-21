@@ -1201,17 +1201,19 @@ app.post('/deposits', async (request, reply) => {
   const orderId = orders[0].id;
   const quotationNumber = orders[0].quotation_number;
 
-  // Update deposit fields. Only advance early/deposit-stage orders to production_pending;
-  // do not move orders backwards if production or later work already started.
+  // Update deposit fields.
+  // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
+  // Stage advances to deposit_pending (not production_pending) until deposit is verified.
   await query(
     `UPDATE orders SET
        deposit_paid=TRUE,
+       deposit_verified=FALSE,
        deposit_amount=$1,
        deposit_image_url=COALESCE($2, deposit_image_url),
        deposit_paid_at=COALESCE($4, deposit_paid_at),
        current_stage=CASE
-         WHEN current_stage IN ('order_confirmation_received', 'math_verified', 'deposit_pending')
-         THEN 'production_pending'
+         WHEN current_stage IN ('order_confirmation_received', 'math_verified')
+         THEN 'deposit_pending'
          ELSE current_stage
        END,
        updated_at=NOW()
@@ -1231,11 +1233,11 @@ app.post('/deposits', async (request, reply) => {
     [orderId]
   );
 
-  // Auto-create a balance_due reminder since balance is now due
+  // Create a deposit_verification reminder — collection agent will remind team to verify the deposit
   await query(
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-     SELECT $1, 'balance_due', r.group_chat_id,
-            'The remaining balance is due before delivery can proceed.',
+     SELECT $1, 'deposit_verification', r.group_chat_id,
+            'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
             'daily', NOW() + INTERVAL '1 hour', 'active'
      FROM reminders r
      WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
@@ -1305,17 +1307,18 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       ? Number(order.total_amount) / 2
       : null;
 
-    // Record the deposit. Only advance early/deposit-stage orders to purchasing_pending;
-    // do not move orders backwards if production or later work already started.
+    // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
+    // Stage advances to deposit_pending (not purchasing_pending) until deposit is verified.
     await query(
       `UPDATE orders SET
          deposit_paid=TRUE,
+         deposit_verified=FALSE,
          deposit_amount=$1,
          deposit_image_url=COALESCE($2, deposit_image_url),
          deposit_paid_at=COALESCE($4, deposit_paid_at),
          current_stage=CASE
-           WHEN current_stage IN ('order_confirmation_received', 'math_verified', 'deposit_pending')
-           THEN 'purchasing_pending'
+           WHEN current_stage IN ('order_confirmation_received', 'math_verified')
+           THEN 'deposit_pending'
            ELSE current_stage
          END,
          updated_at=NOW()
@@ -1335,11 +1338,11 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       [order.id]
     );
 
-    // Auto-create a balance_due reminder since balance is now due
+    // Create a deposit_verification reminder — collection agent will remind team to verify
     await query(
       `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-       SELECT $1, 'balance_due', r.group_chat_id,
-              'The remaining balance is due before delivery can proceed.',
+       SELECT $1, 'deposit_verification', r.group_chat_id,
+              'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
               'daily', NOW() + INTERVAL '1 hour', 'active'
        FROM reminders r
        WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
@@ -1623,23 +1626,51 @@ app.post('/pay-balance', async (request, reply) => {
   const orderId = order.id;
   const overpayment = body.amount - expectedBalance;
 
-  // Update balance fields on the order AND sync current_stage to payment_received
+  // Update balance fields on the order.
+  // balance_paid=TRUE but balance_verified=FALSE — collection agent will remind team to verify.
+  // Stage does NOT advance to payment_received until balance is verified.
   await query(
-    `UPDATE orders SET balance_paid=TRUE, balance_paid_at=NOW(), current_stage='payment_received', updated_at=NOW() WHERE id=$1`,
+    `UPDATE orders SET
+       balance_paid=TRUE,
+       balance_verified=FALSE,
+       balance_paid_at=NOW(),
+       current_stage=CASE
+         WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+         THEN 'balance_verification'
+         ELSE current_stage
+       END,
+       updated_at=NOW()
+     WHERE id=$1`,
     [orderId]
   );
 
-  // Record stage update — balance paid → payment_received
+  // Record stage update — balance paid → balance_verification
   const remarks = overpayment > 0
     ? `Balance of ₱${body.amount.toLocaleString()} paid (overpayment of ₱${overpayment.toLocaleString()})`
     : `Balance of ₱${body.amount.toLocaleString()} paid`;
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-    [orderId, 'payment_received', 'balance_paid', remarks, body.updated_by ?? null]
+    [orderId, 'balance_verification', 'balance_paid', remarks, body.updated_by ?? null]
   );
 
-  // Complete all active reminders for this order since balance is paid and stage moves to payment_received
-  await completeOrderReminders(orderId);
+  // Complete any balance_due reminders for this order
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
+    [orderId]
+  );
+
+  // Create a balance_verification reminder — collection agent will remind team to verify the balance payment
+  await query(
+    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+     SELECT $1, 'balance_verification', r.group_chat_id,
+            'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
+            'daily', NOW() + INTERVAL '1 hour', 'active'
+     FROM reminders r
+     WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
+     LIMIT 1
+     ON CONFLICT DO NOTHING`,
+    [orderId]
+  );
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -1658,6 +1689,139 @@ app.post('/pay-balance', async (request, reply) => {
     expected_balance: expectedBalance,
     overpayment: overpayment,
   });
+});
+
+// ── Verify Deposit ──────────────────────────────────────────────────────
+
+/**
+ * POST /orders/:id/verify-deposit
+ *
+ * Called by the team (via dashboard or API) to verify that a deposit payment
+ * has gone through. Sets deposit_verified=TRUE and advances the stage:
+ *   deposit_pending → production_pending (or purchasing_pending)
+ * Completes the deposit_verification reminder and creates a production reminder.
+ */
+const verifyDepositSchema = z.object({
+  verified_by: z.string().optional(),
+});
+
+app.post('/orders/:id/verify-deposit', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = verifyDepositSchema.parse(request.body);
+
+  const orders = await query(
+    `SELECT id, quotation_number, current_stage, deposit_paid, deposit_verified
+     FROM orders WHERE id = $1 AND status = 'active'`,
+    [id],
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+  if (!order.deposit_paid) {
+    return reply.code(400).send({ error: 'Deposit has not been paid yet. Cannot verify.' });
+  }
+  if (order.deposit_verified) {
+    return reply.code(400).send({ error: 'Deposit is already verified.' });
+  }
+
+  // Determine next stage based on whether the order needs purchasing
+  // If the order is at deposit_pending, advance to production_pending or purchasing_pending
+  const nextStage = order.current_stage === 'deposit_pending'
+    ? 'production_pending'
+    : order.current_stage;
+
+  await query(
+    `UPDATE orders SET
+       deposit_verified = TRUE,
+       deposit_verified_at = NOW(),
+       deposit_verified_by = $2,
+       current_stage = $3,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [id, body.verified_by ?? null, nextStage],
+  );
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, $2, 'deposit_verified', $3, $4)`,
+    [id, nextStage, `Deposit verified by ${body.verified_by ?? 'team'}. Advancing to ${nextStage}.`, body.verified_by ?? null],
+  );
+
+  // Complete deposit_verification reminders
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW()
+     WHERE order_id = $1 AND stage = 'deposit_verification' AND status = 'active'`,
+    [id],
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
+});
+
+// ── Verify Balance ──────────────────────────────────────────────────────
+
+/**
+ * POST /orders/:id/verify-balance
+ *
+ * Called by the team to verify that a balance payment has gone through.
+ * Sets balance_verified=TRUE and advances the stage:
+ *   balance_verification → payment_received
+ * Completes the balance_verification reminder.
+ */
+const verifyBalanceSchema = z.object({
+  verified_by: z.string().optional(),
+});
+
+app.post('/orders/:id/verify-balance', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = verifyBalanceSchema.parse(request.body);
+
+  const orders = await query(
+    `SELECT id, quotation_number, current_stage, balance_paid, balance_verified
+     FROM orders WHERE id = $1 AND status = 'active'`,
+    [id],
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+  if (!order.balance_paid) {
+    return reply.code(400).send({ error: 'Balance has not been paid yet. Cannot verify.' });
+  }
+  if (order.balance_verified) {
+    return reply.code(400).send({ error: 'Balance is already verified.' });
+  }
+
+  // Advance to payment_received
+  await query(
+    `UPDATE orders SET
+       balance_verified = TRUE,
+       balance_verified_at = NOW(),
+       balance_verified_by = $2,
+       current_stage = 'payment_received',
+       updated_at = NOW()
+     WHERE id = $1`,
+    [id, body.verified_by ?? null],
+  );
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'payment_received', 'balance_verified', $2, $3)`,
+    [id, `Balance verified by ${body.verified_by ?? 'team'}. Advancing to payment_received.`, body.verified_by ?? null],
+  );
+
+  // Complete balance_verification reminders
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW()
+     WHERE order_id = $1 AND stage = 'balance_verification' AND status = 'active'`,
+    [id],
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: 'payment_received' });
 });
 
 // ── Grant Delivery Exception (Special Case) ─────────────────────────

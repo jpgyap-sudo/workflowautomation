@@ -107,9 +107,11 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     icon: DollarSign,
     color: 'border-emerald-200 bg-emerald-50',
     headingColor: 'text-emerald-700',
-    description: 'Monitors payment collection and confirmation',
-    monitors: ['countered', 'payment_received'],
+    description: 'Monitors payment collection, verification, and confirmation',
+    monitors: ['deposit_verification', 'balance_verification', 'countered', 'payment_received'],
     triggers: [
+      { from: 'deposit_verification', to: 'production_pending', condition: 'Deposit verified via dashboard or API' },
+      { from: 'balance_verification', to: 'payment_received', condition: 'Balance verified via dashboard or API' },
       { from: 'countered', to: 'payment_received', condition: 'Team replies /payment confirmed' },
       { from: 'payment_received', to: 'payment_confirmed', condition: 'Payment verified' },
     ],
@@ -225,6 +227,14 @@ const STAGE_INFO: Record<string, StageInfo> = {
     responsibleParty: 'Sales / Finance',
     autoAdvance: false,
   },
+  deposit_verification: {
+    stage: 'deposit_verification',
+    entryAction: 'Deposit recorded — collection agent reminds team to verify',
+    exitCondition: 'Team verifies deposit via dashboard or API',
+    triggeredBy: 'Collection Agent / Team',
+    responsibleParty: 'Finance Team',
+    autoAdvance: false,
+  },
   inventory_arrived: {
     stage: 'inventory_arrived',
     entryAction: 'Inventory sends arrival photos/files to bot',
@@ -239,6 +249,14 @@ const STAGE_INFO: Record<string, StageInfo> = {
     exitCondition: 'Balance paid via /paybalance',
     triggeredBy: 'Team',
     responsibleParty: 'Sales / Finance',
+    autoAdvance: false,
+  },
+  balance_verification: {
+    stage: 'balance_verification',
+    entryAction: 'Balance recorded — collection agent reminds team to verify',
+    exitCondition: 'Team verifies balance via dashboard or API',
+    triggeredBy: 'Collection Agent / Team',
+    responsibleParty: 'Finance Team',
     autoAdvance: false,
   },
   delivery_scheduled: {

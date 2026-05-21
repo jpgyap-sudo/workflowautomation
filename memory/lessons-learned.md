@@ -1815,3 +1815,99 @@ When removing any component from a system, immediately document the removal rati
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add --dns-result-order=ipv4first to API Dockerfile to fix Telegram API ETIMEDOUT from Node.js undici
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ed57617eef14bebae8f5d92f4db35cf1e3a1ca99
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ed57617eef14bebae8f5d92f4db35cf1e3a1ca99
+**Files:** apps/api/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+A `ETIMEDOUT` error when the Node.js API (using `undici`) called the Telegram API.
+
+**Why it broke:**  
+The Docker container’s DNS resolver returned an IPv6 address for the Telegram API, but the container lacked IPv6 connectivity. `undici` (Node.js’s default HTTP client) attempted the IPv6 connection first, which timed out.
+
+**Reusable takeaway:**  
+When running Node.js applications in Docker environments without IPv6 support, explicitly set `--dns-result-order=ipv4first` in the `NODE_OPTIONS` environment variable or Node.js startup flags. This forces DNS resolution to prefer IPv4, preventing silent timeouts caused by IPv6 fallback behavior in modern HTTP clients like `undici`.
+
+---
+*Original commit message: fix: add --dns-result-order=ipv4first to API Dockerfile to fix Telegram API ETIMEDOUT from Node.js undici*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A `ETIMEDOUT` error when the Node.js API (using `undici`) called the Telegram API.
+
+**Why it broke:**  
+The Docker container’s DNS resolver returned an IPv6 address for the Telegram API, but the container lacked IPv6 connectivity. `undici` (Node.js’s default HTTP client) attempted the IPv6 connection first, which timed out.
+
+**Reusable takeaway:**  
+When running Node.js applications in Docker environments without IPv6 support, explicitly set `--dns-result-order=ipv4first` in the `NODE_OPTIONS` environment variable or Node.js startup flags. This forces DNS resolution to prefer IPv4, preventing silent timeouts caused by IPv6 fallback behavior in modern HTTP clients like `undici`.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: switch Telegram parse_mode from Markdown to HTML to fix entity parsing errors with special chars
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7df5c1e96a20090b65965e672d18e2e8e949f0d5
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 7df5c1e96a20090b65965e672d18e2e8e949f0d5
+**Files:** apps/api/src/server.ts,apps/api/src/services/agentRunner.ts,apps/api/src/services/reminderScheduler.ts
+
+**Summary:**
+**What was fixed:**  
+Telegram message formatting was breaking when special characters (e.g., `_`, `*`, `[`) appeared in content. The fix switched the `parse_mode` from `Markdown` to `HTML` across three API services.
+
+**Why it broke:**  
+MarkdownV2 requires strict escaping of reserved characters. User-generated content (e.g., workflow names, reminders) often contains these characters without proper escaping, causing Telegram to reject the message with entity parse errors.
+
+**Reusable takeaway:**  
+When sending user-generated text to Telegram, prefer `HTML` over `MarkdownV2` to avoid brittle escaping logic. HTML is more forgiving of special characters and reduces the risk of silent message failures. If Markdown is required, always sanitize/escape user input before formatting.
+
+---
+*Original commit message: fix: switch Telegram parse_mode from Markdown to HTML to fix entity parsing errors with special chars*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Telegram message formatting was breaking when special characters (e.g., `_`, `*`, `[`) appeared in content. The fix switched the `parse_mode` from `Markdown` to `HTML` across three API services.
+
+**Why it broke:**  
+MarkdownV2 requires strict escaping of reserved characters. User-generated content (e.g., workflow names, reminders) often contains these characters without proper escaping, causing Telegram to reject the message with entity parse errors.
+
+**Reusable takeaway:**  
+When sending user-generated text to Telegram, prefer `HTML` over `MarkdownV2` to avoid brittle escaping logic. HTML is more forgiving of special characters and reduces the risk of silent message failures. If Markdown is required, always sanitize/escape user input before formatting.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -3167,6 +3167,140 @@ bot.action('deposit:confirm_no', async (ctx) => {
   );
 });
 
+// ── Verify Deposit Callback Handler ──────────────────────────────────
+
+// Team member clicked "Verify Deposit" from collection agent reminder
+bot.action(/^verify:deposit:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `verify:deposit:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(
+    `🔍 *Verifying Deposit* — ${quotationNumber}\n\nPlease wait...`,
+    { parse_mode: 'Markdown' }
+  );
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/verify-deposit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verified_by: username ?? userId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Verify API error' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    botLog({
+      chatId, userId, username,
+      messageType: 'deposit',
+      content: `deposit_verified: ${quotationNumber}`,
+      metadata: { orderId, quotationNumber, nextStage: data.next_stage },
+      status: 'success',
+    });
+
+    await ctx.editMessageText(
+      `✅ *Deposit Verified Successfully!*\n\n` +
+      `📋 Order: *${quotationNumber}*\n` +
+      `🔜 Next Stage: *${data.next_stage?.replace(/_/g, ' ') ?? 'Production'}*\n\n` +
+      `Production can now proceed.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (error: any) {
+    console.error('[verify-deposit] Error:', error);
+    botLog({
+      chatId, userId, username,
+      messageType: 'deposit',
+      content: `deposit_verify_error: ${quotationNumber}`,
+      metadata: { orderId, quotationNumber, errorMessage: String(error.message ?? error) },
+      status: 'error',
+    });
+    await ctx.editMessageText(
+      `❌ Failed to verify deposit: ${error.message}\n\nYou can try again from the dashboard.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
+});
+
+// ── Verify Balance Callback Handler ──────────────────────────────────
+
+// Team member clicked "Verify Balance" from collection agent reminder
+bot.action(/^verify:balance:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `verify:balance:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(
+    `🔍 *Verifying Balance Payment* — ${quotationNumber}\n\nPlease wait...`,
+    { parse_mode: 'Markdown' }
+  );
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/verify-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verified_by: username ?? userId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Verify API error' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    botLog({
+      chatId, userId, username,
+      messageType: 'balance',
+      content: `balance_verified: ${quotationNumber}`,
+      metadata: { orderId, quotationNumber, nextStage: data.next_stage },
+      status: 'success',
+    });
+
+    await ctx.editMessageText(
+      `✅ *Balance Payment Verified Successfully!*\n\n` +
+      `📋 Order: *${quotationNumber}*\n` +
+      `🔜 Next Stage: *Payment Received*\n\n` +
+      `Order can now proceed to completion.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (error: any) {
+    console.error('[verify-balance] Error:', error);
+    botLog({
+      chatId, userId, username,
+      messageType: 'balance',
+      content: `balance_verify_error: ${quotationNumber}`,
+      metadata: { orderId, quotationNumber, errorMessage: String(error.message ?? error) },
+      status: 'error',
+    });
+    await ctx.editMessageText(
+      `❌ Failed to verify balance payment: ${error.message}\n\nYou can try again from the dashboard.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
+});
+
 // Fallback: upload to Drive (used from multiple steps)
 bot.action('vision:upload', async (ctx) => {
   const chatId = String(ctx.chat!.id);

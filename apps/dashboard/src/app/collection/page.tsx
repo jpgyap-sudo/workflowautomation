@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -107,6 +107,9 @@ export default function CollectionPage() {
   const { data: paymentReceivedOrders = [], isLoading: loadingReceived, mutate: mutateReceived } = useOrdersByStage('payment_received');
   const { data: paymentConfirmedOrders = [], isLoading: loadingConfirmed, mutate: mutateConfirmed } = useOrdersByStage('payment_confirmed');
   const { data: completedOrders = [], isLoading: loadingCompleted, mutate: mutateCompleted } = useOrdersByStage('completed');
+  // Payment verification stages
+  const { data: depositVerificationOrders = [], isLoading: loadingDepositVerification, mutate: mutateDepositVerification } = useOrdersByStage('deposit_verification');
+  const { data: balanceVerificationOrders = [], isLoading: loadingBalanceVerification, mutate: mutateBalanceVerification } = useOrdersByStage('balance_verification');
   // Fetch unsynced orders — balance_paid=TRUE but stage still balance_due (legacy gap)
   const [unsyncedOrders, setUnsyncedOrders] = useState<Order[]>([]);
   const [loadingUnsynced, setLoadingUnsynced] = useState(true);
@@ -120,7 +123,7 @@ export default function CollectionPage() {
       .catch(() => setLoadingUnsynced(false));
   }, []);
 
-  const loading = loadingArrived && loadingBalanceDue && loadingDelivered && loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted && loadingUnsynced;
+  const loading = loadingArrived && loadingBalanceDue && loadingDelivered && loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted && loadingDepositVerification && loadingBalanceVerification && loadingUnsynced;
 
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -517,6 +520,113 @@ export default function CollectionPage() {
                 {balanceDueOrders.map((order) => renderOrderRow(order, [mutateBalanceDue]))}
               </>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Payment Verification — Deposit Verification */}
+      <div className="rounded-xl border border-rose-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-rose-200 px-6 py-4">
+          <Search className="h-4 w-4 text-rose-500" />
+          <h2 className="text-base font-semibold text-gray-800">Deposit Verification</h2>
+          <span className="ml-auto rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+            {depositVerificationOrders.length}
+          </span>
+        </div>
+        {depositVerificationOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No deposits pending verification</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {depositVerificationOrders.map((order) => (
+              <div key={order.id}>
+                <div className="flex items-center justify-between px-6 py-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                    </div>
+                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                    {order.sales_agent && (
+                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+                    )}
+                    <OrderPaymentInfo order={order} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <StageBadge stage={order.current_stage} />
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Verify deposit for ${order.quotation_number ?? '—'}? This will advance the order to production.`)) return;
+                        try {
+                          await verifyDeposit(order.id, 'dashboard');
+                          mutateDepositVerification();
+                          mutateArrived();
+                          mutateBalanceDue();
+                        } catch (err: any) {
+                          alert('Failed to verify deposit: ' + (err.message ?? 'Unknown error'));
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-600"
+                      title="Verify deposit payment and advance to production"
+                    >
+                      <Search className="h-3 w-3" />
+                      Verify Deposit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Payment Verification — Balance Verification */}
+      <div className="rounded-xl border border-fuchsia-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-fuchsia-200 px-6 py-4">
+          <Search className="h-4 w-4 text-fuchsia-500" />
+          <h2 className="text-base font-semibold text-gray-800">Balance Verification</h2>
+          <span className="ml-auto rounded-full bg-fuchsia-100 px-2 py-0.5 text-xs font-medium text-fuchsia-700">
+            {balanceVerificationOrders.length}
+          </span>
+        </div>
+        {balanceVerificationOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No balance payments pending verification</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {balanceVerificationOrders.map((order) => (
+              <div key={order.id}>
+                <div className="flex items-center justify-between px-6 py-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                    </div>
+                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                    {order.sales_agent && (
+                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+                    )}
+                    <OrderPaymentInfo order={order} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <StageBadge stage={order.current_stage} />
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Verify balance payment for ${order.quotation_number ?? '—'}? This will advance the order to Payment Received.`)) return;
+                        try {
+                          await verifyBalance(order.id, 'dashboard');
+                          mutateBalanceVerification();
+                          mutateReceived();
+                        } catch (err: any) {
+                          alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-fuchsia-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-fuchsia-600"
+                      title="Verify balance payment and advance to Payment Received"
+                    >
+                      <Search className="h-3 w-3" />
+                      Verify Balance
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
