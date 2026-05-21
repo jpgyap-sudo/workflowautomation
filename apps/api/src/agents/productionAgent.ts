@@ -542,6 +542,155 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
 }
 
 /**
+ * Calculate en-route completion percentage based on quantity.
+ * Returns the percentage of total quantity that is en_route.
+ */
+function calculateEnRoutePct(items: OrderItemRow[]): number {
+  const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
+  if (totalQty === 0) return 0;
+  const enRouteQty = items
+    .filter((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
+    .reduce((sum, i) => sum + i.quantity, 0);
+  return Math.round((enRouteQty / totalQty) * 100);
+}
+
+/**
+ * Check item-level en-route tracking with process of elimination.
+ *
+ * Strategy:
+ * 1. Fetch all order_items for the order
+ * 2. Calculate en-route completion % based on quantity
+ * 3. Find the first item not yet en_route (process of elimination)
+ * 4. Ask about that specific item
+ * 5. If >50% of quantity is en_route → progress the order but log % en-route
+ * 6. If all items en_route → advance to inventory_arrived
+ * 7. If no items exist → skip
+ */
+async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | null> {
+  const input = {
+    quotation_number: order.quotation_number,
+    stage: order.current_stage,
+  };
+
+  try {
+    // Only run for en_route stage orders
+    if (order.current_stage !== 'en_route') return null;
+
+    // Fetch items and completion
+    const items = await getOrderItems(order.id);
+    if (items.length === 0) return null; // No items to track — skip
+
+    const enRoutePct = calculateEnRoutePct(items);
+    const escalationLevel = await getEscalationLevel(order.id, 'item_level_en_route');
+
+    // Find the first item not yet en_route (process of elimination)
+    const notEnRouteItem = items.find(
+      (item) => item.en_route_status === 'not_yet',
+    );
+
+    const enRouteCount = items.filter(
+      (i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived',
+    ).length;
+    const totalCount = items.length;
+
+    // If all items are en_route or arrived — advance the order
+    if (!notEnRouteItem) {
+      const qn = order.quotation_number ?? 'unknown';
+      const client = order.client_name ?? 'Unknown';
+
+      // Log the completion
+      await addProductionLog(null, order.id, `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_arrived.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) en route. Auto-advancing to inventory_arrived.`);
+
+      // Advance to inventory_arrived
+      await advanceStage(order.id, 'inventory_arrived', qn, `All items en route (${enRoutePct}% of qty)`);
+
+      // Send notification to production group
+      const groupChatId = getGroupChatId(AGENT_NAME);
+      if (groupChatId) {
+        const msg = `🚚 <b>All Items En Route</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) en route (${enRoutePct}% of qty).\nOrder auto-advanced to 📦 Inventory Arrived.`;
+        await sendTelegramMessage(groupChatId, msg);
+      }
+
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ All items en route for #${qn}. Auto-advanced to inventory_arrived.`,
+        next_stage: 'inventory_arrived',
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
+      return result;
+    }
+
+    // ── Process of elimination: ask about the next not-en-route item ──
+    const qn = order.quotation_number ?? 'unknown';
+    const client = order.client_name ?? 'Unknown';
+    const progressBar = buildProgressBar(enRoutePct);
+
+    // Determine if >50% threshold is met
+    const thresholdMet = enRoutePct > 50;
+
+    let message = `🚚 <b>Item-Level En Route Check</b>\n`;
+    message += `Order: #${qn} (${client})\n`;
+    message += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
+    message += `Items: ${enRouteCount}/${totalCount} en route\n`;
+    if (thresholdMet) {
+      message += `✅ <b>>50% threshold met</b> — order can progress once all items confirmed\n`;
+    }
+    message += `\n<b>Process of Elimination:</b>\n`;
+    message += `Next item: <b>${notEnRouteItem.name}</b> x${notEnRouteItem.quantity}\n\n`;
+    message += `Is <b>${notEnRouteItem.name}</b> en route yet?`;
+
+    // Build inline keyboard for this specific item
+    const keyboard = inlineKeyboard([
+      [
+        { text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id}:${order.id}` },
+      ],
+      [
+        { text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id}:${order.id}` },
+      ],
+      [
+        { text: `📦 ${notEnRouteItem.name} — Arrived`, callback_data: `item_en_route:arrived:${notEnRouteItem.id}:${order.id}` },
+      ],
+    ]);
+
+    // Send the message to the production group chat
+    const groupChatId = getGroupChatId(AGENT_NAME);
+    if (groupChatId) {
+      await sendTelegramMessage(groupChatId, message, keyboard);
+    }
+
+    // Upsert a reminder for the next check (24h default for item-level en-route)
+    if (groupChatId) {
+      const reminderMsg = `🚚 Item-Level En Route: #${qn} — ${enRouteCount}/${totalCount} items en route (${enRoutePct}% of qty). Next item: ${notEnRouteItem.name}`;
+      await upsertProductionReminder(order.id, 'item_level_en_route', groupChatId, reminderMsg, 24 * 60 * 60 * 1000);
+    }
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Item-level en-route check for #${qn}: ${enRouteCount}/${totalCount} en route (${enRoutePct}% of qty). Asking about "${notEnRouteItem.name}".`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+    await logAgentAction(AGENT_NAME, input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking item-level en-route for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: false,
+      escalation_level: 0,
+    };
+    await logAgentAction(AGENT_NAME, input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
  * Build a simple text-based progress bar.
  */
 function buildProgressBar(pct: number, width: number = 10): string {
@@ -591,6 +740,14 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
   // 4. Item-level production tracking — production_confirmed orders with order_items
   for (const order of confirmedOrders) {
     const itemResult = await checkItemLevelProduction(order);
+    if (itemResult) {
+      results.push(itemResult);
+    }
+  }
+
+  // 5. Item-level en-route tracking — en_route orders with order_items
+  for (const order of enRouteOrders) {
+    const itemResult = await checkItemLevelEnRoute(order);
     if (itemResult) {
       results.push(itemResult);
     }

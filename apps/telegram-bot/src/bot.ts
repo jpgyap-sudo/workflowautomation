@@ -2178,6 +2178,117 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
   }
 });
 
+// ── Item-Level En Route Callback Handlers ────────────────────────────────
+// These handle the process-of-elimination item-by-item en-route tracking.
+// Callback format: item_en_route:{status}:{itemId}:{orderId}
+//   status = yes | no | arrived
+
+bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const newStatus = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderId = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `item_en_route:${newStatus}:${itemId}:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Map callback status to en_route_status value
+    const statusMap: Record<string, string> = {
+      yes: 'en_route',
+      no: 'not_yet',
+      arrived: 'arrived',
+    };
+    const enRouteStatus = statusMap[newStatus];
+
+    // Update the item's en_route status via API
+    await postJson(`/orders/${orderId}/items/${itemId}`, {
+      en_route_status: enRouteStatus,
+    });
+
+    // Add a production update log
+    const statusLabels: Record<string, string> = {
+      yes: '🚚 En Route',
+      no: '⏳ Not Yet En Route',
+      arrived: '📦 Arrived at Inventory',
+    };
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `Item en-route status updated to: ${statusLabels[newStatus]}`,
+      log_type: 'telegram',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    // Fetch updated completion and items to show next question
+    const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
+    const completion = await completionRes.json();
+
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const items = await itemsRes.json();
+
+    // Calculate en-route % based on quantity
+    const totalQty = items.items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRouteQty = items.items
+      .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
+      .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
+    const thresholdMet = enRoutePct > 50;
+
+    // Find the next item not yet en route (process of elimination)
+    const notEnRouteItem = items.items?.find(
+      (item: any) => item.en_route_status === 'not_yet'
+    );
+
+    if (!notEnRouteItem) {
+      // All items en route! Notify that agent will auto-advance
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: null,
+        note: `✅ All items en route (${enRoutePct}% of qty). Order ready to advance to inventory_arrived.`,
+        log_type: 'telegram',
+        created_by: username ?? `user_${userId}`,
+      });
+
+      await ctx.editMessageText(
+        `✅ *All Items En Route!*\n\nOrder #${orderId.slice(0, 8)}\nAll items en route (${enRoutePct}% of qty).\n\nThe production agent will auto-advance the order to 📦 Inventory Arrived.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      // Ask about the next not-en-route item (process of elimination)
+      const enRouteCount = items.items.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+      const totalCount = items.items.length;
+
+      const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
+
+      let msg = `🚚 *Item-Level En Route*\n\n`;
+      msg += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
+      msg += `Items: ${enRouteCount}/${totalCount} en route\n`;
+      if (thresholdMet) {
+        msg += `✅ *>50% threshold met* — order can progress once all confirmed\n\n`;
+      }
+      msg += `*Process of Elimination:*\n`;
+      msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\n`;
+      msg += `Is *${notEnRouteItem.name}* en route yet?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id}:${orderId}`)],
+          [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id}:${orderId}`)],
+          [Markup.button.callback(`📦 ${notEnRouteItem.name} — Arrived`, `item_en_route:arrived:${notEnRouteItem.id}:${orderId}`)],
+        ]),
+      });
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error updating item en-route: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
 // Delivery timeline: Standard (4 weeks)
 bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
