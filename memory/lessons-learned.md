@@ -1441,3 +1441,218 @@ Delivery tab gaps were fixed by showing explicit delivery_date, adding OTP-prote
 cross-project, local-fallback
 
 ---
+
+### Lesson: quick actions OTP Telegram wiring
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Dashboard quick actions should route through OtpModal, pass updated_by=dashboard_quick_action with action_token to existing API endpoints, and backend should verify the short-lived Redis action token only for that dashboard quick marker to avoid breaking Telegram/bot flows. Successful quick writes notify the configured Telegram escalation/manual-change group.
+
+#### Lesson Learned
+
+Dashboard quick actions should route through OtpModal, pass updated_by=dashboard_quick_action with action_token to existing API endpoints, and backend should verify the short-lived Redis action token only for that dashboard quick marker to avoid breaking Telegram/bot flows. Successful quick writes notify the configured Telegram escalation/manual-change group.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: revert API Dockerfile to use tsx directly to avoid OOM on VPS
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6324c6f2ca73c935b4efbf88cb2875d0f6c3b1fe
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6324c6f2ca73c935b4efbf88cb2875d0f6c3b1fe
+**Files:** apps/api/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+Reverted the API Dockerfile from using `node dist/index.js` (compiled output) back to `tsx src/index.ts` (TypeScript runtime).
+
+**Why it broke:**  
+Running the compiled JavaScript (`node dist/index.js`) caused an out-of-memory (OOM) crash on the VPS. The compiled bundle likely loaded all dependencies and modules upfront, consuming more memory than the VPS could provide. In contrast, `tsx` (a TypeScript executor) loads modules lazily and uses less memory during startup and runtime.
+
+**Reusable takeaway:**  
+For resource-constrained environments (e.g., small VPS, low-memory containers), prefer running TypeScript directly with `tsx` over pre-compiled Node.js bundles. The lazy module loading of `tsx` reduces memory pressure, especially during startup. Only switch to compiled output when you need to optimize for cold-start latency or when the runtime environment has sufficient memory.
+
+---
+*Original commit message: fix: revert API Dockerfile to use tsx directly to avoid OOM on VPS*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Reverted the API Dockerfile from using `node dist/index.js` (compiled output) back to `tsx src/index.ts` (TypeScript runtime).
+
+**Why it broke:**  
+Running the compiled JavaScript (`node dist/index.js`) caused an out-of-memory (OOM) crash on the VPS. The compiled bundle likely loaded all dependencies and modules upfront, consuming more memory than the VPS could provide. In contrast, `tsx` (a TypeScript executor) loads modules lazily and uses less memory during startup and runtime.
+
+**Reusable takeaway:**  
+For resource-constrained environments (e.g., small VPS, low-memory containers), prefer running TypeScript directly with `tsx` over pre-compiled Node.js bundles. The lazy module loading of `tsx` reduces memory pressure, especially during startup. Only switch to compiled output when you need to optimize for cold-start latency or when the runtime environment has sufficient memory.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add stopReminderScheduler, waitForReminders, stopAgentScheduler, waitForAgents exports + circuit breaker for agent 
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9b5267959adc23aa827efeb1eda5ed83b0dcd1cc
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9b5267959adc23aa827efeb1eda5ed83b0dcd1cc
+**Files:** apps/api/src/services/agentScheduler.ts,apps/api/src/services/reminderScheduler.ts
+
+**Summary:**
+**What was fixed:**  
+Added missing exports (`stopReminderScheduler`, `waitForReminders`, `stopAgentScheduler`, `waitForAgents`) and a circuit breaker for the agent scheduler.
+
+**Why it broke:**  
+The scheduler services were not properly stoppable or awaitable, causing resource leaks and race conditions during shutdown. The agent scheduler lacked a circuit breaker, making it vulnerable to cascading failures when downstream services were unavailable.
+
+**Reusable takeaway:**  
+Always expose lifecycle hooks (`start`, `stop`, `wait`) for background services, and implement circuit breakers for schedulers that interact with external dependencies. This prevents resource leaks, ensures graceful shutdown, and protects against cascading failures in distributed systems.
+
+---
+*Original commit message: fix: add stopReminderScheduler, waitForReminders, stopAgentScheduler, waitForAgents exports + circuit breaker for agent scheduler*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added missing exports (`stopReminderScheduler`, `waitForReminders`, `stopAgentScheduler`, `waitForAgents`) and a circuit breaker for the agent scheduler.
+
+**Why it broke:**  
+The scheduler services were not properly stoppable or awaitable, causing resource leaks and race conditions during shutdown. The agent scheduler lacked a circuit breaker, making it vulnerable to cascading failures when downstream services were unavailable.
+
+**Reusable takeaway:**  
+Always expose lifecycle hooks (`start`, `stop`, `wait`) for background services, and implement circuit breakers for schedulers that interact with external dependencies. This prevents resource leaks, ensures graceful shutdown, and protects against cascading failures in distributed systems.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: collection agent now also checks quotation_received stage for deposit reminders
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5d163651d03201368d946211cfa097d141f2c482
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5d163651d03201368d946211cfa097d141f2c482
+**Files:** apps/api/src/agents/collectionAgent.ts
+
+**Summary:**
+**What was fixed:**  
+The collection agent now triggers deposit reminders for invoices in the `quotation_received` stage, not only in the `invoice_sent` stage.
+
+**Why it broke:**  
+The original logic only checked for `invoice_sent`, missing invoices that were still in the earlier `quotation_received` stage. This caused deposit reminders to be skipped for customers who had received a quotation but not yet an invoice.
+
+**Reusable takeaway:**  
+When automating multi-stage workflows, ensure your state machine covers all relevant stages—not just the final one. A stage transition may occur without a direct path to the expected trigger stage. Always audit the full lifecycle of a business object (e.g., quotation → invoice → payment) to avoid silent gaps in automation logic.
+
+---
+*Original commit message: fix: collection agent now also checks quotation_received stage for deposit reminders*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The collection agent now triggers deposit reminders for invoices in the `quotation_received` stage, not only in the `invoice_sent` stage.
+
+**Why it broke:**  
+The original logic only checked for `invoice_sent`, missing invoices that were still in the earlier `quotation_received` stage. This caused deposit reminders to be skipped for customers who had received a quotation but not yet an invoice.
+
+**Reusable takeaway:**  
+When automating multi-stage workflows, ensure your state machine covers all relevant stages—not just the final one. A stage transition may occur without a direct path to the expected trigger stage. Always audit the full lifecycle of a business object (e.g., quotation → invoice → payment) to avoid silent gaps in automation logic.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add apikey header to supabaseRequest and uploadBackup for Supabase Storage API auth; create separate backup-agent c
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2d23e7aa6cb07d06e2bae2c35d5c287e7f5181a3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 2d23e7aa6cb07d06e2bae2c35d5c287e7f5181a3
+**Files:** apps/api/src/agents/supabaseBackupAgent.ts,apps/backup-agent/Dockerfile,apps/backup-agent/src/backupRunner.ts,docker-compose.yml,scripts/deploy.sh,scripts/single-builder-deploy.mjs
+
+**Summary:**
+**What was fixed:**  
+Supabase Storage API requests (`supabaseRequest`, `uploadBackup`) were missing the required `apikey` header, causing authentication failures. A separate `backup-agent` container was created to isolate backup logic.
+
+**Why it broke:**  
+The Supabase Storage API requires an `apikey` header for every request, but the original implementation only used the `Authorization` (JWT) header. The backup logic was also tightly coupled to the main API container, making it harder to scale or debug.
+
+**Reusable takeaway:**  
+When integrating with external APIs, always verify the full set of required headers (not just auth tokens). For background tasks like backups, isolate them in a separate container to improve maintainability, scalability, and failure isolation.
+
+---
+*Original commit message: fix: add apikey header to supabaseRequest and uploadBackup for Supabase Storage API auth; create separate backup-agent container*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Supabase Storage API requests (`supabaseRequest`, `uploadBackup`) were missing the required `apikey` header, causing authentication failures. A separate `backup-agent` container was created to isolate backup logic.
+
+**Why it broke:**  
+The Supabase Storage API requires an `apikey` header for every request, but the original implementation only used the `Authorization` (JWT) header. The backup logic was also tightly coupled to the main API container, making it harder to scale or debug.
+
+**Reusable takeaway:**  
+When integrating with external APIs, always verify the full set of required headers (not just auth tokens). For background tasks like backups, isolate them in a separate container to improve maintainability, scalability, and failure isolation.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

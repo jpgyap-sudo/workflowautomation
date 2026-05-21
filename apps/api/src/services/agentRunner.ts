@@ -1,4 +1,5 @@
 import { query } from '../db.js';
+import { completeOrderReminders } from './reminderScheduler.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -274,6 +275,8 @@ export async function advanceStage(
     `UPDATE orders SET current_stage = $1, updated_at = NOW() WHERE id = $2`,
     [newStage, orderId],
   );
+  // Clear all active reminders for this order since it moved to a new stage
+  await completeOrderReminders(orderId);
 }
 
 // ── Build Agent Message ────────────────────────────────────────────────

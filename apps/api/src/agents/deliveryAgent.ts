@@ -66,20 +66,6 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
-  // Check orders at delivered stage
-  const deliveredOrders = await getActiveOrdersByStage('delivered');
-  for (const order of deliveredOrders) {
-    const result = await checkDelivered(order);
-    if (result.reminder_needed) {
-      const groupChatId = getGroupChatId('delivery-agent');
-      if (groupChatId) {
-        await createReminder(order.id, 'delivered', groupChatId, result.message);
-        await notifyDelivery(groupChatId, order, result);
-      }
-    }
-    results.push(result);
-  }
-
   return results;
 }
 
@@ -259,53 +245,6 @@ export async function checkScheduledDelivery(order: OrderRow): Promise<AgentResu
   }
 }
 
-export async function checkDelivered(order: OrderRow): Promise<AgentResult> {
-  const input = {
-    quotation_number: order.quotation_number,
-    current_stage: order.current_stage,
-  };
-
-  try {
-    const escalationLevel = await getEscalationLevel(order.id, 'delivered');
-
-    if (escalationLevel >= 3) {
-      const result: AgentResult = {
-        status: 'blocked',
-        message: `🔴 Delivered but payment not yet received after ${escalationLevel} reminders. Manager intervention required.`,
-        next_stage: null,
-        reminder_needed: true,
-        escalation_level: escalationLevel,
-      };
-
-      await logAgentAction('delivery-agent', input, result, 'blocked', order.id);
-      return result;
-    }
-
-    const result: AgentResult = {
-      status: 'needs_review',
-      message: `Item has been delivered. Has payment been received?`,
-      next_stage: null,
-      reminder_needed: true,
-      escalation_level: escalationLevel,
-    };
-
-    await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
-    return result;
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    const result: AgentResult = {
-      status: 'blocked',
-      message: `❌ Error checking delivery status for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
-      next_stage: null,
-      reminder_needed: true,
-      escalation_level: 0,
-    };
-
-    await logAgentAction('delivery-agent', input, result, 'error', order.id, errorMsg);
-    return result;
-  }
-}
-
 async function getStageUpdates(orderId: string, stage: string): Promise<any[]> {
   return query(
     `SELECT remarks, created_at FROM stage_updates
@@ -351,11 +290,7 @@ export async function notifyDelivery(
           ],
         ]);
         break;
-      case 'delivered':
-        keyboard = inlineKeyboard([
-          [{ text: '💵 Record Payment', callback_data: `pick:payment:${qn}` }],
-        ]);
-        break;
+
     }
   }
 

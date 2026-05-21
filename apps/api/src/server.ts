@@ -31,7 +31,7 @@ import {
 import { checkQuotation } from './agents/quotationChecker.js';
 import { checkPurchasing } from './agents/purchasingAgent.js';
 import { checkInventory } from './agents/inventoryAgent.js';
-import { checkInventoryArrived, checkBalanceDue, checkScheduledDelivery, checkDelivered } from './agents/deliveryAgent.js';
+import { checkInventoryArrived, checkBalanceDue, checkScheduledDelivery } from './agents/deliveryAgent.js';
 import { checkCollection } from './agents/collectionAgent.js';
 import { checkEscalation } from './agents/escalationAgent.js';
 import {
@@ -1583,11 +1583,8 @@ app.post('/pay-balance', async (request, reply) => {
     [orderId, 'payment_received', 'balance_paid', remarks, body.updated_by ?? null]
   );
 
-  // Complete any balance reminders for this order
-  await query(
-    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='balance_due' AND status='active'`,
-    [orderId]
-  );
+  // Complete all active reminders for this order since balance is paid and stage moves to payment_received
+  await completeOrderReminders(orderId);
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2056,8 +2053,6 @@ app.post('/agents/delivery', async (request, reply) => {
     result = await checkBalanceDue(order);
   } else if (order.current_stage === 'delivery_scheduled') {
     result = await checkScheduledDelivery(order);
-  } else if (order.current_stage === 'delivered') {
-    result = await checkDelivered(order);
   } else {
     result = await checkScheduledDelivery(order);
   }

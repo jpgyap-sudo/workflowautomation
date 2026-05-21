@@ -11,3 +11,4 @@ logs/
 *.jsonl
 test-*.txt
 console.log*
+docs/production-server.md

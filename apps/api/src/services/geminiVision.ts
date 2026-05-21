@@ -102,6 +102,7 @@ async function callGeminiDirect(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {
@@ -166,6 +167,7 @@ async function callOpenRouter(
       'X-Title': 'Quotation Automation System',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

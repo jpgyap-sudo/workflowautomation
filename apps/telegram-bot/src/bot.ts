@@ -556,6 +556,54 @@ function cancelButton() {
   ]);
 }
 
+// ── Safe Reply Helper ─────────────────────────────────────────────────
+// Splits long messages into chunks to avoid Telegram's 4096-char limit.
+async function safeReply(
+  ctx: any,
+  text: string,
+  opts?: { parse_mode?: string; reply_markup?: any; disable_web_page_preview?: boolean }
+): Promise<void> {
+  const MAX_LEN = 4000;
+  const chunks: string[] = [];
+
+  if (text.length <= MAX_LEN) {
+    chunks.push(text);
+  } else {
+    // Try to split at paragraph boundaries
+    const paragraphs = text.split('\n\n');
+    let current = '';
+    for (const para of paragraphs) {
+      if ((current + '\n\n' + para).length > MAX_LEN && current.length > 0) {
+        chunks.push(current.trim());
+        current = para;
+      } else {
+        current = current ? current + '\n\n' + para : para;
+      }
+    }
+    if (current) chunks.push(current.trim());
+
+    // Fallback: if any chunk is still too long, force split
+    for (let i = 0; i < chunks.length; i++) {
+      if (chunks[i].length > MAX_LEN) {
+        const forced = chunks[i];
+        chunks.splice(i, 1);
+        for (let j = 0; j < forced.length; j += MAX_LEN) {
+          chunks.push(forced.slice(j, j + MAX_LEN));
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1;
+    await ctx.reply(chunks[i], {
+      parse_mode: opts?.parse_mode,
+      disable_web_page_preview: opts?.disable_web_page_preview ?? true,
+      ...(isLast && opts?.reply_markup ? { reply_markup: opts.reply_markup } : {}),
+    });
+  }
+}
+
 // ── Main Menu ──────────────────────────────────────────────────────────
 
 bot.start(async (ctx) => {
@@ -1083,7 +1131,7 @@ bot.on(message('text'), async (ctx) => {
         }
 
         resetStep(chatId);
-        await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+        await safeReply(ctx, msg, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
       } catch {
         await ctx.reply(`❌ Error fetching order *${quotationNumber}*.`, {
           parse_mode: 'Markdown',
@@ -1595,9 +1643,10 @@ Midpoint and due reminders are now scheduled.`,
           }
           const info = formatClientInfo(client);
           resetStep(chatId);
-          await ctx.reply(
+          await safeReply(
+            ctx,
             `👤 *${escapeMarkdown(client.client_name)}*\n\n${info || 'No delivery details on file.'}`,
-            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+            { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup }
           );
         }
       } catch {
@@ -3920,7 +3969,42 @@ Tap Retry upload to try again.`, {
   }
 });
 
-// Help Command
+// ── Commands Overview ─────────────────────────────────────────────────
+bot.command('commands', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  resetStep(chatId);
+  botLog({ chatId, userId, username, messageType: 'command', content: '/commands', direction: 'incoming' });
+
+  const text =
+    '📋 *Available Commands & Features*\n\n' +
+    '*Slash Commands:*\n' +
+    '/start — Show main menu\n' +
+    '/commands — Show this feature list\n' +
+    '/help — Detailed guide for each feature\n' +
+    '/unlink — Clear linked order for uploads\n\n' +
+    '*Main Menu Features:*\n' +
+    '1️⃣ 📋 Check Order Status — View stage, deposit, balance, delivery\n' +
+    '2️⃣ 🛒 Purchasing / Production — Mark production started/partial/not yet\n' +
+    '3️⃣ 💳 Record Downpayment — Log deposit with optional AI slip scan\n' +
+    '4️⃣ 💰 Pay Balance — Record balance payment before delivery\n' +
+    '5️⃣ 🚚 Schedule Delivery — Pick date (requires balance paid)\n' +
+    '6️⃣ ✅ Mark as Delivered — Confirm delivery with remarks\n' +
+    '7️⃣ 💵 Record Payment — Confirm or log payment received\n' +
+    '8️⃣ 👤 Clients — Search client details and delivery info\n' +
+    '9️⃣ 🔗 Link Order for Upload — Bind an order for auto-file linking\n' +
+    '🔟 📎 Upload File — Send docs/photos to Google Drive\n\n' +
+    '*Smart Features:*\n' +
+    '🤖 AI Vision — Send a quotation or deposit slip photo and the bot auto-extracts details\n' +
+    '⏰ Auto Reminders — Bot sends scheduled reminders for production, delivery, payments\n' +
+    '📊 Dashboard Sync — All data syncs to the web dashboard in real-time\n\n' +
+    '_Tap any button below to begin, or type /help for detailed instructions._';
+
+  await safeReply(ctx, text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
+});
+
+// Help Command — detailed explanations
 bot.command('help', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
@@ -3932,31 +4016,67 @@ bot.command('help', async (ctx) => {
     content: '/help',
     direction: 'incoming',
   });
-  await ctx.reply(
-    '📖 *Quotation Automation Bot — Help*\n\n' +
-    'This bot uses *buttons*, not commands. Just tap and follow the prompts.\n\n' +
-    '🔍 *Check Order Status* — View current stage, deposit, balance, delivery info\n' +
-    '🏭 *Purchasing/Production* — Mark items as purchased or in production\n' +
-    '💰 *Record Deposit* — Log a deposit payment\n' +
-    '💳 *Pay Balance* — Record balance payment before delivery\n' +
-    '📅 *Schedule Delivery* — Set a delivery date (balance must be paid first)\n' +
-    '✅ *Mark as Delivered* — Confirm delivery with remarks\n' +
-    '💵 *Record Payment* — Log payment received or confirmed\n' +
-    '👤 *Clients* — Search client delivery details\n' +
-    '🔗 *Link Order* — Associate an order for file uploads\n' +
-    '📎 *Upload File* — Send a document/photo linked to an order\n\n' +
-    '*Group Setup:*\n' +
-    '• The bot must have *privacy mode disabled* in @BotFather to see messages and files in groups.\n' +
-    '• Only one user can use the bot at a time per group. If busy, wait for the current user to finish.\n\n' +
-    '*Direct Messages:*\n' +
-    '• Only group admins can DM the bot.\n\n' +
-    'Available commands:\n' +
+
+  const text =
+    '📖 *Quotation Automation Bot — Detailed Help*\n\n' +
+    'This bot is designed for *team workflow automation*. Most actions use inline buttons. Here is how each feature works:\n\n' +
+    '*1️⃣ Check Order Status*\n' +
+    'Type a quotation number (e.g., `QTN-2026-001`). The bot shows the current stage, deposit/balance status, production timeline, and delivery info.\n\n' +
+    '*2️⃣ Purchasing / Production*\n' +
+    'After an order is confirmed, the bot asks if production has started.\n' +
+    '• *Yes, started* → Enter estimated days. Bot schedules midpoint and due reminders.\n' +
+    '• *Partial* → List missing items. Bot tracks them until all are produced.\n' +
+    '• *Not yet* → Daily reminder continues until you confirm.\n\n' +
+    '*3️⃣ Record Downpayment*\n' +
+    'Enter the deposit amount. The bot updates the order and clears the deposit-pending reminder.\n' +
+    'You can also send a *deposit slip photo* — AI will extract the amount automatically.\n\n' +
+    '*4️⃣ Pay Balance*\n' +
+    'Records the balance payment. *Delivery cannot be scheduled until balance is paid.*\n' +
+    'The bot will ask for a proof photo if triggered from a reminder.\n\n' +
+    '*5️⃣ Schedule Delivery*\n' +
+    'Pick from quick options (Today, Tomorrow, +2 days, Next Friday) or type a custom date.\n' +
+    'Requires balance to be paid first.\n\n' +
+    '*6️⃣ Mark as Delivered*\n' +
+    'Confirm the item was delivered. Optional remarks (e.g., "Client was happy").\n' +
+    'This moves the order to the *delivered* stage and triggers collection reminders.\n\n' +
+    '*7️⃣ Record Payment*\n' +
+    'Log a payment as *Confirmed* (verified) or *Pending* (waiting for verification).\n' +
+    'Use this when the client says they paid but you have not verified yet.\n\n' +
+    '*8️⃣ Clients*\n' +
+    'Search by client name or type "list" to see all clients.\n' +
+    'Shows delivery address, contact number, and authorized receiver.\n\n' +
+    '*9️⃣ Link Order for Upload*\n' +
+    'Bind a quotation number to this chat. After linking, any file you send is automatically uploaded to that order\'s Google Drive folder.\n' +
+    'Use */unlink* to clear the link.\n\n' +
+    '*🔟 Upload File*\n' +
+    'Send any photo, PDF, or document. If an order is linked, it goes to the correct Drive folder.\n' +
+    'If not linked, the bot asks you to link one first.\n\n' +
+    '*🤖 AI Vision (Smart Uploads)*\n' +
+    'Send a *quotation screenshot* → AI extracts client, amount, and order number.\n' +
+    'Send a *deposit slip* → AI extracts amount and tries to match it to an order.\n' +
+    'After extraction, tap *Yes, extract info* to review and save.\n\n' +
+    '*⏰ Auto Reminders*\n' +
+    'The bot automatically sends reminders at 10 AM and 4 PM PHT for:\n' +
+    '• Production midpoint and due dates\n' +
+    '• En-route confirmation\n' +
+    '• Inventory arrival\n' +
+    '• Balance due\n' +
+    '• Delivery day check\n' +
+    'Reply directly to the reminder buttons to update status.\n\n' +
+    '*📊 Dashboard*\n' +
+    'All data syncs to the web dashboard in real-time:\n' +
+    'https://track.abcx124.xyz\n\n' +
+    '*Group Setup Tips:*\n' +
+    '• Disable *privacy mode* in @BotFather so the bot can see messages and files in groups.\n' +
+    '• Only one user can interact at a time per group. If busy, wait for the current user to finish or tap Cancel.\n' +
+    '• Only group admins can DM the bot privately.\n\n' +
+    '*Available Commands:*\n' +
     '/start — Show main menu\n' +
-    '/help — Show this message\n' +
-    '/unlink — Clear linked order for uploads\n\n' +
-    '_Tip: You can also send a file anytime — if an order is linked, it will be uploaded automatically._',
-    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-  );
+    '/commands — List all features\n' +
+    '/help — Show this detailed guide\n' +
+    '/unlink — Clear linked order for uploads';
+
+  await safeReply(ctx, text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
 });
 
 // ── Unlink Command (keep for power users) ─────────────────────────────
