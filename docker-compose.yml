@@ -8,17 +8,41 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   redis:
     image: redis:7-alpine
     container_name: qas_redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   api:
     build: ./apps/api
@@ -43,12 +67,13 @@ services:
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-https://your-domain.example.com}
       # Supabase Backup Storage
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       SUPABASE_BACKUP_BUCKET: ${SUPABASE_BACKUP_BUCKET}
       BACKUP_ALERT_CHAT_ID: ${BACKUP_ALERT_CHAT_ID}
-      # Agent group chat IDs (used by agentRunner.ts getGroupChatId())
+      # Agent group chat IDs
       PURCHASING_GROUP_CHAT_ID: ${PURCHASING_GROUP_CHAT_ID}
       PRODUCTION_GROUP_CHAT_ID: ${PRODUCTION_GROUP_CHAT_ID}
       INVENTORY_GROUP_CHAT_ID: ${INVENTORY_GROUP_CHAT_ID}
@@ -56,7 +81,7 @@ services:
       COLLECTION_GROUP_CHAT_ID: ${COLLECTION_GROUP_CHAT_ID}
       ESCALATION_GROUP_CHAT_ID: ${ESCALATION_GROUP_CHAT_ID}
       QUOTATION_GROUP_CHAT_ID: ${QUOTATION_GROUP_CHAT_ID}
-      # Telegram webhook proxy — where to forward incoming updates
+      # Telegram webhook proxy
       TELEGRAM_BOT_WEBHOOK_HOST: telegram-bot
       TELEGRAM_BOT_WEBHOOK_PORT: 8443
     volumes:
@@ -64,8 +89,25 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - ./database/migrations:/app/database/migrations:ro
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    # Graceful shutdown
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
 
   telegram-bot:
     build: ./apps/telegram-bot
@@ -78,11 +120,22 @@ services:
       PUBLIC_WEBHOOK_BASE_URL: ${PUBLIC_WEBHOOK_BASE_URL:-https://your-domain.example.com}
       WEBHOOK_PORT: 8443
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      # Group IDs for authorization (legacy _ID suffix)
       PURCHASING_GROUP_ID: ${PURCHASING_GROUP_ID}
       PRODUCTION_GROUP_ID: ${PRODUCTION_GROUP_ID}
       INVENTORY_GROUP_ID: ${INVENTORY_GROUP_ID}
       DELIVERY_GROUP_ID: ${DELIVERY_GROUP_ID}
       COLLECTION_GROUP_ID: ${COLLECTION_GROUP_ID}
+      ESCALATION_GROUP_ID: ${ESCALATION_GROUP_ID}
+      QUOTATION_GROUP_ID: ${QUOTATION_GROUP_ID}
+      # Group chat IDs for agent notifications (_CHAT_ID suffix)
+      PURCHASING_GROUP_CHAT_ID: ${PURCHASING_GROUP_CHAT_ID}
+      PRODUCTION_GROUP_CHAT_ID: ${PRODUCTION_GROUP_CHAT_ID}
+      INVENTORY_GROUP_CHAT_ID: ${INVENTORY_GROUP_CHAT_ID}
+      DELIVERY_GROUP_CHAT_ID: ${DELIVERY_GROUP_CHAT_ID}
+      COLLECTION_GROUP_CHAT_ID: ${COLLECTION_GROUP_CHAT_ID}
+      ESCALATION_GROUP_CHAT_ID: ${ESCALATION_GROUP_CHAT_ID}
+      QUOTATION_GROUP_CHAT_ID: ${QUOTATION_GROUP_CHAT_ID}
       GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID}
       GOOGLE_APPLICATION_CREDENTIALS: /app/credentials/google-service-account.json
       GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID}
@@ -93,7 +146,16 @@ services:
     volumes:
       - ./credentials:/app/credentials:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    stop_grace_period: 15s
+    stop_signal: SIGTERM
 
   dashboard:
     build: ./apps/dashboard
@@ -108,7 +170,22 @@ services:
       NEXT_PUBLIC_API_URL: /api
       HOSTNAME: "0.0.0.0"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    stop_grace_period: 15s
+    stop_signal: SIGTERM
 
 volumes:
   postgres_data:
