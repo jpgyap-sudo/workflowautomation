@@ -156,7 +156,7 @@ export async function sendTelegramMessage(
       body: JSON.stringify({
         chat_id: chatId,
         text,
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       }),
     });
@@ -288,19 +288,23 @@ export function buildAgentMessage(
   escalationLevel: number = 0,
 ): string {
   const ref = order.quotation_number
-    ? `*${order.quotation_number}*`
+    ? `<b>${escapeHtml(order.quotation_number)}</b>`
     : `Order #${order.id.slice(0, 8)}`;
-  const client = order.client_name ? ` (${order.client_name})` : '';
+  const client = order.client_name ? ` (${escapeHtml(order.client_name)})` : '';
   const stageLabel = STAGE_LABELS[order.current_stage] ?? order.current_stage;
 
-  let msg = `🤖 *${agentName}* — ${ref}${client}\n`;
+  let msg = `🤖 <b>${escapeHtml(agentName)}</b> — ${ref}${client}\n`;
   msg += `Stage: ${stageLabel}\n`;
   msg += `${text}\n`;
 
   if (escalationLevel > 0) {
     const level = '🔴'.repeat(Math.min(escalationLevel, 3));
-    msg += `\n${level} *Escalation Level ${escalationLevel}*`;
+    msg += `\n${level} <b>Escalation Level ${escalationLevel}</b>`;
   }
 
   return msg;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
 }

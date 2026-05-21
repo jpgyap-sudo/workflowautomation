@@ -54,7 +54,7 @@ async function sendTelegramMessage(chatId: string, text: string): Promise<boolea
       body: JSON.stringify({
         chat_id: chatId,
         text,
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
       }),
     });
     return res.ok;
@@ -79,7 +79,7 @@ async function sendTelegramInlineKeyboard(
       body: JSON.stringify({
         chat_id: chatId,
         text,
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: { inline_keyboard: buttons },
       }),
     });

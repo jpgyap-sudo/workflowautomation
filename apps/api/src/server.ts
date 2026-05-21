@@ -120,12 +120,12 @@ const ESCALATION_CHAT_ID = process.env.ESCALATION_GROUP_CHAT_ID ?? null;
 
 async function notifyManualChange(action: string, details: string): Promise<void> {
   if (!_TELEGRAM_BOT_TOKEN || !ESCALATION_CHAT_ID) return;
-  const msg = `🔔 *Dashboard Manual Change*\n\n${action}\n\n${details}`;
+  const msg = `🔔 <b>Dashboard Manual Change</b>\n\n${action}\n\n${details}`;
   try {
     await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: ESCALATION_CHAT_ID, text: msg, parse_mode: 'Markdown' }),
+      body: JSON.stringify({ chat_id: ESCALATION_CHAT_ID, text: msg, parse_mode: 'HTML' }),
     });
   } catch { /* non-fatal */ }
 }
