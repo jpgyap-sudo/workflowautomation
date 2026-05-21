@@ -118,6 +118,22 @@ async function invalidateCache(patterns: string[]): Promise<void> {
   broadcastSSE('invalidate', { keys: patterns });
 }
 
+// ── Telegram: Manual Change Notifications ──────────────────────────
+const _TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ESCALATION_CHAT_ID = process.env.ESCALATION_GROUP_CHAT_ID ?? null;
+
+async function notifyManualChange(action: string, details: string): Promise<void> {
+  if (!_TELEGRAM_BOT_TOKEN || !ESCALATION_CHAT_ID) return;
+  const msg = `🔔 *Dashboard Manual Change*\n\n${action}\n\n${details}`;
+  try {
+    await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: ESCALATION_CHAT_ID, text: msg, parse_mode: 'Markdown' }),
+    });
+  } catch { /* non-fatal */ }
+}
+
 // ── Email (OTP) ──────────────────────────────────────────────────────
 const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -541,6 +557,13 @@ app.patch('/orders/:id', async (request, reply) => {
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: params.id });
+
+  const updatedFields = Object.keys(body).filter((k) => k !== 'action_token').join(', ');
+  await notifyManualChange(
+    `✏️ Order edited via dashboard`,
+    `Quotation: *${rows[0].quotation_number ?? params.id}*\nClient: ${rows[0].client_name ?? '—'}\nFields changed: ${updatedFields}`,
+  );
+
   return reply.send(rows[0]);
 });
 
@@ -570,6 +593,12 @@ app.delete('/orders/:id', async (request, reply) => {
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_deleted', { id: params.id });
+
+  await notifyManualChange(
+    `🗑️ Order deleted via dashboard`,
+    `Quotation: *${rows[0].quotation_number ?? params.id}*\nClient: ${rows[0].client_name ?? '—'}`,
+  );
+
   return reply.send({ ok: true, deleted: rows[0] });
 });
 
@@ -1592,6 +1621,32 @@ app.post('/orders/revoke-delivery-exception', async (request, reply) => {
 app.get('/orders/:order_id/stage-updates', async (request, reply) => {
   const params = z.object({ order_id: z.string() }).parse(request.params);
   return query(`SELECT * FROM stage_updates WHERE order_id=$1 ORDER BY created_at DESC`, [params.order_id]);
+});
+
+// ── Agent Notes ─────────────────────────────────────────────────────
+// Free-form notes that agents (Hermes, collection, delivery, etc.) can
+// attach to orders for communication, updates, and flexible task tracking.
+
+app.get('/orders/:order_id/notes', async (request, reply) => {
+  const params = z.object({ order_id: z.string() }).parse(request.params);
+  return query(
+    `SELECT id, order_id, agent_name, note, created_at
+     FROM agent_notes WHERE order_id=$1 ORDER BY created_at DESC`,
+    [params.order_id]
+  );
+});
+
+app.post('/orders/:order_id/notes', async (request, reply) => {
+  const params = z.object({ order_id: z.string() }).parse(request.params);
+  const body = z.object({
+    agent_name: z.string().min(1),
+    note: z.string().min(1),
+  }).parse(request.body);
+  const rows = await query(
+    `INSERT INTO agent_notes (order_id, agent_name, note) VALUES ($1, $2, $3) RETURNING *`,
+    [params.order_id, body.agent_name, body.note]
+  );
+  return rows[0];
 });
 
 // ── Agent Logs ──────────────────────────────────────────────────────
@@ -2699,6 +2754,7 @@ const clientSchema = z.object({
 
 const clientUpdateSchema = clientSchema.partial().extend({
   propagate_to_orders: z.boolean().optional().default(true),
+  action_token: z.string().optional(),
 });
 
 const CLIENT_NORMALIZED_SQL = (alias: string) =>
@@ -2862,6 +2918,13 @@ app.patch('/clients/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = clientUpdateSchema.parse(request.body);
 
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
+    const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
+    if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    await cacheClient.del(`action_token:${body.action_token}`);
+  }
+
   const fields: string[] = [];
   const values: any[] = [];
   let idx = 1;
@@ -2910,6 +2973,10 @@ app.patch('/clients/:id', async (request, reply) => {
 
   await invalidateCache(['clients:*', '/clients', 'orders:*', 'dashboard:*']);
   broadcastSSE('client_updated', { id: params.id });
+  await notifyManualChange(
+    `✏️ Client edited via dashboard`,
+    `Client: *${updated.client_name}*`,
+  );
   return reply.send(updated);
 });
 
@@ -2918,6 +2985,13 @@ app.delete('/clients/:id', async (request, reply) => {
   const queryParams = z.object({ force: z.string().optional() }).parse(request.query);
   const body = (request.body ?? {}) as any;
   const force = queryParams.force === 'true' || queryParams.force === '1' || body.force === true;
+
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
+    const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
+    if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    await cacheClient.del(`action_token:${body.action_token}`);
+  }
 
   const clientRows = await query(`SELECT * FROM clients WHERE id=$1`, [params.id]);
   if (!clientRows[0]) return reply.code(404).send({ error: 'Client not found' });
@@ -2943,6 +3017,10 @@ app.delete('/clients/:id', async (request, reply) => {
   const rows = await query(`DELETE FROM clients WHERE id=$1 RETURNING *`, [params.id]);
   await invalidateCache(['clients:*', '/clients', 'orders:*', 'dashboard:*']);
   broadcastSSE('client_deleted', { id: params.id });
+  await notifyManualChange(
+    `🗑️ Client deleted via dashboard`,
+    `Client: *${rows[0]?.client_name ?? params.id}*${force ? ' (forced — active orders unlinked)' : ''}`,
+  );
   return reply.send({ ok: true, deleted: rows[0], active_order_count: activeOrderCount, forced: force });
 });
 
@@ -3042,7 +3120,15 @@ app.patch('/inventory/:id', async (request, reply) => {
     quantity: z.number().int().min(0).optional(),
     image_url: z.string().optional(),
     category: z.string().optional(),
+    action_token: z.string().optional(),
   }).parse(request.body);
+
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
+    const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
+    if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    await cacheClient.del(`action_token:${body.action_token}`);
+  }
 
   const fields: string[] = [];
   const values: any[] = [];

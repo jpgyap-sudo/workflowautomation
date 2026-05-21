@@ -111,6 +111,22 @@ export async function logAgentAction(
   );
 }
 
+/**
+ * Add a free-form note from an agent to an order.
+ * Unlike logAgentAction (structured input/output), agent_notes are
+ * human-readable messages for cross-agent communication and updates.
+ */
+export async function addAgentNote(
+  orderId: string,
+  agentName: string,
+  note: string,
+): Promise<void> {
+  await query(
+    `INSERT INTO agent_notes (order_id, agent_name, note) VALUES ($1, $2, $3)`,
+    [orderId, agentName, note],
+  );
+}
+
 // ── Telegram Message Sender ────────────────────────────────────────────
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;

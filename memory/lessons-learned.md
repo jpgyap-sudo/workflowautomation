@@ -1370,3 +1370,74 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: extract DaysInStage component to fix react-hooks/purity lint error
+
+Date: 2026-05-20
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f457e033bb072f0db52e12c96c58ead5d89c1df1
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** f457e033bb072f0db52e12c96c58ead5d89c1df1
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A React `hooks/purity` lint error caused by defining the `DaysInStage` component inside another component during render.
+
+**Why it broke:**  
+Defining a component inside another component violates React’s rules of hooks, which require hooks to be called at the top level of a React function component, not inside nested functions or conditionals. This pattern also creates a new component definition on every render, breaking purity and causing potential state loss.
+
+**Reusable takeaway:**  
+Never define a React component inside another component. Extract it to a separate, top-level component to maintain hook purity, avoid unnecessary re-creations, and ensure consistent state behavior. This also improves readability and testability.
+
+---
+*Original commit message: fix: extract DaysInStage component to fix react-hooks/purity lint error*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A React `hooks/purity` lint error caused by defining the `DaysInStage` component inside another component during render.
+
+**Why it broke:**  
+Defining a component inside another component violates React’s rules of hooks, which require hooks to be called at the top level of a React function component, not inside nested functions or conditionals. This pattern also creates a new component definition on every render, breaking purity and causing potential state loss.
+
+**Reusable takeaway:**  
+Never define a React component inside another component. Extract it to a separate, top-level component to maintain hook purity, avoid unnecessary re-creations, and ensure consistent state behavior. This also improves readability and testability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Delivery schedule tab updates
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Delivery tab gaps were fixed by showing explicit delivery_date, adding OTP-protected schedule/reschedule controls with remarks, typing delivery_date in dashboard API, and extending stage-updates to accept explicit delivery_date so audit remarks do not overwrite schedules. Avoid using stage_update remarks as delivery_date except legacy scheduled Telegram updates.
+
+#### Lesson Learned
+
+Delivery tab gaps were fixed by showing explicit delivery_date, adding OTP-protected schedule/reschedule controls with remarks, typing delivery_date in dashboard API, and extending stage-updates to accept explicit delivery_date so audit remarks do not overwrite schedules. Avoid using stage_update remarks as delivery_date except legacy scheduled Telegram updates.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

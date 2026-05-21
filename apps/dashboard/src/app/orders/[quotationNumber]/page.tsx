@@ -1,10 +1,11 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot } from 'lucide-react';
 import Link from 'next/link';
 
 function DaysInStage({ updatedAt }: { updatedAt: string }) {
@@ -347,6 +348,9 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
+      {/* Agent Notes */}
+      <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} />
+
       {/* Files */}
       {order.files && order.files.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -372,6 +376,155 @@ export default function OrderDetailPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Agent Notes Section ────────────────────────────────────────────────
+
+interface AgentNote {
+  id: string;
+  order_id: string;
+  agent_name: string;
+  note: string;
+  created_at: string;
+}
+
+function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quotationNumber: string }) {
+  const [notes, setNotes] = useState<AgentNote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newNote, setNewNote] = useState('');
+  const [agentName, setAgentName] = useState('dashboard');
+  const [posting, setPosting] = useState(false);
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
+  useEffect(() => {
+    fetch(`${API_BASE}/orders/${orderId}/notes`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setNotes(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [orderId, API_BASE]);
+
+  async function handlePostNote() {
+    if (!newNote.trim() || !agentName.trim()) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`${API_BASE}/orders/${orderId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_name: agentName.trim(), note: newNote.trim() }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setNotes((prev) => [created, ...prev]);
+        setNewNote('');
+      }
+    } catch (err: any) {
+      alert('Failed to post note: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  const AGENT_COLORS: Record<string, string> = {
+    'hermes': 'border-purple-200 bg-purple-50',
+    'collection-agent': 'border-emerald-200 bg-emerald-50',
+    'delivery-agent': 'border-blue-200 bg-blue-50',
+    'production-agent': 'border-amber-200 bg-amber-50',
+    'inventory-agent': 'border-cyan-200 bg-cyan-50',
+    'purchasing-agent': 'border-orange-200 bg-orange-50',
+    'quotation-checker': 'border-indigo-200 bg-indigo-50',
+    'escalation-agent': 'border-rose-200 bg-rose-50',
+    'dashboard': 'border-gray-200 bg-gray-50',
+  };
+
+  function getAgentColor(name: string): string {
+    return AGENT_COLORS[name] ?? 'border-gray-200 bg-gray-50';
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <MessageSquare className="h-4 w-4 text-gray-500" />
+        <h2 className="text-base font-semibold text-gray-800">Agent Notes</h2>
+        <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+          {notes.length}
+        </span>
+      </div>
+
+      {/* Post a new note */}
+      <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <Bot className="h-3.5 w-3.5 text-gray-400" />
+          <select
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef]"
+          >
+            <option value="dashboard">Dashboard</option>
+            <option value="hermes">Hermes</option>
+            <option value="collection-agent">Collection Agent</option>
+            <option value="delivery-agent">Delivery Agent</option>
+            <option value="production-agent">Production Agent</option>
+            <option value="inventory-agent">Inventory Agent</option>
+            <option value="purchasing-agent">Purchasing Agent</option>
+            <option value="quotation-checker">Quotation Checker</option>
+            <option value="escalation-agent">Escalation Agent</option>
+          </select>
+        </div>
+        <div className="flex gap-2">
+          <textarea
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            placeholder="Add a note for this order... Agents can read and write notes for cross-agent communication."
+            rows={2}
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+          />
+          <button
+            onClick={handlePostNote}
+            disabled={posting || !newNote.trim() || !agentName.trim()}
+            className="inline-flex items-center gap-1 rounded-lg bg-[#2490ef] px-3 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+          >
+            {posting ? (
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : (
+              <Send className="h-3 w-3" />
+            )}
+            Post
+          </button>
+        </div>
+      </div>
+
+      {/* Notes list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+        </div>
+      ) : notes.length === 0 ? (
+        <div className="py-8 text-center text-sm text-gray-400">
+          No agent notes yet. Notes are used by agents for communication and updates.
+        </div>
+      ) : (
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {notes.map((note) => (
+            <div
+              key={note.id}
+              className={`rounded-lg border p-3 ${getAgentColor(note.agent_name)}`}
+            >
+              <div className="mb-1 flex items-center gap-2">
+                <Bot className="h-3 w-3 text-gray-400" />
+                <span className="text-xs font-medium text-gray-700">
+                  {note.agent_name}
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {new Date(note.created_at).toLocaleString()}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap text-sm text-gray-800">{note.note}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>
