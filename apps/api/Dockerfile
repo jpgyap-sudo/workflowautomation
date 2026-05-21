@@ -13,4 +13,4 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 # Use tsx to run directly — avoids OOM from tsc on low-memory VPS
-CMD ["npx", "tsx", "src/server.ts"]
+CMD ["node", "--dns-result-order=ipv4first", "--import", "tsx", "src/server.ts"]
