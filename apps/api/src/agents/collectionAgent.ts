@@ -7,7 +7,6 @@ import {
   inlineKeyboard,
   createReminder,
   getActiveOrdersByStages,
-  getActiveOrdersByStage,
   getEscalationLevel,
   getGroupChatId,
 } from '../services/agentRunner.js';
@@ -16,7 +15,8 @@ import {
  * collection-agent
  *
  * Role: Tracks payment collection for all stages.
- * - Checks orders at purchasing_pending stage where deposit hasn't been paid
+ * - Checks orders at order_confirmation_received → production_pending stages
+ *   where deposit hasn't been paid
  *   → Sends reminders to the collection group to collect deposit
  * - Checks orders at delivered or countered stage where payment hasn't been received
  *   → Sends reminders to collect final payment
@@ -25,8 +25,13 @@ import {
 export async function runCollectionAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // ── Phase 1: Deposit Collection (production_pending without deposit) ──
-  const depositOrders = await getActiveOrdersByStage('production_pending');
+  // ── Phase 1: Deposit Collection (order_confirmation_received → production_pending without deposit) ──
+  const depositOrders = await getActiveOrdersByStages([
+    'order_confirmation_received',
+    'math_verified',
+    'purchasing_pending',
+    'production_pending',
+  ]);
   for (const order of depositOrders) {
     // Only process orders that haven't paid deposit yet
     if (order.deposit_paid) continue;
