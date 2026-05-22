@@ -23,7 +23,7 @@ import {
 import { checkQuotation } from './agents/quotationChecker.js';
 import { checkPurchasing } from './agents/purchasingAgent.js';
 import { checkInventory } from './agents/inventoryAgent.js';
-import { checkInventoryArrived, checkBalanceDue, checkScheduledDelivery } from './agents/deliveryAgent.js';
+import { checkInventoryArrived, checkScheduledDelivery } from './agents/deliveryAgent.js';
 import { checkCollection } from './agents/collectionAgent.js';
 import { checkEscalation } from './agents/escalationAgent.js';
 import {
@@ -2744,10 +2744,6 @@ app.post('/agents/delivery', async (request, reply) => {
   let result;
   if (order.current_stage === 'inventory_arrived') {
     result = await checkInventoryArrived(order);
-  } else if (order.current_stage === 'balance_due') {
-    result = await checkBalanceDue(order);
-  } else if (order.current_stage === 'delivery_scheduled') {
-    result = await checkScheduledDelivery(order);
   } else {
     result = await checkScheduledDelivery(order);
   }
