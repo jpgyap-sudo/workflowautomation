@@ -1404,9 +1404,69 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
 
   if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
 
+  const updatedItem = rows[0] as any;
+
+  // ── Item-Level Reminder Management ──────────────────────────────────
+  // When production_status or en_route_status changes, create or complete
+  // item-level reminders so the bot keeps reminding until resolved.
+  const PURCHASING_GROUP_CHAT_ID = process.env.PURCHASING_GROUP_CHAT_ID;
+  if (PURCHASING_GROUP_CHAT_ID && (body.production_status !== undefined || body.en_route_status !== undefined)) {
+    // Fetch order details for the reminder message
+    const orderRows = await query(
+      `SELECT quotation_number, client_name FROM orders WHERE id = $1`,
+      [order_id]
+    );
+    const orderRef = orderRows[0]?.quotation_number ?? `Order #${order_id.slice(0, 8)}`;
+    const client = orderRows[0]?.client_name ?? 'Unknown';
+
+    // Production status changes
+    if (body.production_status !== undefined) {
+      if (body.production_status === 'pending') {
+        // Item marked as not yet produced — create a reminder
+        await query(
+          `SELECT create_item_reminder($1, $2, 'item_level_production', $3, $4)`,
+          [
+            order_id,
+            item_id,
+            PURCHASING_GROUP_CHAT_ID,
+            `🏗️ *Item Production Pending* — ${orderRef} (${client})\nItem: *${updatedItem.name}* x${updatedItem.quantity}\nThis item has not yet started production. Please update when production begins.`,
+          ]
+        );
+      } else if (body.production_status === 'finished') {
+        // Item finished — complete the reminder
+        await query(
+          `SELECT complete_item_reminder($1, $2, 'item_level_production')`,
+          [order_id, item_id]
+        );
+      }
+    }
+
+    // En route status changes
+    if (body.en_route_status !== undefined) {
+      if (body.en_route_status === 'not_yet') {
+        // Item not yet en route — create a reminder
+        await query(
+          `SELECT create_item_reminder($1, $2, 'item_level_en_route', $3, $4)`,
+          [
+            order_id,
+            item_id,
+            PURCHASING_GROUP_CHAT_ID,
+            `🚚 *Item En Route Pending* — ${orderRef} (${client})\nItem: *${updatedItem.name}* x${updatedItem.quantity}\nThis item has not yet been sent en route. Please update when it ships.`,
+          ]
+        );
+      } else if (body.en_route_status === 'arrived') {
+        // Item arrived — complete the reminder
+        await query(
+          `SELECT complete_item_reminder($1, $2, 'item_level_en_route')`,
+          [order_id, item_id]
+        );
+      }
+    }
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { order_id });
-  return reply.send({ ok: true, item: rows[0] });
+  return reply.send({ ok: true, item: updatedItem });
 });
 
 // GET /orders/:id/items/completion — Get completion percentages

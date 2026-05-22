@@ -3170,3 +3170,99 @@ When building event-driven workflows, ensure every stage in the lifecycle has a 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: produce:partial now shows clickable item-level inline buttons when order_items exist, falls back to free-text input
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 675dfc4a022cd22d746198543c7e11dca031bcce
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 675dfc4a022cd22d746198543c7e11dca031bcce
+**Files:** apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The `/produce:partial` command now displays clickable inline buttons for each order item when `order_items` exist, instead of always showing a free-text input field.
+
+**Why it broke:**  
+The previous logic assumed a single free-text input was sufficient for all cases, ignoring the structured `order_items` data. This caused a poor UX when multiple items needed partial fulfillment, as users had to manually type item details.
+
+**Reusable takeaway:**  
+When a command can operate on structured data (e.g., order items), always check for that data first and render appropriate interactive UI (e.g., inline buttons) before falling back to generic free-text input. This pattern improves usability and reduces input errors.
+
+---
+*Original commit message: fix: produce:partial now shows clickable item-level inline buttons when order_items exist, falls back to free-text input*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `/produce:partial` command now displays clickable inline buttons for each order item when `order_items` exist, instead of always showing a free-text input field.
+
+**Why it broke:**  
+The previous logic assumed a single free-text input was sufficient for all cases, ignoring the structured `order_items` data. This caused a poor UX when multiple items needed partial fulfillment, as users had to manually type item details.
+
+**Reusable takeaway:**  
+When a command can operate on structured data (e.g., order items), always check for that data first and render appropriate interactive UI (e.g., inline buttons) before falling back to generic free-text input. This pattern improves usability and reduces input errors.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: resolve order_id from quotation_number in file upload; pass linkedOrder to vision:upload handler
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3d634047fa940be4802ef130b21ff4bff0860230
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3d634047fa940be4802ef130b21ff4bff0860230
+**Files:** apps/api/src/server.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+The `order_id` was not being resolved from `quotation_number` during file upload, and the `linkedOrder` object was not passed to the `vision:upload` handler.
+
+**Why it broke:**  
+The upload handler expected a `linkedOrder` object containing the resolved `order_id`, but the code only passed the raw `quotation_number`. This caused the handler to fail when trying to associate the uploaded file with the correct order.
+
+**Reusable takeaway:**  
+When chaining data-dependent handlers, always ensure that intermediate transformations (like resolving IDs from reference numbers) are performed before passing data downstream. Explicitly pass the resolved object (e.g., `linkedOrder`) rather than relying on the handler to re-derive it, to avoid coupling and silent failures.
+
+---
+*Original commit message: fix: resolve order_id from quotation_number in file upload; pass linkedOrder to vision:upload handler*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `order_id` was not being resolved from `quotation_number` during file upload, and the `linkedOrder` object was not passed to the `vision:upload` handler.
+
+**Why it broke:**  
+The upload handler expected a `linkedOrder` object containing the resolved `order_id`, but the code only passed the raw `quotation_number`. This caused the handler to fail when trying to associate the uploaded file with the correct order.
+
+**Reusable takeaway:**  
+When chaining data-dependent handlers, always ensure that intermediate transformations (like resolving IDs from reference numbers) are performed before passing data downstream. Explicitly pass the resolved object (e.g., `linkedOrder`) rather than relying on the handler to re-derive it, to avoid coupling and silent failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

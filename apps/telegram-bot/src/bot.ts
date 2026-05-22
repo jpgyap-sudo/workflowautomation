@@ -2270,6 +2270,38 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
+      // ── Advance order to partial_production if any item is pending ──
+      // When a user marks an item as "Not Yet" (pending), the order should
+      // move from production_pending to partial_production stage so it
+      // appears in the correct dashboard section and gets partial_production reminders.
+      const hasPendingItem = items.items?.some(
+        (item: any) => item.production_status === 'pending'
+      );
+
+      if (hasPendingItem) {
+        // Get the order's current stage to check if it's still in production_pending
+        const orderRes = await fetch(`${apiBaseUrl}/orders/${orderId}`);
+        const orderData = await orderRes.json();
+        if (orderData?.current_stage === 'production_pending') {
+          // Collect names of pending items
+          const pendingItems = items.items
+            .filter((item: any) => item.production_status === 'pending')
+            .map((item: any) => item.name);
+
+          // Advance to partial production via API
+          await postJson(`/orders/${orderId}/partial-production`, {
+            missing_items: pendingItems,
+          });
+
+          await postJson(`/orders/${orderId}/production-logs`, {
+            order_item_id: null,
+            note: `⏳ Items pending production: ${pendingItems.join(', ')}. Order advanced to partial production.`,
+            log_type: 'user',
+            created_by: username ?? `user_${userId}`,
+          });
+        }
+      }
+
       // Ask about the next unfinished item (process of elimination)
       const finishedCount = items.items.filter((i: any) => i.production_status === 'finished').length;
       const totalCount = items.items.length;
@@ -2902,6 +2934,144 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
     }
   } catch (err: any) {
     await ctx.reply(`❌ Error updating item inventory: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── Item-Level Reminder Callback Handlers ─────────────────────────────
+// These handle inline button clicks from item-level reminders sent by the
+// reminder scheduler. They update the item status and complete/keep the reminder.
+//
+// Format: reminder:item_prod:{status}:{itemId}:{orderId}
+//   status = finished | in_progress | pending
+//
+// Format: reminder:item_en_route:{status}:{itemId}:{orderId}
+//   status = en_route | arrived | not_yet
+
+// Item-level production reminder: user clicked a button
+bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const newStatus = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderId = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `reminder:item_prod:${newStatus}:${itemId}:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    if (!itemId) {
+      await ctx.editMessageText('❌ Cannot update: item ID is missing.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Update the item's production status via API
+    await postJson(`/orders/${orderId}/items/${itemId}`, {
+      production_status: newStatus,
+    });
+
+    // Add a production update log
+    const statusLabels: Record<string, string> = {
+      finished: '✅ Finished (from reminder)',
+      in_progress: '🔄 In Progress (from reminder)',
+      pending: '⏳ Still Pending (from reminder)',
+    };
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `Item production status updated via reminder to: ${statusLabels[newStatus]}`,
+      log_type: 'user',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    if (newStatus === 'finished') {
+      // Item finished — complete the reminder (handled by PATCH endpoint)
+      await ctx.editMessageText(
+        `✅ *Item Production Updated via Reminder*\n\nItem marked as *Finished*.\nThe reminder for this item has been completed.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else if (newStatus === 'in_progress') {
+      // Item in progress — keep reminder active
+      await ctx.editMessageText(
+        `🔄 *Item Production Updated via Reminder*\n\nItem marked as *In Progress*.\nThe reminder will continue until the item is finished.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      // Still pending — keep reminder active
+      await ctx.editMessageText(
+        `⏳ *Item Production Updated via Reminder*\n\nItem still marked as *Pending*.\nThe reminder will continue until the item is finished.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error updating item from reminder: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Item-level en route reminder: user clicked a button
+bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const newStatus = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderId = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `reminder:item_en_route:${newStatus}:${itemId}:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    if (!itemId) {
+      await ctx.editMessageText('❌ Cannot update: item ID is missing.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Update the item's en_route status via API
+    await postJson(`/orders/${orderId}/items/${itemId}`, {
+      en_route_status: newStatus,
+    });
+
+    // Add a production update log
+    const statusLabels: Record<string, string> = {
+      en_route: '🚚 En Route (from reminder)',
+      arrived: '📦 Arrived (from reminder)',
+      not_yet: '⏳ Not Yet (from reminder)',
+    };
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `Item en-route status updated via reminder to: ${statusLabels[newStatus]}`,
+      log_type: 'user',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    if (newStatus === 'arrived') {
+      // Item arrived — complete the reminder (handled by PATCH endpoint)
+      await ctx.editMessageText(
+        `📦 *Item En Route Updated via Reminder*\n\nItem marked as *Arrived*.\nThe reminder for this item has been completed.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else if (newStatus === 'en_route') {
+      // Item en route — keep reminder active until arrived
+      await ctx.editMessageText(
+        `🚚 *Item En Route Updated via Reminder*\n\nItem marked as *En Route*.\nThe reminder will continue until the item arrives.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      // Not yet — keep reminder active
+      await ctx.editMessageText(
+        `⏳ *Item En Route Updated via Reminder*\n\nItem still marked as *Not Yet*.\nThe reminder will continue until the item is en route.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error updating item from reminder: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
   }
 });
 

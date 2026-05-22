@@ -40,6 +40,7 @@ interface Reminder {
   quotation_number?: string;
   client_name?: string;
   partial_production_items?: string[];
+  item_id?: string | null;
 }
 
 /**
@@ -166,6 +167,8 @@ export async function processDueReminders(): Promise<number> {
       payment_received: '💰 Payment Received',
       payment_confirmed: '💵 Payment Confirmed',
       partial_production: '🏭 Partial Production',
+      item_level_production: '🏗️ Item Production',
+      item_level_en_route: '🚚 Item En Route',
     };
 
     const stageLabel = stageLabels[reminder.stage] ?? reminder.stage;
@@ -306,6 +309,56 @@ export async function processDueReminders(): Promise<number> {
       // Delivered: prompt to record payment
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [{ text: '💵 Record Payment', callback_data: `pick:payment:${quotationNumber}` }],
+      ]);
+    } else if (reminder.stage === 'item_level_production') {
+      // Item-level production reminder — fetch item name and show inline buttons
+      let itemName = 'Unknown Item';
+      let itemQty = 1;
+      if (reminder.item_id) {
+        const itemRows = await query(
+          `SELECT name, quantity FROM order_items WHERE id = $1`,
+          [reminder.item_id]
+        );
+        if (itemRows[0]) {
+          itemName = itemRows[0].name;
+          itemQty = itemRows[0].quantity;
+        }
+      }
+      text += `*Item:* ${itemName} x${itemQty}\n\n`;
+      text += `Has *${itemName}* started or finished production?`;
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${reminder.item_id ?? ''}:${orderId}` },
+          { text: `🔄 ${itemName} — In Progress`, callback_data: `reminder:item_prod:in_progress:${reminder.item_id ?? ''}:${orderId}` },
+        ],
+        [
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${reminder.item_id ?? ''}:${orderId}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'item_level_en_route') {
+      // Item-level en route reminder — fetch item name and show inline buttons
+      let itemName = 'Unknown Item';
+      let itemQty = 1;
+      if (reminder.item_id) {
+        const itemRows = await query(
+          `SELECT name, quantity FROM order_items WHERE id = $1`,
+          [reminder.item_id]
+        );
+        if (itemRows[0]) {
+          itemName = itemRows[0].name;
+          itemQty = itemRows[0].quantity;
+        }
+      }
+      text += `*Item:* ${itemName} x${itemQty}\n\n`;
+      text += `Is *${itemName}* en route or has it arrived?`;
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: `🚚 ${itemName} — En Route`, callback_data: `reminder:item_en_route:en_route:${reminder.item_id ?? ''}:${orderId}` },
+          { text: `📦 ${itemName} — Arrived`, callback_data: `reminder:item_en_route:arrived:${reminder.item_id ?? ''}:${orderId}` },
+        ],
+        [
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${reminder.item_id ?? ''}:${orderId}` },
+        ],
       ]);
     } else {
       // Standard reminder — plain text
