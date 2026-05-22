@@ -24,7 +24,7 @@ import {
   Smartphone,
   MessageSquare,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // â”€â”€ Agent-to-Stage Mapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AgentMapping {
@@ -618,60 +618,123 @@ function ProcurementFlowDiagram() {
     const to = nodeCenter(nodeMap[toId]);
     return `M ${from.x} ${from.y + from.height / 2} L ${from.x} ${y} L ${to.x} ${y} L ${to.x} ${to.y + to.height / 2}`;
   }
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    function onFsChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
   function toggleFullscreen() {
     const element = document.getElementById('full-app-workflow-diagram');
     if (document.fullscreenElement) {
       void document.exitFullscreen();
-      return;
+    } else {
+      void element?.requestFullscreen?.();
     }
-    void element?.requestFullscreen?.();
   }
+
+  const svgContent = (
+    <>
+      <defs><marker id="workflow-arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 4 L 0 8 z" className="fill-gray-500" /></marker></defs>
+      {straightEdges.map(([from, to, label]) => {
+        const source = nodeCenter(nodeMap[from]);
+        const target = nodeCenter(nodeMap[to]);
+        return <g key={`${from}-${to}`}><path d={edgePath(from, to)} fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />{label && <FlowArrowLabel x={(source.x + target.x) / 2} y={source.y - 12}>{label}</FlowArrowLabel>}</g>;
+      })}
+      <path d={loopPath('depositReceived', 'depositReminder', 278)} fill="none" className="stroke-orange-400" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" /><path d={loopPath('depositReminder', 'depositReceived', 410)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1042} y={270}>No</FlowArrowLabel><FlowArrowLabel x={1042} y={432}>remind</FlowArrowLabel>
+      <path d={loopPath('depositVerified', 'depositVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1274} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('productionStarted', 'productionReminder', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1810} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('itemsFinished', 'itemTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2310} y={68}>No / Partial</FlowArrowLabel>
+      <path d={loopPath('inventoryArrivedDecision', 'enRoute', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2650} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('balanceReceived', 'balanceReminder', 278)} fill="none" className="stroke-orange-400" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" /><path d={loopPath('balanceReminder', 'balanceReceived', 410)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3418} y={270}>No</FlowArrowLabel><FlowArrowLabel x={3418} y={432}>remind</FlowArrowLabel>
+      <path d={loopPath('balanceVerified', 'balanceVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3650} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('deliveredDecision', 'deliveryTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={4160} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('finalPaymentConfirmed', 'collectionRequest', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={5000} y={68}>No</FlowArrowLabel>
+      {nodes.map((node) => {
+        const { x, y, width, height } = nodeCenter(node);
+        if (node.type === 'decision') return <g key={node.id}><path d={`M ${x} ${y - height / 2} L ${x + width / 2} ${y} L ${x} ${y + height / 2} L ${x - width / 2} ${y} Z`} className={nodeColors(node.type)} /><FlowNodeLabel x={x} y={y - 4} lines={node.lines} className={textColor(node.type)} size={11} /></g>;
+        return <g key={node.id}><rect x={node.x} y={node.y} width={width} height={height} rx={node.type === 'terminator' ? 29 : 10} className={nodeColors(node.type)} /><FlowNodeLabel x={x} y={y - (node.lines.length > 1 ? 6 : -4)} lines={node.lines} className={textColor(node.type)} size={11} /></g>;
+      })}
+    </>
+  );
+
+  const legend = (
+    <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-blue-100 ring-1 ring-blue-300" /> Stage</span>
+      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-purple-100 ring-1 ring-purple-300" /> Agent action</span>
+      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-emerald-100 ring-1 ring-emerald-300" /> Auto/system step</span>
+      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rotate-45 bg-amber-100 ring-1 ring-amber-300" /> Decision</span>
+      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-orange-100 ring-1 ring-orange-300" /> Reminder loop</span>
+    </div>
+  );
+
   return (
-    <div id="full-app-workflow-diagram" className="rounded-xl border border-gray-200 bg-white p-6">
-      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+    <div
+      id="full-app-workflow-diagram"
+      className={isFullscreen
+        ? 'fixed inset-0 z-50 flex flex-col bg-white p-5'
+        : 'rounded-xl border border-gray-200 bg-white p-6'
+      }
+    >
+      {/* Header */}
+      <div className={`flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between ${isFullscreen ? 'mb-3 shrink-0' : 'mb-4'}`}>
         <div>
-          <h2 className="text-sm font-semibold text-gray-800">Full App Workflow Diagram</h2>
-          <p className="text-xs text-gray-500">Complete quotation lifecycle from sales intake through production, inventory, delivery, collection, and completion.</p>
+          <h2 className={`font-semibold text-gray-800 ${isFullscreen ? 'text-base' : 'text-sm'}`}>Full App Workflow Diagram</h2>
+          {!isFullscreen && (
+            <p className="text-xs text-gray-500">Complete quotation lifecycle from sales intake through production, inventory, delivery, collection, and completion.</p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] text-gray-400">Landscape view - scroll sideways to see the whole flow</span>
+          {!isFullscreen && <span className="text-[10px] text-gray-400">Scroll sideways to see the whole flow</span>}
           <button
             type="button"
             onClick={toggleFullscreen}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-            title="Open the workflow diagram in fullscreen. Press Esc to exit."
+            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Open fullscreen'}
           >
-            ⛶ Fullscreen
+            {isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-dashed border-gray-200 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] p-4 [background-size:18px_18px]">
-        <svg role="img" aria-labelledby="workflow-diagram-title workflow-diagram-desc" viewBox="0 0 5920 500" className="h-auto min-w-[2200px] max-w-none">
-          <title id="workflow-diagram-title">Full quotation automation app workflow</title>
-          <desc id="workflow-diagram-desc">Landscape diagram showing the full app workflow from sales order confirmation to quotation checking, purchasing, production, inventory, balance collection, delivery, final collection, payment confirmation, and completion.</desc>
-          <defs><marker id="workflow-arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 10 4 L 0 8 z" className="fill-gray-500" /></marker></defs>
-          {straightEdges.map(([from, to, label]) => {
-            const source = nodeCenter(nodeMap[from]);
-            const target = nodeCenter(nodeMap[to]);
-            return <g key={`${from}-${to}`}><path d={edgePath(from, to)} fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />{label && <FlowArrowLabel x={(source.x + target.x) / 2} y={source.y - 12}>{label}</FlowArrowLabel>}</g>;
-          })}
-          <path d={loopPath('depositReceived', 'depositReminder', 278)} fill="none" className="stroke-orange-400" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" /><path d={loopPath('depositReminder', 'depositReceived', 410)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1042} y={270}>No</FlowArrowLabel><FlowArrowLabel x={1042} y={432}>remind</FlowArrowLabel>
-          <path d={loopPath('depositVerified', 'depositVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1274} y={68}>No</FlowArrowLabel>
-          <path d={loopPath('productionStarted', 'productionReminder', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1810} y={68}>No</FlowArrowLabel>
-          <path d={loopPath('itemsFinished', 'itemTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2310} y={68}>No / Partial</FlowArrowLabel>
-          <path d={loopPath('inventoryArrivedDecision', 'enRoute', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2650} y={68}>No</FlowArrowLabel>
-          <path d={loopPath('balanceReceived', 'balanceReminder', 278)} fill="none" className="stroke-orange-400" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" /><path d={loopPath('balanceReminder', 'balanceReceived', 410)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3418} y={270}>No</FlowArrowLabel><FlowArrowLabel x={3418} y={432}>remind</FlowArrowLabel>
-          <path d={loopPath('balanceVerified', 'balanceVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3650} y={68}>No</FlowArrowLabel>
-          <path d={loopPath('deliveredDecision', 'deliveryTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={4160} y={68}>No</FlowArrowLabel>
-          <path d={loopPath('finalPaymentConfirmed', 'collectionRequest', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={5000} y={68}>No</FlowArrowLabel>
-          {nodes.map((node) => {
-            const { x, y, width, height } = nodeCenter(node);
-            if (node.type === 'decision') return <g key={node.id}><path d={`M ${x} ${y - height / 2} L ${x + width / 2} ${y} L ${x} ${y + height / 2} L ${x - width / 2} ${y} Z`} className={nodeColors(node.type)} /><FlowNodeLabel x={x} y={y - 4} lines={node.lines} className={textColor(node.type)} size={11} /></g>;
-            return <g key={node.id}><rect x={node.x} y={node.y} width={width} height={height} rx={node.type === 'terminator' ? 29 : 10} className={nodeColors(node.type)} /><FlowNodeLabel x={x} y={y - (node.lines.length > 1 ? 6 : -4)} lines={node.lines} className={textColor(node.type)} size={11} /></g>;
-          })}
-        </svg>
+
+      {/* SVG canvas */}
+      {isFullscreen ? (
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-lg border border-dashed border-gray-200 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:18px_18px]">
+          <svg
+            role="img"
+            aria-labelledby="workflow-diagram-title workflow-diagram-desc"
+            viewBox="0 0 5920 500"
+            preserveAspectRatio="xMinYMid meet"
+            style={{ height: '100%', width: 'auto', minWidth: '100%', display: 'block' }}
+          >
+            <title id="workflow-diagram-title">Full quotation automation app workflow</title>
+            <desc id="workflow-diagram-desc">Landscape diagram showing the full app workflow.</desc>
+            {svgContent}
+          </svg>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-dashed border-gray-200 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] p-4 [background-size:18px_18px]">
+          <svg
+            role="img"
+            aria-labelledby="workflow-diagram-title workflow-diagram-desc"
+            viewBox="0 0 5920 500"
+            className="h-auto min-w-[2200px] max-w-none"
+          >
+            <title id="workflow-diagram-title">Full quotation automation app workflow</title>
+            <desc id="workflow-diagram-desc">Landscape diagram showing the full app workflow.</desc>
+            {svgContent}
+          </svg>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className={isFullscreen ? 'mt-3 shrink-0' : 'mt-3'}>
+        {legend}
       </div>
-      <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-gray-500"><span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-blue-100 ring-1 ring-blue-300" /> Stage</span><span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-purple-100 ring-1 ring-purple-300" /> Agent action</span><span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-100 ring-1 ring-emerald-300" /> Auto/system step</span><span className="flex items-center gap-1"><span className="h-3 w-3 rotate-45 bg-amber-100 ring-1 ring-amber-300" /> Decision</span><span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-orange-100 ring-1 ring-orange-300" /> Reminder loop</span></div>
     </div>
   );
 }

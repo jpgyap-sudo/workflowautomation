@@ -503,6 +503,9 @@ app.post('/orders/unsynced-payments/sync', async (request, reply) => {
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, 'payment_received', 'balance_paid', 'Synced from legacy — balance was already paid but stage was not updated', 'dashboard')`,
     [order_id]
   );
+  // Notify collection agent immediately that payment is received
+  triggerAgentsForStage('payment_received');
+
   await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*', 'sales:*']);
   return { ok: true };
 });
@@ -940,8 +943,8 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
      body.on_time ? 'Production reported on time' : `Production delayed by ${body.delay_days ?? 0} day(s)`]
   );
 
-  // Notify production + inventory agents immediately that production is finished (order is en route)
-  triggerAgentsForStage('en_route');
+  // Notify production agent immediately about the production status update
+  triggerAgentsForStage('production_confirmed');
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1011,6 +1014,9 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
        tomorrow.toISOString()]
     );
   }
+
+  // Notify production + inventory agents immediately that production is finished (order is en route)
+  triggerAgentsForStage('en_route');
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1700,6 +1706,9 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       [order.id]
     );
 
+    // Notify collection agent immediately that a deposit needs verification
+    triggerAgentsForStage('deposit_pending');
+
     await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
     return reply.send({
@@ -1778,6 +1787,9 @@ app.post('/deposits/match-and-record', async (request, reply) => {
        ON CONFLICT DO NOTHING`,
       [order.id]
     );
+
+    // Notify collection agent immediately that a deposit needs verification
+    triggerAgentsForStage('deposit_pending');
 
     await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
