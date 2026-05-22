@@ -76,6 +76,7 @@ services:
       COLLECTION_GROUP_CHAT_ID: ${COLLECTION_GROUP_CHAT_ID}
       ESCALATION_GROUP_CHAT_ID: ${ESCALATION_GROUP_CHAT_ID}
       QUOTATION_GROUP_CHAT_ID: ${QUOTATION_GROUP_CHAT_ID}
+      STAGE_TRANSITION_GROUP_CHAT_ID: ${STAGE_TRANSITION_GROUP_CHAT_ID}
       # File-store for Hermes agent quotation text reference
       FILE_STORE_URL: http://file-store:8090
       # Telegram webhook proxy
