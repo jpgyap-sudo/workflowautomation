@@ -2420,3 +2420,51 @@ When adding or modifying workflows, always verify that each workflow has the cor
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: auto-generated lesson records for agent trigger fixes
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9eaef4ac2067fa7a8b3d689401f4a8395927849c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9eaef4ac2067fa7a8b3d689401f4a8395927849c
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The agent trigger logic was failing to fire correctly in certain edge cases, causing missed workflow executions.
+
+**Why it broke:**  
+The trigger condition did not account for state changes after agent retries or partial failures, leading to inconsistent event propagation.
+
+**Reusable takeaway:**  
+When designing agent triggers, always include explicit state reconciliation after retries or partial failures. Validate trigger conditions against the final state, not just the initial event.
+
+---
+*Original commit message: chore: auto-generated lesson records for agent trigger fixes*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The agent trigger logic was failing to fire correctly in certain edge cases, causing missed workflow executions.
+
+**Why it broke:**  
+The trigger condition did not account for state changes after agent retries or partial failures, leading to inconsistent event propagation.
+
+**Reusable takeaway:**  
+When designing agent triggers, always include explicit state reconciliation after retries or partial failures. Validate trigger conditions against the final state, not just the initial event.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

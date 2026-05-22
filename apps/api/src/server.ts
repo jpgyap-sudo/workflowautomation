@@ -1457,6 +1457,42 @@ app.post('/stage-updates', async (request, reply) => {
 
   const order = orders[0];
 
+  // ── Workflow Guard: Valid Stage Transitions ──────────────────────────
+  // Prevent invalid jumps (e.g., balance_due → payment_confirmed without delivery)
+  const VALID_TRANSITIONS: Record<string, string[]> = {
+    deposit_pending:           ['quotation_received', 'order_confirmation_received'],
+    quotation_received:        ['order_confirmation_received', 'math_verified', 'production_pending'],
+    order_confirmation_received: ['math_verified', 'production_pending'],
+    math_verified:             ['purchasing_pending', 'production_pending'],
+    purchasing_pending:        ['production_pending'],
+    production_pending:        ['production_confirmed'],
+    production_confirmed:      ['en_route', 'partial_production'],
+    partial_production:        ['en_route'],
+    en_route:                  ['inventory_arrived'],
+    inventory_arrived:         ['balance_due'],
+    balance_due:               ['delivery_scheduled', 'delivered', 'countered'],
+    delivery_scheduled:        ['delivered', 'countered'],
+    delivered:                 ['payment_received', 'payment_confirmed', 'completed'],
+    countered:                 ['payment_received', 'payment_confirmed', 'completed'],
+    payment_received:          ['payment_confirmed', 'completed'],
+    payment_confirmed:         ['completed'],
+  };
+
+  const previousStage = order.current_stage;
+  const targetStage = body.stage;
+
+  // Allow transitions that are in the valid map, or if the stage hasn't changed
+  if (previousStage !== targetStage) {
+    const allowedNext = VALID_TRANSITIONS[previousStage];
+    if (allowedNext && !allowedNext.includes(targetStage)) {
+      return reply.code(400).send({
+        error: `Invalid stage transition: cannot move from '${previousStage}' to '${targetStage}'. Allowed transitions: ${allowedNext.join(', ')}.`,
+        current_stage: previousStage,
+        allowed_stages: allowedNext,
+      });
+    }
+  }
+
   // Guard: Block delivery_scheduled if balance is not paid
   if (body.stage === 'delivery_scheduled' && !order.balance_paid) {
     if (order.total_amount == null) {
@@ -1474,7 +1510,6 @@ app.post('/stage-updates', async (request, reply) => {
   }
 
   const orderId = order.id;
-  const previousStage = order.current_stage;
 
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1,$2,$3,$4,$5)`,
@@ -2255,23 +2290,32 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     return reply.code(400).send({ error: 'Balance is already verified.' });
   }
 
-  // Advance to payment_received
+  // Determine the next stage based on current stage:
+  // - If order is at balance_due (not yet delivered) → advance to delivery_scheduled
+  // - If order is at delivered/countered (already delivered) → advance to payment_received
+  const currentStage = order.current_stage;
+  const nextStage = (currentStage === 'delivered' || currentStage === 'countered')
+    ? 'payment_received'
+    : 'delivery_scheduled';
+
+  const stageLabel = nextStage === 'payment_received' ? 'Payment Received' : 'Delivery Scheduled';
+
   await query(
     `UPDATE orders SET
        balance_verified = TRUE,
        balance_verified_at = NOW(),
        balance_verified_by = $2,
-       current_stage = 'payment_received',
+       current_stage = $3,
        updated_at = NOW()
      WHERE id = $1`,
-    [id, body.verified_by ?? null],
+    [id, body.verified_by ?? null, nextStage],
   );
 
   // Record stage update
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'payment_received', 'balance_verified', $2, $3)`,
-    [id, `Balance verified by ${body.verified_by ?? 'team'}. Advancing to payment_received.`, body.verified_by ?? null],
+     VALUES ($1, $2, 'balance_verified', $3, $4)`,
+    [id, nextStage, `Balance verified by ${body.verified_by ?? 'team'}. Advancing to ${stageLabel}.`, body.verified_by ?? null],
   );
 
   // Complete balance_verification reminders
@@ -2281,12 +2325,12 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     [id],
   );
 
-  // Notify collection agent immediately that balance is verified and payment is received
-  triggerAgentsForStage('payment_received');
+  // Notify the relevant agent immediately
+  triggerAgentsForStage(nextStage);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
-  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: 'payment_received' });
+  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
 });
 
 // ── Grant Delivery Exception (Special Case) ─────────────────────────

@@ -132,8 +132,18 @@ function syncCredentials() {
   }
 
   // Sync .env file (gitignored, so not in git archive)
+  // ⚠️ IMPORTANT: Only sync .env if it DOESN'T already exist on the VPS.
+  // This prevents overwriting production secrets (real Telegram chat IDs, etc.)
+  // with local placeholder values during deployment.
   const envPath = resolve(CONFIG.projectRoot, '.env');
-  if (existsSync(envPath)) {
+  const remoteEnvExists = runCapture('Checking if .env exists on VPS',
+    sshCmd(`test -f ${CONFIG.vpsPath}/.env && echo 'EXISTS' || echo 'MISSING'`),
+    { ignoreError: true, timeout: 10_000 }
+  );
+  if (remoteEnvExists?.trim() === 'EXISTS') {
+    console.log('⚠  .env already exists on VPS — skipping overwrite to preserve production secrets');
+    console.log('   To force sync, delete .env on VPS first or use --force-env flag');
+  } else if (existsSync(envPath)) {
     const scpEnvCmd =
       `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${envPath}" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/.env"`;
     run('Copying .env via SCP', scpEnvCmd, { timeout: 30_000 });
