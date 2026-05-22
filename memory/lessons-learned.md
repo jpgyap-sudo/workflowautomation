@@ -3266,3 +3266,151 @@ When chaining data-dependent handlers, always ensure that intermediate transform
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: update ON CONFLICT clause for partial unique indexes
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6ced428176a5e013e9bd2c59ca1b9006cbd9920b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6ced428176a5e013e9bd2c59ca1b9006cbd9920b
+**Files:** apps/api/src/server.ts,database/migrations/025_item_reminders.sql
+
+**Summary:**
+**What was fixed:**  
+An `ON CONFLICT` clause in a PostgreSQL migration that failed when a partial unique index existed on the `item_reminders` table. The conflict target was updated to match the partial index definition.
+
+**Why it broke:**  
+The original `ON CONFLICT` clause specified a column list that did not match the partial unique index's predicate (e.g., `WHERE deleted_at IS NULL`). PostgreSQL requires the conflict target to exactly match the index's columns and condition; otherwise, it throws an error.
+
+**Reusable takeaway:**  
+When using `ON CONFLICT` with partial unique indexes, always include the exact index predicate in the conflict target (e.g., `ON CONFLICT (column) WHERE condition`). Never assume a column-only conflict target works when a partial index exists.
+
+---
+*Original commit message: fix: update ON CONFLICT clause for partial unique indexes*
+
+#### Lesson Learned
+
+**What was fixed:**  
+An `ON CONFLICT` clause in a PostgreSQL migration that failed when a partial unique index existed on the `item_reminders` table. The conflict target was updated to match the partial index definition.
+
+**Why it broke:**  
+The original `ON CONFLICT` clause specified a column list that did not match the partial unique index's predicate (e.g., `WHERE deleted_at IS NULL`). PostgreSQL requires the conflict target to exactly match the index's columns and condition; otherwise, it throws an error.
+
+**Reusable takeaway:**  
+When using `ON CONFLICT` with partial unique indexes, always include the exact index predicate in the conflict target (e.g., `ON CONFLICT (column) WHERE condition`). Never assume a column-only conflict target works when a partial index exists.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add orderId to produce:partial callback data + fix ON CONFLICT constraints
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a71bfa245a2f85075071b3187d82017dcc68bf95
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a71bfa245a2f85075071b3187d82017dcc68bf95
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+- Added `orderId` to the `produce:partial` callback data to ensure downstream consumers receive the correct order context.  
+- Fixed `ON CONFLICT` constraints in database upsert logic to prevent constraint violation errors.
+
+**Why it broke:**  
+- The `produce:partial` event was missing the `orderId` field, causing incomplete data propagation.  
+- The `ON CONFLICT` clause lacked proper constraint specification, leading to duplicate key conflicts during upserts.
+
+**Reusable takeaway:**  
+When implementing event-driven workflows, always include all foreign key identifiers (like `orderId`) in callback payloads to maintain data integrity across services. For upsert operations, explicitly define conflict targets (e.g., `ON CONFLICT (id)`) to avoid silent failures or constraint violations.
+
+---
+*Original commit message: fix: add orderId to produce:partial callback data + fix ON CONFLICT constraints*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Added `orderId` to the `produce:partial` callback data to ensure downstream consumers receive the correct order context.  
+- Fixed `ON CONFLICT` constraints in database upsert logic to prevent constraint violation errors.
+
+**Why it broke:**  
+- The `produce:partial` event was missing the `orderId` field, causing incomplete data propagation.  
+- The `ON CONFLICT` clause lacked proper constraint specification, leading to duplicate key conflicts during upserts.
+
+**Reusable takeaway:**  
+When implementing event-driven workflows, always include all foreign key identifiers (like `orderId`) in callback payloads to maintain data integrity across services. For upsert operations, explicitly define conflict targets (e.g., `ON CONFLICT (id)`) to avoid silent failures or constraint violations.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: update production_pending reminder to include orderId in callback data; simplify inventory verification flow (remov
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 93b45cacfa73baa99229cca2de998ffb433de89a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 93b45cacfa73baa99229cca2de998ffb433de89a
+**Files:** apps/api/src/agents/inventoryAgent.ts,apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+The production_pending reminder now includes `orderId` in callback data, enabling correct order-specific actions. Inventory verification flow was simplified by removing photo upload and adding estimated arrival dates.
+
+**Why it broke:**  
+Missing `orderId` in callback data caused the reminder system to lose context of which order triggered the notification. This broke downstream actions like order lookup and status updates. The photo upload requirement added unnecessary friction without improving verification accuracy.
+
+**Reusable takeaway:**  
+Always include unique identifiers (like `orderId`) in callback payloads for event-driven workflows. Simplify verification flows by removing low-value steps (e.g., photo uploads) and replacing them with actionable data (e.g., estimated arrival dates) that directly support decision-making. This reduces user friction while maintaining traceability.
+
+---
+*Original commit message: fix: update production_pending reminder to include orderId in callback data; simplify inventory verification flow (remove photo upload, add estimated arrival dates)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The production_pending reminder now includes `orderId` in callback data, enabling correct order-specific actions. Inventory verification flow was simplified by removing photo upload and adding estimated arrival dates.
+
+**Why it broke:**  
+Missing `orderId` in callback data caused the reminder system to lose context of which order triggered the notification. This broke downstream actions like order lookup and status updates. The photo upload requirement added unnecessary friction without improving verification accuracy.
+
+**Reusable takeaway:**  
+Always include unique identifiers (like `orderId`) in callback payloads for event-driven workflows. Simplify verification flows by removing low-value steps (e.g., photo uploads) and replacing them with actionable data (e.g., estimated arrival dates) that directly support decision-making. This reduces user friction while maintaining traceability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
