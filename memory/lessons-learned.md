@@ -2516,3 +2516,51 @@ Every state transition must explicitly define its successor state, and all workf
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add stage transition notification to advanceStage() and add client_name to verify-deposit/verify-balance trigger ca
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1d500a25ad2c58d60b0cb85293bf6c6586f5c2a6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1d500a25ad2c58d60b0cb85293bf6c6586f5c2a6
+**Files:** apps/api/src/server.ts,apps/api/src/services/agentRunner.ts
+
+**Summary:**
+**What was fixed:**  
+Added stage transition notifications inside `advanceStage()` and included `client_name` in `verify-deposit` and `verify-balance` trigger calls.
+
+**Why it broke:**  
+Stage transitions were not being broadcast, causing downstream systems to miss state changes. Additionally, verification triggers lacked `client_name`, leading to incomplete context for validation logic.
+
+**Reusable takeaway:**  
+When designing workflow engines, ensure every state transition emits a notification event, and every trigger call includes all relevant context (e.g., client identity). Missing context in triggers can silently break dependent validations or external integrations.
+
+---
+*Original commit message: fix: add stage transition notification to advanceStage() and add client_name to verify-deposit/verify-balance trigger calls*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added stage transition notifications inside `advanceStage()` and included `client_name` in `verify-deposit` and `verify-balance` trigger calls.
+
+**Why it broke:**  
+Stage transitions were not being broadcast, causing downstream systems to miss state changes. Additionally, verification triggers lacked `client_name`, leading to incomplete context for validation logic.
+
+**Reusable takeaway:**  
+When designing workflow engines, ensure every state transition emits a notification event, and every trigger call includes all relevant context (e.g., client identity). Missing context in triggers can silently break dependent validations or external integrations.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
