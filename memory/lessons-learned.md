@@ -2372,3 +2372,51 @@ Centralize reusable UI components (like file viewers) to avoid code duplication 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add missing agent triggers to finish-production, unsynced-payments, match-and-record; fix wrong agent trigger in re
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9c8bc2e5b1d75128a9fd0a43dfa04d37ebd140a0
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9c8bc2e5b1d75128a9fd0a43dfa04d37ebd140a0
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/workflow/page.tsx
+
+**Summary:**
+**What was fixed:**  
+Three workflows (`finish-production`, `unsynced-payments`, `match-and-record`) were missing their agent triggers, causing them to never execute. One workflow (`report-production-status`) had an incorrect agent trigger, causing it to fire on the wrong event.
+
+**Why it broke:**  
+Agent triggers were omitted or misconfigured during initial workflow setup, likely due to copy-paste errors or incomplete configuration when adding new workflows. The trigger definition in `server.ts` (backend) and the UI workflow page (`page.tsx`) were inconsistent.
+
+**Reusable takeaway:**  
+When adding or modifying workflows, always verify that each workflow has the correct, unique agent trigger defined in both backend configuration and frontend UI. Use automated checks (e.g., lint rules or tests) to ensure no workflow is missing a trigger, and that trigger names match exactly between layers. A missing or wrong trigger silently disables the workflow.
+
+---
+*Original commit message: fix: add missing agent triggers to finish-production, unsynced-payments, match-and-record; fix wrong agent trigger in report-production-status*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Three workflows (`finish-production`, `unsynced-payments`, `match-and-record`) were missing their agent triggers, causing them to never execute. One workflow (`report-production-status`) had an incorrect agent trigger, causing it to fire on the wrong event.
+
+**Why it broke:**  
+Agent triggers were omitted or misconfigured during initial workflow setup, likely due to copy-paste errors or incomplete configuration when adding new workflows. The trigger definition in `server.ts` (backend) and the UI workflow page (`page.tsx`) were inconsistent.
+
+**Reusable takeaway:**  
+When adding or modifying workflows, always verify that each workflow has the correct, unique agent trigger defined in both backend configuration and frontend UI. Use automated checks (e.g., lint rules or tests) to ensure no workflow is missing a trigger, and that trigger names match exactly between layers. A missing or wrong trigger silently disables the workflow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
