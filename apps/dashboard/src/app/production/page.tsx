@@ -10,12 +10,12 @@ import {
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   RefreshCw, Package, FileText, Eye, List,
 } from 'lucide-react';
-import { getOrderFiles, getOrderFileDownloadUrl, type OrderFile } from '@/lib/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -238,95 +238,6 @@ function ProductionInfoCards({ order }: { order: Order }) {
   );
 }
 
-// ── File Viewer Modal ─────────────────────────────────────────────────
-
-function FileViewerModal({ order, files, onClose }: { order: Order; files: OrderFile[]; onClose: () => void }) {
-  const imageFiles = files.filter((f) => {
-    const mt = f.mime_type ?? '';
-    return mt.startsWith('image/');
-  });
-  const pdfFiles = files.filter((f) => {
-    const mt = f.mime_type ?? '';
-    return mt === 'application/pdf';
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">{order.quotation_number ?? 'Order Files'}</h3>
-            <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="max-h-[70vh] overflow-auto p-6">
-          {files.length === 0 ? (
-            <div className="py-8 text-center text-sm text-gray-400">
-              <FileText className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-              No files uploaded for this order yet.
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {imageFiles.length > 0 && (
-                <div>
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Images</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    {imageFiles.map((file) => (
-                      <a
-                        key={file.id}
-                        href={getOrderFileDownloadUrl(order.id, file.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
-                      >
-                        <img
-                          src={getOrderFileDownloadUrl(order.id, file.id)}
-                          alt={file.original_filename ?? 'Order file'}
-                          className="h-40 w-full object-contain"
-                          loading="lazy"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
-                          {file.original_filename ?? 'View image'}
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {pdfFiles.length > 0 && (
-                <div>
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Documents</h4>
-                  <div className="space-y-2">
-                    {pdfFiles.map((file) => (
-                      <a
-                        key={file.id}
-                        href={getOrderFileDownloadUrl(order.id, file.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 hover:bg-gray-100"
-                      >
-                        <FileText className="h-5 w-5 text-red-500" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-800">{file.original_filename ?? 'PDF Document'}</p>
-                          <p className="text-xs text-gray-400">Click to open</p>
-                        </div>
-                        <ExternalLink className="h-4 w-4 text-gray-400" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Order Row ─────────────────────────────────────────────────────────
 
 interface OrderRowProps {
@@ -366,17 +277,7 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
         className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50/50">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            {onViewFiles ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); onViewFiles(order); }}
-                className="font-medium text-[#2490ef] hover:underline"
-                title="View order files"
-              >
-                {order.quotation_number ?? '—'}
-              </button>
-            ) : (
-              <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
-            )}
+            <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
             {/* Item-level completion badges inline */}
             {completion && (
               <>
@@ -611,9 +512,7 @@ export default function ProductionPage() {
   const [deleting, setDeleting] = useState(false);
 
   // File viewer state
-  const [viewingFilesOrder, setViewingFilesOrder] = useState<Order | null>(null);
-  const [orderFiles, setOrderFiles] = useState<OrderFile[]>([]);
-  const [loadingFiles, setLoadingFiles] = useState(false);
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
     open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
@@ -657,20 +556,6 @@ export default function ProductionPage() {
 
   function handleEdit(order: Order) { setEditingOrder(order); }
   function handleCancelEdit() { setEditingOrder(null); }
-
-  async function handleViewFiles(order: Order) {
-    setViewingFilesOrder(order);
-    setLoadingFiles(true);
-    try {
-      const result = await getOrderFiles(order.id);
-      setOrderFiles(result.files ?? []);
-    } catch (err: any) {
-      console.error('Failed to load order files:', err);
-      setOrderFiles([]);
-    } finally {
-      setLoadingFiles(false);
-    }
-  }
 
   function handleEditSave(data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }) {
     if (!editingOrder) return;
@@ -833,7 +718,8 @@ export default function ProductionPage() {
         <FileViewerModal
           order={viewingFilesOrder}
           files={orderFiles}
-          onClose={() => { setViewingFilesOrder(null); setOrderFiles([]); }}
+          onClose={closeViewer}
+          onUploadComplete={refreshFiles}
         />
       )}
     </div>

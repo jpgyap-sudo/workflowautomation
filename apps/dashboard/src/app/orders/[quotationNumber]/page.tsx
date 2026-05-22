@@ -7,6 +7,7 @@ import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProduct
 import StageBadge from '@/components/StageBadge';
 import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List } from 'lucide-react';
 import Link from 'next/link';
+import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
 function DaysInStage({ updatedAt }: { updatedAt: string }) {
   const days = Math.floor((new Date().getTime() - new Date(updatedAt).getTime()) / 86_400_000);
@@ -19,6 +20,7 @@ export default function OrderDetailPage() {
   const params = useParams();
   const quotationNumber = params.quotationNumber as string;
   const { data: order, error, isLoading } = useOrder(quotationNumber);
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
   if (isLoading && !order) {
     return (
@@ -344,9 +346,17 @@ export default function OrderDetailPage() {
       <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} />
 
       {/* Files */}
-      {order.files && order.files.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-base font-semibold text-gray-800">Files</h2>
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-800">Files</h2>
+          <button
+            onClick={() => handleViewFiles(order)}
+            className="rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9]"
+          >
+            View / Upload Files
+          </button>
+        </div>
+        {order.files && order.files.length > 0 ? (
           <div className="space-y-2">
             {order.files.map((file) => (
               <div key={file.id} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
@@ -358,7 +368,18 @@ export default function OrderDetailPage() {
               </div>
             ))}
           </div>
-        </div>
+        ) : (
+          <p className="text-sm text-gray-400">No files uploaded yet.</p>
+        )}
+      </div>
+
+      {viewingFilesOrder && (
+        <FileViewerModal
+          order={viewingFilesOrder}
+          files={orderFiles}
+          onClose={closeViewer}
+          onUploadComplete={refreshFiles}
+        />
       )}
     </div>
   );
