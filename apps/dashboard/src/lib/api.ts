@@ -10,7 +10,6 @@ export interface Order {
   math_status: string;
   current_stage: string;
   status: string;
-  google_drive_folder_id: string | null;
   deposit_paid: boolean;
   deposit_amount: number | null;
   deposit_image_url: string | null;
@@ -66,8 +65,6 @@ export interface OrderFile {
   order_id?: string;
   original_filename: string | null;
   file_type: string | null;
-  google_drive_file_id: string | null;
-  google_drive_url?: string | null;
   storage_backend?: string | null;
   local_file_path?: string | null;
   mime_type?: string | null;

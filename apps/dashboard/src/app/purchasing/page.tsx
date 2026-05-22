@@ -1,4 +1,4 @@
-'use client';
+us'use client';
 
 import { useState, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
@@ -7,25 +7,10 @@ import { updateOrder, deleteOrder, setProduction, getItemCompletion } from '@/li
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import {
-  ShoppingCart, Clock, Package, ExternalLink,
+  ShoppingCart, Clock, Package,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, List, Truck, CheckCircle,
 } from 'lucide-react';
-
-function DriveLink({ folderId }: { folderId: string | null }) {
-  if (!folderId) return <span className="text-xs text-gray-400">—</span>;
-  return (
-    <a
-      href={`https://drive.google.com/drive/folders/${folderId}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-xs text-[#2490ef] hover:underline"
-    >
-      <ExternalLink className="h-3 w-3" />
-      Open Drive
-    </a>
-  );
-}
 
 interface OrderRowProps {
   order: Order;
@@ -113,7 +98,6 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps)
           )}
         </div>
         <div className="flex items-center gap-3">
-          <DriveLink folderId={order.google_drive_folder_id} />
           {(() => {
             const days = Math.floor((Date.now() - new Date(order.updated_at).getTime()) / 86_400_000);
             return days > 0 ? (

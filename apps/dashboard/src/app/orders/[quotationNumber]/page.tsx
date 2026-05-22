@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, ExternalLink, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List } from 'lucide-react';
 import Link from 'next/link';
 
 function DaysInStage({ updatedAt }: { updatedAt: string }) {
@@ -65,17 +65,6 @@ export default function OrderDetailPage() {
               </h1>
               <div className="flex items-center gap-2">
                 <StageBadge stage={order.current_stage} />
-                {order.google_drive_folder_id && (
-                  <a
-                    href={`https://drive.google.com/drive/folders/${order.google_drive_folder_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:border-[#2490ef] hover:text-[#2490ef]"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Drive Folder
-                  </a>
-                )}
               </div>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -366,16 +355,6 @@ export default function OrderDetailPage() {
                   <p className="text-sm text-gray-900">{file.original_filename ?? 'Unnamed file'}</p>
                   <p className="text-xs text-gray-400">{file.file_type}</p>
                 </div>
-                {file.google_drive_file_id && (
-                  <a
-                    href={`https://drive.google.com/file/d/${file.google_drive_file_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-[#2490ef] hover:underline"
-                  >
-                    Open in Drive
-                  </a>
-                )}
               </div>
             ))}
           </div>

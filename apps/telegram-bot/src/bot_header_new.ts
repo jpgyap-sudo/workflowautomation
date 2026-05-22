@@ -1,6 +1,5 @@
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
-import { uploadToDrive } from './services/googleDrive.js';
 import { AsyncLocalStorage } from 'async_hooks';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -380,9 +379,6 @@ async function uploadFileAndRecord(params: {
   telegramMessageId?: string;
   uploadedBy?: string;
 }) {
-  const fileBuffer = Buffer.from(params.imageBase64, 'base64');
-  const driveResult = await uploadToDrive(fileBuffer, params.fileName, params.mimeType);
-
   const payload: Record<string, unknown> = {
     file_type: params.mimeType,
     original_filename: params.fileName,
@@ -395,6 +391,6 @@ async function uploadFileAndRecord(params: {
   if (params.telegramMessageId) payload.telegram_message_id = params.telegramMessageId;
   if (params.quotationNumber) payload.quotation_number = params.quotationNumber;
 
-  await postJson('/drive/upload', payload);
-  return driveResult;
+  await postJson('/files/upload', payload);
+  return { ok: true };
 }

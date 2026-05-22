@@ -525,7 +525,7 @@ async function uploadFileAndRecord(params: {
   if (params.telegramMessageId) payload.telegram_message_id = params.telegramMessageId;
   if (params.quotationNumber) payload.quotation_number = params.quotationNumber;
 
-  await postJson('/drive/upload', payload);
+  await postJson('/files/upload', payload);
   return { fileId: null, webViewLink: null };
 }
 

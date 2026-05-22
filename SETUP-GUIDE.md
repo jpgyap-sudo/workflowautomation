@@ -4,7 +4,6 @@
 
 - A **Superoo VPS** (or any Linux server with Docker)
 - A **Telegram account** to create the bot and groups
-- A **Google Cloud Platform** account (for Drive API)
 - An **OpenAI API key** (for OCR / math checking)
 
 ---
@@ -27,8 +26,6 @@ Then edit `.env` with your real values. Below is a checklist of every variable:
 | `INVENTORY_GROUP_ID` | Telegram group chat ID | See Step 2 |
 | `DELIVERY_GROUP_ID` | Telegram group chat ID | See Step 2 |
 | `COLLECTION_GROUP_ID` | Telegram group chat ID | See Step 2 |
-| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Google Drive folder ID | See Step 3 |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON | `/app/credentials/google-service-account.json` |
 | `OPENAI_API_KEY` | OpenAI API key (optional) | From platform.openai.com |
 
 ---
@@ -68,61 +65,13 @@ Method A — Use a helper bot:
 3. Copy each ID into the corresponding `.env` variable
 
 Method B — Check bot logs:
-1. Start the bot (see Step 5)
+1. Start the bot (see Step 4)
 2. Send a message in each group
 3. Check the bot's console logs — it prints `chatId`
 
 ---
 
-## Step 3 — Set Up Google Drive
-
-### 3.1 Create a Google Cloud project
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (or select existing)
-3. Enable the **Google Drive API**
-
-### 3.2 Create a service account
-
-1. Go to **IAM & Admin → Service Accounts**
-2. Click **Create Service Account**
-3. Name it (e.g. `quotation-automation-sa`)
-4. Click **Done**
-
-### 3.3 Generate a key
-
-1. Click on the service account
-2. Go to **Keys** tab → **Add Key** → **Create New Key**
-3. Choose **JSON** format
-4. Download the file
-
-### 3.4 Place the key file
-
-Create the credentials directory and place the JSON file:
-
-```bash
-mkdir -p credentials
-# Move the downloaded JSON file here:
-mv ~/Downloads/your-key-file.json credentials/google-service-account.json
-```
-
-### 3.5 Get the root folder ID
-
-1. Create a folder in Google Drive (e.g. `Quotation Automation`)
-2. Open the folder
-3. The URL will look like: `https://drive.google.com/drive/folders/ABC123xyz...`
-4. Copy the folder ID (the part after `folders/`)
-5. Paste it into `GOOGLE_DRIVE_ROOT_FOLDER_ID` in `.env`
-
-### 3.6 Share the folder with the service account
-
-1. Right-click the folder → **Share**
-2. Add the service account email (e.g. `quotation-automation-sa@your-project.iam.gserviceaccount.com`)
-3. Give **Editor** permissions
-
----
-
-## Step 4 — Install Dependencies (Local Dev)
+## Step 3 — Install Dependencies (Local Dev)
 
 If you want to run the API and bot locally (not in Docker) for development:
 
@@ -138,9 +87,9 @@ npm install
 
 ---
 
-## Step 5 — Deploy to VPS
+## Step 4 — Deploy to VPS
 
-### 5.1 Copy files to VPS
+### 4.1 Copy files to VPS
 
 ```bash
 # Option A: git clone on the VPS
@@ -152,14 +101,7 @@ scp -r .env docker-compose.yml apps/ database/ workflows/ scripts/ \
   user@your-vps-ip:/opt/quotation-automation/
 ```
 
-### 5.2 Upload credentials
-
-```bash
-scp credentials/google-service-account.json \
-  user@your-vps-ip:/opt/quotation-automation/credentials/
-```
-
-### 5.3 Start everything
+### 4.2 Start everything
 
 ```bash
 cd /opt/quotation-automation
@@ -176,7 +118,7 @@ This starts 5 services:
 | **dashboard** | 3000 | Web dashboard (Next.js) |
 | **telegram-bot** | — | Telegram bot (no exposed port) |
 
-### 5.4 Check that everything is running
+### 4.3 Check that everything is running
 
 ```bash
 docker compose ps
@@ -186,7 +128,7 @@ All services should show `Up` status.
 
 ---
 
-## Step 6 — Built-in Reminder Scheduler
+## Step 5 — Built-in Reminder Scheduler
 
 The API server includes a built-in reminder scheduler ([`apps/api/src/services/reminderScheduler.ts`](apps/api/src/services/reminderScheduler.ts)) that:
 
@@ -214,7 +156,7 @@ The API server includes a built-in reminder scheduler ([`apps/api/src/services/r
 
 ---
 
-## Step 7 — Telegram Bot Commands Reference
+## Step 6 — Telegram Bot Commands Reference
 
 The Telegram bot supports the following commands for managing orders and file uploads:
 
@@ -228,34 +170,20 @@ The Telegram bot supports the following commands for managing orders and file up
 | `/link QTN-2026-001` | `/link <quotation_number>` | Link chat to an order (files uploaded after this will be attached to the order) |
 | `/unlink` | `/unlink` | Clear the order link (files won't be attached to any order) |
 
-### File Upload to Google Drive
+### File Upload
 
 When you send a **document** (PDF, image, etc.) or **photo** to the bot:
 
-1. If you've used `/link QTN-2026-001` first, the file is uploaded to a per-order folder in Google Drive
-2. If no order is linked, the file is uploaded to the root Drive folder
-3. The bot replies with a Google Drive link to the uploaded file
-4. The file reference is stored in the database (`files` table) with `google_drive_file_id` and `file_url`
-
-### API Endpoints for Google Drive
-
-The API exposes these endpoints for programmatic access:
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/drive/upload` | Upload a file (base64) to Google Drive and store reference |
-| `POST` | `/drive/folder` | Create/get a per-order folder in Google Drive |
-| `DELETE` | `/drive/files/:fileId` | Delete a file from Google Drive and database |
-   - `workflows/collection.json`
-   - `workflows/delivery.json`
-   - `workflows/purchasing.json`
-6. Update any webhook URLs in n8n to point to your API: `http://YOUR_VPS_IP:8080`
+1. If you've used `/link QTN-2026-001` first, the file is attached to that order
+2. If no order is linked, the file is stored without an order association
+3. The file is stored locally via the file-store service
+4. The file reference is stored in the database (`files` table)
 
 ---
 
-## Step 7 — Test the System
+## Step 6 — Test the System
 
-### 7.1 Test API health
+### 6.1 Test API health
 
 ```bash
 curl http://YOUR_VPS_IP:8080/health
@@ -266,11 +194,11 @@ Expected response:
 {"ok":true,"service":"quotation-automation-api"}
 ```
 
-### 7.2 Test Telegram bot
+### 6.2 Test Telegram bot
 
 Send `/start` to your bot on Telegram. It should reply: `Quotation Automation Bot is active.`
 
-### 7.3 Test a quotation flow
+### 6.3 Test a quotation flow
 
 1. In the **Purchasing** Telegram group, send a quotation document (PDF/image)
 2. The bot should reply: `📎 File received...`
@@ -279,7 +207,7 @@ Send `/start` to your bot on Telegram. It should reply: `Quotation Automation Bo
    curl http://YOUR_VPS_IP:8080/orders/pending
    ```
 
-### 7.4 Test stage updates
+### 6.4 Test stage updates
 
 In any group, try:
 - `/status QTN-2026-001` — check order status
@@ -290,9 +218,9 @@ In any group, try:
 
 ---
 
-## Step 8 — Production Hardening (Recommended)
+## Step 7 — Production Hardening (Recommended)
 
-### 8.1 Set up HTTPS with a reverse proxy
+### 7.1 Set up HTTPS with a reverse proxy
 
 Install **Caddy** or **Nginx** on the VPS to handle SSL:
 
@@ -308,7 +236,7 @@ automation.yourdomain.com {
 }
 ```
 
-### 8.2 Configure firewall
+### 7.2 Configure firewall
 
 ```bash
 # Allow only necessary ports
@@ -320,7 +248,7 @@ sudo ufw deny 8080         # Block direct API access
 sudo ufw enable
 ```
 
-### 8.3 Set up local backups
+### 7.3 Set up local backups
 
 The [`scripts/backup-db.sh`](scripts/backup-db.sh) script can be scheduled via cron:
 
@@ -329,7 +257,7 @@ crontab -e
 # Add: 0 3 * * * /opt/quotation-automation/scripts/backup-db.sh
 ```
 
-### 8.4 Set up Supabase cloud backup (recommended)
+### 7.4 Set up Supabase cloud backup (recommended)
 
 The system includes a Supabase Storage backup script that uploads your database dump to Supabase for off-site disaster recovery.
 
@@ -417,7 +345,6 @@ gunzip -c db_backup.sql.gz | docker exec -i qas_postgres psql -U n8n -d quotatio
 | Bot doesn't reply | Wrong token or bot not admin in group | Check `TELEGRAM_BOT_TOKEN` and group permissions |
 | API returns 500 | Database not ready or wrong `DATABASE_URL` | Check Postgres container logs: `docker compose logs postgres` |
 | n8n can't connect to DB | Wrong Postgres credentials in `.env` | Verify `POSTGRES_USER`/`POSTGRES_PASSWORD` match |
-| Google Drive upload fails | Service account not shared on folder | Share the Drive folder with the service account email |
 | Container won't start | Port already in use | Change host port in `docker-compose.yml` (e.g. `8081:8080`) |
 
 ---

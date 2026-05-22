@@ -1,6 +1,6 @@
 # Quotation Automation System
 
-Telegram + Google Drive + PostgreSQL + AI automation for tracking quotation → purchasing → inventory arrival → delivery → collection.
+Telegram + PostgreSQL + AI automation for tracking quotation → purchasing → inventory arrival → delivery → collection.
 
 ## What this repo contains
 
@@ -130,10 +130,6 @@ Every push to `master`/`main` automatically deploys to the VPS via Tailscale.
 | `PUBLIC_WEBHOOK_BASE_URL` | `https://track.abcx124.xyz` |
 | `PURCHASING_GROUP_CHAT_ID` through `QUOTATION_GROUP_CHAT_ID` | All 7 group chat IDs |
 | `PURCHASING_GROUP_ID` through `QUOTATION_GROUP_ID` | All 7 group IDs |
-| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Google Drive folder ID |
-| `GOOGLE_DRIVE_CLIENT_ID` | OAuth client ID |
-| `GOOGLE_DRIVE_CLIENT_SECRET` | OAuth client secret |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Full JSON content of service account key |
 | `GEMINI_API_KEY` | Gemini API key |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `OPENROUTER_MODEL` | `google/gemini-2.0-flash-001` |

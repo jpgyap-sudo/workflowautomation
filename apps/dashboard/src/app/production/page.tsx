@@ -26,16 +26,6 @@ function DaysAgo({ updatedAt }: { updatedAt: string }) {
   return <span className={`hidden text-xs sm:inline ${cls}`}>{days}d</span>;
 }
 
-function DriveLink({ folderId }: { folderId: string | null }) {
-  if (!folderId) return <span className="text-xs text-gray-400">—</span>;
-  return (
-    <a href={`https://drive.google.com/drive/folders/${folderId}`} target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-xs text-[#2490ef] hover:underline">
-      <ExternalLink className="h-3 w-3" /> Open Drive
-    </a>
-  );
-}
-
 function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
@@ -454,7 +444,6 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
           {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
         </div>
         <div className="flex items-center gap-3">
-          <DriveLink folderId={order.google_drive_folder_id} />
           <DaysAgo updatedAt={order.updated_at} />
           <StageBadge stage={order.current_stage} />
           <div className="flex items-center gap-1">

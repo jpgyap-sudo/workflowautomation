@@ -377,7 +377,7 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
 
 async function getOrderFiles(orderId: string, fileType: string): Promise<any[]> {
   return query(
-    `SELECT id, original_filename, google_drive_file_id, created_at
+    `SELECT id, original_filename, created_at
      FROM files WHERE order_id = $1 AND file_type = $2
      ORDER BY created_at DESC`,
     [orderId, fileType],

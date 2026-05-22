@@ -40,7 +40,6 @@ const ORDER_LIST_SELECT = `
   o.total_amount, o.computed_amount, o.math_status, o.current_stage, o.status,
   o.deposit_paid, o.deposit_amount, o.deposit_image_url, o.deposit_paid_at,
   o.balance_paid, o.balance_paid_at, o.order_confirmed_at,
-  o.google_drive_folder_id,
   o.production_started, o.production_started_at, o.estimated_production_days,
   o.production_delayed, o.production_delay_days,
   o.production_finished, o.production_finished_at, o.delivery_estimated_days,
@@ -2921,13 +2920,12 @@ const fileUploadSchema = z.object({
 });
 
 /**
- * POST /drive/upload
+ * POST /files/upload
  * Store extracted quotation text in the local file-store container.
- * Google Drive upload is disabled — quotations are stored as text only
- * for Hermes agent reference during production analysis.
- * Deposit slips are NOT stored anywhere.
+ * Quotations are stored as text only for Hermes agent reference
+ * during production analysis. Deposit slips are NOT stored anywhere.
  */
-app.post('/drive/upload', async (request, reply) => {
+app.post('/files/upload', async (request, reply) => {
   const body = fileUploadSchema.parse(request.body);
   const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
   let localFilePath: string | null = null;
@@ -2993,24 +2991,6 @@ app.post('/drive/upload', async (request, reply) => {
     file: fileRecord[0],
     note: 'File stored locally.',
   });
-});
-
-/**
- * POST /drive/folder
- * Google Drive folder creation is disabled.
- * Quotation text is stored in the local file-store container instead.
- */
-app.post('/drive/folder', async (request, reply) => {
-  return reply.send({ ok: true, note: 'Google Drive folder creation is disabled.' });
-});
-
-/**
- * DELETE /drive/files/:fileId
- * Google Drive file deletion is disabled.
- * File-store cleanup is handled automatically by the cleanup agent (90-day retention).
- */
-app.delete('/drive/files/:fileId', async (request, reply) => {
-  return reply.send({ ok: true, note: 'Google Drive file deletion is disabled.' });
 });
 
 // ── Reminders ────────────────────────────────────────────────────────
@@ -3272,7 +3252,7 @@ app.get('/search', async (request) => {
   const orders = await query(
     `SELECT id, quotation_number, client_name, sales_agent, total_amount, computed_amount,
             math_status, current_stage, status, deposit_paid, deposit_amount, deposit_paid_at,
-            balance_paid, order_confirmed_at, google_drive_folder_id, created_at, updated_at
+            balance_paid, order_confirmed_at, created_at, updated_at
      FROM orders
      WHERE quotation_number ILIKE $1
         OR client_name ILIKE $1

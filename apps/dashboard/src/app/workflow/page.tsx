@@ -618,14 +618,32 @@ function ProcurementFlowDiagram() {
     const to = nodeCenter(nodeMap[toId]);
     return `M ${from.x} ${from.y + from.height / 2} L ${from.x} ${y} L ${to.x} ${y} L ${to.x} ${to.y + to.height / 2}`;
   }
+  function toggleFullscreen() {
+    const element = document.getElementById('full-app-workflow-diagram');
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    void element?.requestFullscreen?.();
+  }
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6">
+    <div id="full-app-workflow-diagram" className="rounded-xl border border-gray-200 bg-white p-6">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-gray-800">Full App Workflow Diagram</h2>
           <p className="text-xs text-gray-500">Complete quotation lifecycle from sales intake through production, inventory, delivery, collection, and completion.</p>
         </div>
-        <span className="text-[10px] text-gray-400">Landscape view - scroll sideways to see the whole flow</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] text-gray-400">Landscape view - scroll sideways to see the whole flow</span>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+            title="Open the workflow diagram in fullscreen. Press Esc to exit."
+          >
+            ⛶ Fullscreen
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-dashed border-gray-200 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] p-4 [background-size:18px_18px]">
         <svg role="img" aria-labelledby="workflow-diagram-title workflow-diagram-desc" viewBox="0 0 5920 500" className="h-auto min-w-[2200px] max-w-none">
