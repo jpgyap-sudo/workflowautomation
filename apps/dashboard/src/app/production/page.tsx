@@ -79,6 +79,8 @@ function ItemCompletionBar({ pct, label, color }: { pct: number; label: string; 
 function ProductionInfoCards({ order }: { order: Order }) {
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [loadingCompletion, setLoadingCompletion] = useState(false);
+  const [items, setItems] = useState<OrderItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,10 +95,22 @@ function ProductionInfoCards({ order }: { order: Order }) {
         if (!cancelled) setLoadingCompletion(false);
       });
     }
+    // Fetch item-level details for production status table
+    if (order.id) {
+      setLoadingItems(true);
+      getOrderItems(order.id).then((res) => {
+        if (!cancelled && res.ok) {
+          setItems(res.items);
+          setLoadingItems(false);
+        }
+      }).catch(() => {
+        if (!cancelled) setLoadingItems(false);
+      });
+    }
     return () => { cancelled = true; };
   }, [order.id, order.production_started, order.current_stage]);
 
-  if (!order.production_started && !order.partial_production_items?.length) return null;
+  if (!order.production_started && !order.partial_production_items?.length && items.length === 0) return null;
   const finishDate = computeFinishDate(order);
   const progress = getProductionProgress(order);
 
@@ -113,6 +127,76 @@ function ProductionInfoCards({ order }: { order: Order }) {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Item-level production status table */}
+      {items.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Items ({items.length})
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  <th className="px-3 py-2">Item</th>
+                  <th className="px-3 py-2">Qty</th>
+                  <th className="px-3 py-2">Production</th>
+                  <th className="px-3 py-2">En Route</th>
+                  <th className="px-3 py-2">Inventory</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {items.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                    <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          item.production_status === 'finished'
+                            ? 'bg-green-100 text-green-700'
+                            : item.production_status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {item.production_status === 'finished' ? '✓ Finished' : item.production_status === 'in_progress' ? '⟳ In Progress' : '○ Pending'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          item.en_route_status === 'arrived'
+                            ? 'bg-green-100 text-green-700'
+                            : item.en_route_status === 'en_route'
+                              ? 'bg-sky-100 text-sky-700'
+                              : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {item.en_route_status === 'arrived' ? '✓ Arrived' : item.en_route_status === 'en_route' ? '⟳ En Route' : '○ Not Yet'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {item.en_route_status === 'arrived' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          ✓ In Stock
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {loadingItems && items.length === 0 && (
+        <div className="mb-3 flex items-center justify-center py-2">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
         </div>
       )}
 
@@ -521,6 +605,8 @@ function OrderSection({
 // ── Page ──────────────────────────────────────────────────────────────
 
 export default function ProductionPage() {
+  const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
+    useOrdersByStage('production_pending');
   const { data: partialOrders = [], isLoading: loadingPartial, error: errorPartial, mutate: mutatePartial } =
     usePartialProductionOrders();
   const { data: confirmedOrders = [], isLoading: loadingConfirmed, error: errorConfirmed, mutate: mutateConfirmed } =
@@ -541,7 +627,7 @@ export default function ProductionPage() {
     open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
-  function refresh() { mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateInvVerification(); }
+  function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateInvVerification(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -653,7 +739,7 @@ export default function ProductionPage() {
     } catch (err: any) { alert('Failed to revoke exception: ' + (err.message ?? 'Unknown error')); }
   }
 
-  const totalActive = partialOrders.length + confirmedOrders.length + enRouteOrders.length + invVerificationOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + confirmedOrders.length + enRouteOrders.length + invVerificationOrders.length;
 
   return (
     <div className="space-y-6">
@@ -671,6 +757,26 @@ export default function ProductionPage() {
           </div>
         </div>
       </div>
+
+      {/* Production Pending */}
+      <OrderSection
+        icon={<Clock className="h-4 w-4 text-indigo-500" />}
+        title="Production Pending"
+        count={pendingOrders.length}
+        countBg="bg-indigo-100" countText="text-indigo-700"
+        orders={pendingOrders} isLoading={loadingPending} error={errorPending}
+        onRetry={() => mutatePending()}
+        emptyText="No orders pending production"
+      >
+        {(order) => (
+          <>
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
 
       {/* Partial Production */}
       <OrderSection

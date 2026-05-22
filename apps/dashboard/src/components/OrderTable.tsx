@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Order } from '@/lib/api';
 import StageBadge from './StageBadge';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, FileText } from 'lucide-react';
 
 interface OrderTableProps {
   orders: Order[];
@@ -15,6 +15,7 @@ interface OrderTableProps {
   showDepositDate?: boolean;
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
+  onViewFiles?: (order: Order) => void;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
@@ -49,6 +50,7 @@ export default function OrderTable({
   showDepositDate = true,
   onEdit,
   onDelete,
+  onViewFiles,
   selectable = false,
   selectedIds = new Set(),
   onSelect,
@@ -86,7 +88,12 @@ export default function OrderTable({
                     />
                   )}
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-gray-900">{order.quotation_number ?? '—'}</p>
+                    <Link
+                      href={detailHref}
+                      className="truncate text-sm font-semibold text-[#2490ef] hover:underline"
+                    >
+                      {order.quotation_number ?? '—'}
+                    </Link>
                     {showClient && <p className="truncate text-xs text-gray-500">{order.client_name ?? 'No client'}</p>}
                   </div>
                 </div>
@@ -173,6 +180,15 @@ export default function OrderTable({
               </dl>
 
               <div className="flex items-center gap-2">
+                {onViewFiles && (
+                  <button
+                    onClick={() => onViewFiles(order)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-[#2490ef]"
+                    title="View order files"
+                  >
+                    <FileText className="h-4 w-4" />
+                  </button>
+                )}
                 <Link
                   href={detailHref}
                   className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-[#2490ef] px-3 py-2 text-sm font-medium text-[#2490ef]"
@@ -251,7 +267,12 @@ export default function OrderTable({
                     </td>
                   )}
                   <td className="px-4 py-3 font-medium">
-                    <span className="text-gray-900">{order.quotation_number ?? '—'}</span>
+                    <Link
+                      href={`/orders/${order.quotation_number ?? order.id}`}
+                      className="text-[#2490ef] hover:underline"
+                    >
+                      {order.quotation_number ?? '—'}
+                    </Link>
                   </td>
                   {showClient && <td className="px-4 py-3 text-gray-600">{order.client_name ?? '—'}</td>}
                   {showAgent && <td className="px-4 py-3 text-gray-600">{order.sales_agent ?? '—'}</td>}
@@ -305,6 +326,15 @@ export default function OrderTable({
                   <td className="px-4 py-3 text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
+                      {onViewFiles && (
+                        <button
+                          onClick={() => onViewFiles(order)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                          title="View order files"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </button>
+                      )}
                       <Link href={`/orders/${order.quotation_number ?? order.id}`} className="text-xs font-medium text-[#2490ef] hover:underline">
                         View
                       </Link>

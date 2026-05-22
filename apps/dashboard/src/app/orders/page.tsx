@@ -7,6 +7,7 @@ import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
+import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { X, Check, Plus, Loader2, Trash2 } from 'lucide-react';
 
 function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -152,6 +153,8 @@ export default function OrdersPage() {
   const { data: orders = [], error, isLoading, mutate } = useOrders();
   const [filter, setFilter] = useState<string>('all');
   const [showNewOrder, setShowNewOrder] = useState(false);
+
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -368,6 +371,7 @@ export default function OrdersPage() {
           orders={filtered}
           onEdit={handleEdit}
           onDelete={handleDeleteClick}
+          onViewFiles={handleViewFiles}
           selectable
           selectedIds={selectedIds}
           onSelect={handleSelect}
@@ -418,6 +422,16 @@ export default function OrdersPage() {
             <p className="text-sm text-gray-600">Deleting {selectedIds.size} orders...</p>
           </div>
         </div>
+      )}
+
+      {/* File Viewer Modal */}
+      {viewingFilesOrder && (
+        <FileViewerModal
+          order={viewingFilesOrder}
+          files={orderFiles}
+          onClose={closeViewer}
+          onUploadComplete={refreshFiles}
+        />
       )}
     </div>
   );
