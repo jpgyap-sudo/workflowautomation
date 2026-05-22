@@ -2192,3 +2192,51 @@ Added a reusable inline SVG workflow diagram to apps/dashboard/src/app/workflow/
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove checkBalanceDue import and usage from server.ts (moved to collection agent)
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 807d5017e1dbb7917505b0ba15b57693a3852ae5
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 807d5017e1dbb7917505b0ba15b57693a3852ae5
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+Removed an unused `checkBalanceDue` import and its usage from `server.ts`, as this logic was moved to a dedicated collection agent.
+
+**Why it broke:**  
+The function was originally called in the server startup flow, but after refactoring, the responsibility shifted to a separate agent. The stale import caused confusion, potential runtime errors if the function signature changed, and violated separation of concerns.
+
+**Reusable takeaway:**  
+When extracting business logic from a central entry point (e.g., server startup) into a dedicated service or agent, always remove the old import and call site. This prevents dead code, reduces coupling, and ensures the server only handles orchestration, not domain-specific tasks. Use automated linting or import checks to catch orphaned dependencies after refactoring.
+
+---
+*Original commit message: fix: remove checkBalanceDue import and usage from server.ts (moved to collection agent)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Removed an unused `checkBalanceDue` import and its usage from `server.ts`, as this logic was moved to a dedicated collection agent.
+
+**Why it broke:**  
+The function was originally called in the server startup flow, but after refactoring, the responsibility shifted to a separate agent. The stale import caused confusion, potential runtime errors if the function signature changed, and violated separation of concerns.
+
+**Reusable takeaway:**  
+When extracting business logic from a central entry point (e.g., server startup) into a dedicated service or agent, always remove the old import and call site. This prevents dead code, reduces coupling, and ensures the server only handles orchestration, not domain-specific tasks. Use automated linting or import checks to catch orphaned dependencies after refactoring.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
