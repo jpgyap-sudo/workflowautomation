@@ -6,6 +6,7 @@ import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search } from 'lucide-react';
 
 interface EditFormProps {
@@ -100,6 +101,8 @@ function OrderPaymentInfo({ order }: { order: Order }) {
 }
 
 export default function CollectionPage() {
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
+
   const { data: inventoryArrivedOrders = [], isLoading: loadingArrived, mutate: mutateArrived } = useOrdersByStage('inventory_arrived');
   const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
   const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
@@ -363,7 +366,7 @@ export default function CollectionPage() {
         <div className="flex items-center justify-between px-6 py-4">
           <div>
             <div className="flex items-center gap-2">
-              <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+              <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
               {hasException && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                   <ShieldAlert className="h-3 w-3" />
@@ -542,7 +545,7 @@ export default function CollectionPage() {
                 <div className="flex items-center justify-between px-6 py-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                     </div>
                     <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                     {order.sales_agent && (
@@ -596,7 +599,7 @@ export default function CollectionPage() {
                 <div className="flex items-center justify-between px-6 py-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                     </div>
                     <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                     {order.sales_agent && (
@@ -675,7 +678,7 @@ export default function CollectionPage() {
                     <div className="flex items-center justify-between px-6 py-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                          <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                         </div>
                         <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                         {order.sales_agent && (
@@ -938,6 +941,16 @@ export default function CollectionPage() {
           (window as any).__pendingEditData = null;
         }}
       />
+
+      {/* File Viewer Modal */}
+      {viewingFilesOrder && (
+        <FileViewerModal
+          order={viewingFilesOrder}
+          files={orderFiles}
+          onClose={closeViewer}
+          onUploadComplete={refreshFiles}
+        />
+      )}
 
       {/* Deleting overlay */}
       {deleting && (

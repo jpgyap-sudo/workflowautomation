@@ -865,7 +865,22 @@ export function getOrderFileDownloadUrl(orderId: string, fileId: string): string
   return `${API_BASE}/orders/${encodeURIComponent(orderId)}/files/${encodeURIComponent(fileId)}/download`;
 }
 
-// ── Google Drive Upload ────────────────────────────────────────────────
+export async function uploadOrderFile(data: {
+  order_id?: string;
+  quotation_number?: string;
+  file_type: string;
+  original_filename: string;
+  mime_type: string;
+  file_data: string; // base64
+}): Promise<{ ok: boolean; file: OrderFile }> {
+  return fetchJson<{ ok: boolean; file: OrderFile }>('/files/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Reminders ──────────────────────────────────────────────────────────
 
 export interface Reminder {
   id: string;

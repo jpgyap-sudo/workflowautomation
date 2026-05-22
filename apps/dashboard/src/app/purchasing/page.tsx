@@ -6,6 +6,7 @@ import type { Order, ItemCompletion } from '@/lib/api';
 import { updateOrder, deleteOrder, setProduction, getItemCompletion } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import {
   ShoppingCart, Clock, Package,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
@@ -17,9 +18,10 @@ interface OrderRowProps {
   onEdit: (order: Order) => void;
   onDelete: (order: Order) => void;
   onStartProduction?: (order: Order) => void;
+  onViewFiles?: (order: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
 
@@ -42,7 +44,7 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps)
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+            <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
             {(order.escalation_level ?? 0) > 0 && (
               <span className="flex items-center gap-0.5">
                 {Array.from({ length: Math.min(order.escalation_level ?? 0, 3) }).map((_, i) => (
@@ -278,6 +280,8 @@ export default function PurchasingPage() {
     open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
+
   function refresh() {
     mutatePending();
   }
@@ -376,7 +380,7 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProduction={handleStartProduction} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProduction={handleStartProduction} onViewFiles={handleViewFiles} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -398,6 +402,15 @@ export default function PurchasingPage() {
             <p className="text-sm text-gray-600">Deleting order...</p>
           </div>
         </div>
+      )}
+
+      {viewingFilesOrder && (
+        <FileViewerModal
+          order={viewingFilesOrder}
+          files={orderFiles}
+          onClose={closeViewer}
+          onUploadComplete={refreshFiles}
+        />
       )}
     </div>
   );

@@ -2240,3 +2240,87 @@ When extracting business logic from a central entry point (e.g., server startup)
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: repair corrupted 'use client' directive in purchasing page
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 677bcd19133706efee871bc6c357af65a39622d4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 677bcd19133706efee871bc6c357af65a39622d4
+**Files:** apps/dashboard/src/app/purchasing/page.tsx
+
+**Summary:**
+**What was fixed:** A corrupted `'use client'` directive in the purchasing page that caused a runtime error or misrendering.
+
+**Why it broke:** The directive was likely malformed (e.g., missing quotes, extra whitespace, or a typo) during a previous edit or merge conflict, breaking the client-side boundary required for interactive components.
+
+**Reusable takeaway:** Always validate `'use client'` and `'use server'` directives after merging or refactoring—they are syntactically strict and invisible to linters. Use a regex or pre-commit hook to check for exact string `'use client'` at the top of client files.
+
+---
+*Original commit message: fix: repair corrupted 'use client' directive in purchasing page*
+
+#### Lesson Learned
+
+**What was fixed:** A corrupted `'use client'` directive in the purchasing page that caused a runtime error or misrendering.
+
+**Why it broke:** The directive was likely malformed (e.g., missing quotes, extra whitespace, or a typo) during a previous edit or merge conflict, breaking the client-side boundary required for interactive components.
+
+**Reusable takeaway:** Always validate `'use client'` and `'use server'` directives after merging or refactoring—they are syntactically strict and invisible to linters. Use a regex or pre-commit hook to check for exact string `'use client'` at the top of client files.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove duplicate HEAD route in file-store (Fastify auto-creates HEAD from GET)
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 067e9920a47b4e287a4fc9df21e796450968d4e8
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 067e9920a47b4e287a4fc9df21e796450968d4e8
+**Files:** apps/file-store/src/index.js
+
+**Summary:**
+**What was fixed:** Removed an explicit `HEAD` route handler in the file-store service.
+
+**Why it broke:** Fastify automatically creates a `HEAD` route from any `GET` route. Adding a duplicate `HEAD` route caused a route collision error at startup, preventing the service from running.
+
+**Reusable takeaway:** When using Fastify (or similar frameworks like Express with `app.head`), never manually define `HEAD` routes for endpoints that already have a `GET` handler. The framework handles this automatically. Always check framework documentation for implicit route generation before adding redundant handlers.
+
+---
+*Original commit message: fix: remove duplicate HEAD route in file-store (Fastify auto-creates HEAD from GET)*
+
+#### Lesson Learned
+
+**What was fixed:** Removed an explicit `HEAD` route handler in the file-store service.
+
+**Why it broke:** Fastify automatically creates a `HEAD` route from any `GET` route. Adding a duplicate `HEAD` route caused a route collision error at startup, preventing the service from running.
+
+**Reusable takeaway:** When using Fastify (or similar frameworks like Express with `app.head`), never manually define `HEAD` routes for endpoints that already have a `GET` handler. The framework handles this automatically. Always check framework documentation for implicit route generation before adding redundant handlers.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -6,6 +6,7 @@ import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder, payBalance, recordStageUpdate } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen } from 'lucide-react';
 
 interface EditFormProps {
@@ -166,6 +167,8 @@ export default function DeliveryPage() {
   const [schedulingOrder, setSchedulingOrder] = useState<Order | null>(null);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleRemarks, setScheduleRemarks] = useState('');
+
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
   const [otpModal, setOtpModal] = useState<{
     open: boolean;
@@ -494,7 +497,7 @@ export default function DeliveryPage() {
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                         {hasException && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                             <ShieldAlert className="h-3 w-3" />Special Case
@@ -556,7 +559,7 @@ export default function DeliveryPage() {
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                         {hasException && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                             <ShieldAlert className="h-3 w-3" />Special Case
@@ -642,7 +645,7 @@ export default function DeliveryPage() {
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                         {hasException && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                             <ShieldAlert className="h-3 w-3" />Special Case
@@ -734,7 +737,7 @@ export default function DeliveryPage() {
                 <div key={order.id}>
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
-                      <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                       {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
                       {order.total_amount != null && (
@@ -793,6 +796,15 @@ export default function DeliveryPage() {
             <p className="text-sm text-gray-600">Deleting order…</p>
           </div>
         </div>
+      )}
+
+      {viewingFilesOrder && (
+        <FileViewerModal
+          order={viewingFilesOrder}
+          files={orderFiles}
+          onClose={closeViewer}
+          onUploadComplete={refreshFiles}
+        />
       )}
     </div>
   );
