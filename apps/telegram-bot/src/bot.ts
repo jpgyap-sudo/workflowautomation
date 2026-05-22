@@ -2692,6 +2692,22 @@ bot.action(/^balance:not_paid:(.+):(.+)$/, async (ctx) => {
 // ── Delivery Day Check Callback Handlers ─────────────────────────────
 
 // User confirmed item has been delivered
+// User clicked "Schedule Delivery" from delivery_pending notification
+bot.action(/^delivery:schedule:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[2];
+
+  try {
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    await showDeliveryDatePicker(ctx, chatId, quotationNumber, order, true);
+  } catch {
+    await ctx.editMessageText(
+      `❌ Order *${quotationNumber}* not found.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
+});
+
 bot.action(/^delivery:yes:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');

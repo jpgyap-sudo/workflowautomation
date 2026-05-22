@@ -16,14 +16,31 @@ import { query } from '../db.js';
  * delivery-agent
  *
  * Role: Tracks delivery scheduling and delivery status.
- * - Checks orders at delivery_scheduled stage — reminds if delivery date is approaching/passed
- * - Checks orders at delivered stage — reminds to confirm delivery
+ * - Checks orders at delivery_pending stage — asks if delivery has been scheduled yet
+ * - Checks orders at delivery_scheduled stage:
+ *   - 1 day before delivery: asks "Are we ready for delivery tomorrow?"
+ *   - On delivery day: asks "Has the item been delivered?"
+ *   - If not delivered: asks for new schedule
  *
  * NOTE: Inventory arrival confirmation is handled by the Inventory Agent.
  *       Balance collection is handled by the Collection Agent.
  */
 export async function runDeliveryAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
+
+  // Check orders at delivery_pending stage — needs delivery date input
+  const pendingOrders = await getActiveOrdersByStage('delivery_pending');
+  for (const order of pendingOrders) {
+    const result = await checkDeliveryPending(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('delivery-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'delivery_pending', groupChatId, result.message);
+        await notifyDelivery(groupChatId, order, result);
+      }
+    }
+    results.push(result);
+  }
 
   // Check orders at delivery_scheduled stage
   const scheduledOrders = await getActiveOrdersByStage('delivery_scheduled');
@@ -42,6 +59,64 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
   return results;
 }
 
+/**
+ * Check orders at delivery_pending stage.
+ * These are orders where balance has been verified but no delivery date has been set yet.
+ * The agent asks the team to input the estimated delivery date.
+ */
+export async function checkDeliveryPending(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'delivery_pending');
+
+    if (escalationLevel >= 3) {
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🔴 Delivery date not set after ${escalationLevel} reminders. Manager intervention required.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('delivery-agent', input, result, 'blocked', order.id);
+      return result;
+    }
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Has the delivery been scheduled yet? Please input the estimated delivery date so we can schedule delivery.`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking delivery pending for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('delivery-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Check orders at delivery_scheduled stage.
+ * - 1 day before delivery: asks "Are we ready for delivery tomorrow?"
+ * - On delivery day: asks "Has the item been delivered?"
+ * - If delivery date is past due: asks for new schedule
+ */
 export async function checkScheduledDelivery(order: OrderRow): Promise<AgentResult> {
   const input = {
     quotation_number: order.quotation_number,
@@ -50,10 +125,6 @@ export async function checkScheduledDelivery(order: OrderRow): Promise<AgentResu
 
   try {
     const escalationLevel = await getEscalationLevel(order.id, 'delivery_scheduled');
-
-    // Check stage_updates for delivery date info
-    const stageUpdates = await getStageUpdates(order.id, 'delivery_scheduled');
-    const latestUpdate = stageUpdates[0];
 
     if (escalationLevel >= 3) {
       const result: AgentResult = {
@@ -68,13 +139,80 @@ export async function checkScheduledDelivery(order: OrderRow): Promise<AgentResu
       return result;
     }
 
-    const dateInfo = latestUpdate?.remarks
-      ? ` (Remarks: ${latestUpdate.remarks})`
-      : '';
+    // Check if there's a delivery_date set on the order
+    const orderWithDate = await query(
+      `SELECT delivery_date FROM orders WHERE id = $1`,
+      [order.id]
+    );
+    const deliveryDate = orderWithDate[0]?.delivery_date;
 
+    if (!deliveryDate) {
+      // No delivery date set — this shouldn't happen if we go through delivery_pending,
+      // but handle it gracefully
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `Delivery is scheduled but no delivery date has been set. Please input the estimated delivery date.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
+      return result;
+    }
+
+    // Calculate days until delivery
+    const now = new Date();
+    const deliveryDateObj = new Date(deliveryDate);
+    const diffTime = deliveryDateObj.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 1) {
+      // More than 1 day away — no reminder needed yet
+      const result: AgentResult = {
+        status: 'ok',
+        message: `Delivery scheduled for ${deliveryDateObj.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })} (${diffDays} days away). No action needed yet.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('delivery-agent', input, result, 'ok', order.id);
+      return result;
+    }
+
+    if (diffDays === 1) {
+      // 1 day before delivery — ask "Are we ready for delivery tomorrow?"
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `Delivery is scheduled for <b>tomorrow</b> (${deliveryDateObj.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}). Are we ready for the delivery schedule tomorrow?`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
+      return result;
+    }
+
+    if (diffDays === 0) {
+      // On delivery day — ask "Has the item been delivered?"
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `Delivery is scheduled for <b>today</b> (${deliveryDateObj.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}). Has the item been delivered?`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
+      return result;
+    }
+
+    // Past due — ask for new schedule
     const result: AgentResult = {
       status: 'needs_review',
-      message: `Has the delivery been completed? Scheduled delivery is pending${dateInfo}.`,
+      message: `Delivery was scheduled for ${deliveryDateObj.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })} but has not been delivered yet (${Math.abs(diffDays)} day(s) overdue). Please provide a new delivery schedule.`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,
@@ -117,7 +255,15 @@ export async function notifyDelivery(
 
   let keyboard: Record<string, unknown> | undefined;
   if (qn && result.status === 'needs_review') {
-    if (order.current_stage === 'delivery_scheduled') {
+    if (order.current_stage === 'delivery_pending') {
+      // Delivery pending — ask to schedule delivery
+      keyboard = inlineKeyboard([
+        [
+          { text: '📅 Schedule Delivery', callback_data: `delivery:schedule:${id}:${qn}` },
+        ],
+      ]);
+    } else if (order.current_stage === 'delivery_scheduled') {
+      // Check if it's delivery day or past due
       keyboard = inlineKeyboard([
         [
           { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id}:${qn}` },

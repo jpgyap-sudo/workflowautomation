@@ -7,7 +7,7 @@ import { updateOrder, deleteOrder, payBalance, recordStageUpdate } from '@/lib/a
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -152,10 +152,11 @@ function DeliveryInfo({ order }: { order: Order }) {
 export default function DeliveryPage() {
   const { data: inventoryArrivedOrders = [], isLoading: loadingInventory, mutate: mutateInventory } = useOrdersByStage('inventory_arrived');
   const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
+  const { data: pendingOrders = [], isLoading: loadingPending, mutate: mutatePending } = useOrdersByStage('delivery_pending');
   const { data: scheduledOrders = [], isLoading: loadingScheduled, mutate: mutateScheduled } = useOrdersByStage('delivery_scheduled');
   const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
 
-  const loading = loadingInventory && loadingBalanceDue && loadingScheduled && loadingDelivered;
+  const loading = loadingInventory && loadingBalanceDue && loadingPending && loadingScheduled && loadingDelivered;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -178,7 +179,7 @@ export default function DeliveryPage() {
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function mutateAll() {
-    mutateInventory(); mutateBalanceDue(); mutateScheduled(); mutateDelivered();
+    mutateInventory(); mutateBalanceDue(); mutatePending(); mutateScheduled(); mutateDelivered();
   }
 
   // ── Payment ────────────────────────────────────────────────────────────
@@ -445,7 +446,7 @@ export default function DeliveryPage() {
     );
   }
 
-  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
+  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -614,6 +615,83 @@ export default function DeliveryPage() {
                         Cancel
                       </button>
                     </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Delivery Pending ──────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <Clock className="h-4 w-4 text-amber-500" />
+          <h2 className="text-base font-semibold text-gray-800">Delivery Pending</h2>
+          <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            {pendingOrders.length}
+          </span>
+        </div>
+        {pendingOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders pending delivery scheduling</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {pendingOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              const hasException = order.delivery_exception === true;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                        {hasException && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />Special Case
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      {hasException && order.delivery_exception_notes && (
+                        <p className="mt-0.5 text-[11px] italic text-amber-600">Exception: {order.delivery_exception_notes}</p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleOpenSchedule(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+                        title="Schedule delivery"
+                      >
+                        {actionLoading === order.id ? '…' : 'Schedule Delivery'}
+                      </button>
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                  {schedulingOrder?.id === order.id && (
+                    <ScheduleForm
+                      order={order}
+                      value={scheduleDate}
+                      remarks={scheduleRemarks}
+                      onValueChange={setScheduleDate}
+                      onRemarksChange={setScheduleRemarks}
+                      onSave={() => handleScheduleSubmit(order)}
+                      onCancel={() => setSchedulingOrder(null)}
+                      saving={actionLoading === order.id}
+                    />
                   )}
                 </div>
               );

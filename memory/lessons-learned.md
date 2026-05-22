@@ -2660,3 +2660,93 @@ When building Telegram bots (or any platform with fixed-size payload limits), al
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: delivery group shows only completion notice, collection agent handles balance reminders for inventory_arrived/balan
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7a8be601fbc30a7e283cb3af38b12c376947b5e4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 7a8be601fbc30a7e283cb3af38b12c376947b5e4
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A delivery group was incorrectly sending balance reminders to customers, even though it should only send a completion notice. The collection agent now handles balance reminders for `inventory_arrived` and `balance_due` events.
+
+**Why it broke:**  
+The delivery group’s logic was not scoped to its responsibility—it was triggering balance reminders meant for the collection agent, causing duplicate or misdirected notifications.
+
+**Reusable takeaway:**  
+Ensure each service or agent has a single, clearly defined responsibility. When multiple agents handle related events, explicitly separate their triggers and payloads to avoid overlap. Use event-based routing to delegate tasks to the correct handler.
+
+---
+*Original commit message: fix: delivery group shows only completion notice, collection agent handles balance reminders for inventory_arrived/balance_due*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A delivery group was incorrectly sending balance reminders to customers, even though it should only send a completion notice. The collection agent now handles balance reminders for `inventory_arrived` and `balance_due` events.
+
+**Why it broke:**  
+The delivery group’s logic was not scoped to its responsibility—it was triggering balance reminders meant for the collection agent, causing duplicate or misdirected notifications.
+
+**Reusable takeaway:**  
+Ensure each service or agent has a single, clearly defined responsibility. When multiple agents handle related events, explicitly separate their triggers and payloads to avoid overlap. Use event-based routing to delegate tasks to the correct handler.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add immediate Telegram notifications to functional groups on website manual confirmations
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a58bb0a52696d1bbbc185f5d1601471e652a7768
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a58bb0a52696d1bbbc185f5d1601471e652a7768
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** Telegram notifications were not being sent immediately to functional groups when a manual confirmation was made on the website.
+
+**Why it broke:** The notification logic was only triggered on automated workflow events, not on manual confirmations. The server-side handler for manual confirmations lacked the call to the Telegram notification service for functional groups.
+
+**Reusable takeaway:** When adding manual override actions (e.g., confirmations, approvals) to a system that already has automated notifications, ensure the notification path is explicitly invoked in the manual handler. Do not assume that manual actions will reuse the same event-driven notification pipeline—they often bypass it. Always audit all manual action handlers for missing side effects like alerts, logs, or notifications.
+
+---
+*Original commit message: fix: add immediate Telegram notifications to functional groups on website manual confirmations*
+
+#### Lesson Learned
+
+**What was fixed:** Telegram notifications were not being sent immediately to functional groups when a manual confirmation was made on the website.
+
+**Why it broke:** The notification logic was only triggered on automated workflow events, not on manual confirmations. The server-side handler for manual confirmations lacked the call to the Telegram notification service for functional groups.
+
+**Reusable takeaway:** When adding manual override actions (e.g., confirmations, approvals) to a system that already has automated notifications, ensure the notification path is explicitly invoked in the manual handler. Do not assume that manual actions will reuse the same event-driven notification pipeline—they often bypass it. Always audit all manual action handlers for missing side effects like alerts, logs, or notifications.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

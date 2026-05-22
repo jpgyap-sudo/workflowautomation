@@ -70,6 +70,7 @@ export const STAGE_LABELS: Record<string, string> = {
   en_route: '🚚 En Route',
   inventory_arrived: '📦 Inventory Arrived',
   balance_due: '⚖️ Balance Due',
+  delivery_pending: '📅 Delivery Pending',
   delivery_scheduled: '🚚 Delivery Scheduled',
   delivered: '✅ Delivered',
   countered: '🔄 Countered',

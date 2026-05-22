@@ -189,6 +189,7 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   // Inventory → Balance Due
   balance_due:           ['collection-agent', 'delivery-agent'],
   // Delivery
+  delivery_pending:      ['delivery-agent'],
   delivery_scheduled:    ['delivery-agent'],
   delivered:             ['collection-agent'],
   countered:             ['collection-agent'],
@@ -1617,6 +1618,7 @@ app.post('/stage-updates', async (request, reply) => {
       en_route: PRODUCTION_CHAT_ID,
       inventory_arrived: DELIVERY_CHAT_ID,
       balance_due: COLLECTION_CHAT_ID,
+      delivery_pending: DELIVERY_CHAT_ID,
       delivery_scheduled: DELIVERY_CHAT_ID,
       delivered: DELIVERY_CHAT_ID,
       countered: DELIVERY_CHAT_ID,
@@ -2428,14 +2430,16 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   }
 
   // Determine the next stage based on current stage:
-  // - If order is at balance_due (not yet delivered) → advance to delivery_scheduled
+  // - If order is at balance_due (not yet delivered) → advance to delivery_pending
+  //   (delivery_pending means balance is verified but delivery date has NOT been set yet.
+  //    The delivery agent will ask the team to input the delivery date.)
   // - If order is at delivered/countered (already delivered) → advance to payment_received
   const currentStage = order.current_stage;
   const nextStage = (currentStage === 'delivered' || currentStage === 'countered')
     ? 'payment_received'
-    : 'delivery_scheduled';
+    : 'delivery_pending';
 
-  const stageLabel = nextStage === 'payment_received' ? 'Payment Received' : 'Delivery Scheduled';
+  const stageLabel = nextStage === 'payment_received' ? 'Payment Received' : 'Delivery Pending';
 
   await query(
     `UPDATE orders SET
@@ -2478,16 +2482,17 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     );
   });
 
-  // Notify delivery group immediately if advancing to delivery_scheduled
-  if (nextStage === 'delivery_scheduled') {
+  // Notify delivery group immediately — balance verified, needs delivery date
+  if (nextStage === 'delivery_pending') {
     setImmediate(() => {
       notifyGroupChat(
         DELIVERY_CHAT_ID,
-        `🚚 <b>Balance Verified — Ready for Delivery Scheduling</b>\n\n` +
+        `📅 <b>Balance Verified — Delivery Date Needed</b>\n\n` +
         `Quotation: <b>${order.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n` +
         `Balance verified by: ${body.verified_by ?? 'team'}\n\n` +
-        `Order is now in <b>Delivery Scheduled</b> stage. Please schedule delivery.`
+        `Order is now in <b>Delivery Pending</b> stage.\n` +
+        `Please input the estimated delivery date so we can schedule delivery.`
       );
     });
   }
