@@ -21,6 +21,7 @@ export interface ExtractedQuotation {
   sales_agent?: string;
   total_amount?: number;
   order_date?: string;
+  items?: ExtractedInventoryItem[];
 }
 
 export interface ExtractedPayment {
@@ -241,7 +242,8 @@ const QUOTATION_PROMPT = `You are a data extraction assistant. Analyze the image
   "client_name": "string or null — the client or customer name",
   "sales_agent": "string or null — the sales agent or person who prepared the quotation",
   "total_amount": "number or null — the total amount in PHP (numeric only, no currency symbol)",
-  "order_date": "string or null — the date on the quotation/order confirmation document in ISO 8601 format (YYYY-MM-DD)"
+  "order_date": "string or null — the date on the quotation/order confirmation document in ISO 8601 format (YYYY-MM-DD)",
+  "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number }"
 }
 
 Rules:
@@ -249,6 +251,8 @@ Rules:
 - If a field is not visible in the image, set it to null.
 - For total_amount, extract the numeric value only (e.g. 15000, not "₱15,000").
 - For order_date, look for any date printed on the document (issued date, quotation date, etc.) and format as YYYY-MM-DD.
+- For items, extract EVERY product/item listed in the quotation with its name and quantity. If quantity is not specified, default to 1.
+- If no items are visible, set items to an empty array [].
 - Be as accurate as possible.`;
 
 export async function extractQuotation(
@@ -266,15 +270,28 @@ export async function extractQuotation(
     };
   }
 
+  // Parse items from the response
+  let items: ExtractedInventoryItem[] | undefined;
+  if (Array.isArray(parsed.items)) {
+    items = parsed.items
+      .filter((item: any) => item && typeof item.product_name === 'string' && item.product_name.trim().length > 0)
+      .map((item: any) => ({
+        product_name: typeof item.product_name === 'string' ? item.product_name.trim() : undefined,
+        quantity: typeof item.quantity === 'number' ? item.quantity : (typeof item.quantity === 'string' ? parseInt(item.quantity, 10) || 1 : 1),
+      }));
+    if (items.length === 0) items = undefined;
+  }
+
   const quotation: ExtractedQuotation = {
     quotation_number: typeof parsed.quotation_number === 'string' ? parsed.quotation_number : undefined,
     client_name: typeof parsed.client_name === 'string' ? parsed.client_name : undefined,
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
     order_date: typeof parsed.order_date === 'string' ? parsed.order_date : undefined,
+    items,
   };
 
-  const hasFields = quotation.quotation_number || quotation.client_name || quotation.total_amount;
+  const hasFields = quotation.quotation_number || quotation.client_name || quotation.total_amount || (items && items.length > 0);
   const confidence: 'high' | 'medium' | 'low' =
     quotation.quotation_number && quotation.total_amount
       ? 'high'

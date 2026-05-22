@@ -3414,3 +3414,45 @@ Always include unique identifiers (like `orderId`) in callback payloads for even
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: restore Package icon import (still used by ItemCompletionBar)
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3c8594bce9cdd5adbf424f1cc7dc38dd5fa522ea
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3c8594bce9cdd5adbf424f1cc7dc38dd5fa522ea
+**Files:** apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**What was fixed:** Restored the `Package` icon import in `apps/dashboard/src/app/production/page.tsx`, which was accidentally removed during a refactor.
+
+**Why it broke:** The icon was still actively used by the `ItemCompletionBar` component, but its import was deleted, causing a runtime error.
+
+**Reusable takeaway:** When cleaning up unused imports during refactoring, always verify that the import is not consumed by any child component or indirect dependency. Use static analysis tools (e.g., TypeScript’s `noUnusedLocals` or ESLint’s `no-unused-vars`) to catch false positives, and run a full build or test suite before committing.
+
+---
+*Original commit message: fix: restore Package icon import (still used by ItemCompletionBar)*
+
+#### Lesson Learned
+
+**What was fixed:** Restored the `Package` icon import in `apps/dashboard/src/app/production/page.tsx`, which was accidentally removed during a refactor.
+
+**Why it broke:** The icon was still actively used by the `ItemCompletionBar` component, but its import was deleted, causing a runtime error.
+
+**Reusable takeaway:** When cleaning up unused imports during refactoring, always verify that the import is not consumed by any child component or indirect dependency. Use static analysis tools (e.g., TypeScript’s `noUnusedLocals` or ESLint’s `no-unused-vars`) to catch false positives, and run a full build or test suite before committing.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -440,6 +440,10 @@ const createOrderSchema = z.object({
   sales_agent: z.string().optional(),
   total_amount: z.number().optional(),
   order_confirmed_at: z.string().optional(),
+  items: z.array(z.object({
+    name: z.string().min(1),
+    quantity: z.number().int().positive(),
+  })).optional(),
 });
 
 app.post('/orders', async (request, reply) => {
@@ -454,6 +458,23 @@ app.post('/orders', async (request, reply) => {
   // Auto-link client by name
   if (body.client_name) {
     await autoLinkClientToOrder(rows[0].id, body.client_name);
+  }
+
+  // ── Save extracted items if provided ──────────────────────────────────
+  if (body.items && body.items.length > 0) {
+    for (const item of body.items) {
+      await query(
+        `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status)
+         VALUES ($1, $2, $3, 'pending', 'not_yet')`,
+        [rows[0].id, item.name, item.quantity]
+      );
+    }
+    // Log the extraction
+    await query(
+      `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+       VALUES ($1, $2, 'agent', 'Vision AI')`,
+      [rows[0].id, `📋 Vision AI extracted ${body.items.length} item(s) from quotation: ${body.items.map(i => `${i.name} x${i.quantity}`).join(', ')}`]
+    );
   }
 
   // Invalidate caches after write

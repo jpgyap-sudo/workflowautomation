@@ -13,6 +13,7 @@ interface ExtractedQuotation {
   sales_agent?: string;
   total_amount?: number;
   order_date?: string;
+  items?: { product_name?: string; quantity?: number }[];
 }
 
 interface VisionResult {
@@ -71,6 +72,7 @@ function VisionPageContent() {
   const [salesAgent, setSalesAgent] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [orderDate, setOrderDate] = useState('');
+  const [items, setItems] = useState<{ product_name: string; quantity: number }[]>([]);
 
   // Load shared data from Telegram bot via ?token=xxx
   useEffect(() => {
@@ -192,6 +194,12 @@ function VisionPageContent() {
         setSalesAgent(data.quotation.sales_agent ?? '');
         setTotalAmount(data.quotation.total_amount ? String(data.quotation.total_amount) : '');
         setOrderDate(data.quotation.order_date ?? '');
+        setItems(
+          (data.quotation.items ?? []).map((item) => ({
+            product_name: item.product_name ?? '',
+            quantity: item.quantity ?? 1,
+          }))
+        );
         setStep('review');
       } else if (data.type === 'payment') {
         setStep('done');
@@ -223,6 +231,10 @@ function VisionPageContent() {
           sales_agent: salesAgent || null,
           total_amount: totalAmount ? Number(totalAmount) : null,
           order_confirmed_at: orderDate || null,
+          items: items.length > 0 ? items.map((item) => ({
+            name: item.product_name,
+            quantity: item.quantity,
+          })) : undefined,
         }),
       });
 
@@ -271,6 +283,7 @@ function VisionPageContent() {
     setSalesAgent('');
     setTotalAmount('');
     setOrderDate('');
+    setItems([]);
     // Clear token from URL without reload
     const url = new URL(window.location.href);
     url.searchParams.delete('token');
@@ -515,6 +528,62 @@ function VisionPageContent() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Extracted Items */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <h3 className="mb-3 text-sm font-semibold text-gray-800">
+              Items / Products ({items.length})
+            </h3>
+            {items.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No items were extracted from the quotation.</p>
+            ) : (
+              <div className="space-y-2">
+                {items.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
+                    <input
+                      type="text"
+                      value={item.product_name}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], product_name: e.target.value };
+                        setItems(updated);
+                      }}
+                      placeholder="Product name"
+                      className="min-w-0 flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], quantity: Math.max(1, parseInt(e.target.value) || 1) };
+                        setItems(updated);
+                      }}
+                      className="w-16 rounded-md border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItems(items.filter((_, i) => i !== index));
+                      }}
+                      className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      title="Remove item"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setItems([...items, { product_name: '', quantity: 1 }])}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-[#2490ef] hover:text-[#2490ef]"
+            >
+              + Add item
+            </button>
           </div>
 
           {/* Raw text */}
