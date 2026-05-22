@@ -117,6 +117,9 @@ async function invalidateCache(patterns: string[]): Promise<void> {
 // ── Telegram: Manual Change Notifications ──────────────────────────
 const _TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ESCALATION_CHAT_ID = process.env.ESCALATION_GROUP_CHAT_ID ?? null;
+const COLLECTION_CHAT_ID = process.env.COLLECTION_GROUP_CHAT_ID ?? null;
+const DELIVERY_CHAT_ID = process.env.DELIVERY_GROUP_CHAT_ID ?? null;
+const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? null;
 
 async function notifyManualChange(action: string, details: string): Promise<void> {
   if (!_TELEGRAM_BOT_TOKEN || !ESCALATION_CHAT_ID) return;
@@ -126,6 +129,24 @@ async function notifyManualChange(action: string, details: string): Promise<void
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: ESCALATION_CHAT_ID, text: msg, parse_mode: 'HTML' }),
+    });
+  } catch { /* non-fatal */ }
+}
+
+/**
+ * Send an immediate Telegram notification to a specific functional group chat.
+ * This bridges the gap between website manual confirmations and Telegram group notifications.
+ * Unlike notifyManualChange (which goes to escalation group) and triggerAgentsForStage
+ * (which goes to the general progress group), this sends directly to the group that
+ * needs to act on the confirmation (collection, delivery, production, etc.).
+ */
+async function notifyGroupChat(chatId: string | null, message: string): Promise<void> {
+  if (!_TELEGRAM_BOT_TOKEN || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
     });
   } catch { /* non-fatal */ }
 }
@@ -1585,6 +1606,41 @@ app.post('/stage-updates', async (request, reply) => {
 
   // Immediately fire the relevant agent so group chats are notified now, not on the next hourly tick
   triggerAgentsForStage(body.stage, body.quotation_number, order?.client_name ?? null);
+
+  // Also notify the specific functional group directly based on the target stage
+  // This ensures the group that needs to act gets an immediate notification,
+  // not just the general progress group (STAGE_TRANSITION_GROUP_CHAT_ID)
+  if (isDashboardQuickAction(body.updated_by)) {
+    const stageToGroup: Record<string, string | null> = {
+      production_pending: PRODUCTION_CHAT_ID,
+      production_confirmed: PRODUCTION_CHAT_ID,
+      en_route: PRODUCTION_CHAT_ID,
+      inventory_arrived: DELIVERY_CHAT_ID,
+      balance_due: COLLECTION_CHAT_ID,
+      delivery_scheduled: DELIVERY_CHAT_ID,
+      delivered: DELIVERY_CHAT_ID,
+      countered: DELIVERY_CHAT_ID,
+      payment_received: COLLECTION_CHAT_ID,
+      payment_confirmed: COLLECTION_CHAT_ID,
+    };
+    const targetChatId = stageToGroup[body.stage];
+    if (targetChatId) {
+      const stageLabel = body.stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      setImmediate(() => {
+        notifyGroupChat(
+          targetChatId,
+          `📋 <b>Stage Update (Dashboard)</b>\n\n` +
+          `Quotation: <b>${body.quotation_number}</b>\n` +
+          `Client: ${order?.client_name ?? 'N/A'}\n` +
+          `Stage: <b>${stageLabel}</b>\n` +
+          `Status: ${body.status}\n` +
+          `Remarks: ${body.remarks ?? '-'}\n\n` +
+          `Updated via dashboard. Please check and take necessary action.`
+        );
+      });
+    }
+  }
+
   return { ok: true };
 });
 
@@ -1662,6 +1718,19 @@ app.post('/deposits', async (request, reply) => {
 
   // Notify collection agent immediately that a deposit needs verification
   triggerAgentsForStage('deposit_pending', quotationNumber, clientName);
+
+  // Notify collection group immediately — deposit recorded, needs verification
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `💰 <b>Deposit Recorded — Needs Verification</b>\n\n` +
+      `Quotation: <b>${quotationNumber ?? body.quotation_number}</b>\n` +
+      `Client: ${clientName ?? 'N/A'}\n` +
+      `Amount: PHP ${body.amount.toLocaleString()}\n` +
+      `Date: ${body.deposit_paid_at ?? 'now'}\n\n` +
+      `Please verify the deposit on the dashboard.`
+    );
+  });
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2176,6 +2245,21 @@ app.post('/pay-balance', async (request, reply) => {
   // Notify collection agent immediately that balance needs verification
   triggerAgentsForStage('balance_due', body.quotation_number, order.client_name);
 
+  // Notify collection group immediately — balance payment recorded, needs verification
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `💳 <b>Balance Payment Recorded — Needs Verification</b>\n\n` +
+      `Quotation: <b>${body.quotation_number}</b>\n` +
+      `Client: ${order.client_name ?? 'N/A'}\n` +
+      `Amount paid: PHP ${body.amount.toLocaleString()}\n` +
+      `Expected balance: PHP ${expectedBalance.toLocaleString()}\n` +
+      (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : '') +
+      `Recorded by: ${body.updated_by ?? 'dashboard'}\n\n` +
+      `Please verify the balance payment on the dashboard.`
+    );
+  });
+
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -2278,6 +2362,33 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   // Notify purchasing agent immediately that deposit is verified and order needs production
   triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
 
+  // Notify collection group immediately — deposit verified, advancing to production
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `✅ <b>Deposit Verified</b>\n\n` +
+      `Quotation: <b>${order.quotation_number}</b>\n` +
+      `Client: ${order.client_name ?? 'N/A'}\n` +
+      `Verified by: ${body.verified_by ?? 'team'}\n` +
+      `Next stage: <b>${nextStage === 'production_pending' ? 'Production Pending' : nextStage}</b>\n\n` +
+      `Deposit has been verified on the dashboard.`
+    );
+  });
+
+  // Notify production group immediately if advancing to production_pending
+  if (nextStage === 'production_pending') {
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `🏭 <b>Deposit Verified — Ready for Production</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Deposit verified by: ${body.verified_by ?? 'team'}\n\n` +
+        `Order is now in <b>Production Pending</b> stage. Please start production.`
+      );
+    });
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
@@ -2353,6 +2464,33 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
 
   // Notify the relevant agent immediately
   triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
+
+  // Notify collection group immediately — balance verified
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `✅ <b>Balance Verified</b>\n\n` +
+      `Quotation: <b>${order.quotation_number}</b>\n` +
+      `Client: ${order.client_name ?? 'N/A'}\n` +
+      `Verified by: ${body.verified_by ?? 'team'}\n` +
+      `Next stage: <b>${stageLabel}</b>\n\n` +
+      `Balance payment has been verified on the dashboard.`
+    );
+  });
+
+  // Notify delivery group immediately if advancing to delivery_scheduled
+  if (nextStage === 'delivery_scheduled') {
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `🚚 <b>Balance Verified — Ready for Delivery Scheduling</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Balance verified by: ${body.verified_by ?? 'team'}\n\n` +
+        `Order is now in <b>Delivery Scheduled</b> stage. Please schedule delivery.`
+      );
+    });
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
