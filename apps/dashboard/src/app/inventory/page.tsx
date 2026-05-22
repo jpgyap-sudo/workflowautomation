@@ -450,6 +450,9 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* Orders Awaiting Inventory Verification */}
+      <InventoryVerificationSection />
+
       {/* Orders Awaiting Inventory Arrival */}
       <InventoryArrivalSection />
 
@@ -993,6 +996,86 @@ export default function InventoryPage() {
 }
 
 // ── Orders Awaiting Inventory Arrival Section ─────────────────────────────
+
+function InventoryVerificationSection() {
+  const { data: orders = [], isLoading } = useOrdersByStage('inventory_verification');
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
+        <div className="flex items-center gap-2 text-sm text-teal-700">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading orders awaiting inventory verification...
+        </div>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return null; // Don't show section when no orders are waiting
+  }
+
+  return (
+    <div className="rounded-xl border border-teal-200 bg-teal-50">
+      <div className="flex items-center gap-2 border-b border-teal-200 px-5 py-3">
+        <Search className="h-4 w-4 text-teal-600" />
+        <h3 className="text-sm font-semibold text-teal-800">Orders Awaiting Inventory Verification</h3>
+        <span className="ml-auto rounded-full bg-teal-200 px-2 py-0.5 text-[10px] font-bold text-teal-800">
+          {orders.length}
+        </span>
+        <Link
+          href="/workflow"
+          className="inline-flex items-center gap-1 rounded-md bg-white/80 px-2.5 py-1 text-[11px] font-medium text-teal-700 shadow-sm transition-colors hover:bg-white"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Workflow
+        </Link>
+      </div>
+      <div className="divide-y divide-teal-100 px-5 py-2">
+        {orders.map((order) => (
+          <div key={order.id} className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-3">
+              <Package className="h-4 w-4 text-teal-500" />
+              <div>
+                <Link
+                  href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
+                  className="text-sm font-medium text-gray-900 hover:text-teal-700 hover:underline"
+                >
+                  #{order.quotation_number ?? 'N/A'}
+                </Link>
+                <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown'}</p>
+                {order.inventory_verification_pct != null && (
+                  <div className="mt-1 flex items-center gap-1">
+                    <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className="h-full rounded-full bg-teal-500 transition-all"
+                        style={{ width: `${order.inventory_verification_pct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-medium text-teal-600">
+                      {order.inventory_verification_pct}% verified
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-medium text-teal-700">
+                Inventory Agent Active
+              </span>
+              <Link
+                href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
+                className="rounded p-1 text-gray-400 transition-colors hover:bg-teal-100 hover:text-teal-700"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function InventoryArrivalSection() {
   const { data: orders = [], isLoading } = useOrdersByStage('inventory_arrived');

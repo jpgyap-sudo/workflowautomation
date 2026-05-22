@@ -7,19 +7,50 @@ The system automates the full order lifecycle from quotation to payment collecti
 - **API Server** — Manages orders, stages, files, and reminders
 - **Google Drive** — Stores all uploaded files per order
 - **Dashboard** — Web UI for real-time order tracking
-- **Built-in Reminder Scheduler** — Sends automatic daily reminders (no n8n required)
+- **Built-in Agent System** — Automated agents run on schedules to check stages, send reminders, and escalate stalled orders
+
+## Stage Flow
+
+```txt
+order_confirmation_received → math_verified → purchasing_pending →
+production_pending → production_confirmed → deposit_pending →
+deposit_verification → en_route → inventory_verification →
+inventory_arrived → balance_due → balance_verification →
+delivery_pending → delivery_scheduled → delivered → countered →
+payment_received → payment_confirmed → completed
+```
 
 ## 1. Order Confirmation Received
 
-Sales forwards approved quotation to Purchasing Telegram group.
+Sales forwards approved quotation to the Telegram bot (document/photo).
 
 Bot:
 - uploads file to **Google Drive**,
-- creates order record in database,
-- checks quotation math (OCR),
-- creates a daily reminder for purchasing.
+- creates order record in database (`current_stage = 'order_confirmation_received'`),
+- triggers the **Quotation Checker** agent immediately to verify math,
+- sends a stage transition notification to the Stage Progress group.
 
-## 2. Purchasing / Production
+The **Quotation Checker** agent (runs every 5 min, also triggered immediately on new order):
+- Extracts quotation items via AI (Gemini Vision / OpenRouter),
+- Verifies math (item total vs `total_amount`),
+- If math matches → auto-advances to `math_verified`,
+- If math mismatch → sends alert to the group with details.
+
+## 2. Math Verified
+
+When math is verified, the **Purchasing Agent** is triggered automatically.
+
+The agent sends a notification to the Purchasing group with inline buttons:
+
+**Inline buttons**: `✅ Yes, started` / `⚠️ Partial` / `⏳ Not yet`
+
+- **Yes, started** → Bot asks for estimated production days → stage moves to `production_pending`.
+- **Partial** → Bot asks for partial details → stage moves to `production_pending`.
+- **Not yet** → Bot acknowledges, continues reminders.
+
+## 3. Purchasing / Production
+
+### 3a. Purchasing Pending
 
 Built-in reminder scheduler sends daily message to Purchasing group with inline buttons:
 
@@ -27,27 +58,69 @@ Built-in reminder scheduler sends daily message to Purchasing group with inline 
 > Stage: 🛒 Purchasing Pending
 > Has production or purchasing started?
 
-**Inline buttons**: `✅ Yes` / `❌ No`
+**Inline buttons**: `✅ Yes, started` / `⚠️ Partial` / `⏳ Not yet`
 
-If Yes → bot asks for estimated production days → stage moves to `production_confirmed`.
+If Yes → Bot asks for estimated production days → stage moves to `production_pending`.
 
-### Production Midpoint Check
+### 3b. Production Pending
 
-At midpoint (estimated_days / 2), a reminder is sent with:
+Stage moves to `production_pending` after purchasing confirms start.
 
-**Inline buttons**: `✅ On Time` / `⚠️ Delayed`
+The **Purchasing Agent** continues monitoring. When production is ready to begin, the stage advances to `production_confirmed`.
 
-If Delayed → bot asks how many days delay.
+### 3c. Production Confirmed
 
-### Production Due Check
+The **Production Agent** takes over (runs every 60 min):
 
-When production is due, a reminder is sent with:
+- Monitors production progress at item level,
+- Sends midpoint check reminders (at estimated_days / 2),
+- Sends due check reminders (at estimated_days).
 
-**Inline buttons**: `✅ Finished` / `❌ Not Yet`
+**Midpoint Inline buttons**: `✅ On Time` / `⚠️ Delayed`
+- If Delayed → Bot asks how many days delay.
 
-If Finished → bot asks delivery timeline (standard 4 weeks or custom days).
+**Due Inline buttons**: `✅ Finished` / `❌ Not Yet`
+- If Finished → Bot asks delivery timeline (standard 4 weeks or custom days).
 
-## 3. Deposit Payment
+When production is finished → stage advances to `en_route`.
+
+### 3d. En Route
+
+The **Production Agent** monitors en-route status:
+
+- Tracks item-level en-route progress,
+- Sends reminders with inline buttons for each item.
+
+**Inline buttons**: `✅ Yes` / `❌ No` / `📦 Arrived`
+
+When all items arrive → stage advances to `inventory_verification`.
+
+## 4. Inventory Verification
+
+When items arrive, the **Inventory Agent** verifies each item against the order.
+
+**Inline buttons**: `🔍 Verify All` / `⚠️ Partial` / `⏳ Not Yet`
+
+- **Verify All** → All items marked as verified, stage advances to `inventory_arrived`.
+- **Partial** → Bot asks for quantity per item, marks partial verification.
+- **Not Yet** → Bot acknowledges, continues reminders.
+
+A progress bar shows verification percentage (e.g., "60% verified").
+
+## 5. Inventory Arrival
+
+Inventory sends arrival photos/files to the bot.
+
+Built-in reminder scheduler sends daily message with inline buttons:
+
+**Inline buttons**: `✅ Ready for Delivery` / `⏳ Still Waiting`
+
+- **Ready** → Stage advances to `balance_due`. Old inventory reminders are auto-completed.
+- **Still Waiting** → Bot acknowledges, continues daily reminders.
+
+## 6. Deposit Payment
+
+### 6a. Deposit Pending
 
 Before production can proceed, a deposit payment is required.
 
@@ -56,6 +129,8 @@ Built-in reminder scheduler sends daily message to the group:
 > ⏰ *Reminder* — *QTN-2026-001* (Client Name)
 > Stage: 💳 Deposit Pending
 > Deposit payment required before production can continue.
+
+**Inline buttons**: `✅ Upload Deposit Slip` / `⏳ Not Yet`
 
 Team records the deposit:
 
@@ -70,22 +145,19 @@ Or sends a deposit slip image (photo/document) after linking the order:
 ```
 *(then send the deposit slip image)*
 
-Stage moves to `deposit_pending` → deposit recorded. Reminders for this stage are completed. The dashboard shows deposit status (paid/pending) and amount.
+Stage moves to `deposit_verification` after deposit is recorded.
 
-## 4. Inventory Arrival
+### 6b. Deposit Verification
 
-Inventory sends arrival photos/files to the bot.
+The **Collection Agent** monitors deposit verification (runs every 60 min).
 
-Bot asks which order it belongs to.
+**Inline buttons**: `🔍 Verify Deposit`
 
-Built-in reminder scheduler sends daily message with inline buttons:
+- **Verify Deposit** → Bot marks deposit as verified, stage advances to `en_route` (or next appropriate stage).
 
-**Inline buttons**: `✅ Ready for Delivery` / `⏳ Still Waiting`
+## 7. Balance Payment (Before Delivery)
 
-- **Ready** → Stage advances to `balance_due`. Old inventory reminders are auto-completed.
-- **Still Waiting** → Bot acknowledges, continues daily reminders.
-
-### 4a. Balance Payment (Before Delivery)
+### 7a. Balance Due
 
 Before delivery can be scheduled, the remaining balance must be paid.
 
@@ -97,7 +169,7 @@ Built-in reminder scheduler sends daily message with inline buttons:
 
 **Inline buttons**: `✅ Yes, Client Paid` / `❌ Not Yet`
 
-- **Yes, Client Paid** → Bot asks for a photo of the deposit slip or proof of payment. The AI (Gemini Vision) scans the image to extract the amount and date. If successful, the balance is auto-recorded via `/pay-balance` API and the stage advances to `delivery_scheduled`. If the AI cannot extract the amount, the user is prompted to enter the amount manually.
+- **Yes, Client Paid** → Bot asks for a photo of the deposit slip or proof of payment. The AI (Gemini Vision) scans the image to extract the amount and date. If successful, the balance is auto-recorded via `/pay-balance` API and the stage advances to `balance_verification`. If the AI cannot extract the amount, the user is prompted to enter the amount manually.
 - **Not Yet** → Bot acknowledges, continues daily reminders.
 
 The system computes the balance automatically:
@@ -114,9 +186,23 @@ Team can also record the balance payment manually:
 
 The system validates that the amount covers the full balance. If insufficient, it rejects with the lacking amount.
 
-Once balance is paid, delivery can be scheduled.
+### 7b. Balance Verification
 
-### 4b. Schedule Delivery
+The **Collection Agent** monitors balance verification.
+
+**Inline buttons**: `🔍 Verify Balance`
+
+- **Verify Balance** → Bot marks balance as verified, stage advances to `delivery_pending`.
+
+## 8. Delivery
+
+### 8a. Delivery Pending
+
+After balance is verified, the **Delivery Agent** takes over.
+
+Stage moves to `delivery_scheduled` when a delivery date is set.
+
+### 8b. Schedule Delivery
 
 Team replies with delivery date:
 
@@ -128,7 +214,7 @@ The bot first checks if the balance has been paid. If not, it blocks delivery sc
 
 Stage moves to `delivery_scheduled`. A new daily reminder starts for the delivery team.
 
-## 5. Delivery
+### 8c. Delivery Scheduled
 
 Built-in reminder scheduler sends daily message with inline buttons:
 
@@ -146,16 +232,17 @@ Team can also update delivery status manually:
 - If **countered**: stage moves to `countered`, collection reminder starts
 - If **not countered**: reminders continue until countered
 
-## 6. Collection
+## 9. Collection
 
-Built-in reminder scheduler sends daily message with inline buttons for `countered` stage:
+### 9a. Delivered / Countered
 
-**Inline buttons**: `💰 Payment Received` / `⏳ Still Waiting`
+Built-in reminder scheduler sends daily message with inline buttons:
 
-- **Payment Received** → Stage advances to `payment_received`.
-- **Still Waiting** → Bot acknowledges, continues daily reminders.
+**Inline buttons**: `💵 Record Payment`
 
-For `payment_received` stage:
+- **Record Payment** → Bot asks for payment amount, stage advances to `payment_received`.
+
+### 9b. Payment Received
 
 **Inline buttons**: `✅ Confirm Payment` / `⏳ Still Pending`
 
@@ -170,19 +257,67 @@ Team can also update payment status manually:
 
 Stage moves to `payment_confirmed` → `completed`. All reminders are disabled.
 
+### 9c. Payment Confirmed / Completed
+
+Order is fully complete. All reminders are disabled.
+
 ## Inline Keyboard Summary
 
 | Stage | Inline Buttons | Action on Yes | Action on No |
 |-------|---------------|---------------|--------------|
-| `purchasing_pending` | ✅ Yes / ❌ No | Ask production days | Acknowledge |
-| `production_midpoint` | ✅ On Time / ⚠️ Delayed | Continue reminders | Ask delay days |
-| `production_due` | ✅ Finished / ❌ Not Yet | Ask delivery timeline | Acknowledge |
-| `en_route_reminder` | ✅ Yes / ❌ No | Ask arrival days | Acknowledge |
-| `inventory_arrived` | ✅ Ready / ⏳ Still Waiting | Advance to `balance_due` | Acknowledge |
-| `balance_due` | ✅ Yes, Paid / ❌ Not Yet | Ask proof photo → AI extract → advance to `delivery_scheduled` | Acknowledge |
+| `purchasing_pending` | ✅ Yes, started / ⚠️ Partial / ⏳ Not yet | Ask production days | Acknowledge |
+| `production_confirmed` (midpoint) | ✅ On Time / ⚠️ Delayed | Continue reminders | Ask delay days |
+| `production_confirmed` (due) | ✅ Finished / ❌ Not Yet | Ask delivery timeline | Acknowledge |
+| `en_route` (item level) | ✅ Yes / ❌ No / 📦 Arrived | Mark item arrived | Acknowledge |
+| `inventory_verification` | 🔍 Verify All / ⚠️ Partial / ⏳ Not Yet | Advance to `inventory_arrived` | Acknowledge |
+| `inventory_arrived` | ✅ Ready for Delivery / ⏳ Still Waiting | Advance to `balance_due` | Acknowledge |
+| `deposit_pending` | ✅ Upload Deposit Slip / ⏳ Not Yet | Record deposit | Acknowledge |
+| `deposit_verification` | 🔍 Verify Deposit | Mark deposit verified | — |
+| `balance_due` | ✅ Yes, Client Paid / ❌ Not Yet | Ask proof photo → AI extract → advance to `balance_verification` | Acknowledge |
+| `balance_verification` | 🔍 Verify Balance | Mark balance verified | — |
 | `delivery_scheduled` | ✅ Yes, Delivered / ❌ Not Yet | Advance to `delivered` | Acknowledge |
-| `countered` | 💰 Payment Received / ⏳ Still Waiting | Advance to `payment_received` | Acknowledge |
+| `delivered` / `countered` | 💵 Record Payment | Ask payment amount → advance to `payment_received` | — |
 | `payment_received` | ✅ Confirm Payment / ⏳ Still Pending | Advance to `payment_confirmed` → `completed` | Acknowledge |
+
+## Agent System
+
+The system uses automated agents that run on schedules to check orders and send reminders:
+
+| Agent | Schedule | Stages Monitored |
+|-------|----------|-----------------|
+| **Quotation Checker** | Every 5 min | `order_confirmation_received` |
+| **Purchasing Agent** | Every 60 min | `math_verified`, `purchasing_pending`, `production_pending` |
+| **Production Agent** | Every 60 min | `production_confirmed`, `en_route` |
+| **Inventory Agent** | Every 60 min | `inventory_verification`, `inventory_arrived` |
+| **Collection Agent** | Every 60 min | `deposit_pending`, `deposit_verification`, `balance_due`, `balance_verification`, `delivered`, `countered`, `payment_received`, `payment_confirmed` |
+| **Delivery Agent** | Every 60 min | `inventory_arrived`, `balance_due`, `delivery_pending`, `delivery_scheduled`, `delivered` |
+| **Escalation Agent** | Every 4 hours | All non-terminal stages |
+
+### Agent Triggers
+
+When an order enters a stage, the corresponding agent(s) are triggered immediately:
+
+| Stage | Triggered Agent(s) |
+|-------|-------------------|
+| `order_confirmation_received` | Quotation Checker |
+| `math_verified` | Purchasing Agent |
+| `purchasing_pending` | Purchasing Agent |
+| `production_pending` | Purchasing Agent |
+| `production_confirmed` | Production Agent |
+| `en_route` | Production Agent, Inventory Agent |
+| `inventory_verification` | Inventory Agent |
+| `inventory_arrived` | Inventory Agent |
+| `balance_due` | Collection Agent, Delivery Agent |
+| `deposit_pending` | Collection Agent |
+| `deposit_verification` | Collection Agent |
+| `balance_verification` | Collection Agent |
+| `delivery_pending` | Delivery Agent |
+| `delivery_scheduled` | Delivery Agent |
+| `delivered` | Collection Agent |
+| `countered` | Collection Agent |
+| `payment_received` | Collection Agent |
+| `payment_confirmed` | Collection Agent |
+| `completed` | Collection Agent |
 
 ## Reminder Escalation
 
@@ -197,15 +332,6 @@ If a stage is not updated after multiple reminders, the scheduler auto-escalates
 
 At Level 3+, the agent sends a "Manager intervention required" message.
 
-## Stages
-
-```txt
-order_confirmation_received → math_verified → purchasing_pending →
-production_confirmed → deposit_pending → inventory_arrived →
-balance_due → delivery_scheduled → delivered → countered →
-payment_received → payment_confirmed → completed
-```
-
 ## Automation Summary
 
 | Component | Role |
@@ -214,7 +340,13 @@ payment_received → payment_confirmed → completed
 | **API Server** | Business logic, database, reminder scheduler, agent system |
 | **Google Drive** | File storage per order |
 | **Dashboard** | Real-time order tracking (port 3000) |
-| **Reminder Scheduler** | Built-in, runs every 60s, no external dependency |
-| **Delivery Agent** | Checks inventory_arrived, balance_due, delivery_scheduled, delivered stages every 60 min |
-| **Collection Agent** | Checks countered, payment_received stages every 60 min |
+| **Agent Scheduler** | Built-in, runs every 60s, triggers agents on their schedules |
+| **Reminder Scheduler** | Built-in, runs every 60s, sends daily reminders for stalled stages |
+| **Quotation Checker Agent** | Verifies math on new orders every 5 min |
+| **Purchasing Agent** | Monitors purchasing/production handoff every 60 min |
+| **Production Agent** | Tracks production progress and en-route status every 60 min |
+| **Inventory Agent** | Monitors inventory verification and arrival every 60 min |
+| **Collection Agent** | Monitors deposit, balance, and payment collection every 60 min |
+| **Delivery Agent** | Monitors delivery scheduling and completion every 60 min |
+| **Escalation Agent** | Detects stalled orders and escalates every 4 hours |
 | **n8n (optional)** | Visual workflow editor if needed |

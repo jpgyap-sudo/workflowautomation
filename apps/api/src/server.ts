@@ -182,7 +182,12 @@ function isDashboardQuickAction(updatedBy?: string | null): boolean {
 // so Telegram group chats get notified now, not on the next hourly scheduler tick.
 
 const AGENT_TRIGGER_MAP: Record<string, string[]> = {
+  // New Order → Quotation Checker
+  order_confirmation_received: ['quotation-checker'],
+  // Math Verified → Purchasing
+  math_verified:         ['purchasing-agent'],
   // Purchasing → Production
+  purchasing_pending:    ['purchasing-agent'],
   production_pending:    ['purchasing-agent'],
   production_confirmed:  ['production-agent'],
   // Production → En Route
@@ -193,6 +198,10 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   inventory_arrived:     ['inventory-agent'],
   // Inventory → Balance Due
   balance_due:           ['collection-agent', 'delivery-agent'],
+  // Deposit / Payment Verification
+  deposit_pending:       ['collection-agent'],
+  deposit_verification:  ['collection-agent'],
+  balance_verification:  ['collection-agent'],
   // Delivery
   delivery_pending:      ['delivery-agent'],
   delivery_scheduled:    ['delivery-agent'],
@@ -201,8 +210,6 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   // Payment
   payment_received:      ['collection-agent'],
   payment_confirmed:     ['collection-agent'],
-  // Deposit recorded (not a stage, but triggers collection agent)
-  deposit_pending:       ['collection-agent'],
   // Completed
   completed:             ['collection-agent'],
 };
@@ -451,7 +458,15 @@ app.post('/orders', async (request, reply) => {
 
   // Invalidate caches after write
   await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*', 'sales:*']);
-  return reply.send(rows[0]);
+
+  // ── Fire agent + notify stage transition group for new orders ──────────
+  // New orders start at 'order_confirmation_received' (DB default).
+  // Trigger the quotation-checker agent immediately and notify the
+  // stage transition group so the team knows a new order has arrived.
+  const newOrder = rows[0];
+  triggerAgentsForStage('order_confirmation_received', newOrder.quotation_number, newOrder.client_name);
+
+  return reply.send(newOrder);
 });
 
 app.get('/orders', async () => {

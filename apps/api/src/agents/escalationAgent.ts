@@ -36,9 +36,13 @@ export async function runEscalationAgent(): Promise<AgentResult[]> {
     'production_pending',
     'production_confirmed',
     'en_route',
+    'inventory_verification',
     'deposit_pending',
+    'deposit_verification',
     'inventory_arrived',
     'balance_due',
+    'balance_verification',
+    'delivery_pending',
     'delivery_scheduled',
     'delivered',
     'countered',
@@ -166,6 +170,17 @@ export async function notifyEscalation(
         keyboard = inlineKeyboard([
           [
             { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${id}:${qn}` },
+          ],
+        ]);
+        break;
+      case 'inventory_verification':
+        keyboard = inlineKeyboard([
+          [
+            { text: '🔍 Verify All', callback_data: `inv_verify:all:${id}:${qn}` },
+            { text: '⚠️ Partial', callback_data: `inv_verify:partial:${id}:${qn}` },
+          ],
+          [
+            { text: '⏳ Not Yet', callback_data: `inv_verify:not_yet:${id}:${qn}` },
           ],
         ]);
         break;
