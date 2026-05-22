@@ -832,14 +832,42 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
-                      <button
-                        onClick={() => handleMarkCountered(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg p-1.5 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
-                        title="Mark as countered (awaiting payment)"
-                      >
-                        <DollarSign className="h-4 w-4" />
-                      </button>
+                      {order.balance_paid ? (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Balance already paid. Mark "${order.quotation_number ?? '—'}" as Completed?`)) return;
+                            setActionLoading(order.id);
+                            try {
+                              await recordStageUpdate({
+                                quotation_number: order.quotation_number ?? '',
+                                stage: 'completed',
+                                status: 'auto_completed',
+                                remarks: 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)',
+                                updated_by: 'dashboard',
+                              });
+                              mutateDelivered();
+                            } catch (err: any) {
+                              alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
+                            } finally {
+                              setActionLoading(null);
+                            }
+                          }}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 disabled:opacity-40"
+                          title="Balance already paid — complete directly (steps 14-16 N/A)"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleMarkCountered(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg p-1.5 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
+                          title="Mark as countered (awaiting payment)"
+                        >
+                          <DollarSign className="h-4 w-4" />
+                        </button>
+                      )}
                       <RowActions order={order} />
                     </div>
                   </div>

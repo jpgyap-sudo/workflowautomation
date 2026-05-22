@@ -1587,6 +1587,24 @@ app.post('/stage-updates', async (request, reply) => {
       `UPDATE files SET retention_until=$1 WHERE order_id=$2 AND storage_backend='local'`,
       [retentionUntil.toISOString(), orderId]
     );
+
+    // ── Auto-complete if balance was already paid before delivery ──────────
+    // If balance_paid is already true, steps 14-16 (countered → payment_received → payment_confirmed)
+    // are N/A. The order can go directly to 'completed'.
+    if (order.balance_paid) {
+      await query(
+        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+         VALUES ($1, 'completed', 'auto_completed', 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)', $2)`,
+        [orderId, body.updated_by ?? null]
+      );
+      await query(`UPDATE orders SET current_stage='completed', updated_at=NOW() WHERE id=$1`, [orderId]);
+
+      // Auto-complete reminders for delivered stage
+      await query(
+        `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='delivered' AND status='active'`,
+        [orderId]
+      );
+    }
   }
 
   // Auto-complete reminders for the previous stage when moving forward
