@@ -245,6 +245,10 @@ export async function updateOrder(id: string, data: {
   total_amount?: number;
   quotation_number?: string;
   delivery_date?: string | null;
+  delivery_address?: string | null;
+  contact_number?: string | null;
+  authorized_receiver_name?: string | null;
+  authorized_receiver_contact?: string | null;
   action_token: string;
 }): Promise<Order> {
   return fetchJson<Order>(`/orders/${encodeURIComponent(id)}`, {

@@ -3456,3 +3456,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: autoExtract now extracts items, retry shows items, add extract button to order detail
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9ec0f7c410cba5c3055d8d752420f1eceda47f42
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9ec0f7c410cba5c3055d8d752420f1eceda47f42
+**Files:** apps/api/src/services/geminiVision.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Auto-extraction of items from order documents now works correctly, retry logic displays extracted items, and an extract button was added to the order detail page.
+
+**Why it broke:**  
+The `autoExtract` function in the Gemini Vision service was not returning extracted items properly, likely due to missing or incorrect data mapping. The retry flow lacked UI feedback, and the order detail page had no manual trigger for extraction.
+
+**Reusable takeaway:**  
+When implementing AI-based data extraction, ensure the extraction function explicitly returns parsed items to the caller. Always provide both automatic and manual extraction triggers in the UI, and surface extraction results (including retries) to the user for transparency and debugging.
+
+---
+*Original commit message: fix: autoExtract now extracts items, retry shows items, add extract button to order detail*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Auto-extraction of items from order documents now works correctly, retry logic displays extracted items, and an extract button was added to the order detail page.
+
+**Why it broke:**  
+The `autoExtract` function in the Gemini Vision service was not returning extracted items properly, likely due to missing or incorrect data mapping. The retry flow lacked UI feedback, and the order detail page had no manual trigger for extraction.
+
+**Reusable takeaway:**  
+When implementing AI-based data extraction, ensure the extraction function explicitly returns parsed items to the caller. Always provide both automatic and manual extraction triggers in the UI, and surface extraction results (including retries) to the user for transparency and debugging.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

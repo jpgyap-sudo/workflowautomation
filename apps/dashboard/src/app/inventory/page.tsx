@@ -1012,7 +1012,14 @@ function InventoryVerificationSection() {
   }
 
   if (orders.length === 0) {
-    return null; // Don't show section when no orders are waiting
+    return (
+      <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
+        <div className="flex items-center gap-2 text-sm text-teal-700">
+          <Search className="h-4 w-4" />
+          No orders awaiting inventory verification.
+        </div>
+      </div>
+    );
   }
 
   return (

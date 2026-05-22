@@ -655,6 +655,10 @@ const updateOrderSchema = z.object({
   delivery_date: z.string().nullable().optional(),
   delivery_exception: z.boolean().optional(),
   delivery_exception_notes: z.string().nullable().optional(),
+  delivery_address: z.string().nullable().optional(),
+  contact_number: z.string().nullable().optional(),
+  authorized_receiver_name: z.string().nullable().optional(),
+  authorized_receiver_contact: z.string().nullable().optional(),
   action_token: z.string(),
 });
 
@@ -684,6 +688,10 @@ app.patch('/orders/:id', async (request, reply) => {
   if (body.delivery_date !== undefined) { fields.push(`delivery_date=$${idx++}`); values.push(body.delivery_date); }
   if (body.delivery_exception !== undefined) { fields.push(`delivery_exception=$${idx++}`); values.push(body.delivery_exception); }
   if (body.delivery_exception_notes !== undefined) { fields.push(`delivery_exception_notes=$${idx++}`); values.push(body.delivery_exception_notes); }
+  if (body.delivery_address !== undefined) { fields.push(`delivery_address=$${idx++}`); values.push(nullableText(body.delivery_address)); }
+  if (body.contact_number !== undefined) { fields.push(`contact_number=$${idx++}`); values.push(nullableText(body.contact_number)); }
+  if (body.authorized_receiver_name !== undefined) { fields.push(`authorized_receiver_name=$${idx++}`); values.push(nullableText(body.authorized_receiver_name)); }
+  if (body.authorized_receiver_contact !== undefined) { fields.push(`authorized_receiver_contact=$${idx++}`); values.push(nullableText(body.authorized_receiver_contact)); }
 
   if (fields.length === 0) {
     return reply.status(400).send({ error: 'No fields to update' });
@@ -702,6 +710,31 @@ app.patch('/orders/:id', async (request, reply) => {
   // Auto-link client if client_name was updated
   if (body.client_name) {
     await autoLinkClientToOrder(params.id, body.client_name);
+  }
+
+  // Reverse sync: if delivery_address or contact_number was updated on the order,
+  // propagate the changes back to the linked client record
+  const hasDeliveryInfoUpdate =
+    body.delivery_address !== undefined ||
+    body.contact_number !== undefined ||
+    body.authorized_receiver_name !== undefined ||
+    body.authorized_receiver_contact !== undefined;
+  if (hasDeliveryInfoUpdate && rows[0].client_id) {
+    const clientUpdateFields: string[] = [];
+    const clientUpdateValues: any[] = [];
+    let ci = 1;
+    if (body.delivery_address !== undefined) { clientUpdateFields.push(`delivery_address=$${ci++}`); clientUpdateValues.push(nullableText(body.delivery_address)); }
+    if (body.contact_number !== undefined) { clientUpdateFields.push(`contact_number=$${ci++}`); clientUpdateValues.push(nullableText(body.contact_number)); }
+    if (body.authorized_receiver_name !== undefined) { clientUpdateFields.push(`authorized_receiver_name=$${ci++}`); clientUpdateValues.push(nullableText(body.authorized_receiver_name)); }
+    if (body.authorized_receiver_contact !== undefined) { clientUpdateFields.push(`authorized_receiver_contact=$${ci++}`); clientUpdateValues.push(nullableText(body.authorized_receiver_contact)); }
+    if (clientUpdateFields.length > 0) {
+      clientUpdateFields.push(`updated_at=NOW()`);
+      clientUpdateValues.push(rows[0].client_id);
+      await query(
+        `UPDATE clients SET ${clientUpdateFields.join(', ')} WHERE id=$${ci}`,
+        clientUpdateValues
+      );
+    }
   }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);

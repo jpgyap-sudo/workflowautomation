@@ -93,15 +93,23 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   const [salesAgent, setSalesAgent] = useState(order.sales_agent ?? '');
   const [totalAmount, setTotalAmount] = useState(order.total_amount?.toString() ?? '');
   const [quotationNumber, setQuotationNumber] = useState(order.quotation_number ?? '');
+  const [deliveryAddress, setDeliveryAddress] = useState(order.delivery_address ?? '');
+  const [contactNumber, setContactNumber] = useState(order.contact_number ?? '');
+  const [authorizedReceiverName, setAuthorizedReceiverName] = useState(order.authorized_receiver_name ?? '');
+  const [authorizedReceiverContact, setAuthorizedReceiverContact] = useState(order.authorized_receiver_contact ?? '');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string } = {};
+    const data: Record<string, string | number | null> = {};
     if (clientName.trim()) data.client_name = clientName.trim();
     if (salesAgent.trim()) data.sales_agent = salesAgent.trim();
     if (totalAmount.trim()) data.total_amount = Number(totalAmount.replace(/,/g, ''));
     if (quotationNumber.trim()) data.quotation_number = quotationNumber.trim();
-    onSave(data);
+    data.delivery_address = deliveryAddress.trim() || null;
+    data.contact_number = contactNumber.trim() || null;
+    data.authorized_receiver_name = authorizedReceiverName.trim() || null;
+    data.authorized_receiver_contact = authorizedReceiverContact.trim() || null;
+    onSave(data as any);
   }
 
   return (
@@ -114,6 +122,14 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
         className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
       <input value={totalAmount} onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount"
         className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Delivery address"
+        className="min-w-0 flex-[2] rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} placeholder="Contact #"
+        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={authorizedReceiverName} onChange={(e) => setAuthorizedReceiverName(e.target.value)} placeholder="Receiver name"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+      <input value={authorizedReceiverContact} onChange={(e) => setAuthorizedReceiverContact(e.target.value)} placeholder="Receiver contact"
+        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
       <button type="submit" disabled={saving}
         className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50" title="Save">
         <Check className="h-4 w-4" />
@@ -366,7 +382,7 @@ export default function DeliveryPage() {
 
   // ── Edit / Delete ───────────────────────────────────────────────────────
 
-  function handleEditSave(data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }) {
+  function handleEditSave(data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string; delivery_address?: string | null; contact_number?: string | null; authorized_receiver_name?: string | null; authorized_receiver_contact?: string | null }) {
     if (!editingOrder) return;
     setOtpModal({
       open: true,

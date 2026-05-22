@@ -249,7 +249,21 @@ export async function notifyDelivery(
   order: OrderRow,
   result: AgentResult,
 ): Promise<void> {
-  const msg = buildAgentMessage('Delivery Agent', order, result.message, result.escalation_level);
+  // Build delivery info suffix with address/contact details
+  let deliveryInfo = '';
+  if ((order as any).delivery_address || (order as any).contact_number) {
+    const parts: string[] = [];
+    if ((order as any).delivery_address) parts.push(`📍 *Address:* ${(order as any).delivery_address}`);
+    if ((order as any).contact_number) parts.push(`📞 *Contact:* ${(order as any).contact_number}`);
+    if ((order as any).authorized_receiver_name) {
+      let receiver = `👤 *Receiver:* ${(order as any).authorized_receiver_name}`;
+      if ((order as any).authorized_receiver_contact) receiver += ` (${(order as any).authorized_receiver_contact})`;
+      parts.push(receiver);
+    }
+    deliveryInfo = `\n🚚 ${parts.join(' | ')}`;
+  }
+
+  const msg = buildAgentMessage('Delivery Agent', order, result.message + deliveryInfo, result.escalation_level);
   const qn = order.quotation_number;
   const id = order.id;
 
