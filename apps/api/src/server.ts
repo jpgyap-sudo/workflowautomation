@@ -2247,7 +2247,7 @@ app.post('/pay-balance', async (request, reply) => {
   );
 
   // Notify collection agent immediately that balance needs verification
-  triggerAgentsForStage('balance_due', body.quotation_number, order.client_name);
+  triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
 
   // Notify collection group immediately — balance payment recorded, needs verification
   setImmediate(() => {
