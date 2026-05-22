@@ -374,7 +374,8 @@ If it's a QUOTATION or ORDER CONFIRMATION, return:
   "client_name": "string or null",
   "sales_agent": "string or null",
   "total_amount": "number or null",
-  "order_date": "string or null — the date on the document in YYYY-MM-DD format"
+  "order_date": "string or null — the date on the document in YYYY-MM-DD format",
+  "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number }"
 }
 
 If it's a PAYMENT RECEIPT or DEPOSIT SLIP, return:
@@ -391,7 +392,9 @@ Rules:
 - Return ONLY valid JSON, no extra text.
 - Set unknown fields to null.
 - For amounts, use numeric values only (e.g. 15000).
-- For dates, look for any date printed on the document and format as YYYY-MM-DD.`;
+- For dates, look for any date printed on the document and format as YYYY-MM-DD.
+- For items, extract EVERY product/item listed in the quotation with its name and quantity. If quantity is not specified, default to 1.
+- If no items are visible, set items to an empty array [].`;
 
 export async function autoExtract(
   imageBase64: string,
@@ -429,12 +432,25 @@ export async function autoExtract(
     };
   }
 
+  // Parse items from the response
+  let items: ExtractedInventoryItem[] | undefined;
+  if (Array.isArray(parsed.items)) {
+    items = parsed.items
+      .filter((item: any) => item && typeof item.product_name === 'string' && item.product_name.trim().length > 0)
+      .map((item: any) => ({
+        product_name: typeof item.product_name === 'string' ? item.product_name.trim() : undefined,
+        quantity: typeof item.quantity === 'number' ? item.quantity : (typeof item.quantity === 'string' ? parseInt(item.quantity, 10) || 1 : 1),
+      }));
+    if (items.length === 0) items = undefined;
+  }
+
   const quotation: ExtractedQuotation = {
     quotation_number: typeof parsed.quotation_number === 'string' ? parsed.quotation_number : undefined,
     client_name: typeof parsed.client_name === 'string' ? parsed.client_name : undefined,
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
     order_date: typeof parsed.order_date === 'string' ? parsed.order_date : undefined,
+    items,
   };
 
   const confidence: 'high' | 'medium' | 'low' =

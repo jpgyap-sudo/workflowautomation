@@ -4383,12 +4383,18 @@ bot.action('vision:retry_extract', async (ctx) => {
 
     if (data.type === 'quotation' && data.quotation) {
       const q = data.quotation;
+      const itemsList = (q.items && q.items.length > 0)
+        ? q.items.map((item: any, i: number) =>
+            `${i + 1}. ${item.product_name || 'Unknown'} — x${item.quantity || 1}`
+          ).join('\n')
+        : null;
       const fields = [
         `📋 *Extracted Quotation Info:*`,
         q.quotation_number ? `🔢 Number: \`${q.quotation_number}\`` : null,
         q.client_name ? `👤 Client: ${q.client_name}` : null,
         q.sales_agent ? `🧑‍💼 Agent: ${q.sales_agent}` : null,
         q.total_amount ? `💰 Amount: ₱${Number(q.total_amount).toLocaleString()}` : null,
+        itemsList ? `\n📦 *Items (${q.items.length}):*\n${itemsList}` : null,
         `📊 Confidence: ${data.confidence}`,
       ].filter(Boolean).join('\n');
 

@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
@@ -392,6 +392,8 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [logs, setLogs] = useState<ProductionUpdateLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState('');
 
   const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
 
@@ -415,6 +417,26 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
     return () => { cancelled = true; };
   }, [orderId, currentStage]);
 
+  async function handleExtractItems() {
+    setExtracting(true);
+    setExtractError('');
+    try {
+      const res = await extractOrderItems(orderId);
+      if (res.ok && res.items.length > 0) {
+        setItems(res.items);
+        // Also refresh completion
+        const compRes = await getItemCompletion(orderId);
+        if (compRes.ok) setCompletion(compRes);
+      } else {
+        setExtractError('No items could be extracted from the quotation');
+      }
+    } catch (err) {
+      setExtractError(err instanceof Error ? err.message : 'Extraction failed');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   if (!stagesWithItems.includes(currentStage)) return null;
 
   if (loading) {
@@ -427,7 +449,40 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
     );
   }
 
-  if (items.length === 0 && logs.length === 0) return null;
+  // If no items yet, show an "Extract Items" prompt
+  if (items.length === 0 && logs.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="flex items-center gap-2">
+          <List className="h-4 w-4 text-gray-500" />
+          <h2 className="text-base font-semibold text-gray-800">Item-Level Tracking</h2>
+        </div>
+        <p className="mt-3 text-sm text-gray-500">
+          No items have been extracted for this order yet. You can extract items from the quotation image using AI vision.
+        </p>
+        {extractError && (
+          <p className="mt-2 text-xs text-red-500">{extractError}</p>
+        )}
+        <button
+          onClick={handleExtractItems}
+          disabled={extracting}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 text-xs font-medium text-white shadow-sm hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
+        >
+          {extracting ? (
+            <>
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Extracting...
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-3.5 w-3.5" />
+              Extract Items from Quotation
+            </>
+          )}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6">
