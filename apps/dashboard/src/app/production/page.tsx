@@ -15,7 +15,7 @@ import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/comp
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  RefreshCw, FileText, Eye, List,
+  RefreshCw, Package, FileText, Eye, List,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
