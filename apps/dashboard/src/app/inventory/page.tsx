@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import OtpModal from '@/components/OtpModal';
-import { useInventory, useInventoryDrafts } from '@/lib/useApi';
+import { useInventory, useInventoryDrafts, useOrdersByStage } from '@/lib/useApi';
 import {
   createInventoryItem,
   updateInventoryItem,
@@ -35,6 +36,9 @@ import {
   CheckSquare,
   Square,
   Search,
+  ArrowRight,
+  Clock,
+  ExternalLink,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -445,6 +449,9 @@ export default function InventoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Orders Awaiting Inventory Arrival */}
+      <InventoryArrivalSection />
 
       {/* Search */}
       <div className="relative">
@@ -981,6 +988,75 @@ export default function InventoryPage() {
           (window as any).__pendingInventoryDelete = null;
         }}
       />
+    </div>
+  );
+}
+
+// ── Orders Awaiting Inventory Arrival Section ─────────────────────────────
+
+function InventoryArrivalSection() {
+  const { data: orders = [], isLoading } = useOrdersByStage('inventory_arrived');
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
+        <div className="flex items-center gap-2 text-sm text-cyan-700">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading orders awaiting inventory...
+        </div>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return null; // Don't show section when no orders are waiting
+  }
+
+  return (
+    <div className="rounded-xl border border-cyan-200 bg-cyan-50">
+      <div className="flex items-center gap-2 border-b border-cyan-200 px-5 py-3">
+        <Clock className="h-4 w-4 text-cyan-600" />
+        <h3 className="text-sm font-semibold text-cyan-800">Orders Awaiting Inventory Arrival</h3>
+        <span className="ml-auto rounded-full bg-cyan-200 px-2 py-0.5 text-[10px] font-bold text-cyan-800">
+          {orders.length}
+        </span>
+        <Link
+          href="/workflow"
+          className="inline-flex items-center gap-1 rounded-md bg-white/80 px-2.5 py-1 text-[11px] font-medium text-cyan-700 shadow-sm transition-colors hover:bg-white"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Workflow
+        </Link>
+      </div>
+      <div className="divide-y divide-cyan-100 px-5 py-2">
+        {orders.map((order) => (
+          <div key={order.id} className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-3">
+              <Package className="h-4 w-4 text-cyan-500" />
+              <div>
+                <Link
+                  href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
+                  className="text-sm font-medium text-gray-900 hover:text-cyan-700 hover:underline"
+                >
+                  #{order.quotation_number ?? 'N/A'}
+                </Link>
+                <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700">
+                Inventory Agent Active
+              </span>
+              <Link
+                href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
+                className="rounded p-1 text-gray-400 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

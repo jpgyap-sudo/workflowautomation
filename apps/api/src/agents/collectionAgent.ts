@@ -66,8 +66,10 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
-  // ── Phase 3: Final Payment Collection (inventory_arrived, balance_due, delivered, countered) ──
-  const paymentOrders = await getActiveOrdersByStages(['inventory_arrived', 'balance_due', 'delivered', 'countered']);
+  // ── Phase 3: Final Payment Collection (balance_due, delivered, countered) ──
+  // NOTE: inventory_arrived stage is handled by the Inventory Agent.
+  //       Collection agent only starts balance collection once the stage advances to balance_due.
+  const paymentOrders = await getActiveOrdersByStages(['balance_due', 'delivered', 'countered']);
   for (const order of paymentOrders) {
     // Skip if balance already paid (e.g., full payment upfront or paid at inventory_arrived stage)
     if (order.balance_paid) continue;
@@ -329,13 +331,9 @@ export async function checkCollection(order: OrderRow): Promise<AgentResult> {
       ? `Balance due: ₱${balanceDue.toLocaleString()}`
       : 'Total amount not yet set';
 
-    const stageContext = order.current_stage === 'inventory_arrived'
-      ? `All items for #${order.quotation_number ?? 'unknown'} are complete and ready for delivery. `
-      : '';
-
     const result: AgentResult = {
       status: 'needs_review',
-      message: `${stageContext}Payment collection pending. ${paymentInfo}.`,
+      message: `Payment collection pending. ${paymentInfo}.`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,

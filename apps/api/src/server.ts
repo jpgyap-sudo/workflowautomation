@@ -23,7 +23,7 @@ import {
 import { checkQuotation } from './agents/quotationChecker.js';
 import { checkPurchasing } from './agents/purchasingAgent.js';
 import { checkInventory } from './agents/inventoryAgent.js';
-import { checkInventoryArrived, checkScheduledDelivery } from './agents/deliveryAgent.js';
+import { checkScheduledDelivery } from './agents/deliveryAgent.js';
 import { checkCollection } from './agents/collectionAgent.js';
 import { checkEscalation } from './agents/escalationAgent.js';
 import {
@@ -2741,12 +2741,7 @@ app.post('/agents/delivery', async (request, reply) => {
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
   const order = orders[0];
-  let result;
-  if (order.current_stage === 'inventory_arrived') {
-    result = await checkInventoryArrived(order);
-  } else {
-    result = await checkScheduledDelivery(order);
-  }
+  const result = await checkScheduledDelivery(order);
   return result;
 });
 
