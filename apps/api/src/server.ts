@@ -198,6 +198,8 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   payment_confirmed:     ['collection-agent'],
   // Deposit recorded (not a stage, but triggers collection agent)
   deposit_pending:       ['collection-agent'],
+  // Completed
+  completed:             ['collection-agent'],
 };
 
 function triggerAgentsForStage(stage: string, orderRef?: string, clientName?: string): void {
@@ -1647,6 +1649,7 @@ app.post('/stage-updates', async (request, reply) => {
       countered: DELIVERY_CHAT_ID,
       payment_received: COLLECTION_CHAT_ID,
       payment_confirmed: COLLECTION_CHAT_ID,
+      completed: COLLECTION_CHAT_ID,
     };
     const targetChatId = stageToGroup[body.stage];
     if (targetChatId) {
