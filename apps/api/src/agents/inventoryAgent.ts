@@ -263,7 +263,7 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
       // Notify inventory group
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `📦 <b>Inventory Verification Complete</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) verified (${verificationPct}% of qty).\n\n✅ All items accounted for! Proceeding to inventory arrival check.\nPlease upload photos/files of the received items.`;
+        const msg = `📦 <b>Inventory Verification Complete</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) verified (${verificationPct}% of qty).\n\n✅ All items accounted for! Proceeding to inventory arrival check.\nThe bot will now ask about each item's arrival status.`;
 
         await sendTelegramMessage(groupChatId, msg);
       }
@@ -489,6 +489,28 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
 
     message += `<b>Process of Elimination:</b>\n`;
     message += `Next item: <b>${notArrivedItem.name}</b> x${notArrivedItem.quantity}\n\n`;
+
+    // Include estimated arrival date if available
+    if (notArrivedItem.estimated_arrival_days) {
+      const arrivalNote = order.en_route_confirmed_at
+        ? (() => {
+            const confirmedDate = new Date(order.en_route_confirmed_at);
+            const estDate = new Date(confirmedDate);
+            estDate.setDate(estDate.getDate() + notArrivedItem.estimated_arrival_days!);
+            const now = new Date();
+            const daysRemaining = Math.ceil((estDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysRemaining > 0) {
+              return `📅 Estimated arrival: ${estDate.toLocaleDateString('en-SG', { month: 'short', day: 'numeric' })} (${daysRemaining} day(s) remaining)`;
+            } else if (daysRemaining === 0) {
+              return `📅 Estimated arrival: Today`;
+            } else {
+              return `📅 Estimated arrival was ${Math.abs(daysRemaining)} day(s) ago — overdue`;
+            }
+          })()
+        : `📅 Estimated arrival: ~${notArrivedItem.estimated_arrival_days} day(s) from en-route confirmation`;
+      message += `${arrivalNote}\n\n`;
+    }
+
     message += `Has <b>${notArrivedItem.name}</b> arrived at inventory?`;
 
     // Build inline keyboard for this specific item
@@ -533,7 +555,7 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
   }
 }
 
-// ── Legacy File-Based Inventory Check ─────────────────────────────────
+// ── Legacy Inventory Check (no item-level tracking) ───────────────────
 
 export async function checkInventory(order: OrderRow): Promise<AgentResult> {
   const input = {
@@ -543,45 +565,15 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
 
   try {
     const escalationLevel = await getEscalationLevel(order.id, 'inventory_arrived');
+    const qn = order.quotation_number ?? 'unknown';
+    const client = order.client_name ?? 'Unknown';
+    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
 
-    // Check if files have been uploaded for this order (inventory photos)
-    const files = await getOrderFiles(order.id, 'inventory');
-
-    if (files.length > 0) {
-      // Inventory files have been uploaded — do NOT auto-advance.
-      // Instead, remind the inventory group to verify all products arrived
-      // and confirm via the "Ready for Delivery" button.
-
-      if (escalationLevel >= 3) {
-        const result: AgentResult = {
-          status: 'blocked',
-          message: `🔴 Inventory photos uploaded but not yet confirmed ready after ${escalationLevel} reminders. Manager intervention required. Please verify all products have arrived and click ✅ Ready for Delivery.`,
-          next_stage: null,
-          reminder_needed: true,
-          escalation_level: escalationLevel,
-        };
-
-        await logAgentAction(AGENT_NAME, input, result, 'blocked', order.id);
-        return result;
-      }
-
-      const result: AgentResult = {
-        status: 'needs_review',
-        message: `📦 Inventory photos uploaded (${files.length} file(s)) for quotation #${order.quotation_number ?? 'unknown'}. Please verify all products have arrived. Once confirmed, click ✅ Ready for Delivery to proceed to balance payment.`,
-        next_stage: null,
-        reminder_needed: true,
-        escalation_level: escalationLevel,
-      };
-
-      await logAgentAction(AGENT_NAME, input, result, 'needs_review', order.id);
-      return result;
-    }
-
-    // No inventory files yet
+    // No item-level tracking — ask the inventory group to confirm arrival
     if (escalationLevel >= 3) {
       const result: AgentResult = {
         status: 'blocked',
-        message: `🔴 Inventory not yet arrived after ${escalationLevel} reminders. Manager intervention required.`,
+        message: `🔴 Inventory not yet confirmed arrived after ${escalationLevel} reminders for #${qn} (${client}). Manager intervention required. Please verify all products have arrived and click ✅ Ready for Delivery.`,
         next_stage: null,
         reminder_needed: true,
         escalation_level: escalationLevel,
@@ -591,9 +583,14 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
       return result;
     }
 
+    let message = `📦 <b>Inventory Arrival Check</b>\n`;
+    message += `Order: #${qn} (${client})\n`;
+    message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n\n`;
+    message += `Has the inventory arrived? Please confirm below:`;
+
     const result: AgentResult = {
       status: 'needs_review',
-      message: `Has the inventory arrived? Please upload photos/files of the received items.`,
+      message,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,

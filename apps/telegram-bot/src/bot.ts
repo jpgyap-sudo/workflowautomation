@@ -2816,7 +2816,7 @@ bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
     const result = await postJson(`/orders/${orderId}/complete-inventory-verification`, {});
 
     await ctx.editMessageText(
-      `✅ *Inventory Verification Complete!*\n\nOrder #${orderId.slice(0, 8)}\nAll items verified. Proceeding to inventory arrival check.\n\nPlease upload photos/files of the received items.`,
+      `✅ *Inventory Verification Complete!*\n\nOrder #${orderId.slice(0, 8)}\nAll items verified. Proceeding to inventory arrival check.\n\nThe bot will now ask about each item's arrival status.`,
       { parse_mode: 'Markdown' }
     );
   } catch (err: any) {
@@ -2935,6 +2935,15 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       msg += `Items: ${arrivedCount}/${totalCount} arrived\n\n`;
       msg += `*Process of Elimination:*\n`;
       msg += `Next item: *${notArrivedItem.name}* x${notArrivedItem.quantity}\n\n`;
+
+      // Include estimated arrival date if available
+      if (notArrivedItem.estimated_arrival_days) {
+        const now = new Date();
+        const estDate = new Date(now);
+        estDate.setDate(estDate.getDate() + notArrivedItem.estimated_arrival_days);
+        msg += `📅 *Estimated arrival:* ~${notArrivedItem.estimated_arrival_days} day(s) from now\n\n`;
+      }
+
       msg += `Has *${notArrivedItem.name}* arrived at inventory?`;
 
       await ctx.editMessageText(msg, {
