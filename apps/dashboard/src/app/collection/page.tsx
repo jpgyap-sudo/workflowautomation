@@ -384,32 +384,65 @@ export default function CollectionPage() {
                 Note: {order.delivery_exception_notes}
               </p>
             )}
+            {order.current_stage === 'delivered' && !hasException && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <span className="inline-flex items-center rounded-md bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold text-yellow-700 ring-1 ring-inset ring-yellow-300">
+                  N/A
+                </span>
+                <span className="text-[10px] text-yellow-600">Steps 14–16 skipped (Countered / Payment Received / Payment Confirmed)</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <StageBadge stage={order.current_stage} />
             <div className="flex items-center gap-1">
-              {/* Mark as Payment Received — for delivered stage (skip countered) */}
-              {order.current_stage === 'delivered' && (
+              {/* Special case delivered → proceed to Countered */}
+              {order.current_stage === 'delivered' && hasException && (
                 <button
                   onClick={async () => {
                     try {
                       await recordStageUpdate({
                         quotation_number: order.quotation_number ?? '',
-                        stage: 'payment_received',
-                        status: 'received',
-                        remarks: 'Payment received (delivered → payment_received, skipped countered)',
+                        stage: 'countered',
+                        status: 'countered',
+                        remarks: 'Marked as countered (special case delivered)',
                         updated_by: 'dashboard',
                       });
                       mutateDelivered();
-                      mutateReceived();
+                      mutateCountered();
                     } catch (err: any) {
-                      alert('Failed to mark payment received: ' + (err.message ?? 'Unknown error'));
+                      alert('Failed to mark as countered: ' + (err.message ?? 'Unknown error'));
                     }
                   }}
-                  className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
-                  title="Mark as Payment Received (skip countered)"
+                  className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                  title="Proceed to Countered (special case)"
                 >
                   <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
+              {/* Non-special-case delivered → skip steps 14-16 (N/A), go directly to Completed */}
+              {order.current_stage === 'delivered' && !hasException && (
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Skip payment steps (N/A) and mark "${order.quotation_number ?? '—'}" as Completed?`)) return;
+                    try {
+                      await recordStageUpdate({
+                        quotation_number: order.quotation_number ?? '',
+                        stage: 'completed',
+                        status: 'completed',
+                        remarks: 'Completed directly — non-special case, steps 14–16 skipped (N/A)',
+                        updated_by: 'dashboard',
+                      });
+                      mutateDelivered();
+                      mutateCompleted();
+                    } catch (err: any) {
+                      alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
+                    }
+                  }}
+                  className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 hover:text-green-700"
+                  title="Complete directly (steps 14–16 are N/A)"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
                 </button>
               )}
               {/* Payment Confirmed button — only for inventory_arrived / balance_due */}
@@ -630,6 +663,43 @@ export default function CollectionPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Delivered */}
+      <div className="rounded-xl border border-blue-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-blue-200 px-6 py-4">
+          <ArrowRight className="h-4 w-4 text-blue-500" />
+          <h2 className="text-base font-semibold text-gray-800">Delivered</h2>
+          <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+            {deliveredOrders.length}
+          </span>
+        </div>
+        {deliveredOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No delivered orders pending</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {deliveredOrders.filter(o => !o.delivery_exception).length > 0 && (
+              <>
+                <div className="bg-yellow-50/50 px-6 py-2">
+                  <p className="text-xs font-medium text-yellow-700">
+                    🚛 Standard delivery — Steps 14–16 are N/A, advance directly to Completed
+                  </p>
+                </div>
+                {deliveredOrders.filter(o => !o.delivery_exception).map((order) => renderOrderRow(order, [mutateDelivered, mutateCompleted]))}
+              </>
+            )}
+            {deliveredOrders.filter(o => o.delivery_exception).length > 0 && (
+              <>
+                <div className="bg-amber-50/50 px-6 py-2">
+                  <p className="text-xs font-medium text-amber-700">
+                    ⚠️ Special Case — Must go through Countered → Payment Received → Payment Confirmed
+                  </p>
+                </div>
+                {deliveredOrders.filter(o => o.delivery_exception).map((order) => renderOrderRow(order, [mutateDelivered, mutateCountered]))}
+              </>
+            )}
           </div>
         )}
       </div>

@@ -152,6 +152,44 @@ function isDashboardQuickAction(updatedBy?: string | null): boolean {
   return updatedBy === 'dashboard_quick_action';
 }
 
+// ── Instant Agent Triggers ─────────────────────────────────────────────
+// When an order moves to a new stage, fire the relevant agent(s) immediately
+// so Telegram group chats get notified now, not on the next hourly scheduler tick.
+
+const AGENT_TRIGGER_MAP: Record<string, string[]> = {
+  // Purchasing → Production
+  production_pending:    ['purchasing-agent'],
+  production_confirmed:  ['production-agent'],
+  // Production → En Route
+  en_route:              ['production-agent', 'inventory-agent'],
+  // En Route → Inventory
+  inventory_arrived:     ['inventory-agent'],
+  // Inventory → Balance Due
+  balance_due:           ['collection-agent', 'delivery-agent'],
+  // Delivery
+  delivery_scheduled:    ['delivery-agent'],
+  delivered:             ['collection-agent'],
+  countered:             ['collection-agent'],
+  // Payment
+  payment_received:      ['collection-agent'],
+  payment_confirmed:     ['collection-agent'],
+  // Deposit recorded (not a stage, but triggers collection agent)
+  deposit_pending:       ['collection-agent'],
+};
+
+function triggerAgentsForStage(stage: string): void {
+  const agentsToFire = AGENT_TRIGGER_MAP[stage];
+  if (agentsToFire) {
+    setImmediate(() => {
+      for (const agentName of agentsToFire) {
+        runAgentByName(agentName).catch((err) => {
+          console.warn(`[triggerAgents] Failed to run ${agentName} for stage ${stage}:`, err);
+        });
+      }
+    });
+  }
+}
+
 // ── Email (OTP) ──────────────────────────────────────────────────────
 const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -775,6 +813,11 @@ app.post('/orders/:id/set-production', async (request, reply) => {
     }
   }
 
+  // Notify production agent immediately that production has started
+  if (body.production_started) {
+    triggerAgentsForStage('production_confirmed');
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${updatedOrder.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: updatedOrder });
@@ -897,6 +940,9 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
      body.on_time ? 'Production reported on time' : `Production delayed by ${body.delay_days ?? 0} day(s)`]
   );
 
+  // Notify production + inventory agents immediately that production is finished (order is en route)
+  triggerAgentsForStage('en_route');
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
@@ -1005,48 +1051,8 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
     [id]
   );
 
-  // Send immediate notification to delivery group that inventory has arrived
-  const deliveryGroupChatId = process.env.DELIVERY_GROUP_CHAT_ID;
-  if (deliveryGroupChatId) {
-    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
-    const client = rows[0].client_name ?? 'Unknown';
-
-    const message =
-      `📦 *All Items Complete & Ready for Delivery* — ${ref} (${client})\n\n` +
-      `All items for this order are complete and ready for delivery.\n\n` +
-      `Please coordinate with the **Collection Team** for balance payment collection and verification before scheduling delivery.`;
-
-    try {
-      const https = await import('https');
-      const botToken = process.env.TELEGRAM_BOT_TOKEN;
-      if (botToken) {
-        const payload = JSON.stringify({
-          chat_id: deliveryGroupChatId,
-          text: message,
-          parse_mode: 'Markdown',
-        });
-        await new Promise<void>((resolve, reject) => {
-          const req = https.request(
-            `https://api.telegram.org/bot${botToken}/sendMessage`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-            },
-            (res) => {
-              let body = '';
-              res.on('data', (chunk) => (body += chunk));
-              res.on('end', () => resolve());
-            },
-          );
-          req.on('error', reject);
-          req.write(payload);
-          req.end();
-        });
-      }
-    } catch {
-      // Non-critical — agent will pick it up on next run
-    }
-  }
+  // Notify inventory agent immediately that the order has arrived
+  triggerAgentsForStage('inventory_arrived');
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1511,6 +1517,8 @@ app.post('/stage-updates', async (request, reply) => {
     );
   }
 
+  // Immediately fire the relevant agent so group chats are notified now, not on the next hourly tick
+  triggerAgentsForStage(body.stage);
   return { ok: true };
 });
 
@@ -1584,6 +1592,9 @@ app.post('/deposits', async (request, reply) => {
      ON CONFLICT DO NOTHING`,
     [orderId]
   );
+
+  // Notify collection agent immediately that a deposit needs verification
+  triggerAgentsForStage('deposit_pending');
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2089,6 +2100,9 @@ app.post('/pay-balance', async (request, reply) => {
     [orderId]
   );
 
+  // Notify collection agent immediately that balance needs verification
+  triggerAgentsForStage('balance_due');
+
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -2188,6 +2202,9 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id],
   );
 
+  // Notify purchasing agent immediately that deposit is verified and order needs production
+  triggerAgentsForStage(nextStage);
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
@@ -2251,6 +2268,9 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
      WHERE order_id = $1 AND stage = 'balance_verification' AND status = 'active'`,
     [id],
   );
+
+  // Notify collection agent immediately that balance is verified and payment is received
+  triggerAgentsForStage('payment_received');
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 

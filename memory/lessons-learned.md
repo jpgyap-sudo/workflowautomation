@@ -2324,3 +2324,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: migrate production page to shared OrderFileViewer with upload, add file viewer to orders detail page
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ed2181cb75532924127d443368aea8dd9db2d645
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ed2181cb75532924127d443368aea8dd9db2d645
+**Files:** apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**What was fixed:**  
+The production page was migrated to use a shared `OrderFileViewer` component with upload capability, and the file viewer was added to the orders detail page.
+
+**Why it broke:**  
+The production page had a duplicated or custom file viewer implementation that lacked upload support, causing inconsistency and missing functionality compared to the orders detail page.
+
+**Reusable takeaway:**  
+Centralize reusable UI components (like file viewers) to avoid code duplication and ensure consistent behavior across pages. When adding new features (e.g., upload), update the shared component rather than duplicating logic. This reduces maintenance overhead and prevents feature gaps.
+
+---
+*Original commit message: fix: migrate production page to shared OrderFileViewer with upload, add file viewer to orders detail page*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The production page was migrated to use a shared `OrderFileViewer` component with upload capability, and the file viewer was added to the orders detail page.
+
+**Why it broke:**  
+The production page had a duplicated or custom file viewer implementation that lacked upload support, causing inconsistency and missing functionality compared to the orders detail page.
+
+**Reusable takeaway:**  
+Centralize reusable UI components (like file viewers) to avoid code duplication and ensure consistent behavior across pages. When adding new features (e.g., upload), update the shared component rather than duplicating logic. This reduces maintenance overhead and prevents feature gaps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
