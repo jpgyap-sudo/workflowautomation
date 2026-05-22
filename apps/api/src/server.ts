@@ -2214,7 +2214,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   const body = verifyDepositSchema.parse(request.body);
 
   const orders = await query(
-    `SELECT id, quotation_number, current_stage, deposit_paid, deposit_verified
+    `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified
      FROM orders WHERE id = $1 AND status = 'active'`,
     [id],
   );
@@ -2276,7 +2276,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   );
 
   // Notify purchasing agent immediately that deposit is verified and order needs production
-  triggerAgentsForStage(nextStage, order.quotation_number);
+  triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -2302,7 +2302,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   const body = verifyBalanceSchema.parse(request.body);
 
   const orders = await query(
-    `SELECT id, quotation_number, current_stage, balance_paid, balance_verified
+    `SELECT id, quotation_number, client_name, current_stage, balance_paid, balance_verified
      FROM orders WHERE id = $1 AND status = 'active'`,
     [id],
   );
@@ -2352,7 +2352,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   );
 
   // Notify the relevant agent immediately
-  triggerAgentsForStage(nextStage, order.quotation_number);
+  triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 

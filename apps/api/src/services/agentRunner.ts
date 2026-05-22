@@ -291,6 +291,20 @@ export async function advanceStage(
   );
   // Clear all active reminders for this order since it moved to a new stage
   await completeOrderReminders(orderId);
+
+  // Notify the stage transition group about this auto-advance
+  if (TELEGRAM_BOT_TOKEN && quotationNumber) {
+    const chatId = process.env['STAGE_TRANSITION_GROUP_CHAT_ID'];
+    if (chatId) {
+      const stageLabel = STAGE_LABELS[newStage] ?? newStage;
+      const msg = `📋 <b>Stage Update</b> — ${quotationNumber}\n➡️ ${stageLabel} (auto-advanced)`;
+      fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' }),
+      }).catch(() => {});
+    }
+  }
 }
 
 // ── Build Agent Message ────────────────────────────────────────────────
