@@ -2,10 +2,13 @@
 
 ## Required groups
 
-1. Purchasing Group
-2. Inventory Arrival Group
-3. Delivery Group
-4. Collection Group
+1. **Stage Transition Group** (`STAGE_TRANSITION_GROUP_CHAT_ID`) — receives a notification on **every** stage transition across all orders. This is the general progress group.
+2. Purchasing Group — purchasing agent reminders
+3. Production Group — production agent reminders
+4. Inventory Arrival Group — inventory agent reminders
+5. Delivery Group — delivery agent reminders
+6. Collection Group — collection agent reminders
+7. Escalation Group — escalation agent reminders
 
 ## Bot permissions
 
@@ -35,3 +38,14 @@ Day 2: follow-up
 Day 3: tag manager
 Day 5: urgent escalation
 ```
+
+## Stage transition notifications
+
+When any order progresses to a new stage, the system sends a notification to the Stage Transition Group with the format:
+
+```
+📋 Stage Update — QTN-2026-001 (Client Name)
+➡️ 📄 Production Confirmed
+```
+
+This is triggered automatically from `triggerAgentsForStage()` in `server.ts`, which is called by every endpoint that advances an order's stage.

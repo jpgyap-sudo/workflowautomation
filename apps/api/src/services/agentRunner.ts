@@ -94,6 +94,14 @@ export function getGroupChatId(agentName: string): string | null {
   return process.env[envKey] ?? null;
 }
 
+/**
+ * Get the stage transition (general progress) group chat ID.
+ * This group receives a notification on every stage transition across all orders.
+ */
+export function getStageTransitionGroupChatId(): string | null {
+  return process.env['STAGE_TRANSITION_GROUP_CHAT_ID'] ?? null;
+}
+
 // ── Date Helpers ───────────────────────────────────────────────────────
 
 export function daysSince(dateStr: string): number {

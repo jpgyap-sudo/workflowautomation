@@ -34,6 +34,7 @@ import {
   listAgents,
   getAgentHealth,
 } from './services/agentScheduler.js';
+import { STAGE_LABELS } from './services/agentRunner.js';
 
 const ORDER_LIST_SELECT = `
   o.id, o.quotation_number, o.client_name, o.sales_agent,
@@ -177,7 +178,8 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   deposit_pending:       ['collection-agent'],
 };
 
-function triggerAgentsForStage(stage: string): void {
+function triggerAgentsForStage(stage: string, orderRef?: string, clientName?: string): void {
+  // 1. Fire the relevant agent(s) for this stage
   const agentsToFire = AGENT_TRIGGER_MAP[stage];
   if (agentsToFire) {
     setImmediate(() => {
@@ -185,6 +187,23 @@ function triggerAgentsForStage(stage: string): void {
         runAgentByName(agentName).catch((err) => {
           console.warn(`[triggerAgents] Failed to run ${agentName} for stage ${stage}:`, err);
         });
+      }
+    });
+  }
+
+  // 2. Notify the stage transition (general progress) group
+  if (orderRef) {
+    setImmediate(() => {
+      const stageLabel = STAGE_LABELS[stage] ?? stage;
+      const client = clientName ? ` (${clientName})` : '';
+      const msg = `📋 <b>Stage Update</b> — ${orderRef}${client}\n➡️ ${stageLabel}`;
+      const chatId = process.env['STAGE_TRANSITION_GROUP_CHAT_ID'];
+      if (chatId && _TELEGRAM_BOT_TOKEN) {
+        fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' }),
+        }).catch(() => {});
       }
     });
   }
@@ -495,6 +514,10 @@ app.get('/orders/unsynced-payments', async (request, reply) => {
 // Sync a single unsynced order — update current_stage to payment_received
 app.post('/orders/unsynced-payments/sync', async (request, reply) => {
   const { order_id } = z.object({ order_id: z.string() }).parse(request.body);
+  const orders = await query(
+    `SELECT quotation_number, client_name FROM orders WHERE id=$1`,
+    [order_id]
+  );
   await query(
     `UPDATE orders SET current_stage='payment_received', updated_at=NOW() WHERE id=$1 AND balance_paid=TRUE AND current_stage='balance_due'`,
     [order_id]
@@ -504,7 +527,9 @@ app.post('/orders/unsynced-payments/sync', async (request, reply) => {
     [order_id]
   );
   // Notify collection agent immediately that payment is received
-  triggerAgentsForStage('payment_received');
+  const orderRef = orders[0]?.quotation_number ?? null;
+  const clientName = orders[0]?.client_name ?? null;
+  triggerAgentsForStage('payment_received', orderRef, clientName);
 
   await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*', 'sales:*']);
   return { ok: true };
@@ -818,7 +843,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
 
   // Notify production agent immediately that production has started
   if (body.production_started) {
-    triggerAgentsForStage('production_confirmed');
+    triggerAgentsForStage('production_confirmed', updatedOrder.quotation_number, updatedOrder.client_name);
   }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${updatedOrder.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -944,7 +969,7 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   );
 
   // Notify production agent immediately about the production status update
-  triggerAgentsForStage('production_confirmed');
+  triggerAgentsForStage('production_confirmed', rows[0].quotation_number, rows[0].client_name);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1016,7 +1041,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   }
 
   // Notify production + inventory agents immediately that production is finished (order is en route)
-  triggerAgentsForStage('en_route');
+  triggerAgentsForStage('en_route', rows[0].quotation_number, rows[0].client_name);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1058,7 +1083,7 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   );
 
   // Notify inventory agent immediately that the order has arrived
-  triggerAgentsForStage('inventory_arrived');
+  triggerAgentsForStage('inventory_arrived', rows[0].quotation_number, rows[0].client_name);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1559,7 +1584,7 @@ app.post('/stage-updates', async (request, reply) => {
   }
 
   // Immediately fire the relevant agent so group chats are notified now, not on the next hourly tick
-  triggerAgentsForStage(body.stage);
+  triggerAgentsForStage(body.stage, body.quotation_number, order?.client_name ?? null);
   return { ok: true };
 });
 
@@ -1583,11 +1608,12 @@ const depositSchema = z.object({
 app.post('/deposits', async (request, reply) => {
   const body = depositSchema.parse(request.body);
   if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
-  const orders = await query(`SELECT id, current_stage, quotation_number FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
+  const orders = await query(`SELECT id, current_stage, quotation_number, client_name FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
   const orderId = orders[0].id;
   const quotationNumber = orders[0].quotation_number;
+  const clientName = orders[0].client_name;
 
   // Update deposit fields.
   // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
@@ -1635,7 +1661,7 @@ app.post('/deposits', async (request, reply) => {
   );
 
   // Notify collection agent immediately that a deposit needs verification
-  triggerAgentsForStage('deposit_pending');
+  triggerAgentsForStage('deposit_pending', quotationNumber, clientName);
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -1742,7 +1768,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
     );
 
     // Notify collection agent immediately that a deposit needs verification
-    triggerAgentsForStage('deposit_pending');
+    triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
 
     await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -1824,7 +1850,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
     );
 
     // Notify collection agent immediately that a deposit needs verification
-    triggerAgentsForStage('deposit_pending');
+    triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
 
     await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -2068,7 +2094,7 @@ app.post('/pay-balance', async (request, reply) => {
   const body = payBalanceSchema.parse(request.body);
   if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
   const orders = await query(
-    `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid FROM orders WHERE quotation_number=$1`,
+    `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid, client_name FROM orders WHERE quotation_number=$1`,
     [body.quotation_number]
   );
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -2148,7 +2174,7 @@ app.post('/pay-balance', async (request, reply) => {
   );
 
   // Notify collection agent immediately that balance needs verification
-  triggerAgentsForStage('balance_due');
+  triggerAgentsForStage('balance_due', body.quotation_number, order.client_name);
 
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2250,7 +2276,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   );
 
   // Notify purchasing agent immediately that deposit is verified and order needs production
-  triggerAgentsForStage(nextStage);
+  triggerAgentsForStage(nextStage, order.quotation_number);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -2326,7 +2352,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   );
 
   // Notify the relevant agent immediately
-  triggerAgentsForStage(nextStage);
+  triggerAgentsForStage(nextStage, order.quotation_number);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 

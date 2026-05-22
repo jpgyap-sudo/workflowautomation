@@ -2468,3 +2468,51 @@ When designing agent triggers, always include explicit state reconciliation afte
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] Fix verify-balance to advance to delivery_scheduled, add workflow guard to stage-updates
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3ee42e3937f6c6bc9b3866d6009b8e2b2600a809
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3ee42e3937f6c6bc9b3866d6009b8e2b2600a809
+**Files:** .env.example,apps/api/src/server.ts,deploy-agent.mjs,memory/lesson-index.jsonl,memory/lessons-learned.md,scripts/backup-env.sh,workflow-live.png,{console.error(e)
+
+**Summary:**
+**What was fixed:**  
+The `verify-balance` step now correctly transitions to `delivery_scheduled` instead of stalling. A workflow guard was added to `stage-updates` to prevent invalid state transitions.
+
+**Why it broke:**  
+The `verify-balance` handler lacked a proper next-state mapping, causing the workflow to hang after balance verification. The `stage-updates` step had no guard, allowing updates to proceed even when prerequisites were unmet.
+
+**Reusable takeaway:**  
+Every state transition must explicitly define its successor state, and all workflow steps should include guards that validate preconditions before executing. Without guards, workflows can silently skip required checks, leading to stuck or corrupted state machines.
+
+---
+*Original commit message: Fix verify-balance to advance to delivery_scheduled, add workflow guard to stage-updates*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `verify-balance` step now correctly transitions to `delivery_scheduled` instead of stalling. A workflow guard was added to `stage-updates` to prevent invalid state transitions.
+
+**Why it broke:**  
+The `verify-balance` handler lacked a proper next-state mapping, causing the workflow to hang after balance verification. The `stage-updates` step had no guard, allowing updates to proceed even when prerequisites were unmet.
+
+**Reusable takeaway:**  
+Every state transition must explicitly define its successor state, and all workflow steps should include guards that validate preconditions before executing. Without guards, workflows can silently skip required checks, leading to stuck or corrupted state machines.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
