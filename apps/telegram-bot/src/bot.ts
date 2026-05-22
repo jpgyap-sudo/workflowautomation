@@ -1878,14 +1878,21 @@ Midpoint and due reminders are now scheduled.`,
 bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const status = ctx.match[1];
-  const quotationNumber = ctx.match[2];
+  const rest = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+
+  // Support both formats:
+  //   produce:yes:orderId:quotationNumber (from reminder scheduler)
+  //   produce:yes:quotationNumber (from /produce command)
+  const parts = rest.split(':');
+  const orderId = parts.length > 1 ? parts[0] : undefined;
+  const quotationNumber = parts.length > 1 ? parts.slice(1).join(':') : rest;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `produce:${status}:${quotationNumber}`,
+    content: `produce:${status}:${rest}`,
     direction: 'incoming',
   });
 
@@ -1914,14 +1921,21 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
 // Partial production: ask for missing items
 bot.action(/^produce:partial:(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const quotationNumber = ctx.match[1];
+  const rest = ctx.match[1];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+
+  // Support both formats:
+  //   produce:partial:orderId:quotationNumber (from reminder scheduler)
+  //   produce:partial:quotationNumber (from /produce command)
+  const parts = rest.split(':');
+  const orderId = parts.length > 1 ? parts[0] : undefined;
+  const quotationNumber = parts.length > 1 ? parts.slice(1).join(':') : rest;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `produce:partial:${quotationNumber}`,
+    content: `produce:partial:${rest}`,
     direction: 'incoming',
   });
 

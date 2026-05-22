@@ -192,10 +192,10 @@ export async function processDueReminders(): Promise<number> {
       // Has production started?
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes, started', callback_data: `produce:yes:${quotationNumber}` },
-          { text: '⚠️ Partial', callback_data: `produce:partial:${quotationNumber}` },
+          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId}:${quotationNumber}` },
+          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId}:${quotationNumber}` },
         ],
-        [{ text: '⏳ Not yet', callback_data: `produce:no:${quotationNumber}` }],
+        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId}:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'production_midpoint') {
       // Midpoint check: ask if on time or delayed
