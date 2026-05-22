@@ -3604,7 +3604,7 @@ app.post('/reminders', async (request, reply) => {
     await query(
       `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'active')
-       ON CONFLICT (order_id, stage) DO UPDATE SET
+       ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
          group_chat_id=EXCLUDED.group_chat_id,
          message=EXCLUDED.message,
          frequency=EXCLUDED.frequency,

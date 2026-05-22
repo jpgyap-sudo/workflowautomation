@@ -10,10 +10,11 @@ ALTER TABLE reminders DROP CONSTRAINT IF EXISTS reminders_order_id_stage_key;
 -- Step 2: Add item_id column (nullable — existing reminders without item_id remain valid)
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS item_id UUID REFERENCES order_items(id) ON DELETE CASCADE;
 
--- Step 3: Add the new UNIQUE constraint on (order_id, stage, item_id)
--- For item-level reminders, item_id is set. For order-level reminders, item_id is NULL.
--- PostgreSQL allows multiple NULLs in a UNIQUE constraint (NULL != NULL), so this works.
-ALTER TABLE reminders ADD CONSTRAINT reminders_order_id_stage_item_key UNIQUE (order_id, stage, COALESCE(item_id, '00000000-0000-0000-0000-000000000000'::uuid));
+-- Step 3: Add a partial UNIQUE index for item-level reminders (item_id IS NOT NULL)
+-- and a partial UNIQUE index for order-level reminders (item_id IS NULL).
+-- PostgreSQL UNIQUE constraints treat all NULLs as distinct, so we need two partial indexes.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_order_stage_item ON reminders(order_id, stage, item_id) WHERE item_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_order_stage_null ON reminders(order_id, stage) WHERE item_id IS NULL;
 
 -- Step 4: Create an index for efficient lookup by item_id
 CREATE INDEX IF NOT EXISTS idx_reminders_item_id ON reminders(item_id);
@@ -45,7 +46,7 @@ BEGIN
 
   INSERT INTO reminders (order_id, item_id, stage, group_chat_id, message, frequency, next_run_at, status)
   VALUES (p_order_id, p_item_id, p_stage, p_group_chat_id, p_message, p_frequency, v_first_run, 'active')
-  ON CONFLICT (order_id, stage, COALESCE(item_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  ON CONFLICT (order_id, stage, item_id) WHERE item_id IS NOT NULL
   DO UPDATE SET
     group_chat_id = EXCLUDED.group_chat_id,
     message = EXCLUDED.message,
