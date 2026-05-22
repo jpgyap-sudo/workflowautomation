@@ -363,23 +363,24 @@ export async function notifyCollection(
 ): Promise<void> {
   const msg = buildAgentMessage('Collection Agent', order, result.message, result.escalation_level);
   const qn = order.quotation_number;
-  const id = order.id;
 
   let keyboard: Record<string, unknown> | undefined;
   if (qn && result.status === 'needs_review') {
     if (!order.deposit_paid) {
       // Phase 1: Deposit not yet paid — show upload deposit slip button
+      // Use short id (first 8 chars) to keep callback_data under Telegram's 64-byte limit
       keyboard = inlineKeyboard([
         [
-          { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${id}:${qn}` },
-          { text: '⏳ Not Yet', callback_data: `deposit:no:${id}:${qn}` },
+          { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${order.id}:${qn}` },
+          { text: '⏳ Not Yet', callback_data: `deposit:no:${order.id}:${qn}` },
         ],
       ]);
     } else if (order.deposit_paid && !order.deposit_verified) {
       // Phase 2: Deposit paid but not verified — show verify button
+      // Use quotation number only (no UUID) to stay under 64-byte limit
       keyboard = inlineKeyboard([
         [
-          { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${id}:${qn}` },
+          { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${qn}` },
         ],
       ]);
     } else if (!order.balance_paid) {
@@ -389,9 +390,10 @@ export async function notifyCollection(
       ]);
     } else if (order.balance_paid && !order.balance_verified) {
       // Phase 4: Balance paid but not verified — show verify button
+      // Use quotation number only (no UUID) to stay under 64-byte limit
       keyboard = inlineKeyboard([
         [
-          { text: '🔍 Verify Balance', callback_data: `verify:balance:${id}:${qn}` },
+          { text: '🔍 Verify Balance', callback_data: `verify:balance:${qn}` },
         ],
       ]);
     }

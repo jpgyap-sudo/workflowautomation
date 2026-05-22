@@ -2564,3 +2564,51 @@ When designing workflow engines, ensure every state transition emits a notificat
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add stage transition notification to advanceStage() and add client_name to verify-deposit/verify-balance trigger ca
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 99cae57e6ff6c6f0672be52611226b5d2a789ae6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 99cae57e6ff6c6f0672be52611226b5d2a789ae6
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Added stage transition notifications to `advanceStage()` and included `client_name` in `verify-deposit` and `verify-balance` trigger calls.
+
+**Why it broke:**  
+Stage transitions were not broadcasting updates, causing downstream systems to miss state changes. Missing `client_name` in verification triggers led to incomplete context for balance/deposit checks, breaking workflow continuity.
+
+**Reusable takeaway:**  
+Always propagate state change notifications and include all relevant identifiers (e.g., `client_name`) in trigger calls. Missing context in cross-system triggers can silently break workflows. Ensure every state transition broadcasts its change and every trigger carries sufficient data for downstream processing.
+
+---
+*Original commit message: fix: add stage transition notification to advanceStage() and add client_name to verify-deposit/verify-balance trigger calls*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added stage transition notifications to `advanceStage()` and included `client_name` in `verify-deposit` and `verify-balance` trigger calls.
+
+**Why it broke:**  
+Stage transitions were not broadcasting updates, causing downstream systems to miss state changes. Missing `client_name` in verification triggers led to incomplete context for balance/deposit checks, breaking workflow continuity.
+
+**Reusable takeaway:**  
+Always propagate state change notifications and include all relevant identifiers (e.g., `client_name`) in trigger calls. Missing context in cross-system triggers can silently break workflows. Ensure every state transition broadcasts its change and every trigger carries sufficient data for downstream processing.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

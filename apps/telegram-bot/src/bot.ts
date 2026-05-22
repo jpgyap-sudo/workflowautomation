@@ -3489,17 +3489,16 @@ bot.action('deposit:confirm_no', async (ctx) => {
 // ── Verify Deposit Callback Handler ──────────────────────────────────
 
 // Team member clicked "Verify Deposit" from collection agent reminder
-bot.action(/^verify:deposit:(.+):(.+)$/, async (ctx) => {
+bot.action(/^verify:deposit:(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
-  const orderId = ctx.match[1];
-  const quotationNumber = ctx.match[2];
+  const quotationNumber = ctx.match[1];
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `verify:deposit:${orderId}:${quotationNumber}`,
+    content: `verify:deposit:${quotationNumber}`,
     direction: 'incoming',
   });
 
@@ -3509,6 +3508,12 @@ bot.action(/^verify:deposit:(.+):(.+)$/, async (ctx) => {
   );
 
   try {
+    // Look up the order by quotation number to get its UUID
+    const ordersRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!ordersRes.ok) throw new Error(`Order ${quotationNumber} not found`);
+    const orderData = await ordersRes.json();
+    const orderId = orderData.id;
+
     const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/verify-deposit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3543,7 +3548,7 @@ bot.action(/^verify:deposit:(.+):(.+)$/, async (ctx) => {
       chatId, userId, username,
       messageType: 'deposit',
       content: `deposit_verify_error: ${quotationNumber}`,
-      metadata: { orderId, quotationNumber, errorMessage: String(error.message ?? error) },
+      metadata: { quotationNumber, errorMessage: String(error.message ?? error) },
       status: 'error',
     });
     await ctx.editMessageText(
@@ -3556,17 +3561,16 @@ bot.action(/^verify:deposit:(.+):(.+)$/, async (ctx) => {
 // ── Verify Balance Callback Handler ──────────────────────────────────
 
 // Team member clicked "Verify Balance" from collection agent reminder
-bot.action(/^verify:balance:(.+):(.+)$/, async (ctx) => {
+bot.action(/^verify:balance:(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
-  const orderId = ctx.match[1];
-  const quotationNumber = ctx.match[2];
+  const quotationNumber = ctx.match[1];
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `verify:balance:${orderId}:${quotationNumber}`,
+    content: `verify:balance:${quotationNumber}`,
     direction: 'incoming',
   });
 
@@ -3576,6 +3580,12 @@ bot.action(/^verify:balance:(.+):(.+)$/, async (ctx) => {
   );
 
   try {
+    // Look up the order by quotation number to get its UUID
+    const ordersRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!ordersRes.ok) throw new Error(`Order ${quotationNumber} not found`);
+    const orderData = await ordersRes.json();
+    const orderId = orderData.id;
+
     const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/verify-balance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3610,7 +3620,7 @@ bot.action(/^verify:balance:(.+):(.+)$/, async (ctx) => {
       chatId, userId, username,
       messageType: 'balance',
       content: `balance_verify_error: ${quotationNumber}`,
-      metadata: { orderId, quotationNumber, errorMessage: String(error.message ?? error) },
+      metadata: { quotationNumber, errorMessage: String(error.message ?? error) },
       status: 'error',
     });
     await ctx.editMessageText(
