@@ -940,32 +940,31 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   );
   const hasItems = itemRows[0]?.cnt > 0;
 
-  // Only create legacy en_route reminder if order does NOT have item-level tracking
-  // (item-level en-route tracking is handled by the production agent's checkItemLevelEnRoute)
-  if (!hasItems) {
-    const groupChatId = process.env.PURCHASING_GROUP_ID;
-    if (groupChatId) {
-      const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
-      const client = rows[0].client_name ?? 'Unknown';
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(9, 0, 0, 0);
-      await query(
-        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-         VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
-         ON CONFLICT (order_id, stage) DO UPDATE SET
-           group_chat_id=EXCLUDED.group_chat_id,
-           message=EXCLUDED.message,
-           frequency=EXCLUDED.frequency,
-           next_run_at=EXCLUDED.next_run_at,
-           status='active',
-           escalation_level=0,
-           updated_at=NOW()`,
-        [id, groupChatId,
-         `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
-         tomorrow.toISOString()]
-      );
-    }
+  // Create en_route reminder for ALL orders (both legacy and item-level tracking)
+  // The production agent's checkEnRoute/checkItemLevelEnRoute will also upsert this,
+  // but creating it immediately ensures no gap between finish-production and the next agent run.
+  const groupChatId = process.env.PURCHASING_GROUP_CHAT_ID;
+  if (groupChatId) {
+    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = rows[0].client_name ?? 'Unknown';
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
+       ON CONFLICT (order_id, stage) DO UPDATE SET
+         group_chat_id=EXCLUDED.group_chat_id,
+         message=EXCLUDED.message,
+         frequency=EXCLUDED.frequency,
+         next_run_at=EXCLUDED.next_run_at,
+         status='active',
+         escalation_level=0,
+         updated_at=NOW()`,
+      [id, groupChatId,
+       `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
+       tomorrow.toISOString()]
+    );
   }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
@@ -1006,6 +1005,49 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
      WHERE order_id = $1 AND status = 'active' AND stage IN ('en_route_reminder', 'item_level_en_route')`,
     [id]
   );
+
+  // Send immediate notification to delivery group that inventory has arrived
+  const deliveryGroupChatId = process.env.DELIVERY_GROUP_CHAT_ID;
+  if (deliveryGroupChatId) {
+    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = rows[0].client_name ?? 'Unknown';
+
+    const message =
+      `📦 *All Items Complete & Ready for Delivery* — ${ref} (${client})\n\n` +
+      `All items for this order are complete and ready for delivery.\n\n` +
+      `Please coordinate with the **Collection Team** for balance payment collection and verification before scheduling delivery.`;
+
+    try {
+      const https = await import('https');
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      if (botToken) {
+        const payload = JSON.stringify({
+          chat_id: deliveryGroupChatId,
+          text: message,
+          parse_mode: 'Markdown',
+        });
+        await new Promise<void>((resolve, reject) => {
+          const req = https.request(
+            `https://api.telegram.org/bot${botToken}/sendMessage`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+            },
+            (res) => {
+              let body = '';
+              res.on('data', (chunk) => (body += chunk));
+              res.on('end', () => resolve());
+            },
+          );
+          req.on('error', reject);
+          req.write(payload);
+          req.end();
+        });
+      }
+    } catch {
+      // Non-critical — agent will pick it up on next run
+    }
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });

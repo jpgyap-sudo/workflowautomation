@@ -25,6 +25,7 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
   // Check orders at inventory_arrived stage
+  // NOTE: Balance collection is handled by the Collection Agent
   const inventoryArrivedOrders = await getActiveOrdersByStage('inventory_arrived');
   for (const order of inventoryArrivedOrders) {
     const result = await checkInventoryArrived(order);
@@ -32,20 +33,6 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
       const groupChatId = getGroupChatId('delivery-agent');
       if (groupChatId) {
         await createReminder(order.id, 'inventory_arrived', groupChatId, result.message);
-        await notifyDelivery(groupChatId, order, result);
-      }
-    }
-    results.push(result);
-  }
-
-  // Check orders at balance_due stage
-  const balanceDueOrders = await getActiveOrdersByStage('balance_due');
-  for (const order of balanceDueOrders) {
-    const result = await checkBalanceDue(order);
-    if (result.reminder_needed) {
-      const groupChatId = getGroupChatId('delivery-agent');
-      if (groupChatId) {
-        await createReminder(order.id, 'balance_due', groupChatId, result.message);
         await notifyDelivery(groupChatId, order, result);
       }
     }
@@ -71,8 +58,8 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
 
 /**
  * Check orders at inventory_arrived stage.
- * Reminds the delivery group that inventory has arrived and the quotation is ready for delivery.
- * Also reminds about balance payment.
+ * Notifies the delivery group that all items are complete and ready for delivery.
+ * Balance collection is handled by the Collection Agent — delivery just coordinates.
  */
 export async function checkInventoryArrived(order: OrderRow): Promise<AgentResult> {
   const input = {
@@ -86,7 +73,7 @@ export async function checkInventoryArrived(order: OrderRow): Promise<AgentResul
     if (escalationLevel >= 3) {
       const result: AgentResult = {
         status: 'blocked',
-        message: `🔴 Inventory arrived but not yet moved to balance payment after ${escalationLevel} reminders. Manager intervention required.`,
+        message: `🔴 Inventory arrived but delivery not yet scheduled after ${escalationLevel} reminders. Manager intervention required.`,
         next_stage: null,
         reminder_needed: true,
         escalation_level: escalationLevel,
@@ -96,17 +83,11 @@ export async function checkInventoryArrived(order: OrderRow): Promise<AgentResul
       return result;
     }
 
-    const total = order.total_amount ? Number(order.total_amount) : null;
-    const deposit = order.deposit_amount ? Number(order.deposit_amount) : 0;
-    const balanceDue = total !== null ? total - deposit : null;
-    const balanceText = balanceDue !== null ? `₱${balanceDue.toLocaleString()}` : 'N/A';
-
     const result: AgentResult = {
       status: 'needs_review',
-      message: `📦 Inventory has arrived! Quotation #${order.quotation_number ?? 'unknown'} is ready for delivery.\n\n` +
-        `⚖️ Balance payment of ${balanceText} is required before delivery can proceed.\n` +
-        `Please ask the client: **Has the client paid the balance yet?**\n` +
-        `If yes, please send a photo of the deposit slip or proof of payment.`,
+      message: `📦 All items for quotation #${order.quotation_number ?? 'unknown'} are complete and ready for delivery.\n\n` +
+        `Please coordinate with the **Collection Team** for balance payment collection and verification.\n` +
+        `Once balance is confirmed, proceed with delivery scheduling.`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: escalationLevel,
@@ -119,67 +100,6 @@ export async function checkInventoryArrived(order: OrderRow): Promise<AgentResul
     const result: AgentResult = {
       status: 'blocked',
       message: `❌ Error checking inventory arrival for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
-      next_stage: null,
-      reminder_needed: true,
-      escalation_level: 0,
-    };
-
-    await logAgentAction('delivery-agent', input, result, 'error', order.id, errorMsg);
-    return result;
-  }
-}
-
-/**
- * Check orders at balance_due stage.
- * Asks daily if the client has paid the balance yet.
- */
-export async function checkBalanceDue(order: OrderRow): Promise<AgentResult> {
-  const input = {
-    quotation_number: order.quotation_number,
-    current_stage: order.current_stage,
-    total_amount: order.total_amount,
-    deposit_amount: order.deposit_amount,
-    balance_paid: order.balance_paid,
-  };
-
-  try {
-    const escalationLevel = await getEscalationLevel(order.id, 'balance_due');
-
-    const total = order.total_amount ? Number(order.total_amount) : null;
-    const deposit = order.deposit_amount ? Number(order.deposit_amount) : 0;
-    const balanceDue = total !== null ? total - deposit : null;
-    const balanceText = balanceDue !== null ? `₱${balanceDue.toLocaleString()}` : 'N/A';
-
-    if (escalationLevel >= 3) {
-      const result: AgentResult = {
-        status: 'blocked',
-        message: `🔴 Balance payment of ${balanceText} not yet received after ${escalationLevel} reminders. Manager intervention required.`,
-        next_stage: null,
-        reminder_needed: true,
-        escalation_level: escalationLevel,
-      };
-
-      await logAgentAction('delivery-agent', input, result, 'blocked', order.id);
-      return result;
-    }
-
-    const result: AgentResult = {
-      status: 'needs_review',
-      message: `⚖️ Balance payment of ${balanceText} is due for quotation #${order.quotation_number ?? 'unknown'}.\n\n` +
-        `**Did the client pay yet?**\n` +
-        `If yes, please send a photo of the deposit slip or proof of payment so we can record the amount and date.`,
-      next_stage: null,
-      reminder_needed: true,
-      escalation_level: escalationLevel,
-    };
-
-    await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
-    return result;
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    const result: AgentResult = {
-      status: 'blocked',
-      message: `❌ Error checking balance due for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: 0,
@@ -271,14 +191,6 @@ export async function notifyDelivery(
           [
             { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${id}:${qn}` },
             { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${id}:${qn}` },
-          ],
-        ]);
-        break;
-      case 'balance_due':
-        keyboard = inlineKeyboard([
-          [
-            { text: '✅ Client Paid Balance', callback_data: `balance:paid:${id}:${qn}` },
-            { text: '❌ Not Yet', callback_data: `balance:not_paid:${id}:${qn}` },
           ],
         ]);
         break;

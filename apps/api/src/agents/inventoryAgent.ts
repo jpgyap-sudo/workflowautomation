@@ -212,6 +212,7 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(inventoryPct);
+    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
 
     // Build Hermes context for smarter messaging
     const hermesCtx: HermesProductionContext = {
@@ -237,6 +238,7 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
 
     let message = `📦 <b>Item-Level Inventory Check</b>\n`;
     message += `Order: #${qn} (${client})\n`;
+    message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n`;
     message += `Inventory: ${inventoryPct}% arrived ${progressBar}\n`;
     message += `Items: ${arrivedCount}/${totalCount} arrived\n\n`;
 

@@ -9,7 +9,7 @@ import OtpModal from '@/components/OtpModal';
 import {
   ShoppingCart, Clock, Package, ExternalLink,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  AlertTriangle, RefreshCw, List,
+  AlertTriangle, RefreshCw, List, Truck, CheckCircle,
 } from 'lucide-react';
 
 function DriveLink({ folderId }: { folderId: string | null }) {
@@ -36,14 +36,17 @@ interface OrderRowProps {
 
 function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
-  const [inventoryPct, setInventoryPct] = useState<number | null>(null);
+  const [completion, setCompletion] = useState<ItemCompletion | null>(null);
 
   useEffect(() => {
-    if (order.current_stage === 'inventory_arrived') {
+    let cancelled = false;
+    // Fetch item-level completion for all stages that might have items
+    if (['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled'].includes(order.current_stage)) {
       getItemCompletion(order.id).then((res) => {
-        if (res.ok) setInventoryPct(res.inventory_completion_pct);
+        if (!cancelled && res.ok) setCompletion(res);
       }).catch(() => {});
     }
+    return () => { cancelled = true; };
   }, [order.id, order.current_stage]);
 
   return (
@@ -62,12 +65,46 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps)
                 ))}
               </span>
             )}
-            {inventoryPct != null && (
-              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                inventoryPct >= 100 ? 'bg-green-100 text-green-700' : inventoryPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-              }`}>
-                <Package className="h-3 w-3" /> Inv: {inventoryPct}%
-              </span>
+            {/* Item-level completion badges inline */}
+            {completion && (
+              <>
+                {completion.production_completion_pct > 0 && completion.production_completion_pct < 100 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    completion.production_completion_pct >= 50 ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Package className="h-3 w-3" /> Prod: {completion.production_completion_pct}%
+                  </span>
+                )}
+                {completion.en_route_completion_pct > 0 && completion.en_route_completion_pct < 100 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    completion.en_route_completion_pct >= 50 ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Truck className="h-3 w-3" /> En Route: {completion.en_route_completion_pct}%
+                  </span>
+                )}
+                {completion.inventory_completion_pct > 0 && completion.inventory_completion_pct < 100 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    completion.inventory_completion_pct >= 50 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Package className="h-3 w-3" /> Inv: {completion.inventory_completion_pct}%
+                  </span>
+                )}
+                {completion.production_completion_pct >= 100 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                    <CheckCircle className="h-3 w-3" /> Prod Complete
+                  </span>
+                )}
+                {completion.en_route_completion_pct >= 100 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                    <CheckCircle className="h-3 w-3" /> All En Route
+                  </span>
+                )}
+                {completion.inventory_completion_pct >= 100 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                    <CheckCircle className="h-3 w-3" /> All Arrived
+                  </span>
+                )}
+              </>
             )}
           </div>
           <p className="truncate text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
@@ -116,24 +153,36 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction }: OrderRowProps)
             </button>
           )}
 
-          {/* Inventory completion bar for inventory_arrived orders */}
-          {order.current_stage === 'inventory_arrived' && inventoryPct != null && (
-            <div className="w-full">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <Package className="h-3 w-3 text-emerald-500" />
-                <span>Inventory Arrival</span>
-                <span className={`ml-auto font-semibold ${
-                  inventoryPct >= 100 ? 'text-green-600' : inventoryPct >= 50 ? 'text-amber-600' : 'text-gray-500'
-                }`}>{inventoryPct}%</span>
-              </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    inventoryPct >= 100 ? 'bg-green-500' : inventoryPct >= 50 ? 'bg-amber-500' : 'bg-gray-400'
-                  }`}
-                  style={{ width: `${Math.min(inventoryPct, 100)}%` }}
-                />
-              </div>
+          {/* Item-level completion bars for expanded view */}
+          {completion && (
+            <div className="w-full space-y-2">
+              {completion.production_completion_pct > 0 && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Package className="h-3 w-3 text-indigo-500" />
+                  <span>Production</span>
+                  <span className={`ml-auto font-semibold ${
+                    completion.production_completion_pct >= 100 ? 'text-green-600' : completion.production_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
+                  }`}>{completion.production_completion_pct}%</span>
+                </div>
+              )}
+              {completion.en_route_completion_pct > 0 && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Truck className="h-3 w-3 text-sky-500" />
+                  <span>En Route</span>
+                  <span className={`ml-auto font-semibold ${
+                    completion.en_route_completion_pct >= 100 ? 'text-green-600' : completion.en_route_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
+                  }`}>{completion.en_route_completion_pct}%</span>
+                </div>
+              )}
+              {completion.inventory_completion_pct > 0 && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Package className="h-3 w-3 text-emerald-500" />
+                  <span>Inventory Arrival</span>
+                  <span className={`ml-auto font-semibold ${
+                    completion.inventory_completion_pct >= 100 ? 'text-green-600' : completion.inventory_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
+                  }`}>{completion.inventory_completion_pct}%</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -236,8 +285,6 @@ function OrderSection({
 export default function PurchasingPage() {
   const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
     useOrdersByStage('purchasing_pending');
-  const { data: inventoryOrders = [], isLoading: loadingInventory, error: errorInventory, mutate: mutateInventory } =
-    useOrdersByStage('inventory_arrived');
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -249,7 +296,6 @@ export default function PurchasingPage() {
 
   function refresh() {
     mutatePending();
-    mutateInventory();
   }
 
   async function handleEditVerified(actionToken: string) {
@@ -327,7 +373,8 @@ export default function PurchasingPage() {
             <h3 className="text-sm font-semibold text-amber-800">Purchasing Workflow</h3>
             <p className="mt-1 text-xs text-amber-700">
               Approved quotations waiting for purchasing to begin. Once production starts, the order moves to the{' '}
-              <strong>Production</strong> tab. Inventory arrived orders await balance payment before delivery.
+              <strong>Production</strong> tab. Once en route is confirmed, the order moves to the{' '}
+              <strong>Delivery</strong> tab for balance payment and delivery scheduling.
             </p>
           </div>
         </div>
@@ -353,25 +400,6 @@ export default function PurchasingPage() {
         )}
       </OrderSection>
 
-      {/* Inventory Arrived */}
-      <OrderSection
-        icon={<Package className="h-4 w-4 text-emerald-500" />}
-        title="Inventory Arrived"
-        count={inventoryOrders.length}
-        countBg="bg-emerald-100" countText="text-emerald-700"
-        orders={inventoryOrders} isLoading={loadingInventory} error={errorInventory}
-        onRetry={() => mutateInventory()}
-        emptyText="No inventory arrived orders"
-      >
-        {(order) => (
-          <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
 
       <OtpModal
         open={otpModal.open} title={otpModal.title} description={otpModal.description}

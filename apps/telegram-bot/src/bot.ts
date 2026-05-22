@@ -3039,7 +3039,7 @@ bot.action('vision:extract_yes', async (ctx) => {
           const matchRes = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount: depositAmount }),
+            body: JSON.stringify({ amount: depositAmount, deposit_paid_at: paymentDate ?? null }),
           });
           const matchData = await matchRes.json();
 
@@ -4130,7 +4130,7 @@ bot.on(['document', 'photo'], async (ctx) => {
               const matchRes = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount: depositAmount, quotation_number: quotationNumber }),
+                body: JSON.stringify({ amount: depositAmount, quotation_number: quotationNumber, deposit_paid_at: paymentDate ?? null }),
               });
               const matchData = await matchRes.json();
 

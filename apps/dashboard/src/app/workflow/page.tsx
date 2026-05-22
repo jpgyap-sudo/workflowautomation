@@ -501,6 +501,130 @@ function EscalationDots({ level }: { level: number }) {
   );
 }
 
+function FlowNodeLabel({
+  x,
+  y,
+  lines,
+  className = 'fill-gray-800',
+  size = 12,
+}: {
+  x: number;
+  y: number;
+  lines: string[];
+  className?: string;
+  size?: number;
+}) {
+  return (
+    <text x={x} y={y} textAnchor="middle" className={`${className} font-semibold`} fontSize={size}>
+      {lines.map((line, index) => (
+        <tspan key={`${line}-${index}`} x={x} dy={index === 0 ? 0 : size + 2}>
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+}
+
+function FlowArrowLabel({ x, y, children }: { x: number; y: number; children: string }) {
+  return (
+    <text x={x} y={y} textAnchor="middle" className="fill-gray-500 font-semibold" fontSize="11">
+      {children}
+    </text>
+  );
+}
+
+function ProcurementFlowDiagram() {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800">Workflow Flow Diagram</h2>
+          <p className="text-xs text-gray-500">
+            Stock check, vendor ordering, approval, quality check, and replacement loop.
+          </p>
+        </div>
+        <span className="text-[10px] text-gray-400">Scroll sideways on small screens</span>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-dashed border-gray-200 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] p-4 [background-size:18px_18px]">
+        <svg
+          role="img"
+          aria-labelledby="workflow-diagram-title workflow-diagram-desc"
+          viewBox="0 0 820 900"
+          className="mx-auto h-auto min-w-[760px] max-w-5xl"
+        >
+          <title id="workflow-diagram-title">Order workflow flow diagram</title>
+          <desc id="workflow-diagram-desc">
+            Flow from start through stock checking, order requests, supplier response, management approval, delivery preparation, quality checking, vendor replacement, and completion.
+          </desc>
+          <defs>
+            <marker id="workflow-arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 10 4 L 0 8 z" className="fill-gray-500" />
+            </marker>
+          </defs>
+
+          <rect x="365" y="10" width="90" height="40" rx="20" className="fill-pink-200 stroke-pink-300" />
+          <FlowNodeLabel x={410} y={34} lines={['Start']} className="fill-pink-900" size={11} />
+
+          <line x1="410" y1="50" x2="410" y2="88" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <rect x="335" y="88" width="150" height="48" rx="8" className="fill-emerald-200 stroke-emerald-300" />
+          <FlowNodeLabel x={410} y={107} lines={['Check Stock', 'Levels']} className="fill-emerald-950" size={11} />
+
+          <line x1="410" y1="136" x2="410" y2="176" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <path d="M410 166 L480 216 L410 266 L340 216 Z" className="fill-amber-100 stroke-amber-300" />
+          <FlowNodeLabel x={410} y={212} lines={['Is Stock Low?']} className="fill-amber-950" size={11} />
+
+          <line x1="410" y1="266" x2="410" y2="318" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <FlowArrowLabel x={430} y={294}>No</FlowArrowLabel>
+          <rect x="335" y="318" width="150" height="52" rx="8" className="fill-purple-200 stroke-purple-300" />
+          <FlowNodeLabel x={410} y={338} lines={['Generate', 'OQ Message']} className="fill-purple-950" size={11} />
+
+          <polyline points="480,216 650,216 650,278" fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <FlowArrowLabel x={526} y={204}>Yes</FlowArrowLabel>
+          <rect x="595" y="278" width="110" height="52" rx="8" className="fill-purple-200 stroke-purple-300" />
+          <FlowNodeLabel x={650} y={307} lines={['Issue OR']} className="fill-purple-950" size={11} />
+          <line x1="650" y1="330" x2="650" y2="388" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <rect x="575" y="388" width="150" height="52" rx="8" className="fill-purple-200 stroke-purple-300" />
+          <FlowNodeLabel x={650} y={408} lines={['Receive Supplier', 'Response']} className="fill-purple-950" size={11} />
+          <polyline points="650,440 650,468 410,468 410,370" fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+
+          <line x1="410" y1="370" x2="410" y2="448" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <path d="M410 448 L500 508 L410 568 L320 508 Z" className="fill-amber-100 stroke-amber-300" />
+          <FlowNodeLabel x={410} y={498} lines={['Approved by', 'Management?']} className="fill-amber-950" size={11} />
+
+          <polyline points="320,508 190,508 190,304 595,304" fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <FlowArrowLabel x={274} y={496}>No</FlowArrowLabel>
+          <rect x="125" y="392" width="130" height="52" rx="8" className="fill-purple-200 stroke-purple-300" />
+          <FlowNodeLabel x={190} y={413} lines={['Follow', 'Vendor']} className="fill-purple-950" size={11} />
+
+          <line x1="410" y1="568" x2="410" y2="628" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <FlowArrowLabel x={432} y={598}>Yes</FlowArrowLabel>
+          <rect x="335" y="628" width="150" height="52" rx="8" className="fill-purple-200 stroke-purple-300" />
+          <FlowNodeLabel x={410} y={648} lines={['Prepare for', 'Delivery']} className="fill-purple-950" size={11} />
+
+          <line x1="410" y1="680" x2="410" y2="724" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <path d="M410 724 L500 784 L410 844 L320 784 Z" className="fill-amber-100 stroke-amber-300" />
+          <FlowNodeLabel x={410} y={774} lines={['Quality', 'Check', 'Passed?']} className="fill-amber-950" size={11} />
+
+          <line x1="410" y1="844" x2="410" y2="870" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <FlowArrowLabel x={432} y={862}>Yes</FlowArrowLabel>
+          <rect x="365" y="870" width="90" height="40" rx="20" className="fill-pink-200 stroke-pink-300" />
+          <FlowNodeLabel x={410} y={894} lines={['End']} className="fill-pink-900" size={11} />
+
+          <polyline points="500,784 650,784 650,706" fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <FlowArrowLabel x={548} y={772}>No</FlowArrowLabel>
+          <rect x="570" y="654" width="160" height="52" rx="8" className="fill-emerald-200 stroke-emerald-300" />
+          <FlowNodeLabel x={650} y={674} lines={['Holds Replacement', 'Request']} className="fill-emerald-950" size={10} />
+          <line x1="650" y1="654" x2="650" y2="602" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+          <rect x="590" y="550" width="120" height="52" rx="8" className="fill-purple-200 stroke-purple-300" />
+          <FlowNodeLabel x={650} y={570} lines={['Select', 'Another Vendor']} className="fill-purple-950" size={11} />
+          <polyline points="650,550 650,418 255,418" fill="none" className="stroke-gray-500" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ───────────────────────────────────────────────────────
 export default function WorkflowPage() {
   const { data: orders = [], isLoading: ordersLoading } = useOrders();
@@ -593,6 +717,8 @@ export default function WorkflowPage() {
       {/* ── Tab: Stage Pipeline ─────────────────────────────────── */}
       {activeTab === 'pipeline' && (
         <div className="space-y-6">
+          <ProcurementFlowDiagram />
+
           {/* Pipeline visualization */}
           <div className="rounded-xl border border-gray-200 bg-white p-6">
             <div className="mb-2 flex items-center justify-between">
@@ -928,7 +1054,7 @@ export default function WorkflowPage() {
             }) && (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
                 <MapPin className="mb-3 h-12 w-12" />
-                <p className="text-sm">No orders match "{search}"</p>
+                <p className="text-sm">No orders match &quot;{search}&quot;</p>
               </div>
             )
           }

@@ -352,11 +352,23 @@ interface OrderRowProps {
 
 function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
   const rowHighlight = progress && !order.production_finished
     ? progress.isOverdue ? 'border-l-4 border-l-red-500'
     : progress.isDueSoon ? 'border-l-4 border-l-amber-500' : ''
     : '';
+
+  // Fetch item-level completion for inline badges
+  useEffect(() => {
+    let cancelled = false;
+    if (order.production_started || order.current_stage === 'en_route' || order.current_stage === 'inventory_arrived') {
+      getItemCompletion(order.id).then((res) => {
+        if (!cancelled && res.ok) setCompletion(res);
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [order.id, order.production_started, order.current_stage]);
 
   return (
     <div className={rowHighlight}>
@@ -374,6 +386,47 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
               </button>
             ) : (
               <p className="font-medium text-gray-900">{order.quotation_number ?? '—'}</p>
+            )}
+            {/* Item-level completion badges inline */}
+            {completion && (
+              <>
+                {completion.production_completion_pct > 0 && completion.production_completion_pct < 100 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    completion.production_completion_pct >= 50 ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Package className="h-3 w-3" /> Prod: {completion.production_completion_pct}%
+                  </span>
+                )}
+                {completion.en_route_completion_pct > 0 && completion.en_route_completion_pct < 100 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    completion.en_route_completion_pct >= 50 ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Truck className="h-3 w-3" /> En Route: {completion.en_route_completion_pct}%
+                  </span>
+                )}
+                {completion.inventory_completion_pct > 0 && completion.inventory_completion_pct < 100 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    completion.inventory_completion_pct >= 50 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Package className="h-3 w-3" /> Inv: {completion.inventory_completion_pct}%
+                  </span>
+                )}
+                {completion.production_completion_pct >= 100 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                    <CheckCircle className="h-3 w-3" /> Prod Complete
+                  </span>
+                )}
+                {completion.en_route_completion_pct >= 100 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                    <CheckCircle className="h-3 w-3" /> All En Route
+                  </span>
+                )}
+                {completion.inventory_completion_pct >= 100 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                    <CheckCircle className="h-3 w-3" /> All Arrived
+                  </span>
+                )}
+              </>
             )}
             {progress && !order.production_finished && (
               <>

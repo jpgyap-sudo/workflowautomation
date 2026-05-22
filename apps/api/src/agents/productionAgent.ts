@@ -484,9 +484,11 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(prodPct);
+    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
 
     let message = `🏗️ <b>Item-Level Production Check</b>\n`;
     message += `Order: #${qn} (${client})\n`;
+    message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n`;
     message += `Progress: ${prodPct}% complete ${progressBar}\n`;
     message += `Items: ${finishedCount}/${totalCount} finished\n\n`;
     message += `<b>Process of Elimination:</b>\n`;
@@ -627,12 +629,14 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(enRoutePct);
+    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
 
     // Determine if >50% threshold is met
     const thresholdMet = enRoutePct > 50;
 
     let message = `🚚 <b>Item-Level En Route Check</b>\n`;
     message += `Order: #${qn} (${client})\n`;
+    message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n`;
     message += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
     message += `Items: ${enRouteCount}/${totalCount} en route\n`;
     if (thresholdMet) {

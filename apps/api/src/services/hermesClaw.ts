@@ -503,7 +503,8 @@ Rules:
 - Extract ALL items listed in the quotation, including variations (size, color, etc.).
 - If quantity is not specified, default to 1.
 - Be thorough — include every line item.
-- If the image is not a quotation or contains no items, return an empty array [].`;
+- If the image is not a quotation or contains no items, return an empty array [].
+- IMPORTANT: Do NOT wrap the JSON in markdown code blocks or any other formatting. Return raw JSON only.`;
 
 /**
  * Call Gemini Vision API with an image to extract items.
@@ -568,39 +569,92 @@ async function callGeminiVisionForItems(
 
 /**
  * Parse the JSON array of items from the Gemini response.
+ * Uses multi-strategy fallback to handle various malformed JSON patterns.
  */
 function parseExtractedItems(raw: string): ExtractedOrderItem[] {
+  // Helper to normalize an item entry
+  function normalizeItem(item: any): ExtractedOrderItem | null {
+    if (!item || typeof item !== 'object') return null;
+    let name = '';
+    if (typeof item.name === 'string') name = item.name.trim();
+    else if (typeof item.item === 'string') name = item.item.trim();
+    else if (typeof item.product === 'string') name = item.product.trim();
+    else if (typeof item.description === 'string') name = item.description.trim();
+    if (!name) return null;
+    const quantity = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity
+      : typeof item.qty === 'number' && item.qty > 0 ? item.qty
+      : typeof item.quantity === 'string' ? (parseInt(item.quantity, 10) || 1)
+      : 1;
+    return { name, quantity };
+  }
+
+  function parseArray(arr: any[]): ExtractedOrderItem[] {
+    return arr.map(normalizeItem).filter((x): x is ExtractedOrderItem => x !== null);
+  }
+
+  // Strategy 1: Direct JSON parse
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed
-        .filter((item: any) => item && typeof item.name === 'string' && item.name.trim().length > 0)
-        .map((item: any) => ({
-          name: item.name.trim(),
-          quantity: typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1,
-        }));
+      const items = parseArray(parsed);
+      if (items.length > 0) return items;
     }
-    return [];
   } catch {
-    // Try extracting JSON array from markdown code block
-    const jsonMatch = raw.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[1].trim());
-        if (Array.isArray(parsed)) {
-          return parsed
-            .filter((item: any) => item && typeof item.name === 'string' && item.name.trim().length > 0)
-            .map((item: any) => ({
-              name: item.name.trim(),
-              quantity: typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1,
-            }));
-        }
-      } catch {
-        return [];
-      }
-    }
-    return [];
+    // Fall through
   }
+
+  // Strategy 2: Extract JSON array from markdown code block
+  const codeBlockMatch = raw.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+  if (codeBlockMatch) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1].trim());
+      if (Array.isArray(parsed)) {
+        const items = parseArray(parsed);
+        if (items.length > 0) return items;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // Strategy 3: Extract JSON array from text (find first [ ... ])
+  const arrayMatch = raw.match(/\[([\s\S]*?)\]/);
+  if (arrayMatch) {
+    try {
+      // Try to fix common issues: trailing commas, single quotes
+      let fixed = arrayMatch[0]
+        .replace(/,\s*\]/g, ']')           // Remove trailing commas
+        .replace(/'/g, '"')                 // Replace single quotes with double quotes
+        .replace(/(\w+):/g, '"$1":')       // Quote unquoted keys
+        .replace(/,\s*}/g, '}');           // Remove trailing commas in objects
+      const parsed = JSON.parse(fixed);
+      if (Array.isArray(parsed)) {
+        const items = parseArray(parsed);
+        if (items.length > 0) return items;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // Strategy 4: Line-by-line extraction (last resort)
+  const lines = raw.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0 && !l.startsWith('[') && !l.startsWith(']') && !l.startsWith('```'));
+  const items: ExtractedOrderItem[] = [];
+  for (const line of lines) {
+    // Try to match patterns like: "Item Name" x 2, Item Name - Qty: 3, etc.
+    const dashMatch = line.match(/["']?([^"',]+)["']?\s*[×xX*]\s*(\d+)/);
+    if (dashMatch) {
+      items.push({ name: dashMatch[1].trim(), quantity: parseInt(dashMatch[2], 10) });
+      continue;
+    }
+    const colonMatch = line.match(/["']?([^"',]+)["']?\s*:\s*(\d+)/);
+    if (colonMatch) {
+      items.push({ name: colonMatch[1].trim(), quantity: parseInt(colonMatch[2], 10) });
+    }
+  }
+  return items;
 }
 
 /**

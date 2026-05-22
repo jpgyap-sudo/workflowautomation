@@ -2055,3 +2055,140 @@ When implementing state-machine workflows, always audit all possible predecessor
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: item-level tracking gap fixes — duplicate messages, SQL en-route pct, auto-advance on callback
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a778d00367e74b457c25d9f6a3cc749b13f0a07e
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a778d00367e74b457c25d9f6a3cc749b13f0a07e
+**Files:** apps/api/src/agents/productionAgent.ts,apps/telegram-bot/src/bot.ts,database/migrations/021_item_level_tracking.sql,database/migrations/022_fix_en_route_completion_pct.sql
+
+**Summary:**
+**What was fixed:**  
+- Duplicate messages in item-level tracking  
+- Incorrect SQL calculation for "en-route completion percentage"  
+- Auto-advance logic failing on callback events  
+
+**Why it broke:**  
+- Race conditions in the production agent caused duplicate event emissions  
+- SQL aggregation used `COUNT` instead of `SUM` for weighted completion, skewing percentages  
+- Callback handlers lacked state checks, allowing premature auto-advance  
+
+**Reusable takeaway:**  
+When tracking nested or item-level progress, ensure:  
+1. Event emission is idempotent (use dedup keys or debounce)  
+2. Percentage calculations use weighted sums, not raw counts  
+3. State transitions (auto-advance) validate current state before acting
+
+---
+*Original commit message: fix: item-level tracking gap fixes — duplicate messages, SQL en-route pct, auto-advance on callback*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Duplicate messages in item-level tracking  
+- Incorrect SQL calculation for "en-route completion percentage"  
+- Auto-advance logic failing on callback events  
+
+**Why it broke:**  
+- Race conditions in the production agent caused duplicate event emissions  
+- SQL aggregation used `COUNT` instead of `SUM` for weighted completion, skewing percentages  
+- Callback handlers lacked state checks, allowing premature auto-advance  
+
+**Reusable takeaway:**  
+When tracking nested or item-level progress, ensure:  
+1. Event emission is idempotent (use dedup keys or debounce)  
+2. Percentage calculations use weighted sums, not raw counts  
+3. State transitions (auto-advance) validate current state before acting
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: telegram gui and reminder gaps for item-level tracking
+
+Date: 2026-05-21
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d1c141add69c850b6638f83e29d55f356410ca72
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d1c141add69c850b6638f83e29d55f356410ca72
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Telegram GUI not showing item-level tracking status and reminder scheduler skipping certain tracked items.
+
+**Why it broke:**  
+- In `bot.ts`, the Telegram bot filtered items by a top-level `tracked` flag but ignored per-item tracking metadata, causing mismatched display.  
+- In `reminderScheduler.ts`, the scheduler used an outdated query that missed items where tracking was enabled at the item level but not at the parent level.  
+- In `server.ts`, API responses omitted item-level tracking fields, breaking downstream consumers.
+
+**Reusable takeaway:**  
+When adding granular (item-level) tracking to a system that previously only supported parent-level tracking, update all consumers (UI, scheduler, API) to read the new field. A common failure mode is fixing the data model but forgetting to propagate the change to every service that queries or displays tracking status. Always audit all read paths after introducing a new boolean flag at a deeper nesting level.
+
+---
+*Original commit message: fix: telegram gui and reminder gaps for item-level tracking*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Telegram GUI not showing item-level tracking status and reminder scheduler skipping certain tracked items.
+
+**Why it broke:**  
+- In `bot.ts`, the Telegram bot filtered items by a top-level `tracked` flag but ignored per-item tracking metadata, causing mismatched display.  
+- In `reminderScheduler.ts`, the scheduler used an outdated query that missed items where tracking was enabled at the item level but not at the parent level.  
+- In `server.ts`, API responses omitted item-level tracking fields, breaking downstream consumers.
+
+**Reusable takeaway:**  
+When adding granular (item-level) tracking to a system that previously only supported parent-level tracking, update all consumers (UI, scheduler, API) to read the new field. A common failure mode is fixing the data model but forgetting to propagate the change to every service that queries or displays tracking status. Always audit all read paths after introducing a new boolean flag at a deeper nesting level.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Dashboard workflow diagram
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Added a reusable inline SVG workflow diagram to apps/dashboard/src/app/workflow/page.tsx and placed it above the existing Stage Flow card in the Stage Pipeline tab. Use apply_patch for TSX changes to preserve UTF-8 characters; PowerShell Set-Content can corrupt Unicode and nullish coalescing in this repo.
+
+#### Lesson Learned
+
+Added a reusable inline SVG workflow diagram to apps/dashboard/src/app/workflow/page.tsx and placed it above the existing Stage Flow card in the Stage Pipeline tab. Use apply_patch for TSX changes to preserve UTF-8 characters; PowerShell Set-Content can corrupt Unicode and nullish coalescing in this repo.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
