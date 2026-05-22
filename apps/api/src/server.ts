@@ -52,6 +52,7 @@ const ORDER_LIST_SELECT = `
   o.delivery_exception_granted_at, o.delivery_exception_granted_by,
   o.production_exception, o.production_exception_notes,
   o.production_exception_granted_at, o.production_exception_granted_by,
+  o.inventory_verified_at, o.inventory_verification_pct,
   o.created_at, o.updated_at
 `;
 
@@ -186,7 +187,9 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   production_confirmed:  ['production-agent'],
   // Production → En Route
   en_route:              ['production-agent', 'inventory-agent'],
-  // En Route → Inventory
+  // En Route → Inventory Verification
+  inventory_verification: ['inventory-agent'],
+  // Inventory Verification → Inventory Arrived
   inventory_arrived:     ['inventory-agent'],
   // Inventory → Balance Due
   balance_due:           ['collection-agent', 'delivery-agent'],
@@ -1088,7 +1091,7 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
 
   const rows = await query(
     `UPDATE orders SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
-     estimated_arrival_days = $1, current_stage = 'inventory_arrived', updated_at = NOW()
+     estimated_arrival_days = $1, current_stage = 'inventory_verification', updated_at = NOW()
      WHERE id = $2 RETURNING *`,
     [body.estimated_arrival_days, id]
   );
@@ -1097,8 +1100,8 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
 
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'inventory_arrived', 'en_route_confirmed', $2, 'system')`,
-    [id, `En route confirmed; estimated arrival in ${body.estimated_arrival_days} day(s)`]
+     VALUES ($1, 'inventory_verification', 'en_route_confirmed', $2, 'system')`,
+    [id, `En route confirmed; estimated arrival in ${body.estimated_arrival_days} day(s). Inventory verification pending.`]
   );
 
   // Complete the en_route_reminder (legacy) and item_level_en_route (item-level tracking)
@@ -1108,12 +1111,139 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
     [id]
   );
 
-  // Notify inventory agent immediately that the order has arrived
-  triggerAgentsForStage('inventory_arrived', rows[0].quotation_number, rows[0].client_name);
+  // Notify inventory agent immediately that inventory verification is needed
+  triggerAgentsForStage('inventory_verification', rows[0].quotation_number, rows[0].client_name);
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Inventory Verification Endpoints ──────────────────────────────────
+
+/**
+ * POST /orders/:id/inventory-verify-item
+ * Mark an order_item as verified (all, partial, or not yet) during inventory_verification stage.
+ * Body: { item_id: string, action: 'all' | 'partial' | 'not_yet', verified_qty?: number }
+ */
+const inventoryVerifyItemSchema = z.object({
+  item_id: z.string(),
+  action: z.enum(['all', 'partial', 'not_yet']),
+  verified_qty: z.number().int().min(0).optional(),
+});
+
+app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = inventoryVerifyItemSchema.parse(request.body);
+
+  // Verify the order is in inventory_verification stage
+  const orderRows = await query(`SELECT current_stage, quotation_number FROM orders WHERE id = $1`, [id]);
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (orderRows[0].current_stage !== 'inventory_verification') {
+    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  }
+
+  // Get the item
+  const itemRows = await query(`SELECT id, name, quantity, verified_qty FROM order_items WHERE id = $1 AND order_id = $2`, [body.item_id, id]);
+  if (!itemRows[0]) return reply.code(404).send({ error: 'Item not found' });
+
+  const item = itemRows[0];
+  let newVerifiedQty = item.verified_qty ?? 0;
+
+  switch (body.action) {
+    case 'all':
+      newVerifiedQty = item.quantity;
+      break;
+    case 'partial':
+      newVerifiedQty = body.verified_qty ?? newVerifiedQty;
+      if (newVerifiedQty > item.quantity) newVerifiedQty = item.quantity;
+      if (newVerifiedQty < 0) newVerifiedQty = 0;
+      break;
+    case 'not_yet':
+      newVerifiedQty = 0;
+      break;
+  }
+
+  // Update verified_qty on the item
+  await query(
+    `UPDATE order_items SET verified_qty = $1, updated_at = NOW() WHERE id = $2`,
+    [newVerifiedQty, body.item_id]
+  );
+
+  // Recalculate overall verification %
+  const allItems = await query(
+    `SELECT SUM(quantity) as total_qty, SUM(verified_qty) as verified_qty FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+  const totalQty = Number(allItems[0]?.total_qty ?? 0);
+  const totalVerified = Number(allItems[0]?.verified_qty ?? 0);
+  const verificationPct = totalQty > 0 ? Math.round((totalVerified / totalQty) * 100) : 0;
+
+  // Update order's inventory_verification_pct
+  await query(
+    `UPDATE orders SET inventory_verification_pct = $1, updated_at = NOW() WHERE id = $2`,
+    [verificationPct, id]
+  );
+
+  // Log the action
+  await query(
+    `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
+     VALUES ($1, $2, $3, 'agent', 'inventory-agent')`,
+    [id, body.item_id, `Inventory verification: ${item.name} — ${body.action} (verified ${newVerifiedQty}/${item.quantity})`]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({
+    ok: true,
+    item_id: body.item_id,
+    verified_qty: newVerifiedQty,
+    verification_pct: verificationPct,
+  });
+});
+
+/**
+ * POST /orders/:id/complete-inventory-verification
+ * Manually mark inventory verification as complete and advance to inventory_arrived.
+ */
+app.post('/orders/:id/complete-inventory-verification', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (orderRows[0].current_stage !== 'inventory_verification') {
+    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  }
+
+  // Advance to inventory_arrived
+  await query(
+    `UPDATE orders SET inventory_verified_at = NOW(), inventory_verification_pct = 100,
+     current_stage = 'inventory_arrived', updated_at = NOW()
+     WHERE id = $1`,
+    [id]
+  );
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'inventory_arrived', 'auto_advanced', 'Inventory verification completed. Proceeding to inventory arrival.', 'inventory-agent')`,
+    [id]
+  );
+
+  // Complete reminders for inventory_verification
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active' AND stage = 'inventory_verification'`,
+    [id]
+  );
+
+  // Fire inventory agent for the new stage
+  triggerAgentsForStage('inventory_arrived', orderRows[0].quotation_number, orderRows[0].client_name);
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({ ok: true, message: 'Inventory verification completed. Advanced to inventory_arrived.' });
 });
 
 // ── Order Items (Item-Level Production Tracking) ─────────────────────
@@ -1643,6 +1773,7 @@ app.post('/stage-updates', async (request, reply) => {
       production_pending: PRODUCTION_CHAT_ID,
       production_confirmed: PRODUCTION_CHAT_ID,
       en_route: PRODUCTION_CHAT_ID,
+      inventory_verification: INVENTORY_CHAT_ID,
       inventory_arrived: DELIVERY_CHAT_ID,
       balance_due: COLLECTION_CHAT_ID,
       delivery_pending: DELIVERY_CHAT_ID,

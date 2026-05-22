@@ -49,6 +49,8 @@ export interface Order {
   production_exception_notes: string | null;
   production_exception_granted_at: string | null;
   production_exception_granted_by: string | null;
+  inventory_verified_at: string | null;
+  inventory_verification_pct: number | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -321,6 +323,32 @@ export async function confirmEnRoute(
   );
 }
 
+// ── Inventory Verification ────────────────────────────────────────────
+
+export async function inventoryVerifyItem(
+  id: string,
+  data: { item_id: string; action: 'all' | 'partial' | 'not_yet'; verified_qty?: number }
+): Promise<{ ok: boolean; item_id: string; verified_qty: number; verification_pct: number }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/inventory-verify-item`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function completeInventoryVerification(
+  id: string
+): Promise<{ ok: boolean; message: string }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/complete-inventory-verification`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
 // ── Order Items (Item-Level Production Tracking) ─────────────────────
 
 export interface OrderItem {
@@ -501,6 +529,7 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   deposit_pending:       { label: 'Downpayment Pending',   color: 'bg-pink-100 text-pink-800',       icon: '💳' },
   deposit_verification:  { label: 'Deposit Verification',  color: 'bg-rose-100 text-rose-800',       icon: '🔍' },
   en_route:              { label: 'En Route',               color: 'bg-sky-100 text-sky-800',         icon: '🚚' },
+  inventory_verification: { label: 'Inventory Verification', color: 'bg-teal-100 text-teal-800',       icon: '🔍' },
   inventory_arrived:     { label: 'Inventory Arrived',     color: 'bg-cyan-100 text-cyan-800',       icon: '📦' },
   balance_due:           { label: 'Balance Due',            color: 'bg-violet-100 text-violet-800',   icon: '⚖️' },
   balance_verification:  { label: 'Balance Verification',  color: 'bg-fuchsia-100 text-fuchsia-800', icon: '🔍' },
@@ -934,6 +963,7 @@ export const STAGE_ORDER = [
   'production_pending',
   'production_confirmed',
   'en_route',
+  'inventory_verification',
   'deposit_pending',
   'deposit_verification',
   'inventory_arrived',

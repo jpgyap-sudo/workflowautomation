@@ -527,6 +527,8 @@ export default function ProductionPage() {
     useOrdersByStage('production_confirmed');
   const { data: enRouteOrders = [], isLoading: loadingEnRoute, error: errorEnRoute, mutate: mutateEnRoute } =
     useOrdersByStage('en_route');
+  const { data: invVerificationOrders = [], isLoading: loadingInvVerification, error: errorInvVerification, mutate: mutateInvVerification } =
+    useOrdersByStage('inventory_verification');
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -539,7 +541,7 @@ export default function ProductionPage() {
     open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
-  function refresh() { mutatePartial(); mutateConfirmed(); mutateEnRoute(); }
+  function refresh() { mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateInvVerification(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -651,7 +653,7 @@ export default function ProductionPage() {
     } catch (err: any) { alert('Failed to revoke exception: ' + (err.message ?? 'Unknown error')); }
   }
 
-  const totalActive = partialOrders.length + confirmedOrders.length + enRouteOrders.length;
+  const totalActive = partialOrders.length + confirmedOrders.length + enRouteOrders.length + invVerificationOrders.length;
 
   return (
     <div className="space-y-6">
@@ -732,6 +734,28 @@ export default function ProductionPage() {
             <OrderRow
               order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
               onConfirmEnRoute={handleConfirmEnRoute}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* Inventory Verification */}
+      <OrderSection
+        icon={<Package className="h-4 w-4 text-teal-500" />}
+        title="Inventory Verification"
+        count={invVerificationOrders.length}
+        countBg="bg-teal-100" countText="text-teal-700"
+        orders={invVerificationOrders} isLoading={loadingInvVerification} error={errorInvVerification}
+        onRetry={() => mutateInvVerification()}
+        emptyText="No orders awaiting inventory verification"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />

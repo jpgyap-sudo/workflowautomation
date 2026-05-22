@@ -46,6 +46,8 @@ export interface OrderRow {
   production_exception_notes: string | null;
   production_exception_granted_at: string | null;
   production_exception_granted_by: string | null;
+  inventory_verified_at: string | null;
+  inventory_verification_pct: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +74,7 @@ export const STAGE_LABELS: Record<string, string> = {
   production_confirmed: '🏭 Production Confirmed',
   deposit_pending: '💳 Downpayment Pending',
   en_route: '🚚 En Route',
+  inventory_verification: '🔍 Inventory Verification',
   inventory_arrived: '📦 Inventory Arrived',
   balance_due: '⚖️ Balance Due',
   delivery_pending: '📅 Delivery Pending',

@@ -332,7 +332,9 @@ type UserStep =
   // Delivery day check flow
   | { action: 'awaiting_delivery_day_check'; orderId: string; quotationNumber: string }
   // Collection group deposit slip photo upload
-  | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string };
+  | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string }
+  // Inventory verification — enter partial qty
+  | { action: 'awaiting_inv_verify_qty'; data: { itemId: string; orderId: string } };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -1792,6 +1794,75 @@ Midpoint and due reminders are now scheduled.`,
       break;
     }
 
+    // ── Inventory Verification — enter partial qty ────────────────────
+    case 'awaiting_inv_verify_qty': {
+      const { itemId, orderId } = session.step.data;
+      const qty = parseInt(text, 10);
+      if (isNaN(qty) || qty < 0) {
+        await ctx.reply('❌ Please enter a valid number (e.g., `5`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        const result = await postJson(`/orders/${orderId}/inventory-verify-item`, {
+          item_id: itemId,
+          action: 'partial',
+          verified_qty: qty,
+        });
+
+        resetStep(chatId);
+
+        // Fetch updated items to show next question
+        const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+        const items = await itemsRes.json();
+
+        // Find the next not-fully-verified item (process of elimination)
+        const notVerifiedItem = items.items?.find(
+          (item: any) => (item.verified_qty ?? 0) < item.quantity
+        );
+
+        if (!notVerifiedItem) {
+          // All items fully verified! Offer to complete verification
+          await ctx.reply(
+            `✅ *All Items Fully Verified!*\n\nOrder #${orderId.slice(0, 8)}\nAll items and quantities verified (${result.verification_pct}% of qty).\n\nReady to complete inventory verification and proceed to inventory arrival?`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('✅ Complete Verification', `inv_verify:complete:${orderId}:${orderId.slice(0, 8)}`)],
+                [Markup.button.callback('⏳ Review Again', `inv_verify:review:${orderId}:${orderId.slice(0, 8)}`)],
+              ]),
+            }
+          );
+        } else {
+          // Ask about the next not-fully-verified item
+          const verifiedCount = items.items.filter((i: any) => (i.verified_qty ?? 0) >= i.quantity).length;
+          const totalCount = items.items.length;
+          const remainingQty = notVerifiedItem.quantity - (notVerifiedItem.verified_qty ?? 0);
+
+          const progressBar = '█'.repeat(Math.round(result.verification_pct / 10)) + '░'.repeat(10 - Math.round(result.verification_pct / 10));
+
+          let msg = `🔍 *Inventory Verification*\n\n`;
+          msg += `Verified: ${result.verification_pct}% ${progressBar}\n`;
+          msg += `Items: ${verifiedCount}/${totalCount} fully verified\n\n`;
+          msg += `*Process of Elimination:*\n`;
+          msg += `Next item: *${notVerifiedItem.name}* x${notVerifiedItem.quantity}\n`;
+          msg += `Already verified: ${notVerifiedItem.verified_qty ?? 0} | Remaining: ${remainingQty}\n\n`;
+          msg += `Has *${notVerifiedItem.name}* arrived? How many units can you confirm?`;
+
+          await ctx.reply(msg, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id}:${orderId}`)],
+              [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id}:${orderId}`)],
+              [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id}:${orderId}`)],
+            ]),
+          });
+        }
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
     default:
       // Do NOT reset — preserve active flow. Show guidance instead.
       await ctx.reply(
@@ -2540,6 +2611,155 @@ bot.action(/^inventory:waiting:(.+):(.+)$/, async (ctx) => {
 // These handle the process-of-elimination item-by-item inventory tracking.
 // Callback format: item_inventory:{status}:{itemId}:{orderId}
 //   status = arrived | en_route | not_yet
+
+// ── Inventory Verification Callback Handlers ──────────────────────────
+
+/**
+ * inv_verify:all — Mark item as fully verified (all quantity confirmed)
+ * inv_verify:partial — Mark item as partially verified (user enters qty)
+ * inv_verify:not_yet — Mark item as not yet verified
+ *
+ * Callback format: inv_verify:{action}:{itemId}:{orderId}
+ */
+bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const action = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderId = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inv_verify:${action}:${itemId}:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    if (action === 'partial') {
+      // For partial, we need to ask the user to enter the quantity
+      const session = getSession(chatId);
+      session.step = {
+        action: 'awaiting_inv_verify_qty',
+        data: { itemId, orderId },
+      };
+      await ctx.editMessageText(
+        `📦 *Enter Verified Quantity*\n\nPlease enter the number of units you can confirm for this item:`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
+    }
+
+    // For 'all' and 'not_yet', call the API directly
+    const result = await postJson(`/orders/${orderId}/inventory-verify-item`, {
+      item_id: itemId,
+      action,
+    });
+
+    // Fetch updated items to show next question
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const items = await itemsRes.json();
+
+    // Find the next not-fully-verified item (process of elimination)
+    const notVerifiedItem = items.items?.find(
+      (item: any) => (item.verified_qty ?? 0) < item.quantity
+    );
+
+    if (!notVerifiedItem) {
+      // All items fully verified! Offer to complete verification
+      await ctx.editMessageText(
+        `✅ *All Items Fully Verified!*\n\nOrder #${orderId.slice(0, 8)}\nAll items and quantities verified (${result.verification_pct}% of qty).\n\nReady to complete inventory verification and proceed to inventory arrival?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Complete Verification', `inv_verify:complete:${orderId}:${orderId.slice(0, 8)}`)],
+            [Markup.button.callback('⏳ Review Again', `inv_verify:review:${orderId}:${orderId.slice(0, 8)}`)],
+          ]),
+        }
+      );
+    } else {
+      // Ask about the next not-fully-verified item
+      const verifiedCount = items.items.filter((i: any) => (i.verified_qty ?? 0) >= i.quantity).length;
+      const totalCount = items.items.length;
+      const remainingQty = notVerifiedItem.quantity - (notVerifiedItem.verified_qty ?? 0);
+
+      const progressBar = '█'.repeat(Math.round(result.verification_pct / 10)) + '░'.repeat(10 - Math.round(result.verification_pct / 10));
+
+      let msg = `🔍 *Inventory Verification*\n\n`;
+      msg += `Verified: ${result.verification_pct}% ${progressBar}\n`;
+      msg += `Items: ${verifiedCount}/${totalCount} fully verified\n\n`;
+      msg += `*Process of Elimination:*\n`;
+      msg += `Next item: *${notVerifiedItem.name}* x${notVerifiedItem.quantity}\n`;
+      msg += `Already verified: ${notVerifiedItem.verified_qty ?? 0} | Remaining: ${remainingQty}\n\n`;
+      msg += `Has *${notVerifiedItem.name}* arrived? How many units can you confirm?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id}:${orderId}`)],
+          [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id}:${orderId}`)],
+          [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id}:${orderId}`)],
+        ]),
+      });
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error updating inventory verification: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Handle "Complete Verification" button
+bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inv_verify:complete:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    const result = await postJson(`/orders/${orderId}/complete-inventory-verification`, {});
+
+    await ctx.editMessageText(
+      `✅ *Inventory Verification Complete!*\n\nOrder #${orderId.slice(0, 8)}\nAll items verified. Proceeding to inventory arrival check.\n\nPlease upload photos/files of the received items.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error completing inventory verification: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Handle "Review Again" button — re-triggers the inventory agent
+bot.action(/^inv_verify:review:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inv_verify:review:${orderId}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Re-trigger the inventory agent for this order
+    await postJson(`/agents/inventory`, { order_id: orderId });
+
+    await ctx.editMessageText(
+      `🔄 *Reviewing Inventory Verification...*\n\nOrder #${orderId.slice(0, 8)}\nThe inventory agent will re-check all items and quantities. Please wait for the updated status.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error re-triggering inventory agent: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
 
 bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
