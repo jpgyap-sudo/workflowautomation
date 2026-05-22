@@ -2343,7 +2343,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   // Determine next stage based on whether the order needs purchasing
   // If the order is at any pre-production stage (quotation_received, deposit_pending, etc.),
   // advance to production_pending after deposit verification
-  const preProductionStages = ['quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending'];
+  const preProductionStages = ['quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'production_confirmed', 'en_route'];
   const nextStage = preProductionStages.includes(order.current_stage)
     ? 'production_pending'
     : order.current_stage;

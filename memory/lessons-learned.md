@@ -2750,3 +2750,327 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add missing balance_verification and delivery_pending stages to VALID_TRANSITIONS map
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8762cdf77ce4c2efcf946334bc71a6af413d9ba4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8762cdf77ce4c2efcf946334bc71a6af413d9ba4
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+Added missing `balance_verification` and `delivery_pending` stages to the `VALID_TRANSITIONS` map, enabling correct state transitions in the workflow automation system.
+
+**Why it broke:**  
+The `VALID_TRANSITIONS` map was incomplete — it did not include these two stages, causing the system to reject valid transitions involving them. This likely led to stuck workflows or failed state updates when those stages were reached.
+
+**Reusable takeaway:**  
+When defining state transition maps or validation logic, ensure all possible states are explicitly enumerated. Use a single source of truth (e.g., a generated list or type-checked constant) to prevent omissions. Consider adding automated tests that verify every state has a defined set of valid transitions.
+
+---
+*Original commit message: fix: add missing balance_verification and delivery_pending stages to VALID_TRANSITIONS map*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added missing `balance_verification` and `delivery_pending` stages to the `VALID_TRANSITIONS` map, enabling correct state transitions in the workflow automation system.
+
+**Why it broke:**  
+The `VALID_TRANSITIONS` map was incomplete — it did not include these two stages, causing the system to reject valid transitions involving them. This likely led to stuck workflows or failed state updates when those stages were reached.
+
+**Reusable takeaway:**  
+When defining state transition maps or validation logic, ensure all possible states are explicitly enumerated. Use a single source of truth (e.g., a generated list or type-checked constant) to prevent omissions. Consider adding automated tests that verify every state has a defined set of valid transitions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: /pay-balance sends wrong stage to triggerAgentsForStage
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8386f759c57197660cf4e52236d9cca5abfcb924
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8386f759c57197660cf4e52236d9cca5abfcb924
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+The `/pay-balance` endpoint was sending the wrong stage name to `triggerAgentsForStage`, causing downstream agent logic to execute on an incorrect stage.
+
+**Why it broke:**  
+A variable mapping error occurred when the stage identifier was passed to the trigger function. The code referenced a stale or misnamed stage variable instead of the correct one from the request context.
+
+**Reusable takeaway:**  
+When passing stage identifiers to trigger functions, always validate that the variable matches the intended stage from the request payload or route parameters. Use explicit mapping or type-checking to prevent silent misrouting of workflow execution.
+
+---
+*Original commit message: fix: /pay-balance sends wrong stage to triggerAgentsForStage*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `/pay-balance` endpoint was sending the wrong stage name to `triggerAgentsForStage`, causing downstream agent logic to execute on an incorrect stage.
+
+**Why it broke:**  
+A variable mapping error occurred when the stage identifier was passed to the trigger function. The code referenced a stale or misnamed stage variable instead of the correct one from the request context.
+
+**Reusable takeaway:**  
+When passing stage identifiers to trigger functions, always validate that the variable matches the intended stage from the request payload or route parameters. Use explicit mapping or type-checking to prevent silent misrouting of workflow execution.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add STAGE_TRANSITION_GROUP_CHAT_ID to docker-compose env vars for API container
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f9f967e64a0bae4c599b32b69f94eaa24b6e8bad
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f9f967e64a0bae4c599b32b69f94eaa24b6e8bad
+**Files:** docker-compose.yml
+
+**Summary:**
+**What was fixed:**  
+The API container was missing the `STAGE_TRANSITION_GROUP_CHAT_ID` environment variable in `docker-compose.yml`, causing runtime failures when the application tried to access this config.
+
+**Why it broke:**  
+A new feature or configuration requirement added the env var to the codebase, but the Docker Compose file was not updated to pass it to the container. This is a common oversight when environment variables are added without updating all deployment manifests.
+
+**Reusable takeaway:**  
+When adding new environment variables to application code, immediately update all deployment configurations (Docker Compose, Kubernetes, CI/CD pipelines) in the same commit. Use a checklist or automated validation (e.g., env var diff checks) to prevent missing critical configs across environments.
+
+---
+*Original commit message: fix: add STAGE_TRANSITION_GROUP_CHAT_ID to docker-compose env vars for API container*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The API container was missing the `STAGE_TRANSITION_GROUP_CHAT_ID` environment variable in `docker-compose.yml`, causing runtime failures when the application tried to access this config.
+
+**Why it broke:**  
+A new feature or configuration requirement added the env var to the codebase, but the Docker Compose file was not updated to pass it to the container. This is a common oversight when environment variables are added without updating all deployment manifests.
+
+**Reusable takeaway:**  
+When adding new environment variables to application code, immediately update all deployment configurations (Docker Compose, Kubernetes, CI/CD pipelines) in the same commit. Use a checklist or automated validation (e.g., env var diff checks) to prevent missing critical configs across environments.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: auto-complete order on delivery when balance already paid (skip countered/payment_received/payment_confirmed)
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e64c2392a8bff993a4cf450ee8a13201a0f738b1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e64c2392a8bff993a4cf450ee8a13201a0f738b1
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx
+
+**Summary:**
+**What was fixed:**  
+Auto-complete of delivery orders was failing when the balance was already paid. The fix skips orders with statuses `countered`, `payment_received`, or `payment_confirmed` during auto-complete logic.
+
+**Why it broke:**  
+The auto-complete logic did not account for orders where payment had already been processed. It attempted to complete deliveries that were still in a payment-pending or negotiation state, causing conflicts or errors.
+
+**Reusable takeaway:**  
+When automating order lifecycle transitions, explicitly exclude states where payment or negotiation is unresolved. Always define a clear state machine with guard conditions (e.g., "only auto-complete if payment is confirmed AND not in a pending/countered state") to prevent premature or conflicting transitions.
+
+---
+*Original commit message: fix: auto-complete order on delivery when balance already paid (skip countered/payment_received/payment_confirmed)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Auto-complete of delivery orders was failing when the balance was already paid. The fix skips orders with statuses `countered`, `payment_received`, or `payment_confirmed` during auto-complete logic.
+
+**Why it broke:**  
+The auto-complete logic did not account for orders where payment had already been processed. It attempted to complete deliveries that were still in a payment-pending or negotiation state, causing conflicts or errors.
+
+**Reusable takeaway:**  
+When automating order lifecycle transitions, explicitly exclude states where payment or negotiation is unresolved. Always define a clear state machine with guard conditions (e.g., "only auto-complete if payment is confirmed AND not in a pending/countered state") to prevent premature or conflicting transitions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: fire completed stage notification when auto-advancing delivered→completed for prepaid orders
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c43f4a4ff02b7092931b828dcaf938544d79fd8a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c43f4a4ff02b7092931b828dcaf938544d79fd8a
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+A missing notification emission when auto-advancing prepaid orders from "delivered" to "completed" stage.
+
+**Why it broke:**  
+The auto-advance logic triggered the stage transition but did not fire the associated `completed` stage notification event. This caused silent failures in downstream workflows (e.g., customer alerts, fulfillment triggers) that depend on that notification.
+
+**Reusable takeaway:**  
+When automating state transitions (e.g., order lifecycle stages), ensure all side effects—especially notifications, webhooks, or event emissions—are explicitly triggered for every transition path. A common pitfall is handling only manual transitions and forgetting the automated path. Always audit both manual and automatic flows for complete event coverage.
+
+---
+*Original commit message: fix: fire completed stage notification when auto-advancing delivered→completed for prepaid orders*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing notification emission when auto-advancing prepaid orders from "delivered" to "completed" stage.
+
+**Why it broke:**  
+The auto-advance logic triggered the stage transition but did not fire the associated `completed` stage notification event. This caused silent failures in downstream workflows (e.g., customer alerts, fulfillment triggers) that depend on that notification.
+
+**Reusable takeaway:**  
+When automating state transitions (e.g., order lifecycle stages), ensure all side effects—especially notifications, webhooks, or event emissions—are explicitly triggered for every transition path. A common pitfall is handling only manual transitions and forgetting the automated path. Always audit both manual and automatic flows for complete event coverage.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add 'completed' stage label to STAGE_LABELS map
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 0bfa784b0feb13c00c2fc4d28a7ffe94805371cc
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 0bfa784b0feb13c00c2fc4d28a7ffe94805371cc
+**Files:** apps/api/src/services/agentRunner.ts
+
+**Summary:**
+**What was fixed:** A missing `'completed'` stage label in the `STAGE_LABELS` map, which caused the agent runner to fail when processing completed stages.
+
+**Why it broke:** The `STAGE_LABELS` map defined labels for all stage states except `'completed'`. When the runner encountered a completed stage, it tried to look up a label that didn't exist, leading to an undefined reference or runtime error.
+
+**Reusable takeaway:** When maintaining enum-like maps or switch statements that cover all possible states of a system, ensure every state has a corresponding entry. Use exhaustive checks (e.g., TypeScript's `never` type or a linter rule) to catch missing mappings at compile time rather than runtime. This prevents silent failures when new states are added or existing ones are overlooked.
+
+---
+*Original commit message: fix: add 'completed' stage label to STAGE_LABELS map*
+
+#### Lesson Learned
+
+**What was fixed:** A missing `'completed'` stage label in the `STAGE_LABELS` map, which caused the agent runner to fail when processing completed stages.
+
+**Why it broke:** The `STAGE_LABELS` map defined labels for all stage states except `'completed'`. When the runner encountered a completed stage, it tried to look up a label that didn't exist, leading to an undefined reference or runtime error.
+
+**Reusable takeaway:** When maintaining enum-like maps or switch statements that cover all possible states of a system, ensure every state has a corresponding entry. Use exhaustive checks (e.g., TypeScript's `never` type or a linter rule) to catch missing mappings at compile time rather than runtime. This prevents silent failures when new states are added or existing ones are overlooked.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add 'completed' to AGENT_TRIGGER_MAP and stageToGroup for notifications
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 68f85db06e55a339ee2d66059eed39b7dd65d65b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 68f85db06e55a339ee2d66059eed39b7dd65d65b
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** Notifications for completed workflow stages were not being sent. The fix added `'completed'` to both `AGENT_TRIGGER_MAP` and `stageToGroup` mappings.
+
+**Why it broke:** The notification system relied on explicit mapping of stage statuses to trigger events and grouping logic. The `'completed'` status was omitted from these maps, so when a stage reached completion, the system had no matching trigger or group, causing it to silently skip notification dispatch.
+
+**Reusable takeaway:** When building event-driven systems that rely on status-to-action mappings, always audit all possible states against your mapping tables. A missing entry for a valid state (like `completed`) can cause silent failures. Use exhaustive type checks or runtime validation to ensure every status has a corresponding handler or mapping entry.
+
+---
+*Original commit message: fix: add 'completed' to AGENT_TRIGGER_MAP and stageToGroup for notifications*
+
+#### Lesson Learned
+
+**What was fixed:** Notifications for completed workflow stages were not being sent. The fix added `'completed'` to both `AGENT_TRIGGER_MAP` and `stageToGroup` mappings.
+
+**Why it broke:** The notification system relied on explicit mapping of stage statuses to trigger events and grouping logic. The `'completed'` status was omitted from these maps, so when a stage reached completion, the system had no matching trigger or group, causing it to silently skip notification dispatch.
+
+**Reusable takeaway:** When building event-driven systems that rely on status-to-action mappings, always audit all possible states against your mapping tables. A missing entry for a valid state (like `completed`) can cause silent failures. Use exhaustive type checks or runtime validation to ensure every status has a corresponding handler or mapping entry.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
