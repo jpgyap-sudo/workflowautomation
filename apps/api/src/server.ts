@@ -1604,6 +1604,9 @@ app.post('/stage-updates', async (request, reply) => {
         `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='delivered' AND status='active'`,
         [orderId]
       );
+
+      // Fire notification for 'completed' stage so the transition group gets notified
+      triggerAgentsForStage('completed', body.quotation_number, order?.client_name ?? null);
     }
   }
 
