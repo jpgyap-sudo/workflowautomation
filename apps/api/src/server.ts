@@ -50,6 +50,8 @@ const ORDER_LIST_SELECT = `
   o.delivery_date,
   o.delivery_exception, o.delivery_exception_notes,
   o.delivery_exception_granted_at, o.delivery_exception_granted_by,
+  o.production_exception, o.production_exception_notes,
+  o.production_exception_granted_at, o.production_exception_granted_by,
   o.created_at, o.updated_at
 `;
 
@@ -2586,6 +2588,72 @@ app.post('/orders/revoke-delivery-exception', async (request, reply) => {
     `INSERT INTO stage_updates (order_id, stage, status, remarks)
      VALUES ($1, $2, $3, $4)`,
     [body.order_id, 'delivery_exception', 'revoked', 'Delivery exception revoked.']
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id: body.order_id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Grant Production Exception (Special Case) ─────────────────────────
+// Allows production to proceed without a verified downpayment
+const productionExceptionSchema = z.object({
+  order_id: z.string(),
+  notes: z.string().optional(),
+  granted_by: z.string().optional(),
+});
+
+app.post('/orders/production-exception', async (request, reply) => {
+  const body = productionExceptionSchema.parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET
+      production_exception = TRUE,
+      production_exception_notes = $2,
+      production_exception_granted_at = NOW(),
+      production_exception_granted_by = $3,
+      updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [body.order_id, body.notes ?? null, body.granted_by ?? null]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [body.order_id, 'production_exception', 'granted',
+     `Production exception granted. Notes: ${body.notes ?? 'None provided'}`,
+     body.granted_by ?? null]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id: body.order_id });
+  return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Revoke Production Exception ───────────────────────────────────────
+app.post('/orders/revoke-production-exception', async (request, reply) => {
+  const body = z.object({ order_id: z.string() }).parse(request.body);
+
+  const rows = await query(
+    `UPDATE orders SET
+      production_exception = FALSE,
+      production_exception_notes = NULL,
+      production_exception_granted_at = NULL,
+      production_exception_granted_by = NULL,
+      updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [body.order_id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks)
+     VALUES ($1, $2, $3, $4)`,
+    [body.order_id, 'production_exception', 'revoked', 'Production exception revoked.']
   );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);

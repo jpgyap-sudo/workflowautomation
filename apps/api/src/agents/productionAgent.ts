@@ -150,7 +150,8 @@ async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
     const escalationLevel = await getEscalationLevel(order.id, 'production_confirmed');
 
     // ⛔ Guard: Do NOT auto-advance if deposit has not been verified
-    if (!order.deposit_verified) {
+    // Exception: production_exception allows production to proceed without verified downpayment
+    if (!order.deposit_verified && !order.production_exception) {
       const result: AgentResult = {
         status: 'blocked',
         message: `⏸️ Deposit not yet verified for #${order.quotation_number ?? 'unknown'}. Production cannot proceed until downpayment is verified on the dashboard.`,

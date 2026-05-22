@@ -3074,3 +3074,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add deposit_verified guard to production agent - prevent auto-advance without verified downpayment
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e85321bc8eebd1587cd73571b23ce06a881fbf32
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e85321bc8eebd1587cd73571b23ce06a881fbf32
+**Files:** NOW(),apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,check-julia.cjs,console.error(e)),memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A bug where the production agent could auto-advance a workflow step (e.g., move to "in production") even when the customer’s downpayment had not been verified. A `deposit_verified` guard was added to prevent this premature transition.
+
+**Why it broke:**  
+The agent logic lacked a check for payment verification status. It assumed that if a deposit existed, it was valid—ignoring the separate verification step required by the business process.
+
+**Reusable takeaway:**  
+Always gate state transitions that depend on external validation (e.g., payment, approval) with an explicit guard. Do not rely on the mere presence of data; verify its confirmed status. This pattern prevents silent process violations and enforces correct workflow ordering.
+
+---
+*Original commit message: fix: add deposit_verified guard to production agent - prevent auto-advance without verified downpayment*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the production agent could auto-advance a workflow step (e.g., move to "in production") even when the customer’s downpayment had not been verified. A `deposit_verified` guard was added to prevent this premature transition.
+
+**Why it broke:**  
+The agent logic lacked a check for payment verification status. It assumed that if a deposit existed, it was valid—ignoring the separate verification step required by the business process.
+
+**Reusable takeaway:**  
+Always gate state transitions that depend on external validation (e.g., payment, approval) with an explicit guard. Do not rely on the mere presence of data; verify its confirmed status. This pattern prevents silent process violations and enforces correct workflow ordering.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

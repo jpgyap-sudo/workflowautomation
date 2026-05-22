@@ -7,6 +7,7 @@ import {
   updateOrder, deleteOrder,
   reportProductionStatus, finishProduction, confirmEnRoute,
   getItemCompletion, getOrderItems,
+  grantProductionException, revokeProductionException,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -249,9 +250,11 @@ interface OrderRowProps {
   onReportDelayed?: (o: Order) => void;
   onFinishProduction?: (o: Order) => void;
   onConfirmEnRoute?: (o: Order) => void;
+  onGrantException?: (o: Order) => void;
+  onRevokeException?: (o: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onGrantException, onRevokeException }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -340,6 +343,11 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
                 ))}
               </span>
             )}
+            {order.production_exception && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700" title={order.production_exception_notes ?? 'Production exception granted'}>
+                <AlertTriangle className="h-3 w-3" /> Exception
+              </span>
+            )}
           </div>
           <p className="truncate text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
           {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
@@ -395,10 +403,24 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
                 Confirm En Route
               </button>
             )}
+            {/* Production Exception actions */}
+            {!order.deposit_verified && !order.production_exception && onGrantException && (
+              <button onClick={() => onGrantException(order)}
+                className="rounded-lg bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100">
+                Grant Exception (No DP)
+              </button>
+            )}
+            {order.production_exception && onRevokeException && (
+              <button onClick={() => onRevokeException(order)}
+                className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
+                Revoke Exception
+              </button>
+            )}
             <span className="self-center text-xs text-gray-500">
               Downpayment: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
               {' · '}
               Balance: {order.balance_paid ? 'Paid' : 'Pending'}
+              {order.production_exception && ' · ⚠️ Exception'}
             </span>
           </div>
         </>
@@ -612,6 +634,23 @@ export default function ProductionPage() {
     } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
   }
 
+  async function handleGrantException(order: Order) {
+    const notes = window.prompt('Reason for production exception (why is production starting without downpayment)?');
+    if (!notes) return;
+    try {
+      await grantProductionException(order.id, notes);
+      refresh();
+    } catch (err: any) { alert('Failed to grant exception: ' + (err.message ?? 'Unknown error')); }
+  }
+
+  async function handleRevokeException(order: Order) {
+    if (!window.confirm(`Revoke production exception for #${order.quotation_number ?? 'unknown'}? This will block production until downpayment is verified.`)) return;
+    try {
+      await revokeProductionException(order.id);
+      refresh();
+    } catch (err: any) { alert('Failed to revoke exception: ' + (err.message ?? 'Unknown error')); }
+  }
+
   const totalActive = partialOrders.length + confirmedOrders.length + enRouteOrders.length;
 
   return (
@@ -668,6 +707,8 @@ export default function ProductionPage() {
               onReportOnTime={handleReportOnTime}
               onReportDelayed={handleReportDelayed}
               onFinishProduction={handleFinishProduction}
+              onGrantException={handleGrantException}
+              onRevokeException={handleRevokeException}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />

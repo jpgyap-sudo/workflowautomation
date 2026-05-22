@@ -45,6 +45,10 @@ export interface Order {
   delivery_exception_notes: string | null;
   delivery_exception_granted_at: string | null;
   delivery_exception_granted_by: string | null;
+  production_exception: boolean | null;
+  production_exception_notes: string | null;
+  production_exception_granted_at: string | null;
+  production_exception_granted_by: string | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -462,6 +466,26 @@ export async function revokeDeliveryException(
   orderId: string,
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>('/orders/revoke-delivery-exception', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId }),
+  });
+}
+
+export async function grantProductionException(
+  orderId: string,
+  notes?: string,
+  grantedBy?: string,
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>('/orders/production-exception', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId, notes, granted_by: grantedBy }),
+  });
+}
+
+export async function revokeProductionException(
+  orderId: string,
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>('/orders/revoke-production-exception', {
     method: 'POST',
     body: JSON.stringify({ order_id: orderId }),
   });

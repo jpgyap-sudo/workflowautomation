@@ -42,6 +42,10 @@ export interface OrderRow {
   en_route_confirmed: boolean | null;
   en_route_confirmed_at: string | null;
   estimated_arrival_days: number | null;
+  production_exception: boolean | null;
+  production_exception_notes: string | null;
+  production_exception_granted_at: string | null;
+  production_exception_granted_by: string | null;
   created_at: string;
   updated_at: string;
 }
