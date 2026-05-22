@@ -76,6 +76,7 @@ export const STAGE_LABELS: Record<string, string> = {
   countered: '🔄 Countered',
   payment_received: '💰 Payment Received',
   payment_confirmed: '💵 Payment Confirmed',
+  completed: '✅ Completed',
 };
 
 // ── Group Chat IDs (from env vars) ─────────────────────────────────────
