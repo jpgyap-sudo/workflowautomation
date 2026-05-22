@@ -2612,3 +2612,51 @@ Always propagate state change notifications and include all relevant identifiers
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: BUTTON_DATA_INVALID error - shorten callback data for verify:deposit and verify:balance buttons to stay under Teleg
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a10cde48fddd8c11ff3c64e34704a09c510d6c61
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a10cde48fddd8c11ff3c64e34704a09c510d6c61
+**Files:** apps/api/src/agents/collectionAgent.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A `BUTTON_DATA_INVALID` error caused by callback data exceeding Telegram's 64-byte limit for inline buttons.
+
+**Why it broke:**  
+The `verify:deposit` and `verify:balance` callback strings were too long, likely due to verbose payloads or concatenated identifiers. Telegram enforces a strict 64-byte maximum for callback data; exceeding it silently fails.
+
+**Reusable takeaway:**  
+When building Telegram bots (or any platform with fixed-size payload limits), always validate callback data length before sending. Use short, encoded identifiers (e.g., `v:dep` instead of `verify:deposit`) and trim dynamic parts. Add a runtime check or unit test to enforce the limit.
+
+---
+*Original commit message: fix: BUTTON_DATA_INVALID error - shorten callback data for verify:deposit and verify:balance buttons to stay under Telegram's 64-byte limit*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A `BUTTON_DATA_INVALID` error caused by callback data exceeding Telegram's 64-byte limit for inline buttons.
+
+**Why it broke:**  
+The `verify:deposit` and `verify:balance` callback strings were too long, likely due to verbose payloads or concatenated identifiers. Telegram enforces a strict 64-byte maximum for callback data; exceeding it silently fails.
+
+**Reusable takeaway:**  
+When building Telegram bots (or any platform with fixed-size payload limits), always validate callback data length before sending. Use short, encoded identifiers (e.g., `v:dep` instead of `verify:deposit`) and trim dynamic parts. Add a runtime check or unit test to enforce the limit.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
