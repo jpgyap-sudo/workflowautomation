@@ -297,22 +297,6 @@ app.get('/files/binary/:quotation_number', async (request, reply) => {
   return reply.send(buffer);
 });
 
-/**
- * HEAD /files/binary/:quotation_number
- * Check if a binary file exists without downloading it.
- */
-app.head('/files/binary/:quotation_number', async (request, reply) => {
-  const params = request.params || {};
-  const quotationNumber = params.quotation_number;
-  const filePath = await findBinaryFile(quotationNumber);
-  if (!filePath) {
-    return reply.code(404).send({ error: 'File not found' });
-  }
-  const stats = await stat(filePath);
-  reply.header('Content-Length', stats.size);
-  return reply.code(200).send();
-});
-
 // ── Cleanup Agent ──────────────────────────────────────────────────────
 
 /**
