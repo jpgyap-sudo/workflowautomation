@@ -3415,6 +3415,22 @@ app.post('/files/upload', async (request, reply) => {
   const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
   let localFilePath: string | null = null;
 
+  // Resolve order_id from quotation_number if not provided directly
+  let resolvedOrderId: string | null = body.order_id ?? null;
+  if (!resolvedOrderId && body.quotation_number) {
+    try {
+      const orderRows = await query(
+        `SELECT id FROM orders WHERE quotation_number = $1 LIMIT 1`,
+        [body.quotation_number]
+      );
+      if (orderRows[0]) {
+        resolvedOrderId = orderRows[0].id;
+      }
+    } catch (err) {
+      console.error('[FileUpload] Failed to resolve order_id from quotation_number:', err);
+    }
+  }
+
   // Forward quotation text to file-store for Hermes agent reference
   if (body.file_type === 'quotation' && body.quotation_number && body.extracted_text) {
     try {
@@ -3422,7 +3438,7 @@ app.post('/files/upload', async (request, reply) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_id: body.order_id,
+          order_id: resolvedOrderId,
           quotation_number: body.quotation_number,
           extracted_text: body.extracted_text,
           file_type: body.file_type,
@@ -3440,7 +3456,7 @@ app.post('/files/upload', async (request, reply) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_id: body.order_id,
+          order_id: resolvedOrderId,
           quotation_number: body.quotation_number,
           file_data: body.file_data,
           mime_type: body.mime_type,
@@ -3462,7 +3478,7 @@ app.post('/files/upload', async (request, reply) => {
      VALUES ($1, $2, $3, 'local', $4, $5, $6)
      RETURNING *`,
     [
-      body.order_id ?? null,
+      resolvedOrderId,
       body.file_type,
       body.original_filename,
       body.extracted_text ?? null,

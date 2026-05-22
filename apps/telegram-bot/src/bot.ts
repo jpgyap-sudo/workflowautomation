@@ -3943,6 +3943,7 @@ bot.action('vision:upload', async (ctx) => {
       imageBase64,
       mimeType,
       fileName,
+      quotationNumber: session.linkedOrder,
       uploadedBy,
     });
 
