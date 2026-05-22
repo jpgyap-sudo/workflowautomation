@@ -3122,3 +3122,51 @@ Always gate state transitions that depend on external validation (e.g., payment,
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: comprehensive workflow fixes — trigger agents on new orders, add missing stages to AGENT_TRIGGER_MAP/STAGE_LABELS/e
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4a3cfdcb50b20b6e93a2e69b69aafbb963b097f1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4a3cfdcb50b20b6e93a2e69b69aafbb963b097f1
+**Files:** apps/api/src/agents/escalationAgent.ts,apps/api/src/server.ts,apps/api/src/services/agentRunner.ts,apps/dashboard/src/app/inventory/page.tsx,docs/workflow.md
+
+**Summary:**
+**What was fixed:**  
+Multiple workflow gaps: agents not triggering on new orders, missing stages in `AGENT_TRIGGER_MAP` and `STAGE_LABELS`, incomplete escalation agent logic, absent `InventoryVerificationSection` on dashboard, and outdated workflow documentation.
+
+**Why it broke:**  
+The workflow system had incomplete mappings between order lifecycle stages and agent triggers. New orders bypassed agent execution because the trigger map lacked entries for initial stages. Escalation logic was missing stage definitions, causing agents to skip critical verification steps. Dashboard and docs were not updated to reflect the full workflow.
+
+**Reusable takeaway:**  
+When building event-driven workflows, ensure every stage in the lifecycle has a corresponding entry in trigger maps, stage labels, and agent routing logic. A missing mapping anywhere (trigger → agent → UI → docs) creates silent failures. Always validate that new stages are added to all four layers: trigger config, agent logic, dashboard components, and documentation.
+
+---
+*Original commit message: fix: comprehensive workflow fixes — trigger agents on new orders, add missing stages to AGENT_TRIGGER_MAP/STAGE_LABELS/escalation agent, add InventoryVerificationSection to dashboard, update workflow docs*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Multiple workflow gaps: agents not triggering on new orders, missing stages in `AGENT_TRIGGER_MAP` and `STAGE_LABELS`, incomplete escalation agent logic, absent `InventoryVerificationSection` on dashboard, and outdated workflow documentation.
+
+**Why it broke:**  
+The workflow system had incomplete mappings between order lifecycle stages and agent triggers. New orders bypassed agent execution because the trigger map lacked entries for initial stages. Escalation logic was missing stage definitions, causing agents to skip critical verification steps. Dashboard and docs were not updated to reflect the full workflow.
+
+**Reusable takeaway:**  
+When building event-driven workflows, ensure every stage in the lifecycle has a corresponding entry in trigger maps, stage labels, and agent routing logic. A missing mapping anywhere (trigger → agent → UI → docs) creates silent failures. Always validate that new stages are added to all four layers: trigger config, agent logic, dashboard components, and documentation.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

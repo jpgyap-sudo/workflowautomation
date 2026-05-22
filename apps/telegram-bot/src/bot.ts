@@ -1927,11 +1927,55 @@ bot.action(/^produce:partial:(.+)$/, async (ctx) => {
 
   try {
     const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
-    setStep(chatId, { action: 'awaiting_partial_missing_items', orderId: order.id, quotationNumber });
-    await ctx.editMessageText(
-      `⚠️ *Partial Production — ${quotationNumber}*\n\nWhich items are NOT yet produced or ordered?\n\nList them comma-separated or one per line:\n\nExample:\n\`chairs, tables, shelves\``,
-      { parse_mode: 'Markdown', ...cancelButton() }
-    );
+
+    // Try to fetch item-level data first — show clickable item buttons if available
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/items`);
+    const itemsData = await itemsRes.json();
+    const items: any[] = itemsData?.items ?? [];
+
+    if (items.length > 0) {
+      // Item-level tracking exists — show process-of-elimination with inline buttons
+      // Find the first unfinished item
+      const unfinishedItem = items.find(
+        (item: any) => item.production_status !== 'finished'
+      );
+
+      if (!unfinishedItem) {
+        // All items already finished
+        resetStep(chatId);
+        await ctx.editMessageText(
+          `✅ All items are already marked as produced for *${quotationNumber}*.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+        return;
+      }
+
+      const finishedCount = items.filter((i: any) => i.production_status === 'finished').length;
+      const totalCount = items.length;
+
+      let msg = `⚠️ *Partial Production — ${quotationNumber}*\n\n`;
+      msg += `Item-level tracking is available. Let's go through each item:\n\n`;
+      msg += `Items: ${finishedCount}/${totalCount} finished\n\n`;
+      msg += `*Process of Elimination:*\n`;
+      msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
+      msg += `Has *${unfinishedItem.name}* started or finished production?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id}:${order.id}`)],
+          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id}:${order.id}`)],
+          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id}:${order.id}`)],
+        ]),
+      });
+    } else {
+      // No item-level data — fall back to free-text input (legacy flow)
+      setStep(chatId, { action: 'awaiting_partial_missing_items', orderId: order.id, quotationNumber });
+      await ctx.editMessageText(
+        `⚠️ *Partial Production — ${quotationNumber}*\n\nWhich items are NOT yet produced or ordered?\n\nList them comma-separated or one per line:\n\nExample:\n\`chairs, tables, shelves\``,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+    }
   } catch (err: any) {
     await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
   }
