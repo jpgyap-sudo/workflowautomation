@@ -4957,3 +4957,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: auto-update lesson memory files
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8c13de085d46aacc4e8f525cfb0f945842782ccc
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8c13de085d46aacc4e8f525cfb0f945842782ccc
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Automated synchronization of lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) to ensure they remain consistent after each workflow run.
+
+**Why it broke:** Manual updates to memory files were not being triggered automatically after lesson extraction, causing drift between the index and the full lesson list. This led to stale or missing entries in downstream processes.
+
+**Reusable takeaway:** When maintaining derived data files (e.g., indexes, summaries, caches), always automate their regeneration as part of the same pipeline that produces the source data. A manual or event-driven sync step prevents silent inconsistency and reduces maintenance overhead.
+
+---
+*Original commit message: chore: auto-update lesson memory files*
+
+#### Lesson Learned
+
+**What was fixed:** Automated synchronization of lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) to ensure they remain consistent after each workflow run.
+
+**Why it broke:** Manual updates to memory files were not being triggered automatically after lesson extraction, causing drift between the index and the full lesson list. This led to stale or missing entries in downstream processes.
+
+**Reusable takeaway:** When maintaining derived data files (e.g., indexes, summaries, caches), always automate their regeneration as part of the same pipeline that produces the source data. A manual or event-driven sync step prevents silent inconsistency and reduces maintenance overhead.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
