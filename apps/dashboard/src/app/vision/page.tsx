@@ -42,6 +42,31 @@ interface ShareData {
   raw_text: string;
 }
 
+function normalizeExtractedItems(rawItems: unknown): { product_name: string; quantity: number }[] {
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const productName =
+        typeof record.product_name === 'string' ? record.product_name :
+        typeof record.name === 'string' ? record.name :
+        typeof record.item === 'string' ? record.item :
+        typeof record.description === 'string' ? record.description :
+        '';
+      const quantityValue = record.quantity ?? record.qty;
+      const quantity =
+        typeof quantityValue === 'number' ? quantityValue :
+        typeof quantityValue === 'string' ? Number.parseInt(quantityValue, 10) :
+        1;
+      return {
+        product_name: productName.trim(),
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+      };
+    })
+    .filter((item): item is { product_name: string; quantity: number } => Boolean(item?.product_name));
+}
+
 interface UploadSummary {
   token: string;
   file_name: string;
@@ -102,6 +127,7 @@ function VisionPageContent() {
             setSalesAgent(ext.sales_agent ?? '');
             setTotalAmount(ext.total_amount ? String(ext.total_amount) : '');
             setOrderDate(ext.order_date ?? '');
+            setItems(normalizeExtractedItems(ext.items));
           }
 
           setResult({
@@ -194,12 +220,7 @@ function VisionPageContent() {
         setSalesAgent(data.quotation.sales_agent ?? '');
         setTotalAmount(data.quotation.total_amount ? String(data.quotation.total_amount) : '');
         setOrderDate(data.quotation.order_date ?? '');
-        setItems(
-          (data.quotation.items ?? []).map((item) => ({
-            product_name: item.product_name ?? '',
-            quantity: item.quantity ?? 1,
-          }))
-        );
+        setItems(normalizeExtractedItems(data.quotation.items));
         setStep('review');
       } else if (data.type === 'payment') {
         setStep('done');

@@ -4432,3 +4432,74 @@ Fix Fastify FST_ERR_CTP_EMPTY_JSON_BODY on dashboard POST helpers by sending JSO
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: resolve all 6 inventory flow gaps
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2de08c31f2b588f91626109304ef44ccab2cc364
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 2de08c31f2b588f91626109304ef44ccab2cc364
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Six inventory flow gaps across API, dashboard, Telegram bot, and memory files, including missing stock updates, inconsistent state handling, and broken UI triggers.
+
+**Why it broke:**  
+The system had no unified inventory state management. Each component (API, dashboard, bot) independently assumed stock was correct, leading to race conditions and stale data when concurrent operations (e.g., order creation + delivery) occurred.
+
+**Reusable takeaway:**  
+**Always centralize inventory state transitions** in a single authoritative service (e.g., API layer). Never let UI or bot components directly mutate stock without validation. Use idempotent operations and optimistic locking to prevent race conditions. Log all state changes in a lesson index to track recurring failure patterns.
+
+---
+*Original commit message: fix: resolve all 6 inventory flow gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Six inventory flow gaps across API, dashboard, Telegram bot, and memory files, including missing stock updates, inconsistent state handling, and broken UI triggers.
+
+**Why it broke:**  
+The system had no unified inventory state management. Each component (API, dashboard, bot) independently assumed stock was correct, leading to race conditions and stale data when concurrent operations (e.g., order creation + delivery) occurred.
+
+**Reusable takeaway:**  
+**Always centralize inventory state transitions** in a single authoritative service (e.g., API layer). Never let UI or bot components directly mutate stock without validation. Use idempotent operations and optimistic locking to prevent race conditions. Log all state changes in a lesson index to track recurring failure patterns.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Vision share items gap
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Telegram vision/share sends extracted quotation items, but dashboard /vision?token loader must explicitly setItems from data.extracted.items. The local upload flow did this, while token/share flow only filled header fields. Use a normalizer that accepts product_name/name/item/description plus quantity/qty so Telegram and dashboard payload shapes both populate Items / Products.
+
+#### Lesson Learned
+
+Telegram vision/share sends extracted quotation items, but dashboard /vision?token loader must explicitly setItems from data.extracted.items. The local upload flow did this, while token/share flow only filled header fields. Use a normalizer that accepts product_name/name/item/description plus quantity/qty so Telegram and dashboard payload shapes both populate Items / Products.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

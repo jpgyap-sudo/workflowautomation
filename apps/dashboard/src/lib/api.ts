@@ -169,7 +169,7 @@ export async function recordDeposit(data: {
 }): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/deposits', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ updated_by: 'dashboard_quick_action', ...data }),
   });
 }
 
@@ -181,7 +181,7 @@ export async function payBalance(data: {
 }): Promise<{ ok: boolean; overpayment?: number }> {
   return fetchJson<{ ok: boolean; overpayment?: number }>('/pay-balance', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ updated_by: 'dashboard_quick_action', ...data }),
   });
 }
 
@@ -216,7 +216,7 @@ export async function recordStageUpdate(data: {
 }): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/stage-updates', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ updated_by: 'dashboard_quick_action', ...data }),
   });
 }
 

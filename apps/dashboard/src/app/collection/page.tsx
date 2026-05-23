@@ -251,6 +251,84 @@ export default function CollectionPage() {
       handleGrantExceptionVerified(actionToken);
     } else if (otpModal.pendingAction === 'revokeDeliveryException') {
       handleRevokeExceptionVerified(actionToken);
+    } else if (otpModal.pendingAction === 'confirmPayment') {
+      executeConfirmPayment(actionToken);
+    } else if (otpModal.pendingAction === 'markCountered') {
+      const pending = (window as any).__pendingMarkCounteredData as { order: Order } | undefined;
+      if (pending) executeMarkCountered(pending.order, actionToken);
+    } else if (otpModal.pendingAction === 'markCompleted') {
+      const pending = (window as any).__pendingMarkCompletedData as { order: Order } | undefined;
+      if (pending) executeMarkCompleted(pending.order, actionToken);
+    } else if (otpModal.pendingAction === 'syncPaymentReceived') {
+      const pending = (window as any).__pendingSyncData as { order: Order } | undefined;
+      if (pending) executeSyncPaymentReceived(pending.order, actionToken);
+    }
+  }
+
+  async function executeMarkCountered(order: Order, actionToken: string) {
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'countered',
+        status: 'countered',
+        remarks: 'Marked as countered (special case delivered)',
+        action_token: actionToken,
+      });
+      mutateDelivered();
+      mutateCountered();
+    } catch (err: any) {
+      alert('Failed to mark as countered: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingMarkCounteredData = null;
+    }
+  }
+
+  async function executeMarkCompleted(order: Order, actionToken: string) {
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'completed',
+        status: 'completed',
+        remarks: 'Completed directly — non-special case, steps 14–16 skipped (N/A)',
+        action_token: actionToken,
+      });
+      mutateDelivered();
+      mutateCompleted();
+    } catch (err: any) {
+      alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingMarkCompletedData = null;
+    }
+  }
+
+  async function executeSyncPaymentReceived(order: Order, actionToken: string) {
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+      await fetch(`${API_BASE}/stage-updates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quotation_number: order.quotation_number ?? '',
+          stage: 'payment_received',
+          status: 'balance_paid',
+          remarks: 'Synced from legacy — balance was already paid but stage was not updated',
+          updated_by: 'dashboard_quick_action',
+          action_token: actionToken,
+        }),
+      });
+      await fetch(`${API_BASE}/orders/unsynced-payments/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id }),
+      });
+      const res = await fetch(`${API_BASE}/orders/unsynced-payments`);
+      const data = res.ok ? await res.json() : [];
+      setUnsyncedOrders(data);
+      mutateReceived();
+    } catch (err: any) {
+      alert('Failed to sync: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingSyncData = null;
     }
   }
 
@@ -467,20 +545,14 @@ export default function CollectionPage() {
               {/* Special case delivered → proceed to Countered */}
               {order.current_stage === 'delivered' && hasException && (
                 <button
-                  onClick={async () => {
-                    try {
-                      await recordStageUpdate({
-                        quotation_number: order.quotation_number ?? '',
-                        stage: 'countered',
-                        status: 'countered',
-                        remarks: 'Marked as countered (special case delivered)',
-                        updated_by: 'dashboard',
-                      });
-                      mutateDelivered();
-                      mutateCountered();
-                    } catch (err: any) {
-                      alert('Failed to mark as countered: ' + (err.message ?? 'Unknown error'));
-                    }
+                  onClick={() => {
+                    (window as any).__pendingMarkCounteredData = { order };
+                    setOtpModal({
+                      open: true,
+                      title: 'Mark as Countered',
+                      description: `Confirm marking "${order.quotation_number ?? '—'}" as countered (special case).`,
+                      pendingAction: 'markCountered',
+                    });
                   }}
                   className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
                   title="Proceed to Countered (special case)"
@@ -491,21 +563,15 @@ export default function CollectionPage() {
               {/* Non-special-case delivered → skip steps 14-16 (N/A), go directly to Completed */}
               {order.current_stage === 'delivered' && !hasException && (
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     if (!confirm(`Skip payment steps (N/A) and mark "${order.quotation_number ?? '—'}" as Completed?`)) return;
-                    try {
-                      await recordStageUpdate({
-                        quotation_number: order.quotation_number ?? '',
-                        stage: 'completed',
-                        status: 'completed',
-                        remarks: 'Completed directly — non-special case, steps 14–16 skipped (N/A)',
-                        updated_by: 'dashboard',
-                      });
-                      mutateDelivered();
-                      mutateCompleted();
-                    } catch (err: any) {
-                      alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
-                    }
+                    (window as any).__pendingMarkCompletedData = { order };
+                    setOtpModal({
+                      open: true,
+                      title: 'Complete Order',
+                      description: `Confirm completion of "${order.quotation_number ?? '—'}" (steps 14–16 N/A).`,
+                      pendingAction: 'markCompleted',
+                    });
                   }}
                   className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 hover:text-green-700"
                   title="Complete directly (steps 14–16 are N/A)"
@@ -820,34 +886,14 @@ export default function CollectionPage() {
                       <div className="flex items-center gap-3">
                         <StageBadge stage={order.current_stage} />
                         <button
-                          onClick={async () => {
-                            try {
-                              const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
-                              await fetch(`${API_BASE}/stage-updates`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  quotation_number: order.quotation_number ?? '',
-                                  stage: 'payment_received',
-                                  status: 'balance_paid',
-                                  remarks: 'Synced from legacy — balance was already paid but stage was not updated',
-                                  updated_by: 'dashboard',
-                                }),
-                              });
-                              // Also update the order's current_stage
-                              await fetch(`${API_BASE}/orders/unsynced-payments/sync`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ order_id: order.id }),
-                              });
-                              // Re-fetch unsynced list
-                              const res = await fetch(`${API_BASE}/orders/unsynced-payments`);
-                              const data = res.ok ? await res.json() : [];
-                              setUnsyncedOrders(data);
-                              mutateReceived();
-                            } catch (err: any) {
-                              alert('Failed to sync: ' + (err.message ?? 'Unknown error'));
-                            }
+                          onClick={() => {
+                            (window as any).__pendingSyncData = { order };
+                            setOtpModal({
+                              open: true,
+                              title: 'Sync to Payment Received',
+                              description: `Confirm syncing "${order.quotation_number ?? '—'}" to Payment Received stage.`,
+                              pendingAction: 'syncPaymentReceived',
+                            });
                           }}
                           className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
                           title="Sync this order to Payment Received stage"
@@ -1070,6 +1116,10 @@ export default function CollectionPage() {
         onClose={() => {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingEditData = null;
+          (window as any).__pendingConfirmPaymentData = null;
+          (window as any).__pendingMarkCounteredData = null;
+          (window as any).__pendingMarkCompletedData = null;
+          (window as any).__pendingSyncData = null;
         }}
       />
 
