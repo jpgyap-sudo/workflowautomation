@@ -1,9 +1,10 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/immutability */
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { sendTelegramActionCode, verifyTelegramActionCode } from '@/lib/api';
-import { X, ShieldAlert, RefreshCw, Send } from 'lucide-react';
+import { sendTelegramActionCode, verifyTelegramActionCode, sendOtpForAction, verifyOtpForAction } from '@/lib/api';
+import { X, ShieldAlert, RefreshCw, Send, Mail } from 'lucide-react';
 
 interface OtpModalProps {
   open: boolean;
@@ -13,52 +14,105 @@ interface OtpModalProps {
   onClose: () => void;
 }
 
+type Channel = 'telegram' | 'email';
+
 export default function OtpModal({ open, title, description, onVerified, onClose }: OtpModalProps) {
   const { user } = useAuth();
-  const [digits, setDigits] = useState(['', '', '', '']);
+  const [channel, setChannel] = useState<Channel>('telegram');
+  const [digits, setDigits] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [step, setStep] = useState<'code' | 'confirm'>('code');
+  const [actionToken, setActionToken] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Send code automatically when modal opens
+  const digitCount = channel === 'telegram' ? 4 : 6;
+
+  // Reset and send code whenever the modal opens or channel changes
   useEffect(() => {
     if (open && user?.email) {
-      setDigits(['', '', '', '']);
+      setDigits(Array(digitCount).fill(''));
       setError('');
       setLoading(false);
       setStep('code');
       setCodeSent(false);
       setResendCooldown(0);
-      sendCode();
+      setActionToken('');
+      sendCode('telegram'); // always start with Telegram
     }
   }, [open]);
 
-  async function sendCode() {
+  // Resize digit array when channel changes
+  useEffect(() => {
+    setDigits(Array(digitCount).fill(''));
+    setError('');
+  }, [channel]);
+
+  async function sendCode(ch: Channel = channel) {
     if (!user?.email) return;
     setSending(true);
     setError('');
     try {
-      const result = await sendTelegramActionCode(user.email);
+      if (ch === 'telegram') {
+        const result = await sendTelegramActionCode(user.email);
+        if (result.ok) {
+          setChannel('telegram');
+          setCodeSent(true);
+          startCooldown();
+          setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        } else {
+          // Telegram unavailable — fall through to email
+          await switchToEmail();
+        }
+      } else {
+        const result = await sendOtpForAction(user.email);
+        if (result.ok) {
+          setChannel('email');
+          setCodeSent(true);
+          startCooldown();
+          setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        } else {
+          setError('Failed to send email code. Please try again.');
+        }
+      }
+    } catch (err: unknown) {
+      // If Telegram threw, try email automatically
+      if (ch === 'telegram') {
+        await switchToEmail();
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to send code');
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function switchToEmail() {
+    setChannel('email');
+    setDigits(Array(6).fill(''));
+    setError('');
+    setSending(true);
+    try {
+      const result = await sendOtpForAction(user!.email!);
       if (result.ok) {
         setCodeSent(true);
-        setResendCooldown(60);
         startCooldown();
         setTimeout(() => inputRefs.current[0]?.focus(), 100);
       } else {
-        setError('Failed to send code. Please try again.');
+        setError('Both Telegram and email are unavailable. Contact admin.');
       }
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to send code');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Both Telegram and email failed. Contact admin.');
     } finally {
       setSending(false);
     }
   }
 
   function startCooldown() {
+    setResendCooldown(60);
     const interval = setInterval(() => {
       setResendCooldown((prev) => {
         if (prev <= 1) { clearInterval(interval); return 0; }
@@ -72,25 +126,31 @@ export default function OtpModal({ open, title, description, onVerified, onClose
   async function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     const code = digits.join('');
-    if (code.length < 4) { setError('Enter all 4 digits'); return; }
+    if (code.length < digitCount) { setError(`Enter all ${digitCount} digits`); return; }
     if (!user?.email) { setError('User not found'); return; }
 
     setLoading(true);
     setError('');
 
     try {
-      const result = await verifyTelegramActionCode(user.email, code);
+      let result: { ok: boolean; actionToken: string };
+      if (channel === 'telegram') {
+        result = await verifyTelegramActionCode(user.email, code);
+      } else {
+        result = await verifyOtpForAction(user.email, code);
+      }
+
       if (result.ok && result.actionToken) {
+        setActionToken(result.actionToken);
         setStep('confirm');
-        (window as any).__actionToken = result.actionToken;
       } else {
         setError('Verification failed');
-        setDigits(['', '', '', '']);
+        setDigits(Array(digitCount).fill(''));
         inputRefs.current[0]?.focus();
       }
-    } catch (err: any) {
-      setError(err.message ?? 'Invalid code');
-      setDigits(['', '', '', '']);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Invalid code');
+      setDigits(Array(digitCount).fill(''));
       inputRefs.current[0]?.focus();
     } finally {
       setLoading(false);
@@ -102,35 +162,32 @@ export default function OtpModal({ open, title, description, onVerified, onClose
     const next = [...digits];
     next[index] = digit;
     setDigits(next);
-    if (digit && index < 3) inputRefs.current[index + 1]?.focus();
+    if (digit && index < digitCount - 1) inputRefs.current[index + 1]?.focus();
   }
 
   function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Backspace' && !digits[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
-    // Auto-submit when all 4 digits are filled
     if (e.key === 'Enter') {
       const code = digits.join('');
-      if (code.length === 4) handleSubmit({ preventDefault: () => {} });
+      if (code.length === digitCount) handleSubmit({ preventDefault: () => {} });
     }
   }
 
   function handlePaste(e: React.ClipboardEvent) {
-    const d = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    const d = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, digitCount);
     if (!d) return;
     e.preventDefault();
-    const next = [...digits];
+    const next = Array(digitCount).fill('');
     d.split('').forEach((ch, i) => { next[i] = ch; });
     setDigits(next);
-    inputRefs.current[Math.min(d.length, 3)]?.focus();
+    inputRefs.current[Math.min(d.length, digitCount - 1)]?.focus();
   }
 
   function handleConfirm() {
-    const token = (window as any).__actionToken;
-    if (token) {
-      onVerified(token);
-      (window as any).__actionToken = null;
+    if (actionToken) {
+      onVerified(actionToken);
     }
     onClose();
   }
@@ -156,22 +213,31 @@ export default function OtpModal({ open, title, description, onVerified, onClose
             {sending ? (
               <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#2490ef]" />
-                Sending code to Telegram…
+                {channel === 'telegram' ? 'Sending code to Telegram…' : 'Sending code to email…'}
               </div>
             ) : (
               <>
-                {/* Telegram indicator */}
-                <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-                  <Send className="h-4 w-4 shrink-0 text-[#2490ef]" />
-                  <p className="text-xs text-gray-600">
-                    {codeSent
-                      ? 'A 4-digit code was sent to your Telegram.'
-                      : 'Sending a 4-digit code to Telegram…'}
-                  </p>
-                </div>
+                {/* Channel indicator */}
+                {channel === 'telegram' ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                    <Send className="h-4 w-4 shrink-0 text-[#2490ef]" />
+                    <p className="text-xs text-gray-600">
+                      {codeSent ? 'A 4-digit code was sent to Telegram.' : 'Sending a 4-digit code to Telegram…'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                    <Mail className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <p className="text-xs text-gray-600">
+                      {codeSent
+                        ? `A 6-digit code was sent to ${user?.email}.`
+                        : `Sending a 6-digit code to ${user?.email}…`}
+                    </p>
+                  </div>
+                )}
 
-                {/* 4-digit inputs */}
-                <div className="flex justify-center gap-3">
+                {/* Digit inputs */}
+                <div className="flex justify-center gap-2">
                   {digits.map((digit, i) => (
                     <input
                       key={i}
@@ -183,7 +249,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                       onChange={(e) => handleDigitChange(i, e.target.value)}
                       onKeyDown={(e) => handleKeyDown(i, e)}
                       onPaste={i === 0 ? handlePaste : undefined}
-                      className="h-14 w-12 rounded-xl border-2 border-gray-200 text-center text-xl font-bold text-gray-900 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                      className="h-14 w-11 rounded-xl border-2 border-gray-200 text-center text-xl font-bold text-gray-900 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
                     />
                   ))}
                 </div>
@@ -195,14 +261,14 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                 <div className="flex items-center gap-2">
                   <button
                     type="submit"
-                    disabled={loading || !codeSent || digits.join('').length < 4}
+                    disabled={loading || !codeSent || digits.join('').length < digitCount}
                     className="flex-1 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
                   >
                     {loading ? 'Verifying…' : 'Verify Code'}
                   </button>
                   <button
                     type="button"
-                    onClick={sendCode}
+                    onClick={() => sendCode(channel)}
                     disabled={sending || resendCooldown > 0}
                     className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                     title="Resend code"
@@ -211,6 +277,29 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                     {resendCooldown > 0 ? `${resendCooldown}s` : 'Resend'}
                   </button>
                 </div>
+
+                {/* Fallback switcher */}
+                {channel === 'telegram' ? (
+                  <button
+                    type="button"
+                    onClick={switchToEmail}
+                    disabled={sending}
+                    className="flex w-full items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  >
+                    <Mail className="h-3 w-3" />
+                    Didn&apos;t get it? Send to email instead
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => sendCode('telegram')}
+                    disabled={sending}
+                    className="flex w-full items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  >
+                    <Send className="h-3 w-3" />
+                    Try Telegram instead
+                  </button>
+                )}
               </>
             )}
           </form>

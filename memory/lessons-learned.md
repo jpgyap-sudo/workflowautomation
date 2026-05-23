@@ -4551,3 +4551,277 @@ Always invalidate or refetch server data after mutating protected resources (e.g
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: update lesson memory files
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 08b06ce311df02e7082c15e3029ffe14d6cdca42
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 08b06ce311df02e7082c15e3029ffe14d6cdca42
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Updated lesson memory files to reflect newly learned engineering insights.
+
+**Why it broke:**  
+The previous memory files were stale—they lacked recent lessons, causing the system to repeat past mistakes or miss known optimizations. This is a documentation drift issue.
+
+**Reusable takeaway:**  
+Treat lesson memory files as living documentation. After every significant fix or insight, immediately update both the structured index (JSONL) and the human-readable summary (Markdown). This prevents knowledge silos and ensures both automated agents and human engineers benefit from collective experience.
+
+---
+*Original commit message: chore: update lesson memory files*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated lesson memory files to reflect newly learned engineering insights.
+
+**Why it broke:**  
+The previous memory files were stale—they lacked recent lessons, causing the system to repeat past mistakes or miss known optimizations. This is a documentation drift issue.
+
+**Reusable takeaway:**  
+Treat lesson memory files as living documentation. After every significant fix or insight, immediately update both the structured index (JSONL) and the human-readable summary (Markdown). This prevents knowledge silos and ensures both automated agents and human engineers benefit from collective experience.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] Fix AI vision extraction: always share extracted data to dashboard regardless of type
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 44bd98ac1e57620f75b91d29750b3612fafd26a9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 44bd98ac1e57620f75b91d29750b3612fafd26a9
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/bugs/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:** AI vision extraction data was not being shared with the dashboard for certain data types (e.g., structured JSON vs. plain text). The fix ensures extracted data is always sent to the dashboard regardless of type.
+
+**Why it broke:** The API or bot logic conditionally filtered or omitted extracted data based on its type (e.g., only sending if it matched a specific format). This caused missing data in dashboard views for non-default types.
+
+**Reusable takeaway:** When building extraction pipelines, avoid type-based filtering at the transport layer. Always forward raw extracted data to downstream consumers (dashboard, bot) and let them handle parsing/display. This prevents silent data loss and decouples extraction from presentation.
+
+---
+*Original commit message: Fix AI vision extraction: always share extracted data to dashboard regardless of type*
+
+#### Lesson Learned
+
+**What was fixed:** AI vision extraction data was not being shared with the dashboard for certain data types (e.g., structured JSON vs. plain text). The fix ensures extracted data is always sent to the dashboard regardless of type.
+
+**Why it broke:** The API or bot logic conditionally filtered or omitted extracted data based on its type (e.g., only sending if it matched a specific format). This caused missing data in dashboard views for non-default types.
+
+**Reusable takeaway:** When building extraction pipelines, avoid type-based filtering at the transport layer. Always forward raw extracted data to downstream consumers (dashboard, bot) and let them handle parsing/display. This prevents silent data loss and decouples extraction from presentation.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Item-level production confirmation
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When a quotation has extracted order_items, production confirmation must not default to whole-order status. Telegram initial production prompts should list extracted items and route to item-by-item callbacks, while the dashboard production table should expose per-item pending/in-progress/finished updates using the order item PATCH endpoint. Server-to-server Telegram production callbacks may not have dashboard OTP action tokens, so production endpoints used by bot callbacks should verify tokens only when provided.
+
+#### Lesson Learned
+
+When a quotation has extracted order_items, production confirmation must not default to whole-order status. Telegram initial production prompts should list extracted items and route to item-by-item callbacks, while the dashboard production table should expose per-item pending/in-progress/finished updates using the order item PATCH endpoint. Server-to-server Telegram production callbacks may not have dashboard OTP action tokens, so production endpoints used by bot callbacks should verify tokens only when provided.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] Fix AI vision extraction: always share extracted data to dashboard regardless of type
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit eaa62056aace477e6f61cf290ed0f8c7e8dff5fc
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** eaa62056aace477e6f61cf290ed0f8c7e8dff5fc
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/bugs/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+AI vision extraction data was not being shared to the dashboard for certain extraction types (e.g., bugs, inventory, production). The fix ensures extracted data is always sent to the dashboard regardless of type.
+
+**Why it broke:**  
+The original code had conditional logic that filtered out or skipped sharing extracted data based on its type. This caused some extraction results to be silently dropped before reaching the dashboard.
+
+**Reusable takeaway:**  
+When building data pipelines, avoid type-based filtering in the sharing/publishing layer unless explicitly required. Instead, push all extracted data to a common sink (e.g., dashboard API) and let the consumer handle filtering. This prevents silent data loss and makes the system more robust to new extraction types.
+
+---
+*Original commit message: Fix AI vision extraction: always share extracted data to dashboard regardless of type*
+
+#### Lesson Learned
+
+**What was fixed:**  
+AI vision extraction data was not being shared to the dashboard for certain extraction types (e.g., bugs, inventory, production). The fix ensures extracted data is always sent to the dashboard regardless of type.
+
+**Why it broke:**  
+The original code had conditional logic that filtered out or skipped sharing extracted data based on its type. This caused some extraction results to be silently dropped before reaching the dashboard.
+
+**Reusable takeaway:**  
+When building data pipelines, avoid type-based filtering in the sharing/publishing layer unless explicitly required. Instead, push all extracted data to a common sink (e.g., dashboard API) and let the consumer handle filtering. This prevents silent data loss and makes the system more robust to new extraction types.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] Fix AI vision extraction: always share extracted data to dashboard regardless of type
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1570e78f25e553574c01a6913a30badbef7052da
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1570e78f25e553574c01a6913a30badbef7052da
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/bugs/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+AI vision extraction results were not appearing on the dashboard after processing. The fix ensures extracted data is always shared to the dashboard, regardless of its type or structure.
+
+**Why it broke:**  
+The previous implementation conditionally filtered or blocked extracted data based on its type (e.g., skipping certain fields or formats). This caused valid extraction outputs to be silently dropped before reaching the dashboard.
+
+**Reusable takeaway:**  
+When building data pipelines (especially AI-driven extraction), **never filter or conditionally block output based on type at the integration layer**. Instead, always forward raw results to the consumer (dashboard) and let the consumer handle filtering or display logic. This prevents silent data loss and decouples extraction from presentation.
+
+---
+*Original commit message: Fix AI vision extraction: always share extracted data to dashboard regardless of type*
+
+#### Lesson Learned
+
+**What was fixed:**  
+AI vision extraction results were not appearing on the dashboard after processing. The fix ensures extracted data is always shared to the dashboard, regardless of its type or structure.
+
+**Why it broke:**  
+The previous implementation conditionally filtered or blocked extracted data based on its type (e.g., skipping certain fields or formats). This caused valid extraction outputs to be silently dropped before reaching the dashboard.
+
+**Reusable takeaway:**  
+When building data pipelines (especially AI-driven extraction), **never filter or conditionally block output based on type at the integration layer**. Instead, always forward raw results to the consumer (dashboard) and let the consumer handle filtering or display logic. This prevents silent data loss and decouples extraction from presentation.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] Fix AI vision extraction: always share extracted data to dashboard regardless of type
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1357527cc9e9e51a51f1c828740222884c7bfc02
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1357527cc9e9e51a51f1c828740222884c7bfc02
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/agents/page.tsx,apps/dashboard/src/app/bugs/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**Fix:** AI vision extraction now always shares extracted data to the dashboard, regardless of the data type.
+
+**Root Cause:** The system conditionally blocked data sharing based on the extracted type (e.g., only sharing "inventory" data but not "orders" or "bugs"), causing incomplete visibility in the dashboard.
+
+**Reusable Takeaway:** When building extraction pipelines, avoid type-based gating for data propagation. Instead, always forward all extracted results to downstream consumers (like dashboards) and let them filter or render based on their own logic. This prevents silent data loss and ensures full traceability.
+
+---
+*Original commit message: Fix AI vision extraction: always share extracted data to dashboard regardless of type*
+
+#### Lesson Learned
+
+**Fix:** AI vision extraction now always shares extracted data to the dashboard, regardless of the data type.
+
+**Root Cause:** The system conditionally blocked data sharing based on the extracted type (e.g., only sharing "inventory" data but not "orders" or "bugs"), causing incomplete visibility in the dashboard.
+
+**Reusable Takeaway:** When building extraction pipelines, avoid type-based gating for data propagation. Instead, always forward all extracted results to downstream consumers (like dashboards) and let them filter or render based on their own logic. This prevents silent data loss and ensures full traceability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Dashboard OTP fallback continuation
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When continuing the dashboard OTP hardening work, ensure action confirmation state stays in React state rather than window globals, pass action_token through API helper types (for order item updates and agent notes), and run npm run build from apps/dashboard to catch Next/TypeScript regressions. OtpModal now supports Telegram first with email fallback via sendOtpForAction/verifyOtpForAction.
+
+#### Lesson Learned
+
+When continuing the dashboard OTP hardening work, ensure action confirmation state stays in React state rather than window globals, pass action_token through API helper types (for order item updates and agent notes), and run npm run build from apps/dashboard to catch Next/TypeScript regressions. OtpModal now supports Telegram first with email fallback via sendOtpForAction/verifyOtpForAction.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

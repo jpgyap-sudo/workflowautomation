@@ -5,7 +5,6 @@ import { useAgents, useAgentHealth, type AgentInfo, type AgentHealth } from '@/l
 import { runAgent } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
 import {
-  Activity,
   Play,
   RefreshCw,
   AlertCircle,

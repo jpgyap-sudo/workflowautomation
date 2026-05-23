@@ -260,9 +260,9 @@ app.post('/auth/send-otp', async (request, reply) => {
     await smtpTransporter.sendMail({
       from: `"Quotation System" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: 'Your login OTP',
-      text: `Your one-time login code is: ${otp}\n\nIt expires in 5 minutes.`,
-      html: `<p>Your one-time login code is:</p><h2 style="letter-spacing:4px">${otp}</h2><p>It expires in 5 minutes.</p>`,
+      subject: 'Your verification code',
+      text: `Your one-time verification code is: ${otp}\n\nIt expires in 5 minutes.`,
+      html: `<p>Your one-time verification code is:</p><h2 style="letter-spacing:4px">${otp}</h2><p>It expires in 5 minutes.</p>`,
     });
   } catch (err: any) {
     console.error('[otp] Failed to send email:', err);
@@ -359,8 +359,8 @@ app.post('/auth/send-action-code', async (request, reply) => {
   await cacheClient.setEx(key, ACTION_CODE_TTL, JSON.stringify({ code, attempts: 0 }));
 
   if (!_TELEGRAM_BOT_TOKEN || !ACTION_VERIFY_CHAT_ID) {
-    console.warn(`[action-code] Telegram not configured. Code for ${email}: ${code}`);
-    return reply.status(503).send({ error: 'Telegram not configured. Contact admin.' });
+    console.warn(`[action-code] Telegram not configured — falling back to email for ${email}`);
+    return reply.status(503).send({ error: 'Telegram not configured' });
   }
 
   const msg = `🔐 <b>Dashboard Action Verification</b>\n\nA dashboard action requires confirmation.\n\nYour 4-digit code:\n\n<code>${code}</code>\n\n<i>Expires in 5 minutes. Do not share this code.</i>`;
@@ -373,11 +373,11 @@ app.post('/auth/send-action-code', async (request, reply) => {
     if (!res.ok) {
       const body = await res.text();
       console.error('[action-code] Telegram send failed:', body);
-      return reply.status(500).send({ error: 'Failed to send Telegram code' });
+      return reply.status(503).send({ error: 'Telegram unavailable' });
     }
   } catch (err) {
     console.error('[action-code] Telegram send error:', err);
-    return reply.status(500).send({ error: 'Failed to send Telegram code' });
+    return reply.status(503).send({ error: 'Telegram unavailable' });
   }
 
   return reply.send({ ok: true });

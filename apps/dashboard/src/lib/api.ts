@@ -431,6 +431,7 @@ export async function updateOrderItem(
     production_status?: string;
     en_route_status?: string;
     estimated_arrival_days?: number | null;
+    action_token?: string;
   }
 ): Promise<{ ok: boolean; item: OrderItem }> {
   return fetchJson<{ ok: boolean; item: OrderItem }>(
@@ -1038,7 +1039,7 @@ export async function postAgentNote(orderId: string, data: {
   agent_name: string;
   note: string;
   action_token: string;
-}): Promise<{ ok: boolean; id: string; agent_name: string; note: string; created_at: string }> {
+}): Promise<{ ok: boolean; id: string; order_id: string; agent_name: string; note: string; created_at: string }> {
   return fetchJson(`/orders/${encodeURIComponent(orderId)}/notes`, {
     method: 'POST',
     body: JSON.stringify(data),

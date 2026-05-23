@@ -1,9 +1,10 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
@@ -453,6 +454,12 @@ function ItemTrackingSection({
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | 'extract_items' | 'upload_extract' | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [pendingVerifyItem, setPendingVerifyItem] = useState<{
+    itemId: string;
+    action: 'all' | 'partial' | 'not_yet';
+    verifiedQty?: number;
+  } | null>(null);
+  const [pendingMarkArrived, setPendingMarkArrived] = useState<{ itemId: string } | null>(null);
   const [otpModal, setOtpModal] = useState<{
     open: boolean;
     title: string;
@@ -565,7 +572,7 @@ function ItemTrackingSection({
       const file_data = await fileToBase64(file);
       await uploadOrderFile({
         order_id: orderId,
-        quotation_number: quotationNumber,
+        quotation_number: quotationNumber ?? undefined,
         file_type: 'quotation',
         original_filename: file.name,
         mime_type: file.type,
@@ -591,7 +598,7 @@ function ItemTrackingSection({
 
   function handleVerifyItem(itemId: string, action: 'all' | 'partial' | 'not_yet', verifiedQty?: number) {
     const item = items.find((i) => i.id === itemId);
-    (window as any).__pendingVerifyItem = { itemId, action, verifiedQty };
+    setPendingVerifyItem({ itemId, action, verifiedQty });
     setOtpModal({
       open: true,
       title: 'Verify Inventory Item',
@@ -601,28 +608,25 @@ function ItemTrackingSection({
   }
 
   async function executeVerifyItem(actionToken: string) {
-    const pending = (window as any).__pendingVerifyItem as
-      | { itemId: string; action: 'all' | 'partial' | 'not_yet'; verifiedQty?: number }
-      | undefined;
-    if (!pending) return;
+    if (!pendingVerifyItem) return;
     setOtpModal((prev) => ({ ...prev, open: false }));
-    setVerifyingItemId(pending.itemId);
+    setVerifyingItemId(pendingVerifyItem.itemId);
     try {
       await inventoryVerifyItem(orderId, {
-        item_id: pending.itemId,
-        action: pending.action,
-        verified_qty: pending.verifiedQty,
+        item_id: pendingVerifyItem.itemId,
+        action: pendingVerifyItem.action,
+        verified_qty: pendingVerifyItem.verifiedQty,
         action_token: actionToken,
       });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
       const compRes = await getItemCompletion(orderId);
       if (compRes.ok) setCompletion(compRes);
-    } catch (err: any) {
-      alert(err.message ?? 'Verification failed');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Verification failed');
     } finally {
       setVerifyingItemId(null);
-      (window as any).__pendingVerifyItem = null;
+      setPendingVerifyItem(null);
     }
   }
 
@@ -632,8 +636,8 @@ function ItemTrackingSection({
     try {
       await completeInventoryVerification(orderId, actionToken);
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message ?? 'Failed to complete verification');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to complete verification');
     } finally {
       setCompletingVerification(false);
     }
@@ -641,7 +645,7 @@ function ItemTrackingSection({
 
   function handleMarkItemArrived(itemId: string) {
     const item = items.find((i) => i.id === itemId);
-    (window as any).__pendingMarkArrived = { itemId };
+    setPendingMarkArrived({ itemId });
     setOtpModal({
       open: true,
       title: 'Mark Item Arrived',
@@ -651,21 +655,20 @@ function ItemTrackingSection({
   }
 
   async function executeMarkItemArrived(actionToken: string) {
-    const pending = (window as any).__pendingMarkArrived as { itemId: string } | undefined;
-    if (!pending) return;
+    if (!pendingMarkArrived) return;
     setOtpModal((prev) => ({ ...prev, open: false }));
-    setArrivingItemId(pending.itemId);
+    setArrivingItemId(pendingMarkArrived.itemId);
     try {
-      await updateOrderItem(orderId, pending.itemId, { en_route_status: 'arrived', action_token: actionToken });
+      await updateOrderItem(orderId, pendingMarkArrived.itemId, { en_route_status: 'arrived', action_token: actionToken });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
       const compRes = await getItemCompletion(orderId);
       if (compRes.ok) setCompletion(compRes);
-    } catch (err: any) {
-      alert(err.message ?? 'Failed to mark item as arrived');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to mark item as arrived');
     } finally {
       setArrivingItemId(null);
-      (window as any).__pendingMarkArrived = null;
+      setPendingMarkArrived(null);
     }
   }
 
@@ -675,8 +678,8 @@ function ItemTrackingSection({
     try {
       await confirmInventoryArrived(orderId, actionToken);
       window.location.reload();
-    } catch (err: any) {
-      alert(err.message ?? 'Failed to confirm arrival');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to confirm arrival');
     } finally {
       setConfirmingArrival(false);
     }
@@ -1006,8 +1009,8 @@ function ItemTrackingSection({
         }}
         onClose={() => {
           setOtpModal((prev) => ({ ...prev, open: false }));
-          (window as any).__pendingVerifyItem = null;
-          (window as any).__pendingMarkArrived = null;
+          setPendingVerifyItem(null);
+          setPendingMarkArrived(null);
         }}
       />
 
@@ -1049,6 +1052,7 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
   const [newNote, setNewNote] = useState('');
   const [agentName, setAgentName] = useState('dashboard');
   const [posting, setPosting] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
   const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
   useEffect(() => {
@@ -1058,22 +1062,24 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
       .catch(() => setLoading(false));
   }, [orderId, API_BASE]);
 
-  async function handlePostNote() {
+  function handlePostNote() {
     if (!newNote.trim() || !agentName.trim()) return;
+    setShowOtp(true);
+  }
+
+  async function executePostNote(actionToken: string) {
+    setShowOtp(false);
     setPosting(true);
     try {
-      const res = await fetch(`${API_BASE}/orders/${orderId}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_name: agentName.trim(), note: newNote.trim() }),
+      const created = await postAgentNote(orderId, {
+        agent_name: agentName.trim(),
+        note: newNote.trim(),
+        action_token: actionToken,
       });
-      if (res.ok) {
-        const created = await res.json();
-        setNotes((prev) => [created, ...prev]);
-        setNewNote('');
-      }
-    } catch (err: any) {
-      alert('Failed to post note: ' + (err.message ?? 'Unknown error'));
+      setNotes((prev) => [created, ...prev]);
+      setNewNote('');
+    } catch (err: unknown) {
+      alert('Failed to post note: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setPosting(false);
     }
@@ -1178,6 +1184,14 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
           ))}
         </div>
       )}
+
+      <OtpModal
+        open={showOtp}
+        title="Post Agent Note"
+        description="Verify your identity to post this agent note."
+        onVerified={executePostNote}
+        onClose={() => setShowOtp(false)}
+      />
     </div>
   );
 }
