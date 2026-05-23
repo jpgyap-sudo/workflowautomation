@@ -257,17 +257,19 @@ app.post('/files/store-binary', async (request, reply) => {
   const mimeType = String(body.mime_type ?? '');
   const originalFilename = String(body.original_filename ?? '');
 
-  if (!orderId || !quotationNumber || !fileData) {
-    return reply.code(400).send({ error: 'order_id, quotation_number, and file_data are required' });
+  if ((!orderId && !quotationNumber) || !fileData) {
+    return reply.code(400).send({ error: 'file_data and at least one of order_id or quotation_number are required' });
   }
 
-  const filePath = getBinaryFilePath(quotationNumber, mimeType, originalFilename);
+  // Use quotation_number if available, fall back to order_id as the file key
+  const fileKey = quotationNumber || orderId;
+  const filePath = getBinaryFilePath(fileKey, mimeType, originalFilename);
   await ensureDir(filePath);
 
   const buffer = Buffer.from(fileData, 'base64');
   await writeFile(filePath, buffer);
 
-  app.log.info(`Stored binary file for ${quotationNumber} at ${filePath} (${buffer.length} bytes)`);
+  app.log.info(`Stored binary file for ${fileKey} at ${filePath} (${buffer.length} bytes)`);
 
   return reply.send({
     ok: true,
@@ -307,6 +309,45 @@ app.get('/files/binary/:quotation_number', async (request, reply) => {
   reply.header('Content-Length', buffer.length);
   reply.header('Cache-Control', 'public, max-age=3600');
   return reply.send(buffer);
+});
+
+/**
+ * GET /files/binary-by-path
+ * Retrieve a stored binary file by its exact filesystem path.
+ * Used by the API download endpoint for per-file retrieval when local_file_path is known.
+ * Query param: path (absolute path on this server)
+ */
+app.get('/files/binary-by-path', async (request, reply) => {
+  const query = request.query || {};
+  const filePath = query.path;
+
+  if (!filePath) {
+    return reply.code(400).send({ error: 'path query parameter is required' });
+  }
+
+  // Security: only allow paths inside DATA_DIR
+  const resolvedPath = filePath;
+  if (!resolvedPath.startsWith(DATA_DIR)) {
+    return reply.code(403).send({ error: 'Access denied' });
+  }
+
+  try {
+    const buffer = await readFile(resolvedPath);
+
+    let mimeType = 'application/octet-stream';
+    if (resolvedPath.endsWith('.pdf')) mimeType = 'application/pdf';
+    else if (resolvedPath.endsWith('.jpg') || resolvedPath.endsWith('.jpeg')) mimeType = 'image/jpeg';
+    else if (resolvedPath.endsWith('.png')) mimeType = 'image/png';
+    else if (resolvedPath.endsWith('.gif')) mimeType = 'image/gif';
+    else if (resolvedPath.endsWith('.webp')) mimeType = 'image/webp';
+
+    reply.header('Content-Type', mimeType);
+    reply.header('Content-Length', buffer.length);
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.send(buffer);
+  } catch (err) {
+    return reply.code(404).send({ error: 'File not found at path' });
+  }
 });
 
 // ── Cleanup Agent ──────────────────────────────────────────────────────

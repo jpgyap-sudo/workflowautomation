@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Order } from '@/lib/api';
 import StageBadge from './StageBadge';
 import Timestamp from './Timestamp';
-import { Pencil, Trash2, FileText } from 'lucide-react';
+import { Pencil, Trash2, FileText, DollarSign } from 'lucide-react';
 
 interface OrderTableProps {
   orders: Order[];
@@ -17,6 +17,7 @@ interface OrderTableProps {
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
+  onRecordDeposit?: (order: Order) => void;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
@@ -52,6 +53,7 @@ export default function OrderTable({
   onEdit,
   onDelete,
   onViewFiles,
+  onRecordDeposit,
   selectable = false,
   selectedIds = new Set(),
   onSelect,
@@ -192,6 +194,15 @@ export default function OrderTable({
                     title="View order files"
                   >
                     <FileText className="h-4 w-4" />
+                  </button>
+                )}
+                {onRecordDeposit && !order.deposit_paid && (
+                  <button
+                    onClick={() => onRecordDeposit(order)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-green-300 px-3 py-2 text-sm text-green-700 hover:bg-green-50"
+                    title="Record deposit"
+                  >
+                    <DollarSign className="h-4 w-4" />
                   </button>
                 )}
                 <Link
@@ -340,6 +351,15 @@ export default function OrderTable({
                           title="View order files"
                         >
                           <FileText className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onRecordDeposit && !order.deposit_paid && (
+                        <button
+                          onClick={() => onRecordDeposit(order)}
+                          className="rounded-lg p-1.5 text-green-600 hover:bg-green-50"
+                          title="Record deposit"
+                        >
+                          <DollarSign className="h-4 w-4" />
                         </button>
                       )}
                       <Link href={`/orders/${order.quotation_number ?? order.id}`} className="text-xs font-medium text-[#2490ef] hover:underline">

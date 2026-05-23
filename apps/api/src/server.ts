@@ -3805,10 +3805,17 @@ app.get('/orders/:order_id/files/:file_id/download', async (request, reply) => {
   );
   if (!fileRows[0]) return reply.code(404).send({ error: 'File not found' });
 
-  const quotationNumber = fileRows[0].quotation_number;
+  const fileRow = fileRows[0];
+  const quotationNumber = fileRow.quotation_number;
+  const localFilePath: string | null = fileRow.local_file_path ?? null;
   const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
   try {
-    const res = await fetch(`${FILE_STORE_URL}/files/binary/${encodeURIComponent(quotationNumber)}`);
+    // Prefer exact path lookup (per-file) over quotation-number lookup (latest only)
+    const url = localFilePath
+      ? `${FILE_STORE_URL}/files/binary-by-path?path=${encodeURIComponent(localFilePath)}`
+      : `${FILE_STORE_URL}/files/binary/${encodeURIComponent(quotationNumber)}`;
+
+    const res = await fetch(url);
     if (!res.ok) return reply.code(404).send({ error: 'File not found in store' });
 
     const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
@@ -4430,8 +4437,9 @@ app.post('/files/upload', async (request, reply) => {
     }
   }
 
-  // Store binary file to file-store for dashboard viewing
-  if (body.file_data && body.quotation_number) {
+  // Store binary file to file-store for dashboard viewing.
+  // Requires at minimum file_data and either order_id or quotation_number.
+  if (body.file_data && (resolvedOrderId || body.quotation_number)) {
     try {
       const res = await fetch(`${FILE_STORE_URL}/files/store-binary`, {
         method: 'POST',

@@ -1,14 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useOrders } from '@/lib/useApi';
 import { STAGE_CONFIG } from '@/lib/api';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder } from '@/lib/api';
+import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDepositWithFile, visionExtract } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { X, Check, Plus, Loader2, Trash2 } from 'lucide-react';
+import { X, Check, Plus, Loader2, Trash2, Upload, Sparkles as SparklesIcon } from 'lucide-react';
 
 function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [qn, setQn] = useState('');
@@ -182,6 +182,93 @@ export default function OrdersPage() {
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Deposit modal state
+  const [depositOrder, setDepositOrder] = useState<Order | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositFile, setDepositFile] = useState<File | null>(null);
+  const [depositRecording, setDepositRecording] = useState(false);
+  const [depositExtracting, setDepositExtracting] = useState(false);
+  const [depositResult, setDepositResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const depositFileRef = useRef<HTMLInputElement>(null);
+
+  async function depositFileToBase64(f: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        const commaIndex = result.indexOf(',');
+        resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(f);
+    });
+  }
+
+  function handleRecordDepositClick(order: Order) {
+    setDepositOrder(order);
+    setDepositAmount('');
+    setDepositFile(null);
+    setDepositResult(null);
+  }
+
+  async function handleDepositExtractAI() {
+    if (!depositFile) return;
+    setDepositExtracting(true);
+    setDepositResult(null);
+    try {
+      const base64 = await depositFileToBase64(depositFile);
+      const res = await visionExtract({ image_base64: base64, mime_type: depositFile.type, mode: 'payment' });
+      if (res.ok && res.payment?.amount) {
+        setDepositAmount(String(res.payment.amount));
+        setDepositResult({ ok: true, message: `AI extracted: ₱${res.payment.amount.toLocaleString()}` });
+      } else {
+        setDepositResult({ ok: false, message: 'AI could not extract amount. Enter manually.' });
+      }
+    } catch (err: any) {
+      setDepositResult({ ok: false, message: err.message ?? 'AI extraction failed' });
+    } finally {
+      setDepositExtracting(false);
+    }
+  }
+
+  async function handleDepositSubmit() {
+    if (!depositOrder) return;
+    const parsed = parseFloat(depositAmount);
+    if (isNaN(parsed) || parsed <= 0) {
+      setDepositResult({ ok: false, message: 'Enter a valid amount.' });
+      return;
+    }
+    setDepositRecording(true);
+    setDepositResult(null);
+    try {
+      let imageBase64: string | undefined;
+      let mimeType: string | undefined;
+      let originalFilename: string | undefined;
+      if (depositFile) {
+        imageBase64 = await depositFileToBase64(depositFile);
+        mimeType = depositFile.type;
+        originalFilename = depositFile.name;
+      }
+      await recordDepositWithFile({
+        quotation_number: depositOrder.quotation_number ?? '',
+        amount: parsed,
+        updated_by: 'dashboard_quick_action',
+        image_base64: imageBase64,
+        mime_type: mimeType,
+        original_filename: originalFilename,
+      });
+      setDepositResult({ ok: true, message: `✅ Deposit of ₱${parsed.toLocaleString()} recorded!` });
+      setTimeout(() => {
+        setDepositOrder(null);
+        mutate();
+      }, 1500);
+    } catch (err: any) {
+      setDepositResult({ ok: false, message: err.message ?? 'Failed to record deposit' });
+    } finally {
+      setDepositRecording(false);
+    }
+  }
 
   // OTP modal state
   const [otpModal, setOtpModal] = useState<{
@@ -387,6 +474,7 @@ export default function OrdersPage() {
           onEdit={handleEdit}
           onDelete={handleDeleteClick}
           onViewFiles={handleViewFiles}
+          onRecordDeposit={handleRecordDepositClick}
           selectable
           selectedIds={selectedIds}
           onSelect={handleSelect}
@@ -447,6 +535,95 @@ export default function OrdersPage() {
           onClose={closeViewer}
           onUploadComplete={refreshFiles}
         />
+      )}
+
+      {/* Deposit Modal */}
+      {depositOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+              <h2 className="text-base font-semibold text-gray-800">
+                Record Deposit — {depositOrder.quotation_number ?? '—'}
+              </h2>
+              <button
+                onClick={() => setDepositOrder(null)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 p-6">
+              {/* File upload */}
+              <div>
+                <label className="text-xs font-medium text-gray-600">Deposit Slip (JPEG/PDF) — optional</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    ref={depositFileRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => setDepositFile(e.target.files?.[0] ?? null)}
+                    className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-blue-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-blue-700 hover:file:bg-blue-200"
+                  />
+                  {depositFile && (
+                    <button
+                      onClick={handleDepositExtractAI}
+                      disabled={depositExtracting}
+                      className="flex items-center gap-1 rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-50"
+                    >
+                      {depositExtracting ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <SparklesIcon className="h-3 w-3" />
+                      )}
+                      AI Extract
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="text-xs font-medium text-gray-600">Amount (₱)</label>
+                <input
+                  type="number"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  placeholder="e.g. 5000"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                />
+              </div>
+
+              {/* Result */}
+              {depositResult && (
+                <p className={`text-xs font-medium ${depositResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+                  {depositResult.message}
+                </p>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setDepositOrder(null)}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDepositSubmit}
+                  disabled={depositRecording || !depositAmount}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                >
+                  {depositRecording ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {depositRecording ? 'Recording...' : 'Record Deposit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

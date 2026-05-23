@@ -704,9 +704,10 @@ async function uploadFileAndRecord(params: {
   quotationNumber?: string | null;
   telegramMessageId?: string;
   uploadedBy?: string;
+  fileType?: string;
 }) {
   const payload: Record<string, unknown> = {
-    file_type: 'quotation',
+    file_type: params.fileType ?? 'quotation',
     original_filename: params.fileName,
     mime_type: params.mimeType,
     file_data: params.imageBase64,
@@ -5367,6 +5368,18 @@ bot.on(['document', 'photo'], async (ctx) => {
               updated_by: from,
             });
 
+            // Save the proof of payment image to the order's files
+            uploadFileAndRecord({
+              chatId,
+              imageBase64,
+              mimeType,
+              fileName: `balance_proof_${quotationNumber}_${Date.now()}.${mimeType.includes('pdf') ? 'pdf' : 'jpg'}`,
+              quotationNumber,
+              telegramMessageId: messageId,
+              uploadedBy: from,
+              fileType: 'balance_proof',
+            }).catch((err: any) => console.error('[balance-proof] Failed to save image:', err));
+
             // Advance stage to delivery_scheduled
             await postJson('/stage-updates', {
               quotation_number: quotationNumber,
@@ -5451,7 +5464,18 @@ bot.on(['document', 'photo'], async (ctx) => {
               const matchData = await matchRes.json();
 
               if (matchData.ok && matchData.matched) {
-                // Deposit recorded successfully
+                // Deposit recorded successfully — save the deposit slip image to the order's files
+                uploadFileAndRecord({
+                  chatId,
+                  imageBase64,
+                  mimeType,
+                  fileName: `deposit_slip_${quotationNumber}_${Date.now()}.${mimeType.includes('pdf') ? 'pdf' : 'jpg'}`,
+                  quotationNumber,
+                  telegramMessageId: messageId,
+                  uploadedBy: from,
+                  fileType: 'deposit',
+                }).catch((err: any) => console.error('[deposit-slip] Failed to save image:', err));
+
                 resetStep(chatId);
 
                 let msg = `✅ *Deposit Recorded!*\n\n`;
