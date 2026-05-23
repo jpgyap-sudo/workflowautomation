@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, ItemCompletion } from '@/lib/api';
-import { updateOrder, deleteOrder, setProduction, getItemCompletion } from '@/lib/api';
+import { updateOrder, deleteOrder, setProduction, getItemCompletion, verifyDeposit } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -11,6 +11,7 @@ import {
   ShoppingCart, Clock, Package,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, List, Truck, CheckCircle,
+  Shield, DollarSign, ShieldAlert, Loader2,
 } from 'lucide-react';
 
 interface OrderRowProps {
@@ -19,9 +20,10 @@ interface OrderRowProps {
   onDelete: (order: Order) => void;
   onStartProduction?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
+  onVerifyDeposit?: (order: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onVerifyDeposit }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
 
@@ -130,6 +132,15 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles }: O
       </button>
       {expanded && (
         <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
+          {onVerifyDeposit && order.deposit_paid && !order.deposit_verified && (
+            <button
+              onClick={() => onVerifyDeposit(order)}
+              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
+            >
+              <Shield className="mr-1 inline-block h-3.5 w-3.5" />
+              Verify Deposit
+            </button>
+          )}
           {onStartProduction && !order.production_started && (
             <button
               onClick={() => onStartProduction(order)}
@@ -271,19 +282,30 @@ function OrderSection({
 export default function PurchasingPage() {
   const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
     useOrdersByStage('purchasing_pending');
+  const { data: depositPendingOrders = [], isLoading: loadingDepositPending, error: errorDepositPending, mutate: mutateDepositPending } =
+    useOrdersByStage('deposit_pending');
+  const { data: depositVerificationOrders = [], isLoading: loadingDepositVerification, error: errorDepositVerification, mutate: mutateDepositVerification } =
+    useOrdersByStage('deposit_verification');
+  const { data: exceptionOrders = [], isLoading: loadingExceptions, error: errorExceptions, mutate: mutateExceptions } =
+    useOrdersByStage('production_exception');
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [verifyingDepositOrder, setVerifyingDepositOrder] = useState<Order | null>(null);
+  const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'setProduction';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'setProduction' | 'verifyDeposit';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
   function refresh() {
     mutatePending();
+    mutateDepositPending();
+    mutateDepositVerification();
+    mutateExceptions();
   }
 
   async function handleEditVerified(actionToken: string) {
@@ -320,6 +342,7 @@ export default function PurchasingPage() {
     if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
     else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
+    else if (otpModal.pendingAction === 'verifyDeposit') handleVerifyDepositVerified(actionToken);
   }
 
   async function handleStartProductionVerified(actionToken: string) {
@@ -332,6 +355,28 @@ export default function PurchasingPage() {
       alert('Failed to start production: ' + (err.message ?? 'Unknown error'));
     } finally {
       (window as any).__pendingStartProductionData = null;
+    }
+  }
+
+  async function handleVerifyDepositVerified(actionToken: string) {
+    if (!verifyingDepositOrder) return;
+    setVerifyingDeposit(true);
+    try {
+      const res = await verifyDeposit(verifyingDepositOrder.id, {
+        verified_by: 'dashboard',
+        action_token: actionToken,
+      });
+      if (res.ok) {
+        alert(`✅ Deposit verified! Advancing to ${res.next_stage?.replace(/_/g, ' ') ?? 'next stage'}.`);
+        setVerifyingDepositOrder(null);
+        refresh();
+      } else {
+        alert('Failed to verify deposit.');
+      }
+    } catch (err: any) {
+      alert('Failed to verify deposit: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setVerifyingDeposit(false);
     }
   }
 
@@ -364,6 +409,13 @@ export default function PurchasingPage() {
     (window as any).__pendingStartProductionData = { orderId: order.id, days };
   }
 
+  function handleVerifyDeposit(order: Order) {
+    setVerifyingDepositOrder(order);
+    setOtpModal({ open: true, title: 'Verify Deposit',
+      description: `You are about to verify the downpayment for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'verifyDeposit' });
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -372,13 +424,74 @@ export default function PurchasingPage() {
           <div>
             <h3 className="text-sm font-semibold text-amber-800">Purchasing Workflow</h3>
             <p className="mt-1 text-xs text-amber-700">
-              Approved quotations waiting for purchasing to begin. Once production starts, the order moves to the{' '}
+              Orders flow through: Downpayment Pending → Deposit Verification → Purchasing → Production.
+              Once production starts, the order moves to the{' '}
               <strong>Production</strong> tab. Once en route is confirmed, the order moves to the{' '}
               <strong>Delivery</strong> tab for balance payment and delivery scheduling.
             </p>
           </div>
         </div>
       </div>
+
+      {/* Downpayment Pending */}
+      <OrderSection
+        icon={<DollarSign className="h-4 w-4 text-pink-500" />}
+        title="Downpayment Pending"
+        count={depositPendingOrders.length}
+        countBg="bg-pink-100" countText="text-pink-700"
+        orders={depositPendingOrders} isLoading={loadingDepositPending} error={errorDepositPending}
+        onRetry={() => mutateDepositPending()}
+        emptyText="No orders awaiting downpayment"
+      >
+        {(order) => (
+          <>
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* Deposit Verification */}
+      <OrderSection
+        icon={<Shield className="h-4 w-4 text-rose-500" />}
+        title="Deposit Verification"
+        count={depositVerificationOrders.length}
+        countBg="bg-rose-100" countText="text-rose-700"
+        orders={depositVerificationOrders} isLoading={loadingDepositVerification} error={errorDepositVerification}
+        onRetry={() => mutateDepositVerification()}
+        emptyText="No orders awaiting deposit verification"
+      >
+        {(order) => (
+          <>
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onVerifyDeposit={handleVerifyDeposit} onViewFiles={handleViewFiles} />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* Production Exception */}
+      <OrderSection
+        icon={<ShieldAlert className="h-4 w-4 text-red-500" />}
+        title="Production Exception"
+        count={exceptionOrders.length}
+        countBg="bg-red-100" countText="text-red-700"
+        orders={exceptionOrders} isLoading={loadingExceptions} error={errorExceptions}
+        onRetry={() => mutateExceptions()}
+        emptyText="No production exceptions"
+      >
+        {(order) => (
+          <>
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProduction={handleStartProduction} onViewFiles={handleViewFiles} />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
 
       {/* Pending Purchasing */}
       <OrderSection
@@ -400,11 +513,20 @@ export default function PurchasingPage() {
         )}
       </OrderSection>
 
+      {/* Verify Deposit loading overlay */}
+      {verifyingDeposit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-white p-6 text-center shadow-xl">
+            <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-rose-500" />
+            <p className="text-sm text-gray-600">Verifying deposit...</p>
+          </div>
+        </div>
+      )}
 
       <OtpModal
         open={otpModal.open} title={otpModal.title} description={otpModal.description}
         onVerified={handleOtpVerified}
-        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; }}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingStartProductionData = null; setVerifyingDepositOrder(null); }}
       />
 
       {deleting && (
