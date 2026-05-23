@@ -4036,3 +4036,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: update lesson index for file upload fixes and action tokens
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a9f9581d76f7386cfe3204eacf62d3b149c96c1b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a9f9581d76f7386cfe3204eacf62d3b149c96c1b
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Updated lesson index to reflect fixes for file upload handling and action token validation.
+
+**Why it broke:**  
+File uploads failed due to missing or malformed action tokens, likely from token expiration or improper token propagation across workflow steps.
+
+**Reusable takeaway:**  
+Always validate and refresh action tokens before file upload operations. Store tokens with explicit expiry checks and regenerate them if stale. Log token state at each workflow transition to catch propagation gaps early.
+
+---
+*Original commit message: docs: update lesson index for file upload fixes and action tokens*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated lesson index to reflect fixes for file upload handling and action token validation.
+
+**Why it broke:**  
+File uploads failed due to missing or malformed action tokens, likely from token expiration or improper token propagation across workflow steps.
+
+**Reusable takeaway:**  
+Always validate and refresh action tokens before file upload operations. Store tokens with explicit expiry checks and regenerate them if stale. Log token state at each workflow transition to catch propagation gaps early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

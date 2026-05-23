@@ -1,4 +1,5 @@
 import { query } from '../db.js';
+import { cacheDeletePattern } from '../cache.js';
 import { completeOrderReminders } from './reminderScheduler.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -290,11 +291,13 @@ export async function advanceStage(
   newStage: string,
   quotationNumber: string,
   remarks?: string,
+  updatedBy?: string | null,
 ): Promise<void> {
+  const actor = updatedBy && updatedBy.trim() ? updatedBy.trim() : 'agent';
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, $2, 'auto_advanced', $3, 'agent')`,
-    [orderId, newStage, remarks ?? `Auto-advanced to ${STAGE_LABELS[newStage] ?? newStage}`],
+     VALUES ($1, $2, 'auto_advanced', $3, $4)`,
+    [orderId, newStage, remarks ?? `Auto-advanced to ${STAGE_LABELS[newStage] ?? newStage}`, actor],
   );
   await query(
     `UPDATE orders SET current_stage = $1, updated_at = NOW() WHERE id = $2`,
@@ -302,6 +305,13 @@ export async function advanceStage(
   );
   // Clear all active reminders for this order since it moved to a new stage
   await completeOrderReminders(orderId);
+
+  // Invalidate caches so dashboard reflects the stage change immediately
+  await cacheDeletePattern('dashboard:*');
+  await cacheDeletePattern('orders:*');
+  await cacheDeletePattern(`order:detail:${quotationNumber}`);
+  await cacheDeletePattern('calendar:*');
+  await cacheDeletePattern('sales:*');
 
   // Notify the stage transition group about this auto-advance
   if (TELEGRAM_BOT_TOKEN && quotationNumber) {

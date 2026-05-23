@@ -426,6 +426,38 @@ async function addProductionLog(
 }
 
 /**
+ * Find the most recent human who triggered a production-related update
+ * for this order (from production logs or stage updates).
+ * Returns null if no human action found.
+ */
+async function findLastHumanTrigger(orderId: string): Promise<string | null> {
+  try {
+    // Check production_update_logs for the most recent human entry
+    const logRows = await query<{ created_by: string }>(
+      `SELECT created_by FROM production_update_logs
+       WHERE order_id = $1 AND log_type = 'user'
+       ORDER BY created_at DESC LIMIT 1`,
+      [orderId]
+    );
+    if (logRows[0]?.created_by) {
+      return logRows[0].created_by;
+    }
+
+    // Fall back to stage_updates where updated_by is not 'agent' or 'system'
+    const stageRows = await query<{ updated_by: string }>(
+      `SELECT updated_by FROM stage_updates
+       WHERE order_id = $1 AND updated_by IS NOT NULL
+         AND updated_by NOT IN ('agent', 'system', 'inventory-agent', 'production-agent', 'delivery-agent', 'collection-agent', 'escalation-agent', 'purchasing-agent', 'quotation-checker')
+       ORDER BY created_at DESC LIMIT 1`,
+      [orderId]
+    );
+    return stageRows[0]?.updated_by ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Check item-level production tracking with process of elimination.
  *
  * Strategy:
@@ -469,8 +501,9 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
       await addProductionLog(null, order.id, `✅ All items production finished (${prodPct}% complete). Auto-advancing order.`, 'agent', AGENT_NAME);
       await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) production finished. Auto-advancing to en_route.`);
 
-      // Advance to en_route
-      await advanceStage(order.id, 'en_route', qn, `All items production finished (${prodPct}% complete)`);
+      // Advance to en_route (attribute to last human who updated production)
+      const lastHuman = await findLastHumanTrigger(order.id);
+      await advanceStage(order.id, 'en_route', qn, `All items production finished (${prodPct}% complete)`, lastHuman);
 
       // Send notification to production group
       const groupChatId = getGroupChatId(AGENT_NAME);
@@ -618,8 +651,9 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
       await addProductionLog(null, order.id, `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_arrived.`, 'agent', AGENT_NAME);
       await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) en route. Auto-advancing to inventory_arrived.`);
 
-      // Advance to inventory_arrived
-      await advanceStage(order.id, 'inventory_arrived', qn, `All items en route (${enRoutePct}% of qty)`);
+      // Advance to inventory_arrived (attribute to last human who updated en-route status)
+      const lastHuman = await findLastHumanTrigger(order.id);
+      await advanceStage(order.id, 'inventory_arrived', qn, `All items en route (${enRoutePct}% of qty)`, lastHuman);
 
       // Send notification to production group
       const groupChatId = getGroupChatId(AGENT_NAME);

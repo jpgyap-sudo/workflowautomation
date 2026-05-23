@@ -493,10 +493,28 @@ const createOrderSchema = z.object({
     name: z.string().min(1),
     quantity: z.number().int().positive(),
   })).optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders', async (request, reply) => {
   const body = createOrderSchema.parse(request.body);
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
+
   const rows = await query(
     `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount, order_confirmed_at)
      VALUES ($1,$2,$3,$4,$5)
@@ -540,6 +558,7 @@ app.post('/orders', async (request, reply) => {
   await notifyManualChange(
     '📝 New order created',
     `Quotation: *${newOrder.quotation_number ?? 'N/A'}*\nClient: *${newOrder.client_name ?? 'Unknown'}*\nSales Agent: ${newOrder.sales_agent ?? '—'}\nAmount: ${newOrder.total_amount != null ? `PHP ${Number(newOrder.total_amount).toLocaleString()}` : '—'}`,
+    userEmail,
   );
 
   // Notify production group directly about the new order
@@ -847,7 +866,8 @@ app.delete('/orders/:id', async (request, reply) => {
   const params = z.object({ id: z.string() }).parse(request.params);
   const body = z.object({ action_token: z.string() }).parse(request.body);
 
-  // Verify action token
+  // Verify action token and extract email
+  let userEmail: string | null = null;
   if (!cacheClient?.isOpen) {
     return reply.status(503).send({ error: 'Action verification unavailable' });
   }
@@ -857,6 +877,10 @@ app.delete('/orders/:id', async (request, reply) => {
     return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
   }
   await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
 
   // Delete related records first
   await query(`DELETE FROM stage_updates WHERE order_id=$1`, [params.id]);
@@ -872,6 +896,7 @@ app.delete('/orders/:id', async (request, reply) => {
   await notifyManualChange(
     `🗑️ Order deleted via dashboard`,
     `Quotation: *${rows[0].quotation_number ?? params.id}*\nClient: ${rows[0].client_name ?? '—'}`,
+    userEmail,
   );
 
   return reply.send({ ok: true, deleted: rows[0] });
