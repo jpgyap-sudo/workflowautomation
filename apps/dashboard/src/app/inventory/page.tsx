@@ -99,7 +99,7 @@ export default function InventoryPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete';
+    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete' | 'bulk-upload' | 'approve-selected' | 'approve-all';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Initialize draft edits when drafts load
@@ -230,18 +230,32 @@ export default function InventoryPage() {
 
   async function handleBulkUpload() {
     if (!bulkFile) return;
+    // Read file first, store in window for later use
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      (window as any).__pendingBulkUpload = {
+        base64: dataUrl.split(',')[1],
+        mime_type: bulkFile.type || 'application/octet-stream',
+        filename: bulkFile.name,
+      };
+      setOtpModal({
+        open: true,
+        title: 'Bulk Upload Inventory',
+        description: `You are about to upload "${bulkFile.name}" for bulk inventory creation. Enter the OTP sent to your email to confirm.`,
+        pendingAction: 'bulk-upload',
+      });
+    };
+    reader.readAsDataURL(bulkFile);
+  }
+
+  async function handleBulkUploadVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkUpload;
+    if (!pending) return;
     setBulkUploading(true);
     setBulkError('');
     try {
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          resolve(dataUrl.split(',')[1]);
-        };
-        reader.readAsDataURL(bulkFile);
-      });
-      const result = await bulkUploadInventory(base64, bulkFile.type || 'application/octet-stream', bulkFile.name);
+      const result = await bulkUploadInventory(pending.base64, pending.mime_type, pending.filename, actionToken);
       mutateDrafts();
       setBulkSuccess(`${result.drafts_created} draft(s) created. Review them before approval.`);
       setBulkFile(null);
@@ -251,6 +265,7 @@ export default function InventoryPage() {
       setBulkError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setBulkUploading(false);
+      (window as any).__pendingBulkUpload = null;
     }
   }
 
@@ -298,12 +313,24 @@ export default function InventoryPage() {
 
   async function handleApproveSelected() {
     if (selectedDrafts.size === 0) return;
+    // Save edits first
+    for (const id of selectedDrafts) {
+      await saveDraftEdit(id);
+    }
+    setOtpModal({
+      open: true,
+      title: 'Approve Selected Drafts',
+      description: `You are about to approve ${selectedDrafts.size} draft(s). Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'approve-selected',
+    });
+  }
+
+  async function handleApproveSelectedVerified(actionToken: string) {
     setApproving(true);
     setDraftError('');
     try {
       for (const id of selectedDrafts) {
-        await saveDraftEdit(id);
-        await approveInventoryDraft(id);
+        await approveInventoryDraft(id, actionToken);
       }
       mutateDrafts();
       mutateItems();
@@ -316,10 +343,19 @@ export default function InventoryPage() {
   }
 
   async function handleApproveAll() {
+    setOtpModal({
+      open: true,
+      title: 'Approve All Drafts',
+      description: `You are about to approve all inventory drafts. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'approve-all',
+    });
+  }
+
+  async function handleApproveAllVerified(actionToken: string) {
     setApproving(true);
     setDraftError('');
     try {
-      await approveAllInventoryDrafts();
+      await approveAllInventoryDrafts(actionToken);
       mutateDrafts();
       mutateItems();
       setSelectedDrafts(new Set());
@@ -409,7 +445,10 @@ export default function InventoryPage() {
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'add') handleAddVerified(actionToken);
     else if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
-    else handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulk-upload') handleBulkUploadVerified(actionToken);
+    else if (otpModal.pendingAction === 'approve-selected') handleApproveSelectedVerified(actionToken);
+    else if (otpModal.pendingAction === 'approve-all') handleApproveAllVerified(actionToken);
   }
 
   function closeModal() {

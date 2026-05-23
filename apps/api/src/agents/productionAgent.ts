@@ -287,6 +287,8 @@ async function checkEnRoute(order: OrderRow): Promise<AgentResult> {
 
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
+      // Send immediate message so the team is prompted now, not just via reminder
+      await sendTelegramMessage(groupChatId, message);
       await upsertProductionReminder(order.id, 'en_route_reminder', groupChatId, message, nextRunMs);
     }
 

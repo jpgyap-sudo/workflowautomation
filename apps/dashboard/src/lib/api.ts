@@ -152,6 +152,7 @@ export async function createOrder(data: {
   client_name?: string;
   sales_agent?: string;
   total_amount?: number;
+  action_token?: string;
 }): Promise<Order> {
   return fetchJson<Order>('/orders', {
     method: 'POST',
@@ -303,7 +304,7 @@ export async function finishProduction(
 
 export async function recalcProductionReminders(
   id: string,
-  data: { estimated_production_days: number }
+  data: { estimated_production_days: number; action_token?: string }
 ): Promise<{ ok: boolean; message: string; midpoint_date: string; finish_date: string }> {
   return fetchJson<{ ok: boolean; message: string; midpoint_date: string; finish_date: string }>(
     `/orders/${encodeURIComponent(id)}/recalc-production-reminders`,
@@ -877,14 +878,14 @@ export async function extractInventoryImage(image_base64: string, mime_type: str
   });
 }
 
-export async function bulkUploadInventory(file_data: string, mime_type: string, original_filename: string): Promise<{
+export async function bulkUploadInventory(file_data: string, mime_type: string, original_filename: string, action_token?: string): Promise<{
   ok: boolean;
   drafts_created: number;
   drafts: InventoryDraft[];
 }> {
   return fetchJson('/inventory/bulk-upload', {
     method: 'POST',
-    body: JSON.stringify({ file_data, mime_type, original_filename }),
+    body: JSON.stringify({ file_data, mime_type, original_filename, action_token }),
   });
 }
 
@@ -908,15 +909,17 @@ export async function updateInventoryDraft(
   });
 }
 
-export async function approveInventoryDraft(id: string): Promise<{ ok: boolean; item: InventoryItem }> {
+export async function approveInventoryDraft(id: string, actionToken?: string): Promise<{ ok: boolean; item: InventoryItem }> {
   return fetchJson<{ ok: boolean; item: InventoryItem }>(`/inventory/drafts/${encodeURIComponent(id)}/approve`, {
     method: 'POST',
+    body: actionToken ? JSON.stringify({ action_token: actionToken }) : undefined,
   });
 }
 
-export async function approveAllInventoryDrafts(): Promise<{ ok: boolean; approved_count: number; items: InventoryItem[] }> {
+export async function approveAllInventoryDrafts(actionToken?: string): Promise<{ ok: boolean; approved_count: number; items: InventoryItem[] }> {
   return fetchJson('/inventory/drafts/approve-all', {
     method: 'POST',
+    body: actionToken ? JSON.stringify({ action_token: actionToken }) : undefined,
   });
 }
 
@@ -958,6 +961,7 @@ export async function reportBug(data: {
   reporter_name?: string;
   reporter_contact?: string;
   order_reference?: string;
+  action_token?: string;
 }): Promise<{ ok: boolean; report: BugReport }> {
   return fetchJson<{ ok: boolean; report: BugReport }>('/bug-reports', {
     method: 'POST',

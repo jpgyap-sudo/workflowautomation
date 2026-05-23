@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bug, Plus, CheckCircle, Clock, AlertCircle, XCircle, RefreshCw, Search, MessageSquare } from 'lucide-react';
 import { getBugReports, reportBug, updateBugReportStatus, type BugReport } from '@/lib/api';
+import OtpModal from '@/components/OtpModal';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -39,13 +40,19 @@ function NewBugModal({
   const [orderReference, setOrderReference] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showOtp, setShowOtp] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !description.trim()) {
       setError('Title and description are required.');
       return;
     }
+    setError('');
+    setShowOtp(true);
+  }
+
+  async function handleVerified(actionToken: string) {
     setSubmitting(true);
     setError('');
     try {
@@ -55,6 +62,7 @@ function NewBugModal({
         reporter_name: reporterName.trim() || undefined,
         reporter_contact: reporterContact.trim() || undefined,
         order_reference: orderReference.trim() || undefined,
+        action_token: actionToken,
       });
       onCreated();
       onClose();

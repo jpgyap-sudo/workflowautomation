@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Order } from '@/lib/api';
 import StageBadge from './StageBadge';
+import Timestamp from './Timestamp';
 import { Pencil, Trash2, FileText } from 'lucide-react';
 
 interface OrderTableProps {
@@ -35,8 +36,8 @@ function StatusPill({ children, className }: { children: ReactNode; className: s
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
+  if (!value) return '\u2014';
+  return <Timestamp value={value} variant="compact" />;
 }
 
 export default function OrderTable({
@@ -175,7 +176,11 @@ export default function OrderTable({
                 )}
                 <div>
                   <dt className="text-gray-400">Created</dt>
-                  <dd className="font-medium text-gray-700">{new Date(order.created_at).toLocaleDateString()}</dd>
+                  <dd className="font-medium text-gray-700"><Timestamp value={order.created_at} variant="compact" /></dd>
+                </div>
+                <div>
+                  <dt className="text-gray-400">Updated</dt>
+                  <dd className="font-medium text-gray-700"><Timestamp value={order.updated_at} variant="relative" /></dd>
                 </div>
               </dl>
 
@@ -248,6 +253,7 @@ export default function OrderTable({
               {showDepositDate && <th className="px-4 py-3">Downpayment Date</th>}
               <th className="px-4 py-3">Math</th>
               <th className="px-4 py-3">Created</th>
+              <th className="px-4 py-3">Updated</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -323,7 +329,8 @@ export default function OrderTable({
                       {order.math_status}
                     </StatusPill>
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500"><Timestamp value={order.created_at} variant="compact" /></td>
+                  <td className="px-4 py-3 text-xs text-gray-500"><Timestamp value={order.updated_at} variant="relative" /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       {onViewFiles && (

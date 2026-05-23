@@ -17,14 +17,20 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [totalAmount, setTotalAmount] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showOtp, setShowOtp] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!qn.trim()) { setError('Quotation number is required.'); return; }
+    setError(null);
+    setShowOtp(true);
+  }
+
+  async function handleVerified(actionToken: string) {
     setSaving(true);
     setError(null);
     try {
-      const data: Parameters<typeof createOrder>[0] = { quotation_number: qn.trim() };
+      const data: Parameters<typeof createOrder>[0] = { quotation_number: qn.trim(), action_token: actionToken };
       if (clientName.trim()) data.client_name = clientName.trim();
       if (salesAgent.trim()) data.sales_agent = salesAgent.trim();
       if (totalAmount.trim()) data.total_amount = parseFloat(totalAmount.replace(/,/g, ''));
@@ -78,6 +84,15 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           </div>
         </form>
       </div>
+      {showOtp && (
+        <OtpModal
+          open={showOtp}
+          title="Create Order"
+          description={`You are about to create a new order "${qn}". Enter the OTP sent to your email to confirm.`}
+          onVerified={handleVerified}
+          onClose={() => setShowOtp(false)}
+        />
+      )}
     </div>
   );
 }

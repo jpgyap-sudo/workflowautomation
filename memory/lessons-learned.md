@@ -4084,3 +4084,74 @@ Always validate and refresh action tokens before file upload operations. Store t
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: advanceStage cache invalidation + human attribution, action tokens on create/delete orders
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d7d798317104b7bcc596fbfa492d27080cb34c98
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** d7d798317104b7bcc596fbfa492d27080cb34c98
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Cache invalidation for `advanceStage` and human attribution logic; action tokens now correctly applied on order creation and deletion.
+
+**Why it broke:**  
+The `advanceStage` function was not invalidating its cache after state changes, causing stale stage data. Human attribution (linking actions to users) was missing or incorrect. Order create/delete operations lacked proper action tokens, breaking downstream audit or permission checks.
+
+**Reusable takeaway:**  
+Always invalidate caches immediately after mutating state in workflow automation logic. Ensure human attribution is explicitly set for all user-triggered actions. Action tokens must be generated and attached at the point of mutation (create/delete), not deferred, to maintain consistency across distributed systems.
+
+---
+*Original commit message: fix: advanceStage cache invalidation + human attribution, action tokens on create/delete orders*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Cache invalidation for `advanceStage` and human attribution logic; action tokens now correctly applied on order creation and deletion.
+
+**Why it broke:**  
+The `advanceStage` function was not invalidating its cache after state changes, causing stale stage data. Human attribution (linking actions to users) was missing or incorrect. Order create/delete operations lacked proper action tokens, breaking downstream audit or permission checks.
+
+**Reusable takeaway:**  
+Always invalidate caches immediately after mutating state in workflow automation logic. Ensure human attribution is explicitly set for all user-triggered actions. Action tokens must be generated and attached at the point of mutation (create/delete), not deferred, to maintain consistency across distributed systems.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Dashboard timestamp display
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When adding timestamps to the quotation dashboard, centralize formatting in apps/dashboard/src/components/Timestamp.tsx with Intl en-SG and Asia/Singapore timezone, then reuse it in OrderTable and order detail lifecycle/stage/file/item/log/note surfaces. npm run build validates timestamp JSX changes; lint currently has unrelated pre-existing errors.
+
+#### Lesson Learned
+
+When adding timestamps to the quotation dashboard, centralize formatting in apps/dashboard/src/components/Timestamp.tsx with Intl en-SG and Asia/Singapore timezone, then reuse it in OrderTable and order detail lifecycle/stage/file/item/log/note surfaces. npm run build validates timestamp JSX changes; lint currently has unrelated pre-existing errors.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

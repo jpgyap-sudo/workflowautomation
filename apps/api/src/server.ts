@@ -909,7 +909,8 @@ app.post('/orders/bulk-delete', async (request, reply) => {
     action_token: z.string(),
   }).parse(request.body);
 
-  // Verify action token once
+  // Verify action token and extract email
+  let userEmail: string | null = null;
   if (!cacheClient?.isOpen) {
     return reply.status(503).send({ error: 'Action verification unavailable' });
   }
@@ -919,6 +920,10 @@ app.post('/orders/bulk-delete', async (request, reply) => {
     return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
   }
   await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
 
   const ids = body.ids;
 
@@ -945,6 +950,7 @@ app.post('/orders/bulk-delete', async (request, reply) => {
   await notifyManualChange(
     `🗑️ ${rows.length} order(s) deleted via dashboard (bulk)`,
     `Deleted: ${names}${more}`,
+    userEmail,
   );
 
   return reply.send({ ok: true, deleted: rows.length });
@@ -1333,31 +1339,32 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   );
   const hasItems = itemRows[0]?.cnt > 0;
 
-  // Create en_route reminder for ALL orders (both legacy and item-level tracking)
-  // The production agent's checkEnRoute/checkItemLevelEnRoute will also upsert this,
-  // but creating it immediately ensures no gap between finish-production and the next agent run.
-  const groupChatId = process.env.PURCHASING_GROUP_CHAT_ID;
-  if (groupChatId) {
-    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
-    const client = rows[0].client_name ?? 'Unknown';
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    await query(
-      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-       VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
-       ON CONFLICT (order_id, stage) DO UPDATE SET
-         group_chat_id=EXCLUDED.group_chat_id,
-         message=EXCLUDED.message,
-         frequency=EXCLUDED.frequency,
-         next_run_at=EXCLUDED.next_run_at,
-         status='active',
-         escalation_level=0,
-         updated_at=NOW()`,
-      [id, groupChatId,
-       `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
-       tomorrow.toISOString()]
-    );
+  // For legacy orders (no items), create an en_route reminder immediately.
+  // For item-level orders, skip this — the production agent's checkItemLevelEnRoute
+  // will send an immediate question and upsert its own reminder.
+  if (!hasItems) {
+    const groupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+    if (groupChatId) {
+      const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+      const client = rows[0].client_name ?? 'Unknown';
+      const nextRun = new Date();
+      nextRun.setHours(nextRun.getHours() + 2); // Remind in 2 hours, not tomorrow
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
+         ON CONFLICT (order_id, stage) DO UPDATE SET
+           group_chat_id=EXCLUDED.group_chat_id,
+           message=EXCLUDED.message,
+           frequency=EXCLUDED.frequency,
+           next_run_at=EXCLUDED.next_run_at,
+           status='active',
+           escalation_level=0,
+           updated_at=NOW()`,
+        [id, groupChatId,
+         `🚚 *En Route Check* — ${ref} (${client})\nProduction is finished. Is the order en route to the client?`,
+         nextRun.toISOString()]
+      );
+    }
   }
 
   // Notify production + inventory agents immediately that production is finished (order is en route)
@@ -1382,7 +1389,8 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n` +
         `Delivery estimated: ${body.delivery_estimated_days} day(s)\n\n` +
-        `Production has been marked as finished via dashboard. Order is now en route.`
+        `Production has been marked as finished. Order is now in <b>En Route</b> stage awaiting dispatch confirmation.\n\n` +
+        `Please confirm when items are sent en route.`
       );
     });
   }
@@ -1393,9 +1401,9 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 });
 
 // ── Confirm En Route ──────────────────────────────────────────────────
-// After production is finished, the bot asks "Is the order en route?"
-// If yes, this endpoint is called with estimated arrival days.
-// The order moves from 'en_route' to 'inventory_arrived'.
+// After production is finished, the order is in 'en_route' stage awaiting
+// dispatch confirmation. When confirmed, this endpoint is called with
+// estimated arrival days. The order moves from 'en_route' to 'inventory_verification'.
 const confirmEnRouteSchema = z.object({
   estimated_arrival_days: z.number().int().positive(),
   updated_by: z.string().optional(),
@@ -2006,11 +2014,28 @@ app.post('/orders/:id/extract-items', async (request, reply) => {
 // When estimated_production_days changes, recalculate midpoint and due reminders
 const recalcProductionRemindersSchema = z.object({
   estimated_production_days: z.number().int().positive(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = recalcProductionRemindersSchema.parse(request.body);
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
 
   const rows = await query(
     `SELECT id, quotation_number, client_name, production_started_at, estimated_production_days
@@ -2081,6 +2106,7 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
   await notifyManualChange(
     'Production reminders recalculated',
     `Quotation: *${ref}*\nClient: *${client}*\nEstimated: ${body.estimated_production_days} day(s)\nMidpoint: ${midpointDate.toISOString().split('T')[0]}\nFinish: ${finishDate.toISOString().split('T')[0]}`,
+    userEmail,
   );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2106,7 +2132,27 @@ const stageUpdateSchema = z.object({
 
 app.post('/stage-updates', async (request, reply) => {
   const body = stageUpdateSchema.parse(request.body);
-  if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
+
+  // Verify action token and extract email for dashboard quick actions
+  let userEmail: string | null = null;
+  if (isDashboardQuickAction(body.updated_by)) {
+    if (!body.action_token) {
+      return reply.status(401).send({ error: 'Action token required for dashboard quick actions' });
+    }
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
+  }
   const orders = await query(`SELECT id, total_amount, deposit_amount, balance_paid, current_stage FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
@@ -2234,6 +2280,7 @@ app.post('/stage-updates', async (request, reply) => {
     await notifyManualChange(
       'Quick Action: Stage updated',
       `Quotation: *${body.quotation_number}*\nStage: ${body.stage}\nStatus: ${body.status}\nRemarks: ${body.remarks ?? '-'}`,
+      userEmail,
     );
   }
 
@@ -5247,7 +5294,24 @@ app.post('/inventory/bulk-upload', async (request, reply) => {
     file_data: z.string(), // base64
     mime_type: z.string(),
     original_filename: z.string(),
+    action_token: z.string(),
   }).parse(request.body);
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
 
   const mimeType = body.mime_type.toLowerCase();
   const drafts: any[] = [];
@@ -5312,6 +5376,7 @@ app.post('/inventory/bulk-upload', async (request, reply) => {
   await notifyManualChange(
     'Inventory bulk upload',
     `File: *${body.original_filename}*\nDrafts created: ${drafts.length}`,
+    userEmail,
   );
 
   await invalidateCache(['inventory:*', '/inventory/drafts']);
@@ -5358,6 +5423,24 @@ app.patch('/inventory/drafts/:id', async (request, reply) => {
 
 app.post('/inventory/drafts/:id/approve', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
+
   const draftRows = await query(`SELECT * FROM inventory_drafts WHERE id=$1 AND status='pending'`, [params.id]);
   if (!draftRows[0]) return reply.code(404).send({ error: 'Draft not found or already processed' });
   const draft = draftRows[0];
@@ -5372,6 +5455,7 @@ app.post('/inventory/drafts/:id/approve', async (request, reply) => {
   await notifyManualChange(
     'Inventory draft approved',
     `Product: *${draft.product_name ?? 'N/A'}*\nQuantity: ${draft.quantity ?? 0}\n${draft.category ? `Category: ${draft.category}` : ''}`,
+    userEmail,
   );
 
   await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
@@ -5379,7 +5463,25 @@ app.post('/inventory/drafts/:id/approve', async (request, reply) => {
   return { ok: true, item: itemRows[0] };
 });
 
-app.post('/inventory/drafts/approve-all', async (_request, reply) => {
+app.post('/inventory/drafts/approve-all', async (request, reply) => {
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
+
   const draftRows = await query(`SELECT * FROM inventory_drafts WHERE status='pending' ORDER BY created_at`);
   const items: any[] = [];
   for (const draft of draftRows) {
@@ -5395,6 +5497,7 @@ app.post('/inventory/drafts/approve-all', async (_request, reply) => {
   await notifyManualChange(
     'All inventory drafts approved',
     `Approved: ${items.length} draft(s)`,
+    userEmail,
   );
 
   await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
@@ -5424,10 +5527,27 @@ const bugReportSchema = z.object({
   reporter_name: z.string().max(200).optional(),
   reporter_contact: z.string().max(200).optional(),
   order_reference: z.string().max(100).optional(),
+  action_token: z.string(),
 });
 
 app.post('/bug-reports', async (request, reply) => {
   const body = bugReportSchema.parse(request.body);
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
 
   const rows = await query(
     `INSERT INTO bug_reports (title, description, source, reporter_name, reporter_contact, order_reference)
@@ -5447,6 +5567,7 @@ app.post('/bug-reports', async (request, reply) => {
   await notifyManualChange(
     '🐛 Bug Report Submitted',
     `Title: *${body.title}*\nSource: ${sourceLabel}${reporterInfo}${orderRef}\n\nDescription:\n${body.description}`,
+    userEmail,
   );
 
   await invalidateCache(['bug-reports:*']);

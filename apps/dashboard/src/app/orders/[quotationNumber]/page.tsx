@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
+import Timestamp from '@/components/Timestamp';
 import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -45,6 +46,22 @@ export default function OrderDetailPage() {
 
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
   const escalation = order.escalation_level ?? 0;
+  const lifecycleTimestamps = [
+    ['Created', order.created_at],
+    ['Last updated', order.updated_at],
+    ['Order confirmed', order.order_confirmed_at],
+    ['Deposit paid', order.deposit_paid_at],
+    ['Deposit verified', order.deposit_verified_at],
+    ['Balance paid', order.balance_paid_at],
+    ['Balance verified', order.balance_verified_at],
+    ['Production started', order.production_started_at],
+    ['Production finished', order.production_finished_at],
+    ['En route confirmed', order.en_route_confirmed_at],
+    ['Inventory verified', order.inventory_verified_at],
+    ['Delivery scheduled', order.delivery_date],
+    ['Delivery exception granted', order.delivery_exception_granted_at],
+    ['Production exception granted', order.production_exception_granted_at],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
 
   return (
     <div className="space-y-6">
@@ -71,7 +88,7 @@ export default function OrderDetailPage() {
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <span className="text-sm text-gray-500">
-                Created {new Date(order.created_at).toLocaleString()}
+                Created <Timestamp value={order.created_at} variant="compact" />
               </span>
               <span className="flex items-center gap-1 text-xs font-medium text-gray-400">
                 <Clock className="h-3.5 w-3.5" />
@@ -120,6 +137,24 @@ export default function OrderDetailPage() {
             {order.total_amount != null ? `₱${Number(order.total_amount).toLocaleString()}` : '—'}
           </p>
         </div>
+      </div>
+
+      {/* Timestamp audit trail */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <Clock className="h-4 w-4" />
+          Timestamps
+        </div>
+        <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {lifecycleTimestamps.map(([label, value]) => (
+            <div key={label} className="rounded-lg bg-gray-50 px-3 py-2">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</dt>
+              <dd className="mt-0.5 text-xs font-medium text-gray-700">
+                <Timestamp value={value} variant="compact" />
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
 
       {/* Delivery Info */}
@@ -328,7 +363,7 @@ export default function OrderDetailPage() {
                       </p>
                       <p className="mt-0.5 text-[10px] text-gray-400">
                         by {stageUpdate.updated_by ?? 'system'} on{' '}
-                        {new Date(stageUpdate.created_at).toLocaleString()}
+                        <Timestamp value={stageUpdate.created_at} variant="compact" />
                       </p>
                     </div>
                   )}
@@ -364,6 +399,9 @@ export default function OrderDetailPage() {
                 <div className="flex-1">
                   <p className="text-sm text-gray-900">{file.original_filename ?? 'Unnamed file'}</p>
                   <p className="text-xs text-gray-400">{file.file_type}</p>
+                  {file.created_at && (
+                    <p className="text-[10px] text-gray-400">Uploaded <Timestamp value={file.created_at} variant="compact" /></p>
+                  )}
                 </div>
               </div>
             ))}
@@ -588,6 +626,7 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                 <th className="py-2 pr-3">En Route</th>
                 {currentStage === 'inventory_verification' && <th className="py-2 pr-3">Verification</th>}
                 <th className="py-2 pr-3">Arrival Est.</th>
+                <th className="py-2 pr-3">Updated</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -656,6 +695,9 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                   <td className="py-2 pr-3 text-gray-600">
                     {item.estimated_arrival_days != null ? `${item.estimated_arrival_days}d` : '—'}
                   </td>
+                  <td className="py-2 pr-3 text-gray-500">
+                    <Timestamp value={item.updated_at} variant="relative" />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -692,7 +734,7 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                 <div className="flex items-center gap-2 text-[10px] text-gray-400">
                   <span className="font-medium text-gray-600">{log.created_by ?? 'system'}</span>
                   {log.item_name && <span className="text-gray-400">· {log.item_name}</span>}
-                  <span className="ml-auto">{new Date(log.created_at).toLocaleString()}</span>
+                  <span className="ml-auto"><Timestamp value={log.created_at} variant="compact" /></span>
                 </div>
                 <p className="mt-0.5 text-xs text-gray-800">{log.note}</p>
               </div>
@@ -841,7 +883,7 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
                   {note.agent_name}
                 </span>
                 <span className="text-[10px] text-gray-400">
-                  {new Date(note.created_at).toLocaleString()}
+                  <Timestamp value={note.created_at} variant="compact" />
                 </span>
               </div>
               <p className="whitespace-pre-wrap text-sm text-gray-800">{note.note}</p>
