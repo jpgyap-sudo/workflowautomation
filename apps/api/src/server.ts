@@ -1379,19 +1379,32 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 
   // Notify production group directly (FIXED: was using PURCHASING_GROUP_CHAT_ID)
   const productionGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
-  if (productionGroupChatId) {
+  if (productionGroupChatId && _TELEGRAM_BOT_TOKEN) {
     const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = rows[0].client_name ?? 'Unknown';
     setImmediate(() => {
-      notifyGroupChat(
-        productionGroupChatId,
-        `✅ <b>Production Finished (Dashboard)</b>\n\n` +
-        `Quotation: <b>${ref}</b>\n` +
-        `Client: ${client}\n` +
-        `Delivery estimated: ${body.delivery_estimated_days} day(s)\n\n` +
-        `Production has been marked as finished. Order is now in <b>En Route</b> stage awaiting dispatch confirmation.\n\n` +
-        `Please confirm when items are sent en route.`
-      );
+      fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: productionGroupChatId,
+          text:
+            `✅ <b>Production Finished (Dashboard)</b>\n\n` +
+            `Quotation: <b>${ref}</b>\n` +
+            `Client: ${client}\n` +
+            `Delivery estimated: ${body.delivery_estimated_days} day(s)\n\n` +
+            `Production has been marked as finished. Order is now in <b>En Route</b> stage awaiting dispatch confirmation.`,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Yes, it\'s en route', callback_data: `en_route:yes:${id}:${ref}` },
+                { text: '❌ Not yet', callback_data: `en_route:no:${id}:${ref}` },
+              ],
+            ],
+          },
+        }),
+      }).catch(() => {});
     });
   }
 
