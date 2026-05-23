@@ -332,11 +332,11 @@ export async function processDueReminders(): Promise<number> {
       const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${itemIdShort}:${orderId}` },
-          { text: `🔄 ${itemName} — In Progress`, callback_data: `reminder:item_prod:in_progress:${itemIdShort}:${orderId}` },
+          { text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: `🔄 ${itemName} — In Progress`, callback_data: `reminder:item_prod:in_progress:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
         [
-          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${itemIdShort}:${orderId}` },
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'item_level_en_route') {
@@ -358,11 +358,11 @@ export async function processDueReminders(): Promise<number> {
       const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: `🚚 ${itemName} — En Route`, callback_data: `reminder:item_en_route:en_route:${itemIdShort}:${orderId}` },
-          { text: `📦 ${itemName} — Arrived`, callback_data: `reminder:item_en_route:arrived:${itemIdShort}:${orderId}` },
+          { text: `🚚 ${itemName} — En Route`, callback_data: `reminder:item_en_route:en_route:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: `📦 ${itemName} — Arrived`, callback_data: `reminder:item_en_route:arrived:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
         [
-          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${itemIdShort}:${orderId}` },
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else {

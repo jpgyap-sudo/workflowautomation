@@ -5547,3 +5547,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: shorten inv_verify callback_data to use 8-char order UUID prefix + quotation number; resolve full UUID via API in h
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2270af9d853960cf29da46b9b54f9a0ef63b35ea
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 2270af9d853960cf29da46b9b54f9a0ef63b35ea
+**Files:** apps/api/src/agents/inventoryAgent.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The `inv_verify` callback data in Telegram inline buttons was shortened from a full UUID (36 chars) to an 8-character prefix + quotation number, resolving a Telegram callback data length limit (64 bytes). The full UUID is now resolved via an API call in the handler.
+
+**Why it broke:**  
+Telegram enforces a 64-byte limit on `callback_data`. The original implementation passed a full UUID, which exceeded this limit, causing silent failures or truncated data.
+
+**Reusable takeaway:**  
+When using Telegram inline buttons, always ensure `callback_data` fits within 64 bytes. Use short, unique identifiers (e.g., truncated UUIDs, numeric IDs) and resolve full data server-side via API or database lookup. This pattern avoids platform constraints while maintaining data integrity.
+
+---
+*Original commit message: fix: shorten inv_verify callback_data to use 8-char order UUID prefix + quotation number; resolve full UUID via API in handler*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `inv_verify` callback data in Telegram inline buttons was shortened from a full UUID (36 chars) to an 8-character prefix + quotation number, resolving a Telegram callback data length limit (64 bytes). The full UUID is now resolved via an API call in the handler.
+
+**Why it broke:**  
+Telegram enforces a 64-byte limit on `callback_data`. The original implementation passed a full UUID, which exceeded this limit, causing silent failures or truncated data.
+
+**Reusable takeaway:**  
+When using Telegram inline buttons, always ensure `callback_data` fits within 64 bytes. Use short, unique identifiers (e.g., truncated UUIDs, numeric IDs) and resolve full data server-side via API or database lookup. This pattern avoids platform constraints while maintaining data integrity.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

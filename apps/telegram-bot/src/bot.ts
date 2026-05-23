@@ -3638,24 +3638,35 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
 //   status = en_route | arrived | not_yet
 
 // Item-level production reminder: user clicked a button
-bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):(.+)$/, async (ctx) => {
+bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
   const itemId = ctx.match[2];
-  const orderId = ctx.match[3];
+  const orderIdPrefix = ctx.match[3];
+  const quotationNumber = ctx.match[4];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `reminder:item_prod:${newStatus}:${itemId}:${orderId}`,
+    content: `reminder:item_prod:${newStatus}:${itemId}:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
     if (!itemId) {
       await ctx.editMessageText('❌ Cannot update: item ID is missing.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Resolve full order UUID from quotation number
+    let orderId: string;
+    try {
+      const orderData = await getOrderByQuotation(quotationNumber);
+      orderId = orderData.id;
+    } catch (_) {
+      await ctx.editMessageText(`❌ Error: Could not resolve order from quotation #${quotationNumber}.`, { parse_mode: 'Markdown' });
       return;
     }
 
@@ -3703,24 +3714,35 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):(.+)$/, a
 });
 
 // Item-level en route reminder: user clicked a button
-bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):(.+)$/, async (ctx) => {
+bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
   const itemId = ctx.match[2];
-  const orderId = ctx.match[3];
+  const orderIdPrefix = ctx.match[3];
+  const quotationNumber = ctx.match[4];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `reminder:item_en_route:${newStatus}:${itemId}:${orderId}`,
+    content: `reminder:item_en_route:${newStatus}:${itemId}:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
     if (!itemId) {
       await ctx.editMessageText('❌ Cannot update: item ID is missing.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Resolve full order UUID from quotation number
+    let orderId: string;
+    try {
+      const orderData = await getOrderByQuotation(quotationNumber);
+      orderId = orderData.id;
+    } catch (_) {
+      await ctx.editMessageText(`❌ Error: Could not resolve order from quotation #${quotationNumber}.`, { parse_mode: 'Markdown' });
       return;
     }
 
