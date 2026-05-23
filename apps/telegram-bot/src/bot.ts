@@ -4674,7 +4674,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
   });
 
   try {
-    // Record the deposit via the existing /deposits endpoint (no Google Drive upload — deposit slips not stored)
+    // Record the deposit via the existing /deposits endpoint
     const depositRes = await fetch(`${apiBaseUrl}/deposits`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4692,6 +4692,30 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       throw new Error(err.error || `HTTP ${depositRes.status}`);
     }
 
+    // Upload the deposit slip image to the file store so it appears in the dashboard file records
+    if (imageBase64) {
+      try {
+        await uploadFileAndRecord({
+          chatId,
+          imageBase64,
+          mimeType: mimeType ?? 'image/jpeg',
+          fileName: fileName ?? `deposit-${quotationNumber}.jpg`,
+          quotationNumber,
+          fileType: 'deposit',
+        });
+      } catch (uploadErr) {
+        // Non-blocking — deposit was already recorded; log the error but don't fail
+        console.error('[deposit] File upload error (non-blocking):', uploadErr);
+        botLog({
+          chatId, userId, username,
+          messageType: 'deposit',
+          content: `deposit_file_upload_error: ${quotationNumber}`,
+          metadata: { quotationNumber, errorMessage: String(uploadErr) },
+          status: 'error',
+        });
+      }
+    }
+
     resetStep(chatId);
 
     botLog({
@@ -4707,6 +4731,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       `✅ *Deposit Recorded Successfully!*\n\n` +
       `📋 Order: *${quotationNumber}*\n` +
       `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+      `📎 Deposit slip saved to order files.\n` +
       `\nProduction can now proceed.`;
 
     await ctx.editMessageText(successMsg, {
@@ -4767,7 +4792,7 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
   });
 
   try {
-    // Record the balance payment via /pay-balance (no Google Drive upload — payment proofs not stored)
+    // Record the balance payment via /pay-balance
     const balanceRes = await fetch(`${apiBaseUrl}/pay-balance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4781,6 +4806,30 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
     if (!balanceRes.ok) {
       const err = await balanceRes.json().catch(() => ({ error: 'Balance API error' }));
       throw new Error(err.error || `HTTP ${balanceRes.status}`);
+    }
+
+    // Upload the payment slip image to the file store so it appears in the dashboard file records
+    if (imageBase64) {
+      try {
+        await uploadFileAndRecord({
+          chatId,
+          imageBase64,
+          mimeType: mimeType ?? 'image/jpeg',
+          fileName: fileName ?? `payment-${quotationNumber}.jpg`,
+          quotationNumber,
+          fileType: 'deposit',
+        });
+      } catch (uploadErr) {
+        // Non-blocking — balance was already recorded
+        console.error('[balance] File upload error (non-blocking):', uploadErr);
+        botLog({
+          chatId, userId, username,
+          messageType: 'balance',
+          content: `balance_file_upload_error: ${quotationNumber}`,
+          metadata: { quotationNumber, errorMessage: String(uploadErr) },
+          status: 'error',
+        });
+      }
     }
 
     resetStep(chatId);
@@ -4798,6 +4847,7 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
       `✅ *Balance Payment Recorded Successfully!*\n\n` +
       `📋 Order: *${quotationNumber}*\n` +
       `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+      `📎 Payment slip saved to order files.\n` +
       `\nDelivery can now proceed.`;
 
     await ctx.editMessageText(successMsg, {
