@@ -5047,3 +5047,45 @@ Automate synchronization of metadata or index files whenever source content chan
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: make verify-deposit and verify-balance endpoints callable from Telegram bot
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4ffb438f96f2311b583e47219eb3f2226a57cf18
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4ffb438f96f2311b583e47219eb3f2226a57cf18
+**Files:** apps/api/src/server.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** The `verify-deposit` and `verify-balance` endpoints were made callable from the Telegram bot.
+
+**Why it broke:** The API server's route definitions or middleware configuration prevented these endpoints from being accessed externally (e.g., via Telegram bot webhooks or API calls). Likely, the endpoints were either missing proper HTTP method handlers, CORS headers, or route registration in the server setup.
+
+**Reusable takeaway:** When exposing API endpoints for external services (like bots), ensure routes are explicitly registered with correct HTTP methods, and that middleware (authentication, CORS, body parsing) does not block external requests. Always test endpoint accessibility from the target client environment.
+
+---
+*Original commit message: fix: make verify-deposit and verify-balance endpoints callable from Telegram bot*
+
+#### Lesson Learned
+
+**What was fixed:** The `verify-deposit` and `verify-balance` endpoints were made callable from the Telegram bot.
+
+**Why it broke:** The API server's route definitions or middleware configuration prevented these endpoints from being accessed externally (e.g., via Telegram bot webhooks or API calls). Likely, the endpoints were either missing proper HTTP method handlers, CORS headers, or route registration in the server setup.
+
+**Reusable takeaway:** When exposing API endpoints for external services (like bots), ensure routes are explicitly registered with correct HTTP methods, and that middleware (authentication, CORS, body parsing) does not block external requests. Always test endpoint accessibility from the target client environment.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
