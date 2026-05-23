@@ -150,13 +150,13 @@ function isDashboardOrigin(updatedBy?: string | null): boolean {
 // so Telegram group chats get notified now, not on the next hourly scheduler tick.
 
 const AGENT_TRIGGER_MAP: Record<string, string[]> = {
-  // New Order → Quotation Checker
-  order_confirmation_received: ['quotation-checker'],
-  // Math Verified → Purchasing
-  math_verified:         ['purchasing-agent'],
-  // Purchasing → Production
-  purchasing_pending:    ['purchasing-agent'],
-  production_pending:    ['purchasing-agent'],
+  // New Order → Quotation Checker + Collection Agent (for deposit notification)
+  order_confirmation_received: ['quotation-checker', 'collection-agent'],
+  // Math Verified → Purchasing + Collection Agent
+  math_verified:         ['purchasing-agent', 'collection-agent'],
+  // Purchasing → Production + Collection Agent
+  purchasing_pending:    ['purchasing-agent', 'collection-agent'],
+  production_pending:    ['purchasing-agent', 'collection-agent'],
   production_confirmed:  ['production-agent'],
   // Production → En Route
   en_route:              ['production-agent', 'inventory-agent'],
