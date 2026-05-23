@@ -2482,7 +2482,7 @@ app.post('/stage-updates', async (request, reply) => {
 const depositSchema = z.object({
   quotation_number: z.string(),
   amount: z.number().positive(),
-  image_url: z.string().optional(),
+  image_url: z.string().optional().nullable(),
   updated_by: z.string().optional(),
   deposit_paid_at: z.string().optional(),
   action_token: z.string().optional(),
@@ -2495,104 +2495,125 @@ const depositSchema = z.object({
  * and creates a stage update for deposit_pending → deposit_paid.
  */
 app.post('/deposits', async (request, reply) => {
-  const body = depositSchema.parse(request.body);
+  try {
+    const body = depositSchema.parse(request.body);
 
-  // Verify action token and extract email
-  let userEmail: string | null = null;
-  if (isDashboardOrigin(body.updated_by)) {
-    if (!cacheClient?.isOpen) {
-      return reply.status(503).send({ error: 'Action verification unavailable' });
+    // Verify action token and extract email
+    let userEmail: string | null = null;
+    if (isDashboardOrigin(body.updated_by)) {
+      if (!cacheClient?.isOpen) {
+        return reply.status(503).send({ error: 'Action verification unavailable' });
+      }
+      const tokenKey = `action_token:${body.action_token}`;
+      const tokenData = await cacheClient.get(tokenKey);
+      if (!tokenData) {
+        return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+      }
+      await cacheClient.del(tokenKey);
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.email ?? null;
     }
-    const tokenKey = `action_token:${body.action_token}`;
-    const tokenData = await cacheClient.get(tokenKey);
-    if (!tokenData) {
-      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+
+    const orders = await query(`SELECT id, current_stage, quotation_number, client_name FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
+    if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+    const orderId = orders[0].id;
+    const quotationNumber = orders[0].quotation_number;
+    const clientName = orders[0].client_name;
+
+    // Update deposit fields.
+    // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
+    // Stage advances to deposit_pending (not production_pending) until deposit is verified.
+    await query(
+      `UPDATE orders SET
+         deposit_paid=TRUE,
+         deposit_verified=FALSE,
+         deposit_amount=$1,
+         deposit_image_url=COALESCE($2, deposit_image_url),
+         deposit_paid_at=COALESCE($4, deposit_paid_at),
+         current_stage=CASE
+           WHEN current_stage IN ('order_confirmation_received', 'math_verified')
+           THEN 'deposit_pending'
+           ELSE current_stage
+         END,
+         updated_at=NOW()
+       WHERE id=$3`,
+      [body.amount, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
+    );
+
+    // Record stage update for deposit_pending → deposit_paid
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
+      [orderId, 'deposit_pending', 'deposit_paid', `Downpayment of ₱${body.amount} recorded`, body.updated_by ?? null]
+    );
+
+    // Complete any deposit reminders for this order
+    await query(
+      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+      [orderId]
+    );
+
+    // Create a deposit_verification reminder — collection agent will remind team to verify the deposit
+    try {
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         SELECT $1, 'deposit_verification', r.group_chat_id,
+                'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
+                'daily', NOW() + INTERVAL '5 minutes', 'active'
+         FROM reminders r
+         WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
+         LIMIT 1
+         ON CONFLICT DO NOTHING`,
+        [orderId]
+      );
+    } catch {
+      // Non-fatal: reminder creation is best-effort
+      console.warn(`[deposits] Failed to create deposit_verification reminder for order ${orderId}`);
     }
-    await cacheClient.del(tokenKey);
-    const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+
+    // Notify collection agent immediately that a deposit needs verification
+    triggerAgentsForStage('deposit_pending', quotationNumber, clientName);
+
+    // Notify collection group immediately — deposit recorded, needs verification
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `💰 <b>Deposit Recorded — Needs Verification</b>\n\n` +
+        `Quotation: <b>${quotationNumber ?? body.quotation_number}</b>\n` +
+        `Client: ${clientName ?? 'N/A'}\n` +
+        `Amount: PHP ${body.amount.toLocaleString()}\n` +
+        `Date: ${body.deposit_paid_at ?? 'now'}\n\n` +
+        `Please verify the deposit on the dashboard.`
+      );
+    });
+
+    // Invalidate caches
+    try {
+      await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+    } catch {
+      // Non-fatal: cache invalidation is best-effort
+      console.warn(`[deposits] Cache invalidation failed for ${body.quotation_number}`);
+    }
+
+    if (isDashboardOrigin(body.updated_by)) {
+      await notifyManualChange(
+        'Quick Action: Downpayment recorded',
+        `Quotation: *${quotationNumber ?? body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nDate: ${body.deposit_paid_at ?? 'now'}`,
+        userEmail,
+      );
+    }
+
+    return reply.send({ ok: true, quotation_number: body.quotation_number, amount: body.amount });
+  } catch (err: any) {
+    console.error('[deposits] Error recording deposit:', err);
+    // Handle Zod validation errors
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    // Handle DB / unexpected errors
+    const message = err?.message ?? 'Unknown error';
+    return reply.status(500).send({ error: `Failed to record deposit: ${message}` });
   }
-
-  const orders = await query(`SELECT id, current_stage, quotation_number, client_name FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
-  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
-
-  const orderId = orders[0].id;
-  const quotationNumber = orders[0].quotation_number;
-  const clientName = orders[0].client_name;
-
-  // Update deposit fields.
-  // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
-  // Stage advances to deposit_pending (not production_pending) until deposit is verified.
-  await query(
-    `UPDATE orders SET
-       deposit_paid=TRUE,
-       deposit_verified=FALSE,
-       deposit_amount=$1,
-       deposit_image_url=COALESCE($2, deposit_image_url),
-       deposit_paid_at=COALESCE($4, deposit_paid_at),
-       current_stage=CASE
-         WHEN current_stage IN ('order_confirmation_received', 'math_verified')
-         THEN 'deposit_pending'
-         ELSE current_stage
-       END,
-       updated_at=NOW()
-     WHERE id=$3`,
-    [body.amount, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
-  );
-
-  // Record stage update for deposit_pending → deposit_paid
-  await query(
-    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-    [orderId, 'deposit_pending', 'deposit_paid', `Downpayment of ₱${body.amount} recorded`, body.updated_by ?? null]
-  );
-
-  // Complete any deposit reminders for this order
-  await query(
-    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
-    [orderId]
-  );
-
-  // Create a deposit_verification reminder — collection agent will remind team to verify the deposit
-  await query(
-    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-     SELECT $1, 'deposit_verification', r.group_chat_id,
-            'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
-            'daily', NOW() + INTERVAL '5 minutes', 'active'
-     FROM reminders r
-     WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
-     LIMIT 1
-     ON CONFLICT DO NOTHING`,
-    [orderId]
-  );
-
-  // Notify collection agent immediately that a deposit needs verification
-  triggerAgentsForStage('deposit_pending', quotationNumber, clientName);
-
-  // Notify collection group immediately — deposit recorded, needs verification
-  setImmediate(() => {
-    notifyGroupChat(
-      COLLECTION_CHAT_ID,
-      `💰 <b>Deposit Recorded — Needs Verification</b>\n\n` +
-      `Quotation: <b>${quotationNumber ?? body.quotation_number}</b>\n` +
-      `Client: ${clientName ?? 'N/A'}\n` +
-      `Amount: PHP ${body.amount.toLocaleString()}\n` +
-      `Date: ${body.deposit_paid_at ?? 'now'}\n\n` +
-      `Please verify the deposit on the dashboard.`
-    );
-  });
-
-  // Invalidate caches
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
-
-  if (isDashboardOrigin(body.updated_by)) {
-    await notifyManualChange(
-      'Quick Action: Downpayment recorded',
-      `Quotation: *${quotationNumber ?? body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nDate: ${body.deposit_paid_at ?? 'now'}`,
-      userEmail,
-    );
-  }
-
-  return reply.send({ ok: true, quotation_number: body.quotation_number, amount: body.amount });
 });
 
 // ── Deposit Slip Matching ────────────────────────────────────────────
@@ -2614,250 +2635,275 @@ const matchDepositSchema = z.object({
   amount: z.number().positive(),
   client_name: z.string().optional(),
   quotation_number: z.string().optional(),
-  image_url: z.string().optional(),
+  image_url: z.string().optional().nullable(),
   deposit_paid_at: z.string().optional(),
 });
 
 app.post('/deposits/match-and-record', async (request, reply) => {
-  const body = matchDepositSchema.parse(request.body);
+  try {
+    const body = matchDepositSchema.parse(request.body);
 
-  // If quotation_number is provided (bot already knows the order), record directly
-  if (body.quotation_number) {
-    const orders = await query(
-      `SELECT id, quotation_number, client_name, total_amount, current_stage
-       FROM orders
-       WHERE quotation_number = $1 AND status = 'active'
-       LIMIT 1`,
-      [body.quotation_number]
-    );
+    // If quotation_number is provided (bot already knows the order), record directly
+    if (body.quotation_number) {
+      const orders = await query(
+        `SELECT id, quotation_number, client_name, total_amount, current_stage
+         FROM orders
+         WHERE quotation_number = $1 AND status = 'active'
+         LIMIT 1`,
+        [body.quotation_number]
+      );
 
-    if (orders.length === 0) {
-      return reply.code(404).send({
-        ok: false,
-        error: `No active order found for quotation "${body.quotation_number}".`,
+      if (orders.length === 0) {
+        return reply.code(404).send({
+          ok: false,
+          error: `No active order found for quotation "${body.quotation_number}".`,
+        });
+      }
+
+      const order = orders[0];
+      const expectedDeposit = order.total_amount != null
+        ? Number(order.total_amount) / 2
+        : null;
+
+      // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
+      await query(
+        `UPDATE orders SET
+           deposit_paid=TRUE,
+           deposit_verified=FALSE,
+           deposit_amount=$1,
+           deposit_image_url=COALESCE($2, deposit_image_url),
+           deposit_paid_at=COALESCE($4, deposit_paid_at),
+           current_stage=CASE
+             WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
+             THEN 'deposit_pending'
+             ELSE current_stage
+           END,
+           updated_at=NOW()
+         WHERE id=$3`,
+        [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
+      );
+
+      await query(
+        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+         VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
+        [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+      );
+
+      // Complete any deposit reminders
+      await query(
+        `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+        [order.id]
+      );
+
+      // Create a deposit_verification reminder (best-effort)
+      try {
+        await query(
+          `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+           SELECT $1, 'deposit_verification', r.group_chat_id,
+                  'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
+                  'daily', NOW() + INTERVAL '5 minutes', 'active'
+           FROM reminders r
+           WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
+           LIMIT 1
+           ON CONFLICT DO NOTHING`,
+          [order.id]
+        );
+      } catch {
+        console.warn(`[match-and-record] Failed to create deposit_verification reminder for order ${order.id}`);
+      }
+
+      // Notify collection agent immediately that a deposit needs verification
+      triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
+
+      try {
+        await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+      } catch {
+        console.warn(`[match-and-record] Cache invalidation failed for ${order.quotation_number}`);
+      }
+
+      return reply.send({
+        ok: true,
+        matched: true,
+        quotation_number: order.quotation_number,
+        client_name: order.client_name,
+        amount: body.amount,
+        expected_deposit: expectedDeposit,
       });
     }
 
-    const order = orders[0];
-    const expectedDeposit = order.total_amount != null
-      ? Number(order.total_amount) / 2
-      : null;
+    // If client_name is provided, find order by client name and record deposit
+    if (body.client_name) {
+      const orders = await query<any>(
+        `SELECT id, quotation_number, client_name, total_amount, current_stage
+         FROM orders
+         WHERE client_name ILIKE $1 AND deposit_paid = FALSE AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [`%${body.client_name}%`]
+      );
 
-    // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
-    await query(
-      `UPDATE orders SET
-         deposit_paid=TRUE,
-         deposit_verified=FALSE,
-         deposit_amount=$1,
-         deposit_image_url=COALESCE($2, deposit_image_url),
-         deposit_paid_at=COALESCE($4, deposit_paid_at),
-         current_stage=CASE
-           WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
-           THEN 'deposit_pending'
-           ELSE current_stage
-         END,
-         updated_at=NOW()
-       WHERE id=$3`,
-      [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
-    );
+      if (orders.length === 0) {
+        return reply.code(404).send({
+          ok: false,
+          error: `No active order found for client "${body.client_name}" without a deposit.`,
+        });
+      }
 
-    await query(
-      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-       VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
-      [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
-    );
+      const order = orders[0];
+      const expectedDeposit = order.total_amount != null
+        ? Number(order.total_amount) / 2
+        : null;
 
-    // Complete any deposit reminders
-    await query(
-      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
-      [order.id]
-    );
+      // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
+      // Stage advances to deposit_pending (not purchasing_pending) until deposit is verified.
+      await query(
+        `UPDATE orders SET
+           deposit_paid=TRUE,
+           deposit_verified=FALSE,
+           deposit_amount=$1,
+           deposit_image_url=COALESCE($2, deposit_image_url),
+           deposit_paid_at=COALESCE($4, deposit_paid_at),
+           current_stage=CASE
+             WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
+             THEN 'deposit_pending'
+             ELSE current_stage
+           END,
+           updated_at=NOW()
+         WHERE id=$3`,
+        [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
+      );
 
-    // Create a deposit_verification reminder
-    await query(
-      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-       SELECT $1, 'deposit_verification', r.group_chat_id,
-              'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
-              'daily', NOW() + INTERVAL '5 minutes', 'active'
-       FROM reminders r
-       WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
-       LIMIT 1
-       ON CONFLICT DO NOTHING`,
-      [order.id]
-    );
+      await query(
+        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+         VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
+        [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+      );
 
-    // Notify collection agent immediately that a deposit needs verification
-    triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
+      // Complete any deposit reminders
+      await query(
+        `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+        [order.id]
+      );
 
-    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+      // Create a deposit_verification reminder — collection agent will remind team to verify (best-effort)
+      try {
+        await query(
+          `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+           SELECT $1, 'deposit_verification', r.group_chat_id,
+                  'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
+                  'daily', NOW() + INTERVAL '5 minutes', 'active'
+           FROM reminders r
+           WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
+           LIMIT 1
+           ON CONFLICT DO NOTHING`,
+          [order.id]
+        );
+      } catch {
+        console.warn(`[match-and-record] Failed to create deposit_verification reminder for order ${order.id}`);
+      }
 
-    return reply.send({
-      ok: true,
-      matched: true,
-      quotation_number: order.quotation_number,
-      client_name: order.client_name,
-      amount: body.amount,
-      expected_deposit: expectedDeposit,
-    });
-  }
+      // Notify collection agent immediately that a deposit needs verification
+      triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
 
-  // If client_name is provided, find order by client name and record deposit
-  if (body.client_name) {
-    const orders = await query<any>(
+      try {
+        await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+      } catch {
+        console.warn(`[match-and-record] Cache invalidation failed for ${order.quotation_number}`);
+      }
+
+      return reply.send({
+        ok: true,
+        matched: true,
+        quotation_number: order.quotation_number,
+        client_name: order.client_name,
+        amount: body.amount,
+        expected_deposit: expectedDeposit,
+      });
+    }
+
+    // No client_name — find candidate orders without deposit
+    const candidates = await query<any>(
       `SELECT id, quotation_number, client_name, total_amount, current_stage
        FROM orders
-       WHERE client_name ILIKE $1 AND deposit_paid = FALSE AND status = 'active'
+       WHERE deposit_paid = FALSE AND status = 'active' AND total_amount IS NOT NULL
        ORDER BY created_at DESC
-       LIMIT 1`,
-      [`%${body.client_name}%`]
+       LIMIT 50`
     );
 
-    if (orders.length === 0) {
-      return reply.code(404).send({
-        ok: false,
-        error: `No active order found for client "${body.client_name}" without a deposit.`,
+    if (candidates.length === 0) {
+      return reply.send({
+        ok: true,
+        matched: false,
+        candidates: [],
+        message: 'No active orders found without a deposit.',
       });
     }
 
-    const order = orders[0];
-    const expectedDeposit = order.total_amount != null
-      ? Number(order.total_amount) / 2
-      : null;
+    // Compute expected deposit (50% of total) and check match with 20-30% tolerance
+    const DISCREPANCY_RANGE = 0.30; // 30% tolerance
+    const depositAmount = body.amount;
 
-    // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
-    // Stage advances to deposit_pending (not purchasing_pending) until deposit is verified.
-    await query(
-      `UPDATE orders SET
-         deposit_paid=TRUE,
-         deposit_verified=FALSE,
-         deposit_amount=$1,
-         deposit_image_url=COALESCE($2, deposit_image_url),
-         deposit_paid_at=COALESCE($4, deposit_paid_at),
-         current_stage=CASE
-           WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
-           THEN 'deposit_pending'
-           ELSE current_stage
-         END,
-         updated_at=NOW()
-       WHERE id=$3`,
-      [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
-    );
+    const scored = candidates
+      .map((o: any) => {
+        const total = Number(o.total_amount);
+        const expectedDeposit = total / 2;
+        const diff = Math.abs(depositAmount - expectedDeposit);
+        const discrepancy = diff / expectedDeposit; // 0.0 = perfect, 1.0 = 100% off
 
-    await query(
-      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-       VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
-      [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
-    );
+        return {
+          id: o.id,
+          quotation_number: o.quotation_number,
+          client_name: o.client_name,
+          total_amount: total,
+          expected_deposit: expectedDeposit,
+          discrepancy,
+          within_range: discrepancy <= DISCREPANCY_RANGE,
+        };
+      })
+      .filter((o: any) => o.within_range)
+      .sort((a: any, b: any) => a.discrepancy - b.discrepancy); // best match first
 
-    // Complete any deposit reminders
-    await query(
-      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
-      [order.id]
-    );
-
-    // Create a deposit_verification reminder — collection agent will remind team to verify
-    await query(
-      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-       SELECT $1, 'deposit_verification', r.group_chat_id,
-              'Deposit has been submitted but not yet verified. Please check if the payment went through and verify.',
-              'daily', NOW() + INTERVAL '5 minutes', 'active'
-       FROM reminders r
-       WHERE r.order_id = $1 AND r.stage = 'deposit_pending' AND r.status = 'completed'
-       LIMIT 1
-       ON CONFLICT DO NOTHING`,
-      [order.id]
-    );
-
-    // Notify collection agent immediately that a deposit needs verification
-    triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
-
-    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
-
-    return reply.send({
-      ok: true,
-      matched: true,
-      quotation_number: order.quotation_number,
-      client_name: order.client_name,
-      amount: body.amount,
-      expected_deposit: expectedDeposit,
-    });
-  }
-
-  // No client_name — find candidate orders without deposit
-  const candidates = await query<any>(
-    `SELECT id, quotation_number, client_name, total_amount, current_stage
-     FROM orders
-     WHERE deposit_paid = FALSE AND status = 'active' AND total_amount IS NOT NULL
-     ORDER BY created_at DESC
-     LIMIT 50`
-  );
-
-  if (candidates.length === 0) {
-    return reply.send({
-      ok: true,
-      matched: false,
-      candidates: [],
-      message: 'No active orders found without a deposit.',
-    });
-  }
-
-  // Compute expected deposit (50% of total) and check match with 20-30% tolerance
-  const DISCREPANCY_RANGE = 0.30; // 30% tolerance
-  const depositAmount = body.amount;
-
-  const scored = candidates
-    .map((o: any) => {
-      const total = Number(o.total_amount);
-      const expectedDeposit = total / 2;
-      const diff = Math.abs(depositAmount - expectedDeposit);
-      const discrepancy = diff / expectedDeposit; // 0.0 = perfect, 1.0 = 100% off
-
-      return {
-        id: o.id,
+    if (scored.length === 0) {
+      // No close match found — return top candidates anyway so user can pick
+      const topCandidates = candidates.slice(0, 5).map((o: any) => ({
         quotation_number: o.quotation_number,
         client_name: o.client_name,
-        total_amount: total,
-        expected_deposit: expectedDeposit,
-        discrepancy,
-        within_range: discrepancy <= DISCREPANCY_RANGE,
-      };
-    })
-    .filter((o: any) => o.within_range)
-    .sort((a: any, b: any) => a.discrepancy - b.discrepancy); // best match first
+        total_amount: Number(o.total_amount),
+        expected_deposit: Number(o.total_amount) / 2,
+      }));
 
-  if (scored.length === 0) {
-    // No close match found — return top candidates anyway so user can pick
-    const topCandidates = candidates.slice(0, 5).map((o: any) => ({
+      return reply.send({
+        ok: true,
+        matched: false,
+        candidates: topCandidates,
+        message: `Deposit amount ₱${depositAmount.toLocaleString()} does not closely match any order. Please specify the client name.`,
+      });
+    }
+
+    // Return best match(es) — top 3 within range
+    const matches = scored.slice(0, 3).map((o: any) => ({
       quotation_number: o.quotation_number,
       client_name: o.client_name,
-      total_amount: Number(o.total_amount),
-      expected_deposit: Number(o.total_amount) / 2,
+      total_amount: o.total_amount,
+      expected_deposit: o.expected_deposit,
+      discrepancy: Math.round(o.discrepancy * 100),
     }));
 
     return reply.send({
       ok: true,
-      matched: false,
-      candidates: topCandidates,
-      message: `Deposit amount ₱${depositAmount.toLocaleString()} does not closely match any order. Please specify the client name.`,
+      matched: true,
+      candidates: matches,
+      deposit_amount: depositAmount,
+      message: `Found ${matches.length} order(s) matching deposit of ₱${depositAmount.toLocaleString()}.`,
     });
+  } catch (err: any) {
+    console.error('[match-and-record] Error:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ ok: false, error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    const message = err?.message ?? 'Unknown error';
+    return reply.status(500).send({ ok: false, error: `Failed to match and record deposit: ${message}` });
   }
-
-  // Return best match(es) — top 3 within range
-  const matches = scored.slice(0, 3).map((o: any) => ({
-    quotation_number: o.quotation_number,
-    client_name: o.client_name,
-    total_amount: o.total_amount,
-    expected_deposit: o.expected_deposit,
-    discrepancy: Math.round(o.discrepancy * 100),
-  }));
-
-  return reply.send({
-    ok: true,
-    matched: true,
-    candidates: matches,
-    deposit_amount: depositAmount,
-    message: `Found ${matches.length} order(s) matching deposit of ₱${depositAmount.toLocaleString()}.`,
-  });
 });
 
 // ── Balance Payment Matching ─────────────────────────────────────────
@@ -2878,126 +2924,135 @@ const matchBalanceSchema = z.object({
 });
 
 app.post('/deposits/match-balance', async (request, reply) => {
-  const body = matchBalanceSchema.parse(request.body);
+  try {
+    const body = matchBalanceSchema.parse(request.body);
 
-  // If client_name is provided, find order by client name and record balance
-  if (body.client_name) {
-    const orders = await query<any>(
-      `SELECT id, quotation_number, client_name, total_amount, deposit_amount, current_stage
-       FROM orders
-       WHERE client_name ILIKE $1 AND deposit_paid = TRUE AND balance_paid = FALSE AND status = 'active'
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [`%${body.client_name}%`]
-    );
+    // If client_name is provided, find order by client name and record balance
+    if (body.client_name) {
+      const orders = await query<any>(
+        `SELECT id, quotation_number, client_name, total_amount, deposit_amount, current_stage
+         FROM orders
+         WHERE client_name ILIKE $1 AND deposit_paid = TRUE AND balance_paid = FALSE AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [`%${body.client_name}%`]
+      );
 
-    if (orders.length === 0) {
-      return reply.code(404).send({
-        ok: false,
-        error: `No active order found for client "${body.client_name}" with deposit paid but balance pending.`,
+      if (orders.length === 0) {
+        return reply.code(404).send({
+          ok: false,
+          error: `No active order found for client "${body.client_name}" with deposit paid but balance pending.`,
+        });
+      }
+
+      const order = orders[0];
+      const totalAmount = Number(order.total_amount ?? 0);
+      const depositAmount = Number(order.deposit_amount ?? 0);
+      const expectedBalance = totalAmount - depositAmount;
+
+      return reply.send({
+        ok: true,
+        matched: true,
+        quotation_number: order.quotation_number,
+        client_name: order.client_name,
+        amount: body.amount,
+        expected_balance: expectedBalance,
+        payment_type: 'balance',
       });
     }
 
-    const order = orders[0];
-    const totalAmount = Number(order.total_amount ?? 0);
-    const depositAmount = Number(order.deposit_amount ?? 0);
-    const expectedBalance = totalAmount - depositAmount;
+    // No client_name — find candidate orders with deposit paid but balance NOT paid
+    const candidates = await query<any>(
+      `SELECT id, quotation_number, client_name, total_amount, deposit_amount, current_stage
+       FROM orders
+       WHERE deposit_paid = TRUE AND balance_paid = FALSE AND status = 'active' AND total_amount IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 50`
+    );
+
+    if (candidates.length === 0) {
+      return reply.send({
+        ok: true,
+        matched: false,
+        candidates: [],
+        message: 'No active orders found with deposit paid but balance pending.',
+      });
+    }
+
+    // Compute expected balance and check match with 30% tolerance
+    const DISCREPANCY_RANGE = 0.30;
+    const paymentAmount = body.amount;
+
+    const scored = candidates
+      .map((o: any) => {
+        const total = Number(o.total_amount);
+        const deposit = Number(o.deposit_amount ?? 0);
+        const expectedBalance = total - deposit;
+        const diff = Math.abs(paymentAmount - expectedBalance);
+        const discrepancy = expectedBalance > 0 ? diff / expectedBalance : 999;
+
+        return {
+          id: o.id,
+          quotation_number: o.quotation_number,
+          client_name: o.client_name,
+          total_amount: total,
+          deposit_amount: deposit,
+          expected_balance: expectedBalance,
+          discrepancy,
+          within_range: discrepancy <= DISCREPANCY_RANGE,
+        };
+      })
+      .filter((o: any) => o.within_range)
+      .sort((a: any, b: any) => a.discrepancy - b.discrepancy);
+
+    if (scored.length === 0) {
+      // No close match found — return top candidates anyway
+      const topCandidates = candidates.slice(0, 5).map((o: any) => {
+        const total = Number(o.total_amount);
+        const deposit = Number(o.deposit_amount ?? 0);
+        return {
+          quotation_number: o.quotation_number,
+          client_name: o.client_name,
+          total_amount: total,
+          deposit_amount: deposit,
+          expected_balance: total - deposit,
+        };
+      });
+
+      return reply.send({
+        ok: true,
+        matched: false,
+        candidates: topCandidates,
+        message: `Payment amount ₱${paymentAmount.toLocaleString()} does not closely match any balance due. Please specify the client name.`,
+      });
+    }
+
+    // Return best match(es) — top 3 within range
+    const matches = scored.slice(0, 3).map((o: any) => ({
+      quotation_number: o.quotation_number,
+      client_name: o.client_name,
+      total_amount: o.total_amount,
+      deposit_amount: o.deposit_amount,
+      expected_balance: o.expected_balance,
+      discrepancy: Math.round(o.discrepancy * 100),
+    }));
 
     return reply.send({
       ok: true,
       matched: true,
-      quotation_number: order.quotation_number,
-      client_name: order.client_name,
-      amount: body.amount,
-      expected_balance: expectedBalance,
+      candidates: matches,
+      payment_amount: paymentAmount,
       payment_type: 'balance',
+      message: `Found ${matches.length} order(s) matching balance payment of ₱${paymentAmount.toLocaleString()}.`,
     });
+  } catch (err: any) {
+    console.error('[match-balance] Error:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ ok: false, error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    const message = err?.message ?? 'Unknown error';
+    return reply.status(500).send({ ok: false, error: `Failed to match balance: ${message}` });
   }
-
-  // No client_name — find candidate orders with deposit paid but balance NOT paid
-  const candidates = await query<any>(
-    `SELECT id, quotation_number, client_name, total_amount, deposit_amount, current_stage
-     FROM orders
-     WHERE deposit_paid = TRUE AND balance_paid = FALSE AND status = 'active' AND total_amount IS NOT NULL
-     ORDER BY created_at DESC
-     LIMIT 50`
-  );
-
-  if (candidates.length === 0) {
-    return reply.send({
-      ok: true,
-      matched: false,
-      candidates: [],
-      message: 'No active orders found with deposit paid but balance pending.',
-    });
-  }
-
-  // Compute expected balance and check match with 30% tolerance
-  const DISCREPANCY_RANGE = 0.30;
-  const paymentAmount = body.amount;
-
-  const scored = candidates
-    .map((o: any) => {
-      const total = Number(o.total_amount);
-      const deposit = Number(o.deposit_amount ?? 0);
-      const expectedBalance = total - deposit;
-      const diff = Math.abs(paymentAmount - expectedBalance);
-      const discrepancy = expectedBalance > 0 ? diff / expectedBalance : 999;
-
-      return {
-        id: o.id,
-        quotation_number: o.quotation_number,
-        client_name: o.client_name,
-        total_amount: total,
-        deposit_amount: deposit,
-        expected_balance: expectedBalance,
-        discrepancy,
-        within_range: discrepancy <= DISCREPANCY_RANGE,
-      };
-    })
-    .filter((o: any) => o.within_range)
-    .sort((a: any, b: any) => a.discrepancy - b.discrepancy);
-
-  if (scored.length === 0) {
-    // No close match found — return top candidates anyway
-    const topCandidates = candidates.slice(0, 5).map((o: any) => {
-      const total = Number(o.total_amount);
-      const deposit = Number(o.deposit_amount ?? 0);
-      return {
-        quotation_number: o.quotation_number,
-        client_name: o.client_name,
-        total_amount: total,
-        deposit_amount: deposit,
-        expected_balance: total - deposit,
-      };
-    });
-
-    return reply.send({
-      ok: true,
-      matched: false,
-      candidates: topCandidates,
-      message: `Payment amount ₱${paymentAmount.toLocaleString()} does not closely match any balance due. Please specify the client name.`,
-    });
-  }
-
-  // Return best match(es) — top 3 within range
-  const matches = scored.slice(0, 3).map((o: any) => ({
-    quotation_number: o.quotation_number,
-    client_name: o.client_name,
-    total_amount: o.total_amount,
-    deposit_amount: o.deposit_amount,
-    expected_balance: o.expected_balance,
-    discrepancy: Math.round(o.discrepancy * 100),
-  }));
-
-  return reply.send({
-    ok: true,
-    matched: true,
-    candidates: matches,
-    payment_amount: paymentAmount,
-    payment_type: 'balance',
-    message: `Found ${matches.length} order(s) matching balance payment of ₱${paymentAmount.toLocaleString()}.`,
-  });
 });
 
 // ── Pay Balance ──────────────────────────────────────────────────────
@@ -3010,140 +3065,157 @@ const payBalanceSchema = z.object({
 });
 
 app.post('/pay-balance', async (request, reply) => {
-  const body = payBalanceSchema.parse(request.body);
+  try {
+    const body = payBalanceSchema.parse(request.body);
 
-  // Verify action token and extract email
-  let userEmail: string | null = null;
-  if (isDashboardOrigin(body.updated_by)) {
-    if (!cacheClient?.isOpen) {
-      return reply.status(503).send({ error: 'Action verification unavailable' });
+    // Verify action token and extract email
+    let userEmail: string | null = null;
+    if (isDashboardOrigin(body.updated_by)) {
+      if (!cacheClient?.isOpen) {
+        return reply.status(503).send({ error: 'Action verification unavailable' });
+      }
+      const tokenKey = `action_token:${body.action_token}`;
+      const tokenData = await cacheClient.get(tokenKey);
+      if (!tokenData) {
+        return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+      }
+      await cacheClient.del(tokenKey);
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.email ?? null;
     }
-    const tokenKey = `action_token:${body.action_token}`;
-    const tokenData = await cacheClient.get(tokenKey);
-    if (!tokenData) {
-      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+
+    const orders = await query(
+      `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid, client_name FROM orders WHERE quotation_number=$1`,
+      [body.quotation_number]
+    );
+    if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+    const order = orders[0];
+    if (order.balance_paid) {
+      return reply.code(400).send({ error: 'Balance already paid for this order' });
     }
-    await cacheClient.del(tokenKey);
-    const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
-  }
 
-  const orders = await query(
-    `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid, client_name FROM orders WHERE quotation_number=$1`,
-    [body.quotation_number]
-  );
-  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+    if (!order.deposit_paid) {
+      return reply.code(400).send({ error: 'Deposit must be paid before balance payment can be processed. Please record the deposit first using /deposit.' });
+    }
 
-  const order = orders[0];
-  if (order.balance_paid) {
-    return reply.code(400).send({ error: 'Balance already paid for this order' });
-  }
+    if (order.total_amount == null) {
+      return reply.code(400).send({ error: 'Total amount not set for this order. Cannot compute balance.' });
+    }
 
-  if (!order.deposit_paid) {
-    return reply.code(400).send({ error: 'Deposit must be paid before balance payment can be processed. Please record the deposit first using /deposit.' });
-  }
+    const totalAmount = Number(order.total_amount);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const expectedBalance = totalAmount - depositAmount;
 
-  if (order.total_amount == null) {
-    return reply.code(400).send({ error: 'Total amount not set for this order. Cannot compute balance.' });
-  }
+    if (body.amount < expectedBalance) {
+      return reply.code(400).send({
+        error: `Insufficient payment. Expected balance: ₱${expectedBalance.toLocaleString()}, received: ₱${body.amount.toLocaleString()}`,
+        expected_balance: expectedBalance,
+        lacking_amount: expectedBalance - body.amount,
+      });
+    }
 
-  const totalAmount = Number(order.total_amount);
-  const depositAmount = Number(order.deposit_amount ?? 0);
-  const expectedBalance = totalAmount - depositAmount;
+    const orderId = order.id;
+    const overpayment = body.amount - expectedBalance;
 
-  if (body.amount < expectedBalance) {
-    return reply.code(400).send({
-      error: `Insufficient payment. Expected balance: ₱${expectedBalance.toLocaleString()}, received: ₱${body.amount.toLocaleString()}`,
-      expected_balance: expectedBalance,
-      lacking_amount: expectedBalance - body.amount,
+    // Update balance fields on the order.
+    // balance_paid=TRUE but balance_verified=FALSE — collection agent will remind team to verify.
+    // Stage does NOT advance to payment_received until balance is verified.
+    await query(
+      `UPDATE orders SET
+         balance_paid=TRUE,
+         balance_verified=FALSE,
+         balance_paid_at=NOW(),
+         current_stage=CASE
+           WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+           THEN 'balance_verification'
+           ELSE current_stage
+         END,
+         updated_at=NOW()
+       WHERE id=$1`,
+      [orderId]
+    );
+
+    // Record stage update — balance paid → balance_verification
+    const remarks = overpayment > 0
+      ? `Balance of ₱${body.amount.toLocaleString()} paid (overpayment of ₱${overpayment.toLocaleString()})`
+      : `Balance of ₱${body.amount.toLocaleString()} paid`;
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
+      [orderId, 'balance_verification', 'balance_paid', remarks, body.updated_by ?? null]
+    );
+
+    // Complete any balance_due reminders for this order
+    await query(
+      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
+      [orderId]
+    );
+
+    // Create a balance_verification reminder — collection agent will remind team to verify the balance payment (best-effort)
+    try {
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         SELECT $1, 'balance_verification', r.group_chat_id,
+                'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
+                'daily', NOW() + INTERVAL '5 minutes', 'active'
+         FROM reminders r
+         WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
+         LIMIT 1
+         ON CONFLICT DO NOTHING`,
+        [orderId]
+      );
+    } catch {
+      console.warn(`[pay-balance] Failed to create balance_verification reminder for order ${orderId}`);
+    }
+
+    // Notify collection agent immediately that balance needs verification
+    triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
+
+    // Notify collection group immediately — balance payment recorded, needs verification
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `💳 <b>Balance Payment Recorded — Needs Verification</b>\n\n` +
+        `Quotation: <b>${body.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Amount paid: PHP ${body.amount.toLocaleString()}\n` +
+        `Expected balance: PHP ${expectedBalance.toLocaleString()}\n` +
+        (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : '') +
+        `Recorded by: ${body.updated_by ?? 'dashboard'}\n\n` +
+        `Please verify the balance payment on the dashboard.`
+      );
     });
+
+    // Invalidate caches
+    try {
+      await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+    } catch {
+      console.warn(`[pay-balance] Cache invalidation failed for ${body.quotation_number}`);
+    }
+
+    if (isDashboardOrigin(body.updated_by)) {
+      await notifyManualChange(
+        'Quick Action: Balance payment recorded',
+        `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nExpected balance: PHP ${expectedBalance.toLocaleString()}\nOverpayment: PHP ${overpayment.toLocaleString()}`,
+        userEmail,
+      );
+    }
+
+    return reply.send({
+      ok: true,
+      quotation_number: body.quotation_number,
+      amount: body.amount,
+      expected_balance: expectedBalance,
+      overpayment: overpayment,
+    });
+  } catch (err: any) {
+    console.error('[pay-balance] Error recording balance payment:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    const message = err?.message ?? 'Unknown error';
+    return reply.status(500).send({ error: `Failed to record balance payment: ${message}` });
   }
-
-  const orderId = order.id;
-  const overpayment = body.amount - expectedBalance;
-
-  // Update balance fields on the order.
-  // balance_paid=TRUE but balance_verified=FALSE — collection agent will remind team to verify.
-  // Stage does NOT advance to payment_received until balance is verified.
-  await query(
-    `UPDATE orders SET
-       balance_paid=TRUE,
-       balance_verified=FALSE,
-       balance_paid_at=NOW(),
-       current_stage=CASE
-         WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
-         THEN 'balance_verification'
-         ELSE current_stage
-       END,
-       updated_at=NOW()
-     WHERE id=$1`,
-    [orderId]
-  );
-
-  // Record stage update — balance paid → balance_verification
-  const remarks = overpayment > 0
-    ? `Balance of ₱${body.amount.toLocaleString()} paid (overpayment of ₱${overpayment.toLocaleString()})`
-    : `Balance of ₱${body.amount.toLocaleString()} paid`;
-  await query(
-    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-    [orderId, 'balance_verification', 'balance_paid', remarks, body.updated_by ?? null]
-  );
-
-  // Complete any balance_due reminders for this order
-  await query(
-    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
-    [orderId]
-  );
-
-  // Create a balance_verification reminder — collection agent will remind team to verify the balance payment
-  await query(
-    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-     SELECT $1, 'balance_verification', r.group_chat_id,
-            'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
-            'daily', NOW() + INTERVAL '5 minutes', 'active'
-     FROM reminders r
-     WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
-     LIMIT 1
-     ON CONFLICT DO NOTHING`,
-    [orderId]
-  );
-
-  // Notify collection agent immediately that balance needs verification
-  triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
-
-  // Notify collection group immediately — balance payment recorded, needs verification
-  setImmediate(() => {
-    notifyGroupChat(
-      COLLECTION_CHAT_ID,
-      `💳 <b>Balance Payment Recorded — Needs Verification</b>\n\n` +
-      `Quotation: <b>${body.quotation_number}</b>\n` +
-      `Client: ${order.client_name ?? 'N/A'}\n` +
-      `Amount paid: PHP ${body.amount.toLocaleString()}\n` +
-      `Expected balance: PHP ${expectedBalance.toLocaleString()}\n` +
-      (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : '') +
-      `Recorded by: ${body.updated_by ?? 'dashboard'}\n\n` +
-      `Please verify the balance payment on the dashboard.`
-    );
-  });
-
-  // Invalidate caches
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
-
-  if (isDashboardOrigin(body.updated_by)) {
-    await notifyManualChange(
-      'Quick Action: Balance payment recorded',
-      `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nExpected balance: PHP ${expectedBalance.toLocaleString()}\nOverpayment: PHP ${overpayment.toLocaleString()}`,
-      userEmail,
-    );
-  }
-
-  return reply.send({
-    ok: true,
-    quotation_number: body.quotation_number,
-    amount: body.amount,
-    expected_balance: expectedBalance,
-    overpayment: overpayment,
-  });
 });
 
 // ── Verify Deposit ──────────────────────────────────────────────────────
