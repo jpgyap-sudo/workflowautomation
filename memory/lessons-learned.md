@@ -5137,3 +5137,51 @@ When maintaining paired or indexed data files (e.g., a summary index and a detai
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: auto-update lesson memory files
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e0aaffb5f5d5dca8d6f670a52bfcebacffba816f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e0aaffb5f5d5dca8d6f670a52bfcebacffba816f
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The commit auto-updates lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) to reflect newly learned engineering lessons.
+
+**Why it broke:**  
+Previously, these memory files were manually updated or not updated at all, causing lessons to become stale, lost, or out of sync with actual project learnings. This led to repeated mistakes and reduced knowledge retention.
+
+**Reusable takeaway:**  
+Automate the capture and versioning of engineering lessons directly within the workflow (e.g., via commit hooks or CI). This ensures lessons are always current, searchable, and tied to the codebase, turning every fix into a permanent, reusable insight.
+
+---
+*Original commit message: chore: auto-update lesson memory files*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The commit auto-updates lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) to reflect newly learned engineering lessons.
+
+**Why it broke:**  
+Previously, these memory files were manually updated or not updated at all, causing lessons to become stale, lost, or out of sync with actual project learnings. This led to repeated mistakes and reduced knowledge retention.
+
+**Reusable takeaway:**  
+Automate the capture and versioning of engineering lessons directly within the workflow (e.g., via commit hooks or CI). This ensures lessons are always current, searchable, and tied to the codebase, turning every fix into a permanent, reusable insight.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
