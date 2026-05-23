@@ -3504,3 +3504,51 @@ When implementing AI-based data extraction, ensure the extraction function expli
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add delivery address fields to PATCH endpoint with reverse client sync, update delivery EditForm, include address i
+
+Date: 2026-05-22
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b73a99f553b9802701c9f86c59cfc4131b31b73d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b73a99f553b9802701c9f86c59cfc4131b31b73d
+**Files:** apps/api/src/agents/deliveryAgent.ts,apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Delivery address fields were missing from the PATCH endpoint, causing address updates to fail silently. The fix adds address fields to the PATCH handler, enables reverse sync from client to server, updates the delivery EditForm to include address inputs, and ensures delivery agent messages contain address data.
+
+**Why it broke:**  
+The PATCH endpoint was not designed to accept address fields, and the client-side EditForm lacked address inputs. Additionally, the reverse sync (client → server) was missing, so even if addresses were entered, they were never transmitted to the backend. Delivery agent messages also omitted address context, breaking downstream workflows.
+
+**Reusable takeaway:**  
+When extending data models (e.g., adding address fields), ensure all CRUD endpoints (especially PATCH) are updated, client forms include the new fields, and all message/notification systems that reference the entity are updated to include the new data. Always verify bidirectional sync (client → server and server → client) when adding fields to an existing API.
+
+---
+*Original commit message: fix: add delivery address fields to PATCH endpoint with reverse client sync, update delivery EditForm, include address in delivery agent messages*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Delivery address fields were missing from the PATCH endpoint, causing address updates to fail silently. The fix adds address fields to the PATCH handler, enables reverse sync from client to server, updates the delivery EditForm to include address inputs, and ensures delivery agent messages contain address data.
+
+**Why it broke:**  
+The PATCH endpoint was not designed to accept address fields, and the client-side EditForm lacked address inputs. Additionally, the reverse sync (client → server) was missing, so even if addresses were entered, they were never transmitted to the backend. Delivery agent messages also omitted address context, breaking downstream workflows.
+
+**Reusable takeaway:**  
+When extending data models (e.g., adding address fields), ensure all CRUD endpoints (especially PATCH) are updated, client forms include the new fields, and all message/notification systems that reference the entity are updated to include the new data. Always verify bidirectional sync (client → server and server → client) when adding fields to an existing API.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

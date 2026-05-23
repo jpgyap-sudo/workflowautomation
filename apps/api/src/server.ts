@@ -944,6 +944,30 @@ app.post('/orders/:id/set-production', async (request, reply) => {
     triggerAgentsForStage('production_confirmed', updatedOrder.quotation_number, updatedOrder.client_name);
   }
 
+  // Notify escalation group about production being started from dashboard
+  if (body.production_started) {
+    await notifyManualChange(
+      'Production started',
+      `Quotation: *${updatedOrder.quotation_number ?? 'N/A'}*\nClient: *${updatedOrder.client_name ?? 'Unknown'}*\nEstimated: ${body.estimated_production_days ?? 'N/A'} day(s)`,
+    );
+  }
+
+  // Notify production group directly
+  if (body.production_started && PRODUCTION_CHAT_ID) {
+    const ref = updatedOrder.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = updatedOrder.client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `🏭 <b>Production Started (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Estimated: ${body.estimated_production_days ?? 'N/A'} day(s)\n\n` +
+        `Production has been started via dashboard. Please proceed.`
+      );
+    });
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${updatedOrder.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: updatedOrder });
@@ -1069,6 +1093,12 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   // Notify production agent immediately about the production status update
   triggerAgentsForStage('production_confirmed', rows[0].quotation_number, rows[0].client_name);
 
+  // Notify escalation group about production status report
+  await notifyManualChange(
+    body.on_time ? 'Production reported on time' : 'Production reported delayed',
+    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nStatus: ${body.on_time ? '✅ On time' : '⚠️ Delayed'}${body.delay_days ? `\nDelay: ${body.delay_days} day(s)` : ''}`,
+  );
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
@@ -1141,6 +1171,28 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   // Notify production + inventory agents immediately that production is finished (order is en route)
   triggerAgentsForStage('en_route', rows[0].quotation_number, rows[0].client_name);
 
+  // Notify escalation group about production finished
+  await notifyManualChange(
+    'Production finished',
+    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nDelivery estimated: ${body.delivery_estimated_days} day(s)`,
+  );
+
+  // Notify production group directly
+  if (groupChatId) {
+    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = rows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        groupChatId,
+        `✅ <b>Production Finished (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Delivery estimated: ${body.delivery_estimated_days} day(s)\n\n` +
+        `Production has been marked as finished via dashboard. Order is now en route.`
+      );
+    });
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
@@ -1182,6 +1234,29 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
 
   // Notify inventory agent immediately that inventory verification is needed
   triggerAgentsForStage('inventory_verification', rows[0].quotation_number, rows[0].client_name);
+
+  // Notify escalation group about en route confirmation
+  await notifyManualChange(
+    'En route confirmed',
+    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nEstimated arrival: ${body.estimated_arrival_days} day(s)`,
+  );
+
+  // Notify production group directly
+  const prodChatId = process.env.PRODUCTION_CHAT_ID;
+  if (prodChatId) {
+    const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = rows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        prodChatId,
+        `🚚 <b>En Route Confirmed (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Estimated arrival: ${body.estimated_arrival_days} day(s)\n\n` +
+        `Order is en route. Inventory verification is now needed.`
+      );
+    });
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1308,6 +1383,27 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
 
   // Fire inventory agent for the new stage
   triggerAgentsForStage('inventory_arrived', orderRows[0].quotation_number, orderRows[0].client_name);
+
+  // Notify escalation group about inventory verification completion
+  await notifyManualChange(
+    'Inventory verification completed',
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Inventory Arrived`,
+  );
+
+  // Notify delivery group directly
+  if (DELIVERY_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `📦 <b>Inventory Verification Complete (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `Inventory verification has been completed via dashboard. Order is now in Inventory Arrived stage.`
+      );
+    });
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1738,6 +1834,11 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
     [body.estimated_production_days, id]
   );
 
+  await notifyManualChange(
+    'Production reminders recalculated',
+    `Quotation: *${ref}*\nClient: *${client}*\nEstimated: ${body.estimated_production_days} day(s)\nMidpoint: ${midpointDate.toISOString().split('T')[0]}\nFinish: ${finishDate.toISOString().split('T')[0]}`,
+  );
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({
@@ -1902,7 +2003,7 @@ app.post('/stage-updates', async (request, reply) => {
       production_pending: PRODUCTION_CHAT_ID,
       production_confirmed: PRODUCTION_CHAT_ID,
       en_route: PRODUCTION_CHAT_ID,
-      inventory_verification: INVENTORY_CHAT_ID,
+      inventory_verification: DELIVERY_CHAT_ID,
       inventory_arrived: DELIVERY_CHAT_ID,
       balance_due: COLLECTION_CHAT_ID,
       delivery_pending: DELIVERY_CHAT_ID,
@@ -2679,6 +2780,12 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     });
   }
 
+  // Notify escalation group about deposit verification
+  await notifyManualChange(
+    'Deposit verified',
+    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${nextStage === 'production_pending' ? 'Production Pending' : nextStage}`,
+  );
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
@@ -2785,6 +2892,12 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     });
   }
 
+  // Notify escalation group about balance verification
+  await notifyManualChange(
+    'Balance verified',
+    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${stageLabel}`,
+  );
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
@@ -2822,6 +2935,26 @@ app.post('/orders/delivery-exception', async (request, reply) => {
      body.granted_by ?? null]
   );
 
+  // Notify escalation group about delivery exception
+  await notifyManualChange(
+    'Delivery exception granted',
+    `Order ID: *${body.order_id.slice(0, 8)}...*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}`,
+  );
+
+  // Notify delivery group directly
+  if (DELIVERY_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `⚠️ <b>Delivery Exception Granted (Dashboard)</b>\n\n` +
+        `Order ID: <b>${body.order_id.slice(0, 8)}...</b>\n` +
+        `Notes: ${body.notes ?? 'None provided'}\n` +
+        `Granted by: ${body.granted_by ?? 'dashboard'}\n\n` +
+        `A delivery exception has been granted via dashboard.`
+      );
+    });
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
   return reply.send({ ok: true, order: rows[0] });
@@ -2849,6 +2982,24 @@ app.post('/orders/revoke-delivery-exception', async (request, reply) => {
      VALUES ($1, $2, $3, $4)`,
     [body.order_id, 'delivery_exception', 'revoked', 'Delivery exception revoked.']
   );
+
+  // Notify escalation group about delivery exception revocation
+  await notifyManualChange(
+    'Delivery exception revoked',
+    `Order ID: *${body.order_id.slice(0, 8)}...*`,
+  );
+
+  // Notify delivery group directly
+  if (DELIVERY_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `✅ <b>Delivery Exception Revoked (Dashboard)</b>\n\n` +
+        `Order ID: <b>${body.order_id.slice(0, 8)}...</b>\n\n` +
+        `The delivery exception has been revoked via dashboard.`
+      );
+    });
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
@@ -2888,6 +3039,25 @@ app.post('/orders/production-exception', async (request, reply) => {
      body.granted_by ?? null]
   );
 
+  await notifyManualChange(
+    'Production exception granted',
+    `Order ID: *${body.order_id.slice(0, 8)}...*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}`,
+  );
+
+  const PRODUCTION_CHAT_ID = process.env.PRODUCTION_CHAT_ID;
+  if (PRODUCTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `⚠️ <b>Production Exception Granted (Dashboard)</b>\n\n` +
+        `Order ID: <b>${body.order_id.slice(0, 8)}...</b>\n` +
+        `Notes: ${body.notes ?? 'None provided'}\n` +
+        `Granted by: ${body.granted_by ?? 'dashboard'}\n\n` +
+        `A production exception has been granted via dashboard.`
+      );
+    });
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
   return reply.send({ ok: true, order: rows[0] });
@@ -2915,6 +3085,23 @@ app.post('/orders/revoke-production-exception', async (request, reply) => {
      VALUES ($1, $2, $3, $4)`,
     [body.order_id, 'production_exception', 'revoked', 'Production exception revoked.']
   );
+
+  await notifyManualChange(
+    'Production exception revoked',
+    `Order ID: *${body.order_id.slice(0, 8)}...*`,
+  );
+
+  const PRODUCTION_CHAT_ID = process.env.PRODUCTION_CHAT_ID;
+  if (PRODUCTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `✅ <b>Production Exception Revoked (Dashboard)</b>\n\n` +
+        `Order ID: <b>${body.order_id.slice(0, 8)}...</b>\n\n` +
+        `The production exception has been revoked via dashboard.`
+      );
+    });
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
@@ -4181,6 +4368,12 @@ app.post('/clients', async (request, reply) => {
       nullableText(body.notes) ?? null,
     ]
   );
+
+  await notifyManualChange(
+    'Client created/updated',
+    `Client: *${body.client_name}*\n${body.delivery_address ? `Address: ${body.delivery_address}\n` : ''}${body.contact_number ? `Contact: ${body.contact_number}` : ''}`,
+  );
+
   await invalidateCache(['clients:*', '/clients', 'dashboard:*']);
   broadcastSSE('client_updated', { id: rows[0].id });
   return reply.send(rows[0]);
@@ -4432,6 +4625,12 @@ app.post('/inventory', async (request, reply) => {
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
     [body.product_name, body.description ?? null, body.dimension ?? null, body.quantity, body.image_url ?? null, body.category ?? null]
   );
+
+  await notifyManualChange(
+    'Inventory item created',
+    `Product: *${body.product_name}*\nQuantity: ${body.quantity}\n${body.category ? `Category: ${body.category}` : ''}`,
+  );
+
   await invalidateCache(['inventory:*', '/inventory']);
   broadcastSSE('inventory_updated', { id: rows[0].id });
   return reply.status(201).send(rows[0]);
@@ -4612,6 +4811,11 @@ app.post('/inventory/bulk-upload', async (request, reply) => {
     return reply.status(400).send({ error: 'Unsupported file type. Please upload CSV, PDF, or image.' });
   }
 
+  await notifyManualChange(
+    'Inventory bulk upload',
+    `File: *${body.original_filename}*\nDrafts created: ${drafts.length}`,
+  );
+
   await invalidateCache(['inventory:*', '/inventory/drafts']);
   broadcastSSE('inventory_drafts_created', { count: drafts.length });
   return { ok: true, drafts_created: drafts.length, drafts };
@@ -4666,6 +4870,12 @@ app.post('/inventory/drafts/:id/approve', async (request, reply) => {
     [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url, draft.category]
   );
   await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [params.id]);
+
+  await notifyManualChange(
+    'Inventory draft approved',
+    `Product: *${draft.product_name ?? 'N/A'}*\nQuantity: ${draft.quantity ?? 0}\n${draft.category ? `Category: ${draft.category}` : ''}`,
+  );
+
   await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
   broadcastSSE('inventory_updated', { id: itemRows[0].id });
   return { ok: true, item: itemRows[0] };
@@ -4683,6 +4893,12 @@ app.post('/inventory/drafts/approve-all', async (_request, reply) => {
     await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [draft.id]);
     items.push(itemRows[0]);
   }
+
+  await notifyManualChange(
+    'All inventory drafts approved',
+    `Approved: ${items.length} draft(s)`,
+  );
+
   await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
   broadcastSSE('inventory_bulk_approved', { count: items.length });
   return { ok: true, approved_count: items.length, items };
