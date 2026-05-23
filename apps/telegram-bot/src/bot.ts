@@ -2852,6 +2852,47 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
   }
 });
 
+// ── advance:production_pending — Advance order to production_pending stage ──
+// Used when deposit is verified and the team confirms the order should proceed
+// to the production workflow stage (not marking physical production as started).
+// Callback: advance:production_pending:{quotationNumber}
+bot.action(/^advance:production_pending:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `advance:production_pending:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(`⏳ Advancing *${quotationNumber}* to Production Workflow...`, { parse_mode: 'Markdown' });
+
+  try {
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'production_pending',
+      status: 'yes',
+      remarks: 'Deposit verified, advancing to production workflow',
+      updated_by: ctx.from?.username ?? String(ctx.from?.id),
+    });
+    await logAction({ chatId, userId, username, label: 'Advanced to Production Workflow', quotationNumber });
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *${quotationNumber}* has been advanced to the Production Workflow stage.\n\nThe production team will be notified to begin work.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(
+      `❌ Error advancing *${quotationNumber}*: ${err.message}`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  }
+});
+
 // ── produce:days — Standard / quick production days selection ────────
 // Callback: produce:days:{days}:{orderIdPrefix}:{quotationNumber}
 bot.action(/^produce:days:(\d+):([^:]*):(.+)$/, async (ctx) => {

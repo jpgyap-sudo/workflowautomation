@@ -35,6 +35,8 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
     quotation_number: order.quotation_number,
     current_stage: order.current_stage,
     days_since_creation: daysSince(order.created_at),
+    deposit_paid: order.deposit_paid,
+    deposit_verified: order.deposit_verified,
     production_started: order.production_started,
     production_started_at: order.production_started_at,
     estimated_production_days: order.estimated_production_days,
@@ -118,6 +120,20 @@ export async function checkPurchasing(order: OrderRow): Promise<AgentResult> {
       return result;
     }
 
+    // Deposit has been verified but production hasn't started → suggest starting production workflow
+    if (order.deposit_verified === true && order.production_started !== true) {
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `💰 Client has already paid downpayment and deposit has been verified. Should we start the production workflow? If yes, proceed to Production Pending stage.`,
+        next_stage: 'production_pending',
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+
+      await logAgentAction('purchasing-agent', input, result, 'needs_review', order.id);
+      return result;
+    }
+
     // production_started is false or null → keep reminding daily
     const result: AgentResult = {
       status: 'needs_review',
@@ -152,16 +168,23 @@ export async function notifyPurchasing(
   const msg = buildAgentMessage('Purchasing Agent', order, result.message, result.escalation_level);
   const qn = order.quotation_number;
 
-  // Show Yes / Partial / No buttons when asking about production start
+  // Show appropriate buttons based on deposit verification status
   const keyboard =
     qn && result.status === 'needs_review' && !order.production_started
-      ? inlineKeyboard([
-          [
-            { text: '✅ Yes, started', callback_data: `produce:yes:${qn}` },
-            { text: '⚠️ Partial', callback_data: `produce:partial:${qn}` },
-          ],
-          [{ text: '⏳ Not yet', callback_data: `produce:no:${qn}` }],
-        ])
+      ? order.deposit_verified === true
+        ? inlineKeyboard([
+            [
+              { text: '✅ Proceed to Production Workflow', callback_data: `advance:production_pending:${qn}` },
+              { text: '⏳ Not yet', callback_data: `produce:no:${qn}` },
+            ],
+          ])
+        : inlineKeyboard([
+            [
+              { text: '✅ Yes, started', callback_data: `produce:yes:${qn}` },
+              { text: '⚠️ Partial', callback_data: `produce:partial:${qn}` },
+            ],
+            [{ text: '⏳ Not yet', callback_data: `produce:no:${qn}` }],
+          ])
       : undefined;
 
   await sendTelegramMessage(groupChatId, msg, keyboard);
