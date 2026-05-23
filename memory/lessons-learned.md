@@ -5375,3 +5375,26 @@ Add an explicit --auto-commit mode to the single-builder deployer: it prints loc
 cross-project, local-fallback
 
 ---
+
+### Lesson: Inventory arrival GUI callbacks
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Inventory-arrived Telegram notifications must include inline Yes/No/Partial callbacks. Use short quotation-number callbacks such as inv_arr, inv_ready, inv_wait to avoid Telegram 64-byte callback_data errors; after item status updates, refetch order items before computing process-of-elimination reminders.
+
+#### Lesson Learned
+
+Inventory-arrived Telegram notifications must include inline Yes/No/Partial callbacks. Use short quotation-number callbacks such as inv_arr, inv_ready, inv_wait to avoid Telegram 64-byte callback_data errors; after item status updates, refetch order items before computing process-of-elimination reminders.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

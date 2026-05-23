@@ -293,6 +293,16 @@ async function postJson(path: string, body: unknown) {
   return res.json();
 }
 
+async function patchJson(path: string, body: unknown) {
+  const res = await fetch(`${apiBaseUrl}${path}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 async function getJson(path: string) {
   const res = await fetch(`${apiBaseUrl}${path}`);
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
@@ -2898,6 +2908,177 @@ bot.action(/^en_route:arrival_custom:(.+):(.+)$/, async (ctx) => {
 
 // ── Inventory Arrived Callback Handlers ──────────────────────────────
 
+function truncateButtonLabel(value: string, max = 38): string {
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+async function getOrderByQuotation(quotationNumber: string): Promise<any> {
+  const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+  if (!orderRes.ok) throw new Error(`Order #${quotationNumber} not found`);
+  return orderRes.json();
+}
+
+async function getOrderItems(orderId: string): Promise<any[]> {
+  const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+  if (!itemsRes.ok) throw new Error(`Unable to load order items (${itemsRes.status})`);
+  const itemsData = await itemsRes.json();
+  return itemsData?.items ?? [];
+}
+
+function inventoryReadyKeyboard(orderId: string, quotationNumber: string) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('Upload Photos', 'menu:upload')],
+    [Markup.button.callback('Ready for Delivery', `inv_ready:${quotationNumber}`)],
+    [Markup.button.callback('Still Waiting', `inv_wait:${quotationNumber}`)],
+  ]);
+}
+
+// Top-level Yes / No / Partial arrival GUI.
+// Partial lists extracted quotation items; each item click marks it arrived, so future reminders
+// only ask about the remaining not-arrived items (process of elimination).
+bot.action(/^inv_arr:(yes|no|partial):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const choice = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inv_arr:${choice}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    const orderData = await getOrderByQuotation(quotationNumber);
+    const orderId = orderData.id;
+    const items = await getOrderItems(orderId);
+    const pendingItems = items.filter((item: any) => item.en_route_status !== 'arrived');
+
+    if (choice === 'no') {
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: null,
+        note: 'Inventory arrival marked: none arrived yet. Reminders remain active.',
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+
+      await ctx.editMessageText(
+        `*Inventory Not Arrived* - ${quotationNumber}\n\nNoted. No items were marked arrived. The bot will keep reminding for this inventory stage.`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('Main Menu', 'menu:main')]]) }
+      );
+      return;
+    }
+
+    if (choice === 'yes') {
+      for (const item of pendingItems) {
+        await patchJson(`/orders/${orderId}/items/${item.id}`, { en_route_status: 'arrived' });
+      }
+
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: null,
+        note: `All inventory items marked arrived via Telegram (${pendingItems.length} updated).`,
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+
+      await ctx.editMessageText(
+        `*All Inventory Arrived* - ${quotationNumber}\n\n${items.length ? `Marked ${items.length} extracted item(s) as arrived.` : 'No extracted item rows were found, but inventory was confirmed as arrived.'}\n\nUpload inventory photos if needed, then confirm delivery readiness.`,
+        { parse_mode: 'Markdown', ...inventoryReadyKeyboard(orderId, quotationNumber) }
+      );
+      return;
+    }
+
+    if (pendingItems.length === 0) {
+      await ctx.editMessageText(
+        `*All Items Already Arrived* - ${quotationNumber}\n\nThere are no remaining extracted items to choose.`,
+        { parse_mode: 'Markdown', ...inventoryReadyKeyboard(orderId, quotationNumber) }
+      );
+      return;
+    }
+
+    const rows = pendingItems.slice(0, 20).map((item: any) => [
+      Markup.button.callback(
+        `${truncateButtonLabel(item.name ?? 'Item')} x${item.quantity ?? 1}`,
+        `item_inventory:arrived:${String(item.id).slice(0, 8)}:${quotationNumber}`
+      ),
+    ]);
+    rows.push([Markup.button.callback('None of these arrived', `inv_arr:no:${quotationNumber}`)]);
+
+    let msg = `*Partial Inventory Arrival* - ${quotationNumber}\n\n`;
+    msg += 'Choose the extracted quotation item(s) that arrived. Each click marks that item arrived; the next reminders will only ask about items still not arrived.\n\n';
+    msg += `Showing ${Math.min(pendingItems.length, 20)}/${pendingItems.length} not-arrived item(s).`;
+
+    await ctx.editMessageText(msg, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(rows),
+    });
+  } catch (err: any) {
+    await ctx.reply(`Error handling inventory arrival: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Short callback variant used by new keyboards to stay below Telegram's 64-byte callback_data limit.
+bot.action(/^inv_ready:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const quotationNumber = ctx.match[1];
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `inv_ready:${quotationNumber}`, direction: 'incoming' });
+
+  try {
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'balance_due',
+      status: 'auto_advanced',
+      remarks: 'Inventory arrived - ready for delivery, balance payment required',
+      updated_by: 'delivery-agent',
+    });
+    await logAction({ chatId, userId, username, label: 'Inventory Ready - Balance Due', quotationNumber });
+
+    const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+    if (INVENTORY_GROUP_CHAT_ID && String(INVENTORY_GROUP_CHAT_ID) !== chatId) {
+      try {
+        await ctx.telegram.sendMessage(
+          INVENTORY_GROUP_CHAT_ID,
+          `<b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\nQuotation: <b>${quotationNumber}</b>\nAll inventory has been confirmed as arrived via Telegram bot.\nOrder is now in Balance Due stage.`,
+          { parse_mode: 'HTML' }
+        );
+      } catch { /* best-effort */ }
+    }
+
+    await ctx.editMessageText(
+      `*Inventory Ready* - ${quotationNumber}\n\nStage advanced to *Balance Due*.\n\nPlease collect the balance payment from the client.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('Pay Balance', `pick:paybalance:${quotationNumber}`)],
+          [Markup.button.callback('Main Menu', 'menu:main')],
+        ]),
+      }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`Error updating order: ${err.message}`, { parse_mode: 'Markdown' });
+  }
+});
+
+bot.action(/^inv_wait:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const quotationNumber = ctx.match[1];
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `inv_wait:${quotationNumber}`, direction: 'incoming' });
+  await logAction({ chatId, userId, username, label: 'Inventory Still Waiting', quotationNumber });
+
+  await ctx.editMessageText(
+    `*Still Waiting* - ${quotationNumber}\n\nNoted. The bot will check again tomorrow. Please update once the inventory is ready for delivery.`,
+    { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('Main Menu', 'menu:main')]]) }
+  );
+});
+
 // User confirmed inventory is ready for delivery → advance to balance_due stage
 bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
@@ -3210,7 +3391,7 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
     const itemId = targetItem.id;
 
     // Update the item's en_route_status via API
-    await postJson(`/orders/${orderId}/items/${itemId}`, {
+    await patchJson(`/orders/${orderId}/items/${itemId}`, {
       en_route_status: newStatus,
     });
 
@@ -3227,19 +3408,18 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       created_by: username ?? `user_${userId}`,
     });
 
-    // Fetch updated completion
-    const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
-    const completion = await completionRes.json();
+    // Refetch items after the update so process-of-elimination uses current status.
+    const updatedItems = await getOrderItems(orderId);
 
     // Calculate inventory % based on quantity
-    const totalQty = items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-    const arrivedQty = items
+    const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const arrivedQty = updatedItems
       .filter((i: any) => i.en_route_status === 'arrived')
       .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
     const inventoryPct = totalQty > 0 ? Math.round((arrivedQty / totalQty) * 100) : 0;
 
     // Find the next item not yet arrived (process of elimination)
-    const notArrivedItem = items.find(
+    const notArrivedItem = updatedItems.find(
       (item: any) => item.en_route_status !== 'arrived'
     );
 
@@ -3265,8 +3445,8 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       );
     } else {
       // Ask about the next not-arrived item (process of elimination)
-      const arrivedCount = items.filter((i: any) => i.en_route_status === 'arrived').length;
-      const totalCount = items.length;
+      const arrivedCount = updatedItems.filter((i: any) => i.en_route_status === 'arrived').length;
+      const totalCount = updatedItems.length;
 
       const progressBar = '█'.repeat(Math.round(inventoryPct / 10)) + '░'.repeat(10 - Math.round(inventoryPct / 10));
 

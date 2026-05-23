@@ -454,8 +454,8 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
 
         const keyboard = inlineKeyboard([
           [
-            { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${order.id}:${qn}` },
-            { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${order.id}:${qn}` },
+            { text: '✅ Ready for Delivery', callback_data: `inv_ready:${qn}` },
+            { text: '⏳ Still Waiting', callback_data: `inv_wait:${qn}` },
           ],
         ]);
 
@@ -648,6 +648,21 @@ async function getOrderFiles(orderId: string, fileType: string): Promise<any[]> 
   );
 }
 
+function inventoryArrivalKeyboard(order: OrderRow): Record<string, unknown> | undefined {
+  if (order.current_stage !== 'inventory_arrived') return undefined;
+
+  const qn = order.quotation_number ?? order.id.slice(0, 8);
+  return inlineKeyboard([
+    [
+      { text: 'Yes, all arrived', callback_data: `inv_arr:yes:${qn}` },
+      { text: 'No', callback_data: `inv_arr:no:${qn}` },
+    ],
+    [
+      { text: 'Partial - choose items', callback_data: `inv_arr:partial:${qn}` },
+    ],
+  ]);
+}
+
 export async function notifyInventory(
   groupChatId: string,
   order: OrderRow,
@@ -659,5 +674,5 @@ export async function notifyInventory(
     result.message,
     result.escalation_level,
   );
-  await sendTelegramMessage(groupChatId, msg);
+  await sendTelegramMessage(groupChatId, msg, inventoryArrivalKeyboard(order));
 }

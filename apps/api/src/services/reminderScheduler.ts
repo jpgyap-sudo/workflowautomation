@@ -259,11 +259,14 @@ export async function processDueReminders(): Promise<number> {
         ],
       ]);
     } else if (reminder.stage === 'inventory_arrived') {
-      // Inventory arrived: ask if ready for delivery / balance payment
+      // Inventory arrival: ask for all / none / partial so item reminders can eliminate arrived items.
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${orderId}:${quotationNumber}` },
-          { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${orderId}:${quotationNumber}` },
+          { text: 'Yes, all arrived', callback_data: `inv_arr:yes:${quotationNumber}` },
+          { text: 'No', callback_data: `inv_arr:no:${quotationNumber}` },
+        ],
+        [
+          { text: 'Partial - choose items', callback_data: `inv_arr:partial:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'balance_due') {
