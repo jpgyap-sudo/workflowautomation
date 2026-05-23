@@ -199,6 +199,50 @@ bot.use(async (ctx, next) => {
   return ctxStore.run(ctx, next);
 });
 
+// ── Confirmation Passcode Middleware ─────────────────────────────────────
+// Intercepts callback queries for consequential actions and asks the user
+// to type the confirmation code (888) before the action executes.
+// This prevents accidental clicks on GUI buttons that trigger API calls.
+bot.use(async (ctx, next) => {
+  if (!ctx.callbackQuery) return next();
+  const cq = ctx.callbackQuery as any;
+  if (!cq.data) return next();
+
+  const callbackData: string = cq.data;
+  const chatId = String(ctx.chat?.id ?? '');
+
+  // Skip non-consequential actions (navigation, cancel, etc.)
+  const isConsequential = CONSEQUENTIAL_PREFIXES.some((prefix) => callbackData.startsWith(prefix));
+  if (!isConsequential) return next();
+
+  // Skip if this is a re-dispatch from the confirmation handler
+  // (the key was added to confirmedCallbacks before handleUpdate was called)
+  const confirmKey = `${callbackData}:${chatId}`;
+  if (confirmedCallbacks.has(confirmKey)) {
+    // Clean up immediately so subsequent clicks still require confirmation
+    confirmedCallbacks.delete(confirmKey);
+    return next();
+  }
+
+  // Store the pending action and ask for confirmation
+  const messageId = ctx.callbackQuery.message?.message_id;
+  const originalText = (ctx.callbackQuery.message as any)?.text ?? (ctx.callbackQuery.message as any)?.caption ?? '';
+  const chatInstance = (cq as any).chat_instance ?? '';
+
+  setStep(chatId, {
+    action: 'awaiting_confirmation',
+    callbackData,
+    messageId: messageId ?? 0,
+    originalText,
+    chatInstance,
+  });
+
+  await ctx.editMessageText(
+    `${originalText}\n\n⚠️ *Confirm Action*\n\nType \`${CONFIRMATION_CODE}\` to confirm this action, or type anything else to cancel.`,
+    { parse_mode: 'Markdown' }
+  ).catch(() => {});
+});
+
 // ── Bot Logger ─────────────────────────────────────────────────────────
 
 async function botLog(params: {
@@ -466,8 +510,29 @@ function formatClientInfo(client: any): string {
 
 // ── State Machine ──────────────────────────────────────────────────────
 
+// ── Confirmation Passcode Guard ──────────────────────────────────────────
+// Before executing any consequential action (stage update, production, payment, etc.),
+// the bot asks the user to type this code to confirm. This prevents accidental clicks.
+const CONFIRMATION_CODE = '888';
+
+// Callback data prefixes that require confirmation before executing.
+// These are actions that trigger API calls with real consequences.
+const CONSEQUENTIAL_PREFIXES = [
+  'produce:', 'payment:', 'production:', 'deposit:', 'balance:', 'delivery:',
+  'en_route:', 'inv_arr:', 'inv_ready:', 'inv_wait:', 'inventory:',
+  'item_prod:', 'item_en_route:', 'item_arr:', 'item_inventory:',
+  'verify:', 'assistant:mark_produced', 'assistant:en_route',
+  'reminder:', 'deposit:start_production',
+];
+
+// Set of recently-confirmed callback keys (format: "callbackData:chatId").
+// When the user types 888, the key is added here before re-dispatching,
+// and the confirmation middleware skips it. Entries are cleaned up after 5s.
+const confirmedCallbacks = new Set<string>();
+
 type UserStep =
   | { action: 'idle' }
+  | { action: 'awaiting_confirmation'; callbackData: string; messageId: number; originalText: string; chatInstance?: string }
   | { action: 'awaiting_order_number_for_status' }
   | { action: 'awaiting_order_number_for_produce'; status: string }
   | { action: 'awaiting_produce_status'; quotationNumber: string }
@@ -1404,6 +1469,54 @@ bot.on(message('text'), async (ctx) => {
   }
 
   switch (session.step.action) {
+    // ── Confirmation Passcode ───────────────────────────────────────
+    // When a user clicks a consequential button, the middleware asks them
+    // to type 888 to confirm. This handler processes that confirmation.
+    case 'awaiting_confirmation': {
+      const { callbackData, messageId, originalText, chatInstance } = session.step;
+
+      if (text === CONFIRMATION_CODE) {
+        // Confirmed — re-dispatch the original callback
+        resetStep(chatId);
+
+        // Add to confirmed set so the middleware skips this re-dispatch
+        const confirmKey = `${callbackData}:${chatId}`;
+        confirmedCallbacks.add(confirmKey);
+
+        // Build a synthetic callback query update to re-trigger the original handler
+        const syntheticUpdate: any = {
+          update_id: Date.now(),
+          callback_query: {
+            id: `confirm_${Date.now()}`,
+            from: ctx.from,
+            message: {
+              message_id: messageId,
+              chat: ctx.chat,
+              date: Math.floor(Date.now() / 1000),
+              text: originalText,
+            },
+            chat_instance: chatInstance,
+            data: callbackData,
+          },
+        };
+
+        bot.handleUpdate(syntheticUpdate).catch((err) => {
+          console.error('[bot] Error re-dispatching confirmed callback:', err);
+        });
+      } else {
+        // Cancelled — restore the original message
+        resetStep(chatId);
+        await ctx.reply('❌ Action cancelled.', { parse_mode: 'Markdown' }).catch(() => {});
+        // Try to restore the original message text
+        try {
+          await ctx.telegram.editMessageText(chatId, messageId, undefined, originalText, { parse_mode: 'Markdown' });
+        } catch {
+          // Ignore if message can't be restored
+        }
+      }
+      return;
+    }
+
     // ── Check Status ────────────────────────────────────────────────
     case 'awaiting_order_number_for_status': {
       const quotationNumber = text;
