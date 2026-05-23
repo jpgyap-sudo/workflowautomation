@@ -487,6 +487,29 @@ app.post('/orders', async (request, reply) => {
   const newOrder = rows[0];
   triggerAgentsForStage('order_confirmation_received', newOrder.quotation_number, newOrder.client_name);
 
+  // Notify escalation group about new order created from dashboard
+  await notifyManualChange(
+    '📝 New order created',
+    `Quotation: *${newOrder.quotation_number ?? 'N/A'}*\nClient: *${newOrder.client_name ?? 'Unknown'}*\nSales Agent: ${newOrder.sales_agent ?? '—'}\nAmount: ${newOrder.total_amount != null ? `PHP ${Number(newOrder.total_amount).toLocaleString()}` : '—'}`,
+  );
+
+  // Notify production group directly about the new order
+  if (PRODUCTION_CHAT_ID) {
+    const ref = newOrder.quotation_number ?? `Order #${newOrder.id.slice(0, 8)}`;
+    const client = newOrder.client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `📋 <b>New Order Created (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Sales Agent: ${newOrder.sales_agent ?? '—'}\n` +
+        `Amount: ${newOrder.total_amount != null ? `PHP ${Number(newOrder.total_amount).toLocaleString()}` : '—'}\n\n` +
+        `A new order has been created via dashboard. Please review and proceed.`
+      );
+    });
+  }
+
   return reply.send(newOrder);
 });
 
