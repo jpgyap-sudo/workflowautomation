@@ -24,6 +24,7 @@ RUN apk add --no-cache docker-cli postgresql16-client curl
 ENV NODE_ENV=production
 
 # Copy node_modules from builder (tsx is in dependencies, so --omit=dev keeps it)
+COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/src ./src
