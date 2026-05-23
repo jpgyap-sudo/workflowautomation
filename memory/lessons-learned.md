@@ -6096,3 +6096,45 @@ Always align notification triggers with the *first actionable event* in a workfl
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] refactor: update bot production flow - remove manual finish from bot, add remaining days prompt at midpoint check, updat
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3f4268cac6215db666c50224ff23cc933cd6646d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3f4268cac6215db666c50224ff23cc933cd6646d
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** The bot's production flow was updated to remove a manual "finish" step, add a "remaining days" prompt at the midpoint check, and update the recalculation endpoint to accept `remaining_production_days`.
+
+**Why it broke:** The original flow required manual intervention to finish production, causing delays and inconsistency. The midpoint check lacked a prompt for remaining days, leading to incomplete data for recalculations. The recalculation endpoint did not accept `remaining_production_days`, causing failures when this data was provided.
+
+**Reusable takeaway:** Automate completion steps and prompt for critical data (e.g., remaining days) at natural checkpoints (e.g., midpoint) to reduce manual overhead and ensure data completeness. Always update endpoints to accept new fields before deploying changes to consumers.
+
+---
+*Original commit message: refactor: update bot production flow - remove manual finish from bot, add remaining days prompt at midpoint check, update recalc endpoint to accept remaining_production_days*
+
+#### Lesson Learned
+
+**What was fixed:** The bot's production flow was updated to remove a manual "finish" step, add a "remaining days" prompt at the midpoint check, and update the recalculation endpoint to accept `remaining_production_days`.
+
+**Why it broke:** The original flow required manual intervention to finish production, causing delays and inconsistency. The midpoint check lacked a prompt for remaining days, leading to incomplete data for recalculations. The recalculation endpoint did not accept `remaining_production_days`, causing failures when this data was provided.
+
+**Reusable takeaway:** Automate completion steps and prompt for critical data (e.g., remaining days) at natural checkpoints (e.g., midpoint) to reduce manual overhead and ensure data completeness. Always update endpoints to accept new fields before deploying changes to consumers.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

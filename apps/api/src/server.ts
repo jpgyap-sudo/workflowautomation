@@ -35,6 +35,7 @@ import {
   getAgentHealth,
 } from './services/agentScheduler.js';
 import { STAGE_LABELS } from './services/agentRunner.js';
+import { handleProductionChat } from './services/productionAssistant.js';
 
 const ORDER_LIST_SELECT = `
   o.id, o.quotation_number, o.client_name, o.sales_agent,
@@ -1303,6 +1304,20 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Production Assistant (NLU chat endpoint) ─────────────────────────────
+// Called by the bot when a free-text message arrives in the production chat.
+
+const productionChatSchema = z.object({
+  text: z.string().min(1).max(2000),
+  username: z.string().nullable().optional(),
+});
+
+app.post('/production/chat', async (request, reply) => {
+  const body = productionChatSchema.parse(request.body);
+  const result = await handleProductionChat(body.text, body.username ?? null);
+  return reply.send(result);
 });
 
 const finishProductionSchema = z.object({

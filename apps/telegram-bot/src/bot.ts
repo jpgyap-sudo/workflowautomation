@@ -2247,8 +2247,94 @@ bot.on(message('text'), async (ctx) => {
       break;
     }
 
+    case 'idle': {
+      // ── Production Assistant: natural language in the production group ──
+      const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PRODUCTION_GROUP_ID ?? '';
+      const isProductionChat = PRODUCTION_CHAT_ID && chatId === PRODUCTION_CHAT_ID;
+
+      if (isProductionChat) {
+        // Only activate when the message mentions a quotation number, a
+        // production keyword, or @-mentions the bot — ignore casual chatter.
+        const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
+        const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
+        const hasQtn = /qtn[-\s]?\w+/i.test(text);
+        const hasKeyword = /\b(done|finished|produced|complete|shipped|en.?route|dispatched|status|progress|pending|delayed|ready|how.?long|when|still|all|items?)\b/i.test(text);
+
+        if (mentionsBot || hasQtn || hasKeyword) {
+          try {
+            const res = await fetch(`${apiBaseUrl}/production/chat`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ text, username: username ?? null }),
+              signal: AbortSignal.timeout(20_000),
+            });
+
+            if (res.ok) {
+              const data = await res.json() as {
+                reply: string | null;
+                action?: {
+                  type: 'mark_items_produced' | 'confirm_en_route';
+                  orderId: string;
+                  quotationNumber: string;
+                  itemIds?: string[];
+                };
+              };
+
+              if (!data.reply) break; // 'ignore' intent — stay silent
+
+              if (data.action?.type === 'mark_items_produced' && data.action.itemIds?.length) {
+                // Ask for confirmation before updating
+                const { orderId, quotationNumber, itemIds } = data.action;
+                await ctx.reply(
+                  `${data.reply}\n\nShould I mark ${itemIds.length} item(s) as produced for *${quotationNumber}*?`,
+                  {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard([
+                      [
+                        Markup.button.callback('✅ Yes, mark produced', `assistant:mark_produced:${orderId}:${quotationNumber}:${itemIds.join(',')}`),
+                        Markup.button.callback('❌ No', 'assistant:cancel'),
+                      ],
+                    ]),
+                  }
+                );
+              } else if (data.action?.type === 'confirm_en_route') {
+                const { orderId, quotationNumber } = data.action;
+                await ctx.reply(
+                  `${data.reply}\n\nShould I mark *${quotationNumber}* as en route?`,
+                  {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard([
+                      [
+                        Markup.button.callback('✅ Yes, en route', `assistant:en_route:${orderId}:${quotationNumber}`),
+                        Markup.button.callback('❌ No', 'assistant:cancel'),
+                      ],
+                    ]),
+                  }
+                );
+              } else {
+                await ctx.reply(data.reply);
+              }
+              break;
+            }
+          } catch (err) {
+            console.error('[bot] Production assistant error:', err);
+            // Fall through to silence — don't crash the group chat
+          }
+        }
+        // Non-keyword message in production chat → stay silent
+        break;
+      }
+
+      // Not in production chat + idle → show main menu hint (DMs / other groups)
+      await ctx.reply(
+        'Use /start to see the available commands.',
+        { parse_mode: 'Markdown' }
+      );
+      break;
+    }
+
     default:
-      // Do NOT reset — preserve active flow. Show guidance instead.
+      // Active flow but unrecognized step — preserve it, show guidance.
       await ctx.reply(
         '❓ I didn\'t understand that. You are currently in a flow. Please follow the prompts above, or press *Cancel* to go back to the Main Menu.',
         { parse_mode: 'Markdown', ...cancelButton() }
