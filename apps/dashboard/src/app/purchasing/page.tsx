@@ -277,7 +277,7 @@ export default function PurchasingPage() {
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'setProduction';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
@@ -318,7 +318,21 @@ export default function PurchasingPage() {
 
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
-    else handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
+  }
+
+  async function handleStartProductionVerified(actionToken: string) {
+    const pending = (window as any).__pendingStartProductionData;
+    if (!pending) return;
+    try {
+      await setProduction(pending.orderId, { production_started: true, estimated_production_days: pending.days, action_token: actionToken });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to start production: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingStartProductionData = null;
+    }
   }
 
   function handleEdit(order: Order) { setEditingOrder(order); }
@@ -344,12 +358,10 @@ export default function PurchasingPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    try {
-      await setProduction(order.id, { production_started: true, estimated_production_days: days });
-      refresh();
-    } catch (err: any) {
-      alert('Failed to start production: ' + (err.message ?? 'Unknown error'));
-    }
+    setOtpModal({ open: true, title: 'Start Production',
+      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'setProduction' });
+    (window as any).__pendingStartProductionData = { orderId: order.id, days };
   }
 
   return (

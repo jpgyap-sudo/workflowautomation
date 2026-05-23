@@ -622,7 +622,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'grantProductionException' | 'revokeProductionException';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); }
@@ -663,6 +663,28 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'reportStatus') handleReportStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'finishProduction') handleFinishProductionVerified(actionToken);
     else if (otpModal.pendingAction === 'confirmEnRoute') handleConfirmEnRouteVerified(actionToken);
+    else if (otpModal.pendingAction === 'grantProductionException') handleGrantExceptionVerified(actionToken);
+    else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeExceptionVerified(actionToken);
+  }
+
+  async function handleGrantExceptionVerified(actionToken: string) {
+    const pending = (window as any).__pendingGrantExceptionData;
+    if (!pending) return;
+    try {
+      await grantProductionException(pending.orderId, { notes: pending.notes, granted_by: 'dashboard', action_token: actionToken });
+      refresh();
+    } catch (err: any) { alert('Failed to grant exception: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingGrantExceptionData = null; }
+  }
+
+  async function handleRevokeExceptionVerified(actionToken: string) {
+    const pending = (window as any).__pendingRevokeExceptionData;
+    if (!pending) return;
+    try {
+      await revokeProductionException(pending.orderId, actionToken);
+      refresh();
+    } catch (err: any) { alert('Failed to revoke exception: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingRevokeExceptionData = null; }
   }
 
   async function handleReportStatusVerified(actionToken: string) {
@@ -756,18 +778,18 @@ export default function ProductionPage() {
   async function handleGrantException(order: Order) {
     const notes = window.prompt('Reason for production exception (why is production starting without downpayment)?');
     if (!notes) return;
-    try {
-      await grantProductionException(order.id, notes);
-      refresh();
-    } catch (err: any) { alert('Failed to grant exception: ' + (err.message ?? 'Unknown error')); }
+    setOtpModal({ open: true, title: 'Grant Production Exception',
+      description: `You are about to grant a production exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'grantProductionException' });
+    (window as any).__pendingGrantExceptionData = { orderId: order.id, notes };
   }
 
   async function handleRevokeException(order: Order) {
     if (!window.confirm(`Revoke production exception for #${order.quotation_number ?? 'unknown'}? This will block production until downpayment is verified.`)) return;
-    try {
-      await revokeProductionException(order.id);
-      refresh();
-    } catch (err: any) { alert('Failed to revoke exception: ' + (err.message ?? 'Unknown error')); }
+    setOtpModal({ open: true, title: 'Revoke Production Exception',
+      description: `You are about to revoke the production exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'revokeProductionException' });
+    (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
 
   const totalActive = pendingOrders.length + partialOrders.length + confirmedOrders.length + enRouteOrders.length;

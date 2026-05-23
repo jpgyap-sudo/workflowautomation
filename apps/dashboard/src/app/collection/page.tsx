@@ -141,7 +141,7 @@ export default function CollectionPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Special case (delivery exception) state
@@ -243,6 +243,74 @@ export default function CollectionPage() {
       handleEditVerified(actionToken);
     } else if (otpModal.pendingAction === 'delete') {
       handleDeleteVerified(actionToken);
+    } else if (otpModal.pendingAction === 'verifyDeposit') {
+      handleVerifyDepositVerified(actionToken);
+    } else if (otpModal.pendingAction === 'verifyBalance') {
+      handleVerifyBalanceVerified(actionToken);
+    } else if (otpModal.pendingAction === 'grantDeliveryException') {
+      handleGrantExceptionVerified(actionToken);
+    } else if (otpModal.pendingAction === 'revokeDeliveryException') {
+      handleRevokeExceptionVerified(actionToken);
+    }
+  }
+
+  async function handleVerifyDepositVerified(actionToken: string) {
+    const pending = (window as any).__pendingVerifyDepositData;
+    if (!pending) return;
+    try {
+      await verifyDeposit(pending.orderId, { verified_by: 'dashboard', action_token: actionToken });
+      mutateDepositVerification();
+      mutateArrived();
+      mutateBalanceDue();
+    } catch (err: any) {
+      alert('Failed to verify deposit: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingVerifyDepositData = null;
+    }
+  }
+
+  async function handleVerifyBalanceVerified(actionToken: string) {
+    const pending = (window as any).__pendingVerifyBalanceData;
+    if (!pending) return;
+    try {
+      await verifyBalance(pending.orderId, { verified_by: 'dashboard', action_token: actionToken });
+      mutateBalanceVerification();
+      mutateReceived();
+    } catch (err: any) {
+      alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingVerifyBalanceData = null;
+    }
+  }
+
+  async function handleGrantExceptionVerified(actionToken: string) {
+    const pending = (window as any).__pendingGrantExceptionData;
+    if (!pending) return;
+    try {
+      await grantDeliveryException(pending.orderId, { notes: pending.notes, granted_by: 'dashboard', action_token: actionToken });
+      setExceptionModal({ open: false, order: null, notes: '', granting: false });
+      mutateArrived();
+      mutateBalanceDue();
+    } catch (err: any) {
+      alert('Failed to grant delivery exception: ' + (err.message ?? 'Unknown error'));
+      setExceptionModal((prev) => ({ ...prev, granting: false }));
+    } finally {
+      (window as any).__pendingGrantExceptionData = null;
+    }
+  }
+
+  async function handleRevokeExceptionVerified(actionToken: string) {
+    const pending = (window as any).__pendingRevokeExceptionData;
+    if (!pending) return;
+    try {
+      await revokeDeliveryException(pending.orderId, actionToken);
+      mutateArrived();
+      mutateBalanceDue();
+      mutateCountered();
+    } catch (err: any) {
+      alert('Failed to revoke delivery exception: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingRevokeExceptionData = null;
     }
   }
 
@@ -257,27 +325,17 @@ export default function CollectionPage() {
 
   async function handleGrantException() {
     if (!exceptionModal.order) return;
-    setExceptionModal((prev) => ({ ...prev, granting: true }));
-    try {
-      await grantDeliveryException(exceptionModal.order.id, exceptionModal.notes || undefined);
-      setExceptionModal({ open: false, order: null, notes: '', granting: false });
-      mutateArrived();
-      mutateBalanceDue();
-    } catch (err: any) {
-      alert('Failed to grant delivery exception: ' + (err.message ?? 'Unknown error'));
-      setExceptionModal((prev) => ({ ...prev, granting: false }));
-    }
+    setOtpModal({ open: true, title: 'Grant Delivery Exception',
+      description: `You are about to grant a delivery exception for order "${exceptionModal.order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'grantDeliveryException' });
+    (window as any).__pendingGrantExceptionData = { orderId: exceptionModal.order.id, notes: exceptionModal.notes || undefined };
   }
 
   async function handleRevokeException(order: Order) {
-    try {
-      await revokeDeliveryException(order.id);
-      mutateArrived();
-      mutateBalanceDue();
-      mutateCountered();
-    } catch (err: any) {
-      alert('Failed to revoke delivery exception: ' + (err.message ?? 'Unknown error'));
-    }
+    setOtpModal({ open: true, title: 'Revoke Delivery Exception',
+      description: `You are about to revoke the delivery exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'revokeDeliveryException' });
+    (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
 
   // ── Payment Confirmation with Deposit Slip Upload ──────────────────────
@@ -589,16 +647,12 @@ export default function CollectionPage() {
                   <div className="flex items-center gap-3">
                     <StageBadge stage={order.current_stage} />
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         if (!confirm(`Verify deposit for ${order.quotation_number ?? '—'}? This will advance the order to production.`)) return;
-                        try {
-                          await verifyDeposit(order.id, 'dashboard');
-                          mutateDepositVerification();
-                          mutateArrived();
-                          mutateBalanceDue();
-                        } catch (err: any) {
-                          alert('Failed to verify deposit: ' + (err.message ?? 'Unknown error'));
-                        }
+                        setOtpModal({ open: true, title: 'Verify Deposit',
+                          description: `You are about to verify the deposit for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+                          pendingAction: 'verifyDeposit' });
+                        (window as any).__pendingVerifyDepositData = { orderId: order.id };
                       }}
                       className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-600"
                       title="Verify deposit payment and advance to production"
@@ -643,15 +697,12 @@ export default function CollectionPage() {
                   <div className="flex items-center gap-3">
                     <StageBadge stage={order.current_stage} />
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         if (!confirm(`Verify balance payment for ${order.quotation_number ?? '—'}? This will advance the order to Payment Received.`)) return;
-                        try {
-                          await verifyBalance(order.id, 'dashboard');
-                          mutateBalanceVerification();
-                          mutateReceived();
-                        } catch (err: any) {
-                          alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
-                        }
+                        setOtpModal({ open: true, title: 'Verify Balance',
+                          description: `You are about to verify the balance payment for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+                          pendingAction: 'verifyBalance' });
+                        (window as any).__pendingVerifyBalanceData = { orderId: order.id };
                       }}
                       className="inline-flex items-center gap-1 rounded-lg bg-fuchsia-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-fuchsia-600"
                       title="Verify balance payment and advance to Payment Received"

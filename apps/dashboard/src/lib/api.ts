@@ -187,21 +187,21 @@ export async function payBalance(data: {
 
 export async function verifyDeposit(
   id: string,
-  verified_by?: string,
+  data: { verified_by?: string; action_token: string },
 ): Promise<{ ok: boolean; quotation_number: string; next_stage: string }> {
   return fetchJson<{ ok: boolean; quotation_number: string; next_stage: string }>(
     `/orders/${encodeURIComponent(id)}/verify-deposit`,
-    { method: 'POST', body: JSON.stringify({ verified_by }) },
+    { method: 'POST', body: JSON.stringify(data) },
   );
 }
 
 export async function verifyBalance(
   id: string,
-  verified_by?: string,
+  data: { verified_by?: string; action_token: string },
 ): Promise<{ ok: boolean; quotation_number: string; next_stage: string }> {
   return fetchJson<{ ok: boolean; quotation_number: string; next_stage: string }>(
     `/orders/${encodeURIComponent(id)}/verify-balance`,
-    { method: 'POST', body: JSON.stringify({ verified_by }) },
+    { method: 'POST', body: JSON.stringify(data) },
   );
 }
 
@@ -274,7 +274,7 @@ export async function bulkDeleteOrders(ids: string[], actionToken: string): Prom
 
 export async function setProduction(
   id: string,
-  data: { production_started: boolean; estimated_production_days?: number }
+  data: { production_started: boolean; estimated_production_days?: number; action_token: string }
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/set-production`, {
     method: 'POST',
@@ -517,41 +517,41 @@ export async function getStageUpdates(orderId: string): Promise<StageUpdate[]> {
 
 export async function grantDeliveryException(
   orderId: string,
-  notes?: string,
-  grantedBy?: string,
+  data: { notes?: string; granted_by?: string; action_token: string },
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>('/orders/delivery-exception', {
     method: 'POST',
-    body: JSON.stringify({ order_id: orderId, notes, granted_by: grantedBy }),
+    body: JSON.stringify({ order_id: orderId, ...data }),
   });
 }
 
 export async function revokeDeliveryException(
   orderId: string,
+  actionToken: string,
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>('/orders/revoke-delivery-exception', {
     method: 'POST',
-    body: JSON.stringify({ order_id: orderId }),
+    body: JSON.stringify({ order_id: orderId, action_token: actionToken }),
   });
 }
 
 export async function grantProductionException(
   orderId: string,
-  notes?: string,
-  grantedBy?: string,
+  data: { notes?: string; granted_by?: string; action_token: string },
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>('/orders/production-exception', {
     method: 'POST',
-    body: JSON.stringify({ order_id: orderId, notes, granted_by: grantedBy }),
+    body: JSON.stringify({ order_id: orderId, ...data }),
   });
 }
 
 export async function revokeProductionException(
   orderId: string,
+  actionToken: string,
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>('/orders/revoke-production-exception', {
     method: 'POST',
-    body: JSON.stringify({ order_id: orderId }),
+    body: JSON.stringify({ order_id: orderId, action_token: actionToken }),
   });
 }
 
