@@ -29,30 +29,38 @@ import {
   Bug,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '@/lib/auth';
 
-const NAV_ITEMS = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/orders', label: 'All Orders', icon: FileText },
-  { href: '/actions', label: 'Quick Actions', icon: Zap },
-  { href: '/clients', label: 'Clients', icon: Users },
-  { href: '/purchasing', label: 'Purchasing', icon: ShoppingCart },
-  { href: '/production', label: 'Production', icon: Factory },
-  { href: '/inventory', label: 'Inventory', icon: Package },
-  { href: '/delivery', label: 'Delivery', icon: Truck },
-  { href: '/sales', label: 'Sales', icon: BarChart3 },
-  { href: '/collection', label: 'Collection', icon: DollarSign },
-  { href: '/stages', label: 'Stage Pipeline', icon: ClipboardList },
-  { href: '/workflow', label: 'Workflow', icon: GitFork },
-  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
-  { href: '/agents', label: 'Agents', icon: Bot },
-  { href: '/logs', label: 'Agent Logs', icon: Activity },
-  { href: '/bot-logs', label: 'Bot Logs', icon: MessageSquare },
-  { href: '/bugs', label: 'Bug Report', icon: Bug },
-  { href: '/telegram', label: 'Telegram', icon: Smartphone },
-  { href: '/backup', label: 'Backups', icon: Database },
-  { href: '/vision', label: 'Vision Upload', icon: ScanEye },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
+const ADMIN_ONLY = ['/purchasing', '/production'];
+
+function useFilteredNavItems() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
+  return [
+    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/orders', label: 'All Orders', icon: FileText },
+    { href: '/actions', label: 'Quick Actions', icon: Zap },
+    { href: '/clients', label: 'Clients', icon: Users },
+    ...(isAdmin ? [{ href: '/purchasing', label: 'Purchasing', icon: ShoppingCart }] : []),
+    ...(isAdmin ? [{ href: '/production', label: 'Production', icon: Factory }] : []),
+    { href: '/inventory', label: 'Inventory', icon: Package },
+    { href: '/delivery', label: 'Delivery', icon: Truck },
+    { href: '/sales', label: 'Sales', icon: BarChart3 },
+    { href: '/collection', label: 'Collection', icon: DollarSign },
+    { href: '/stages', label: 'Stage Pipeline', icon: ClipboardList },
+    { href: '/workflow', label: 'Workflow', icon: GitFork },
+    { href: '/calendar', label: 'Calendar', icon: CalendarDays },
+    { href: '/agents', label: 'Agents', icon: Bot },
+    { href: '/logs', label: 'Agent Logs', icon: Activity },
+    { href: '/bot-logs', label: 'Bot Logs', icon: MessageSquare },
+    { href: '/bugs', label: 'Bug Report', icon: Bug },
+    { href: '/telegram', label: 'Telegram', icon: Smartphone },
+    { href: '/backup', label: 'Backups', icon: Database },
+    { href: '/vision', label: 'Vision Upload', icon: ScanEye },
+    { href: '/settings', label: 'Settings', icon: Settings },
+  ];
+}
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -90,11 +98,12 @@ function SidebarBrand({ collapsed = false, onClose }: { collapsed?: boolean; onC
 
 function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const navItems = useFilteredNavItems();
 
   return (
     <nav className="flex-1 overflow-y-auto p-2">
       <ul className="space-y-1">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
           return (
