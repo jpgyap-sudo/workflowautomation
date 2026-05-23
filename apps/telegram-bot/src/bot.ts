@@ -224,7 +224,7 @@ bot.use(async (ctx, next) => {
     return next();
   }
 
-  // Store the pending action and ask for confirmation
+  // Store the pending action and show inline Confirm / Cancel buttons
   const messageId = ctx.callbackQuery.message?.message_id;
   const originalText = (ctx.callbackQuery.message as any)?.text ?? (ctx.callbackQuery.message as any)?.caption ?? '';
   const chatInstance = (cq as any).chat_instance ?? '';
@@ -238,8 +238,18 @@ bot.use(async (ctx, next) => {
   });
 
   await ctx.editMessageText(
-    `${originalText}\n\n⚠️ *Confirm Action*\n\nType \`${CONFIRMATION_CODE}\` to confirm this action, or type anything else to cancel.`,
-    { parse_mode: 'Markdown' }
+    `${originalText}\n\n⚠️ <b>Confirm this action?</b>`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Confirm', callback_data: 'confirm_action:yes' },
+            { text: '❌ Cancel',  callback_data: 'confirm_action:cancel' },
+          ],
+        ],
+      },
+    }
   ).catch(() => {});
 });
 
@@ -899,6 +909,62 @@ bot.action('action:cancel', async (ctx) => {
     '❌ Cancelled. What would you like to do next?',
     { parse_mode: 'Markdown', ...mainMenuKeyboard() }
   ).catch(() => ctx.reply('❌ Cancelled.', mainMenuKeyboard()));
+});
+
+// ── Inline Confirmation: Confirm ──────────────────────────────────────
+// Replaces the "type 888 in chat" flow. The middleware stored the pending
+// action in session; tapping ✅ Confirm re-dispatches it.
+
+bot.action('confirm_action:yes', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  await ctx.answerCbQuery();
+
+  if (session.step.action !== 'awaiting_confirmation') return;
+
+  const { callbackData, messageId, originalText, chatInstance } = session.step;
+  resetStep(chatId);
+
+  const confirmKey = `${callbackData}:${chatId}`;
+  confirmedCallbacks.add(confirmKey);
+
+  const syntheticUpdate: any = {
+    update_id: Date.now(),
+    callback_query: {
+      id: `confirm_${Date.now()}`,
+      from: ctx.from,
+      message: {
+        message_id: messageId,
+        chat: ctx.chat,
+        date: Math.floor(Date.now() / 1000),
+        text: originalText,
+      },
+      chat_instance: chatInstance,
+      data: callbackData,
+    },
+  };
+
+  bot.handleUpdate(syntheticUpdate).catch((err) => {
+    console.error('[bot] Error re-dispatching confirmed callback:', err);
+  });
+});
+
+// ── Inline Confirmation: Cancel ───────────────────────────────────────
+
+bot.action('confirm_action:cancel', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  await ctx.answerCbQuery('❌ Cancelled');
+
+  if (session.step.action === 'awaiting_confirmation') {
+    const { messageId, originalText } = session.step;
+    resetStep(chatId);
+    try {
+      await ctx.telegram.editMessageText(chatId, messageId, undefined, originalText, { parse_mode: 'HTML' });
+    } catch {
+      // Message may no longer be editable — ignore
+    }
+  }
 });
 
 // ── Menu Router ────────────────────────────────────────────────────────

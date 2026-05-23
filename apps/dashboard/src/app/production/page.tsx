@@ -84,6 +84,7 @@ function ProductionInfoCards({ order }: { order: Order }) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [updatingEnRouteItemId, setUpdatingEnRouteItemId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +135,32 @@ function ProductionInfoCards({ order }: { order: Order }) {
       alert(err instanceof Error ? err.message : 'Failed to update item production status');
     } finally {
       setUpdatingItemId(null);
+    }
+  }
+
+  async function handleItemEnRouteStatus(
+    item: OrderItem,
+    enRouteStatus: 'not_yet' | 'en_route' | 'arrived'
+  ) {
+    let estimatedArrivalDays: number | null = item.estimated_arrival_days ?? null;
+    if (enRouteStatus === 'en_route' && !estimatedArrivalDays) {
+      const input = window.prompt(`Estimated arrival days for "${item.name}"?`, '28');
+      if (input === null) return; // cancelled
+      const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+      if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
+      estimatedArrivalDays = days;
+    }
+    setUpdatingEnRouteItemId(item.id);
+    try {
+      await updateOrderItem(order.id, item.id, {
+        en_route_status: enRouteStatus,
+        ...(estimatedArrivalDays != null ? { estimated_arrival_days: estimatedArrivalDays } : {}),
+      });
+      await refreshItemState();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update en route status');
+    } finally {
+      setUpdatingEnRouteItemId(null);
     }
   }
 
@@ -217,7 +244,8 @@ function ProductionInfoCards({ order }: { order: Order }) {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
-                        {(['pending', 'in_progress', 'finished'] as const).map((status) => {
+                        {/* Production status buttons — hidden for en_route stage (focus on en route actions) */}
+                        {order.current_stage !== 'en_route' && (['pending', 'in_progress', 'finished'] as const).map((status) => {
                           const isActive = item.production_status === status;
                           const label = status === 'pending' ? 'Pending' : status === 'in_progress' ? 'Started' : 'Finished';
                           return (
@@ -240,6 +268,47 @@ function ProductionInfoCards({ order }: { order: Order }) {
                             </button>
                           );
                         })}
+                        {/* En route action buttons — only shown for en_route stage orders */}
+                        {order.current_stage === 'en_route' && (() => {
+                          const isBusy = updatingEnRouteItemId === item.id;
+                          if (item.en_route_status === 'arrived') {
+                            return <span className="text-[10px] text-gray-400 italic">Arrived ✓</span>;
+                          }
+                          return (
+                            <>
+                              {item.en_route_status !== 'en_route' && (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleItemEnRouteStatus(item, 'en_route')}
+                                  className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                                >
+                                  {isBusy ? 'Saving...' : '🚚 En Route'}
+                                </button>
+                              )}
+                              {item.en_route_status === 'en_route' && (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleItemEnRouteStatus(item, 'arrived')}
+                                  className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                >
+                                  {isBusy ? 'Saving...' : '📦 Arrived'}
+                                </button>
+                              )}
+                              {item.en_route_status !== 'not_yet' && (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleItemEnRouteStatus(item, 'not_yet')}
+                                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                                >
+                                  ✕ Not Yet
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>

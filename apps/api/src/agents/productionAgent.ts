@@ -679,43 +679,27 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
       return result;
     }
 
-    // ── Process of elimination: ask about the next not-en-route item ──
+    // ── Send a single summary notification linking to the dashboard ──
+    // (per-item Telegram questions moved to the GUI to avoid group chat spam)
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(enRoutePct);
-    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+    const dashboardUrl = `https://track.abcx124.xyz/production`;
 
-    // Determine if >50% threshold is met
-    const thresholdMet = enRoutePct > 50;
+    const pendingNames = items
+      .filter((i) => i.en_route_status === 'not_yet')
+      .map((i) => `• ${i.name} ×${i.quantity}`)
+      .join('\n');
 
-    let message = `🚚 <b>Item-Level En Route Check</b>\n`;
+    let message = `🚚 <b>En Route Update Needed</b>\n`;
     message += `Order: #${qn} (${client})\n`;
-    message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n`;
-    message += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
-    message += `Items: ${enRouteCount}/${totalCount} en route\n`;
-    if (thresholdMet) {
-      message += `✅ <b>>50% threshold met</b> — order can progress once all items confirmed\n`;
-    }
-    message += `\n<b>Process of Elimination:</b>\n`;
-    message += `Next item: <b>${notEnRouteItem.name}</b> x${notEnRouteItem.quantity}\n\n`;
-    message += `Is <b>${notEnRouteItem.name}</b> en route yet?`;
+    message += `Progress: ${enRouteCount}/${totalCount} items en route (${enRoutePct}%) ${progressBar}\n\n`;
+    message += `<b>Still pending:</b>\n${pendingNames}\n\n`;
+    message += `👉 <a href="${dashboardUrl}">Update in Dashboard → Production tab</a>`;
 
-    // Build inline keyboard — only "Yes, En Route" or "Not Yet".
-    // "Arrived" is NEVER shown here; it only appears after the item is
-    // already confirmed en_route and its estimated arrival date is reached.
-    const keyboard = inlineKeyboard([
-      [
-        { text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
-      ],
-      [
-        { text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
-      ],
-    ]);
-
-    // Send the message to the production group chat
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
-      await sendTelegramMessage(groupChatId, message, keyboard);
+      await sendTelegramMessage(groupChatId, message);
     }
 
     // Upsert a reminder for the next check (24h default for item-level en-route)
