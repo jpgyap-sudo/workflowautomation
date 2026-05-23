@@ -2550,7 +2550,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     const itemId = targetItem.id;
 
     // Update the item's production status via API
-    await postJson(`/orders/${orderId}/items/${itemId}`, {
+    await patchJson(`/orders/${orderId}/items/${itemId}`, {
       production_status: newStatus,
     });
 
@@ -2703,7 +2703,7 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
     const enRouteStatus = statusMap[newStatus];
 
     // Update the item's en_route status via API
-    await postJson(`/orders/${orderId}/items/${itemId}`, {
+    await patchJson(`/orders/${orderId}/items/${itemId}`, {
       en_route_status: enRouteStatus,
     });
 
