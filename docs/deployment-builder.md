@@ -43,6 +43,42 @@ For an emergency deploy where checks have already passed in CI:
 node scripts/single-builder-deploy.mjs --skip-local-checks
 ```
 
+To ask the deployer agent to check committed-but-not-yet-deployed commits without deploying:
+
+```powershell
+node scripts/single-builder-deploy.mjs --pending-only
+node scripts/single-builder-deploy.mjs --sha a379e1d4343b8c051edd008a658a1d9e112814bd --pending-only
+```
+
+## Pending Commit Review and Deploy Log
+
+Before any deployment, the builder agent reads the last deployed SHA from:
+
+```txt
+/opt/quotation-automation/.deployed-sha
+```
+
+It then compares that SHA to the requested target SHA and prints:
+
+```bash
+git log --oneline --decorate <last-deployed-sha>..<target-sha>
+```
+
+This is the deployer agent's pre-deploy commit check. If multiple commits have landed since the last release, the builder shows all of them and deploys them together by deploying the target SHA. Use `--pending-only` when you only want this review and do not want to release yet.
+
+After a successful deploy, the builder updates `.deployed-sha` and appends a JSONL audit entry to:
+
+```txt
+/opt/quotation-automation/.deployments/deploy-log.jsonl
+```
+
+Each log entry includes:
+
+- `previousSha`
+- `deployedSha`
+- `deployedAt`
+- `pendingCommitSubjects`
+
 ## What the Builder Enforces
 
 The deploy agent refuses to deploy if:
@@ -130,6 +166,7 @@ Optional extra checks after major releases:
 4. Do not let multiple agents deploy concurrently.
 5. If an agent changes code, it must commit and push first.
 6. The builder deploys only by commit SHA.
+7. Ask the builder to review pending commits first with `--pending-only` when coordinating several commits.
 
 ## Current Production Target
 

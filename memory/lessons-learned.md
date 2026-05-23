@@ -5304,3 +5304,51 @@ When rendering UI elements that depend on data arrays, always check if the eleme
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: BUTTONDATAINVALID error — shorten callback_data to use 8-char item UUID prefix + quotation_number
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 62bc4a819bd2c30ff7ff0796722d2a5fad57d982
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 62bc4a819bd2c30ff7ff0796722d2a5fad57d982
+**Files:** apps/api/src/agents/inventoryAgent.ts,apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/telegram-bot/src/bot.ts,database/migrations/027_fix_production_reminder_chat_ids.sql,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A `BUTTONDATAINVALID` error in Telegram inline keyboards caused by callback data exceeding Telegram’s 64-byte limit.
+
+**Why it broke:**  
+Callback data was built using full-length UUIDs (36 chars) plus quotation numbers, easily exceeding 64 bytes when combined with action prefixes and separators. Telegram silently rejects oversized callback data.
+
+**Reusable takeaway:**  
+When constructing Telegram inline keyboard callback data, always enforce a strict byte budget. Use truncated identifiers (e.g., first 8 chars of UUID) and keep total payload under 64 bytes. Validate length before sending, or better, design a compact encoding scheme from the start. This prevents silent failures that are hard to debug in production.
+
+---
+*Original commit message: fix: BUTTONDATAINVALID error — shorten callback_data to use 8-char item UUID prefix + quotation_number*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A `BUTTONDATAINVALID` error in Telegram inline keyboards caused by callback data exceeding Telegram’s 64-byte limit.
+
+**Why it broke:**  
+Callback data was built using full-length UUIDs (36 chars) plus quotation numbers, easily exceeding 64 bytes when combined with action prefixes and separators. Telegram silently rejects oversized callback data.
+
+**Reusable takeaway:**  
+When constructing Telegram inline keyboard callback data, always enforce a strict byte budget. Use truncated identifiers (e.g., first 8 chars of UUID) and keep total payload under 64 bytes. Validate length before sending, or better, design a compact encoding scheme from the start. This prevents silent failures that are hard to debug in production.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

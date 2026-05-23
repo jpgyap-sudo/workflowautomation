@@ -14,6 +14,7 @@
  *   node scripts/single-builder-deploy.mjs --sha <commit-sha>
  *   node scripts/single-builder-deploy.mjs --skip-local-checks
  *   node scripts/single-builder-deploy.mjs --sync-secrets
+ *   node scripts/single-builder-deploy.mjs --pending-only
  */
 
 import { execFileSync, execSync } from 'node:child_process';
@@ -47,6 +48,7 @@ Single Builder Deploy Agent
 
 Options:
   --sha <sha>            Commit SHA to deploy (default: HEAD)
+  --pending-only         Print commits since the last deployed SHA and exit
   --skip-local-checks    Skip npm build/lint checks before deploy
   --sync-secrets         Copy local .env and credentials/* to VPS before deploy
   --help                 Show this help
@@ -60,6 +62,7 @@ Environment overrides:
 const requestedSha = argValue('--sha') ?? 'HEAD';
 const skipLocalChecks = args.has('--skip-local-checks');
 const syncSecrets = args.has('--sync-secrets');
+const pendingOnly = args.has('--pending-only');
 
 function run(label, command, options = {}) {
   console.log(`\n==> ${label}`);
@@ -105,6 +108,16 @@ function ssh(command, options = {}) {
   });
 }
 
+function sshCapture(command, options = {}) {
+  console.log(`\n==> Remote: ${options.label ?? 'capture'}`);
+  console.log(`ssh ${config.sshUser}@${config.sshHost} ${command}`);
+  return execFileSync('ssh', [...sshBaseArgs(), command], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    timeout: options.timeout ?? 120_000,
+  }).trim();
+}
+
 function scp(localPath, remotePath, options = {}) {
   console.log(`\n==> Copy: ${localPath} -> ${remotePath}`);
   execFileSync('scp', [
@@ -121,6 +134,93 @@ function scp(localPath, remotePath, options = {}) {
     stdio: 'inherit',
     timeout: options.timeout ?? 120_000,
   });
+}
+
+function getLastDeployedSha() {
+  const deployedSha = sshCapture(
+    `cd ${config.remotePath} && if [ -f .deployed-sha ]; then cat .deployed-sha; else echo __NO_DEPLOYED_SHA__; fi`,
+    { label: 'read last deployed SHA', timeout: 30_000 },
+  ).trim();
+  return deployedSha === '__NO_DEPLOYED_SHA__' ? null : deployedSha;
+}
+
+function gitObjectExists(sha) {
+  try {
+    execSync(`git cat-file -e ${sha}^{commit}`, {
+      cwd: projectRoot,
+      stdio: 'ignore',
+      timeout: 30_000,
+      shell: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getPendingDeploymentInfo(targetSha) {
+  const previousSha = getLastDeployedSha();
+  const previousKnownLocally = previousSha ? gitObjectExists(previousSha) : false;
+
+  let range = targetSha;
+  let rangeDescription = `initial deploy / unknown baseline -> ${targetSha}`;
+  let warning = '';
+
+  if (previousSha && previousKnownLocally) {
+    range = `${previousSha}..${targetSha}`;
+    rangeDescription = `${previousSha}..${targetSha}`;
+    try {
+      execSync(`git merge-base --is-ancestor ${previousSha} ${targetSha}`, {
+        cwd: projectRoot,
+        stdio: 'ignore',
+        timeout: 30_000,
+        shell: true,
+      });
+    } catch {
+      warning = `Last deployed SHA ${previousSha} is not an ancestor of target ${targetSha}. Review carefully: this may be a rollback or divergent deploy.`;
+    }
+  } else if (previousSha && !previousKnownLocally) {
+    warning = `Remote .deployed-sha ${previousSha} is not present in the local git history. Showing recent commits reachable from target only.`;
+    range = `-20 ${targetSha}`;
+  }
+
+  const commitLines = capture('Collecting committed-but-not-deployed commits', `git log --oneline --decorate ${range}`);
+  const subjects = capture('Collecting pending commit subjects', `git log --format=%s ${range}`)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return {
+    previousSha,
+    previousKnownLocally,
+    targetSha,
+    rangeDescription,
+    warning,
+    commitLines: commitLines ? commitLines.split(/\r?\n/).filter(Boolean) : [],
+    subjects,
+  };
+}
+
+function printPendingDeploymentInfo(info) {
+  console.log('\n==> Deployer agent commit check');
+  console.log(`Last deployed SHA: ${info.previousSha ?? '(none recorded)'}`);
+  console.log(`Target SHA:        ${info.targetSha}`);
+  console.log(`Compare range:     ${info.rangeDescription}`);
+  if (info.warning) {
+    console.log(`WARNING: ${info.warning}`);
+  }
+
+  if (info.commitLines.length === 0) {
+    console.log('No committed-but-not-yet-deployed commits detected for this target.');
+    console.log('Deploying will redeploy the already recorded target state.');
+    return;
+  }
+
+  console.log(`\nCommitted but not yet deployed (${info.commitLines.length}):`);
+  for (const line of info.commitLines) {
+    console.log(`  ${line}`);
+  }
+  console.log('\nDeploying the target SHA will deploy all commits listed above together.');
 }
 
 function assertCleanAndPushed(sha) {
@@ -178,15 +278,23 @@ function maybeSyncSecrets() {
   }
 }
 
-function remoteDeploy(sha) {
+function remoteDeploy(sha, pendingInfo) {
   const tempDir = mkdtempSync(join(tmpdir(), 'qas-builder-'));
   const localScript = join(tempDir, 'remote-single-builder-deploy.sh');
+  const deployLogEntry = {
+    previousSha: pendingInfo.previousSha,
+    deployedSha: sha,
+    deployedAt: new Date().toISOString(),
+    pendingCommitSubjects: pendingInfo.subjects,
+  };
+  const deployLogB64 = Buffer.from(JSON.stringify(deployLogEntry), 'utf8').toString('base64');
 
   const remoteScript = `#!/usr/bin/env bash
 set -euo pipefail
 
 DEPLOY_PATH="${config.remotePath}"
 SHA="${sha}"
+DEPLOY_LOG_B64="${deployLogB64}"
 LOCK_DIR="$DEPLOY_PATH/.deploy.lock"
 LOCK_INFO="$LOCK_DIR/info"
 SERVICES=(api dashboard telegram-bot backup-agent)
@@ -242,8 +350,6 @@ trap cleanup EXIT
   echo "pid=$$"
 } > "$LOCK_INFO"
 
-echo "$SHA" > .deployed-sha
-
 compose() {
   docker-compose "$@"
 }
@@ -295,6 +401,12 @@ curl -fsS -o /dev/null "${config.dashboardEndpoint}"
 echo "---- Container status ----"
 compose ps api dashboard telegram-bot
 
+echo "$SHA" > .deployed-sha
+mkdir -p .deployments
+printf '%s' "$DEPLOY_LOG_B64" | base64 -d >> .deployments/deploy-log.jsonl
+printf '\\n' >> .deployments/deploy-log.jsonl
+echo "Deployment log appended to .deployments/deploy-log.jsonl"
+
 echo "Single-builder deployment completed for $SHA"
 `;
 
@@ -316,6 +428,14 @@ echo "Single-builder deployment completed for $SHA"
 
 function main() {
   const sha = capture('Resolving deployment SHA', `git rev-parse --verify ${requestedSha}`);
+  const pendingInfo = getPendingDeploymentInfo(sha);
+  printPendingDeploymentInfo(pendingInfo);
+
+  if (pendingOnly) {
+    console.log('\nPending-only mode: not deploying.');
+    return;
+  }
+
   console.log(`
 Single Builder Deploy
   SHA:         ${sha}
@@ -332,7 +452,7 @@ Single Builder Deploy
 
   syncArchive(sha);
   maybeSyncSecrets();
-  remoteDeploy(sha);
+  remoteDeploy(sha, pendingInfo);
 
   console.log(`\nDeployment complete: ${sha}`);
 }

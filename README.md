@@ -96,15 +96,25 @@ Deploy a specific commit SHA:
 node scripts/single-builder-deploy.mjs --sha <commit-sha>
 ```
 
+Check what is committed but not yet deployed, without deploying:
+
+```powershell
+node scripts/single-builder-deploy.mjs --pending-only
+node scripts/single-builder-deploy.mjs --sha <commit-sha> --pending-only
+```
+
 Only sync `.env` and credentials when those secrets actually changed:
 
 ```powershell
 node scripts/single-builder-deploy.mjs --sync-secrets
 ```
 
+Before every deploy, the builder reads `/opt/quotation-automation/.deployed-sha`, prints the commits between that SHA and the target SHA, and confirms that deploying the target SHA will release all listed commits together. After a successful deploy it updates `.deployed-sha` and appends an audit entry to `/opt/quotation-automation/.deployments/deploy-log.jsonl`.
+
 The builder agent enforces:
 - clean local git worktree
 - commit exists on a remote branch
+- committed-but-not-deployed commit review before deploy
 - remote deployment lock at `/opt/quotation-automation/.deploy.lock`
 - exact git archive of the target SHA
 - one-service-at-a-time rebuild/recreate for `api`, `dashboard`, and `telegram-bot`

@@ -5895,6 +5895,28 @@ async function runMigrations(): Promise<void> {
 
 await runMigrations();
 
+// ── Fix production reminder chat IDs (one-time data repair) ─────────
+// production_pending was incorrectly inheriting group_chat_id from the
+// deposit_verification reminder (finance group). production_midpoint and
+// production_due used PURCHASING_GROUP_ID instead of PRODUCTION_GROUP_CHAT_ID.
+// Reassign all active production-stage reminders to the correct chat.
+if (PRODUCTION_CHAT_ID) {
+  try {
+    const fixed = await query(
+      `UPDATE reminders
+          SET group_chat_id = $1, updated_at = NOW()
+        WHERE stage IN ('production_pending', 'production_midpoint', 'production_due')
+          AND status IN ('active', 'pending')
+          AND group_chat_id IS DISTINCT FROM $1`,
+      [PRODUCTION_CHAT_ID],
+    );
+    const count = (fixed as any[]).length;
+    if (count > 0) console.log(`[startup] Fixed ${count} production reminder(s) → production group chat`);
+  } catch (err: any) {
+    console.error('[startup] Failed to fix production reminder chat IDs:', err.message);
+  }
+}
+
 const port = Number(process.env.PORT ?? 8080);
 
 // Start the reminder scheduler (checks every 60 seconds)
