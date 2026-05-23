@@ -26,6 +26,7 @@ import {
   Users,
   Zap,
   Smartphone,
+  Bug,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -46,6 +47,7 @@ const NAV_ITEMS = [
   { href: '/agents', label: 'Agents', icon: Bot },
   { href: '/logs', label: 'Agent Logs', icon: Activity },
   { href: '/bot-logs', label: 'Bot Logs', icon: MessageSquare },
+  { href: '/bugs', label: 'Bug Report', icon: Bug },
   { href: '/telegram', label: 'Telegram', icon: Smartphone },
   { href: '/backup', label: 'Backups', icon: Database },
   { href: '/vision', label: 'Vision Upload', icon: ScanEye },

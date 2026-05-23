@@ -334,7 +334,11 @@ type UserStep =
   // Collection group deposit slip photo upload
   | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string }
   // Inventory verification — enter partial qty
-  | { action: 'awaiting_inv_verify_qty'; data: { itemId: string; orderId: string } };
+  | { action: 'awaiting_inv_verify_qty'; data: { itemId: string; orderId: string } }
+  // Bug report interactive flow
+  | { action: 'awaiting_bug_title' }
+  | { action: 'awaiting_bug_description'; title: string }
+  | { action: 'awaiting_bug_order_ref'; title: string; description: string };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -1859,6 +1863,61 @@ Midpoint and due reminders are now scheduled.`,
         }
       } catch (err: any) {
         await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── Bug Report Interactive Flow ────────────────────────────────────
+    case 'awaiting_bug_title': {
+      const title = text.trim();
+      if (!title || title.length > 200) {
+        await ctx.reply('❌ Please enter a title (max 200 characters).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      setStep(chatId, { action: 'awaiting_bug_description', title });
+      await ctx.reply(
+        `📝 *Describe the Bug*\n\nTitle: *${title}*\n\nNow please describe the bug in detail. What happened? What did you expect?`,
+        { parse_mode: 'Markdown', reply_markup: { force_reply: true } }
+      );
+      break;
+    }
+
+    case 'awaiting_bug_description': {
+      const { title } = session.step;
+      const description = text.trim();
+      if (!description || description.length > 5000) {
+        await ctx.reply('❌ Please enter a description (max 5000 characters).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      setStep(chatId, { action: 'awaiting_bug_order_ref', title, description });
+      await ctx.reply(
+        `📝 *Bug Report — Optional*\n\nTitle: *${title}*\nDescription: ${description.slice(0, 100)}${description.length > 100 ? '...' : ''}\n\nDo you have an *order reference* (quotation number)? If yes, type it now. Otherwise type *skip* to submit.`,
+        { parse_mode: 'Markdown', reply_markup: { force_reply: true } }
+      );
+      break;
+    }
+
+    case 'awaiting_bug_order_ref': {
+      const { title, description } = session.step;
+      const orderReference = text.trim().toLowerCase() === 'skip' ? null : text.trim();
+
+      try {
+        await postJson('/bug-reports', {
+          title,
+          description,
+          source: 'telegram',
+          reporter_name: username ?? null,
+          reporter_contact: userId,
+          order_reference: orderReference,
+        });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Bug Report Submitted*\n\nTitle: ${title}\n\nThank you! The development team has been notified.`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (err: any) {
+        console.error('[bot] Failed to submit bug report:', err);
+        await ctx.reply('❌ Failed to submit bug report. Please try again later.', { ...cancelButton() });
       }
       break;
     }
@@ -4968,9 +5027,63 @@ bot.command('help', async (ctx) => {
     '/start — Show main menu\n' +
     '/commands — List all features\n' +
     '/help — Show this detailed guide\n' +
+    '/bug — Report a bug to the development team\n' +
     '/unlink — Clear linked order for uploads';
 
   await safeReply(ctx, text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
+});
+
+// ── Bug Report Command ─────────────────────────────────────────────────
+bot.command('bug', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  resetStep(chatId);
+  botLog({
+    chatId, userId, username,
+    messageType: 'command',
+    content: '/bug',
+    direction: 'incoming',
+  });
+
+  // Check if there's text after /bug
+  const text = ctx.message?.text?.trim() ?? '';
+  const args = text.replace(/^\/bug(@\w+)?\s*/, '').trim();
+
+  if (args) {
+    // Format: /bug <title> | <description> | <order_ref>
+    const parts = args.split('|').map((s) => s.trim());
+    const title = parts[0] || 'Bug Report';
+    const description = parts[1] || args;
+    const orderReference = parts[2] || null;
+
+    try {
+      await postJson('/bug-reports', {
+        title,
+        description,
+        source: 'telegram',
+        reporter_name: username ?? null,
+        reporter_contact: userId,
+        order_reference: orderReference,
+      });
+      await safeReply(
+        ctx,
+        `✅ *Bug Report Submitted*\n\nTitle: ${title}\n\nThank you! The development team has been notified.`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err: any) {
+      console.error('[bot] Failed to submit bug report:', err);
+      await safeReply(ctx, '❌ Failed to submit bug report. Please try again later.');
+    }
+  } else {
+    // No args — start interactive flow
+    setStep(chatId, { action: 'awaiting_bug_title' });
+    await safeReply(
+      ctx,
+      '🐛 *Report a Bug*\n\nPlease enter the *title* of the bug:',
+      { parse_mode: 'Markdown', reply_markup: { force_reply: true } }
+    );
+  }
 });
 
 // ── Unlink Command (keep for power users) ─────────────────────────────

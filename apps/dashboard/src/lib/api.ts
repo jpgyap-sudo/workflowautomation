@@ -928,6 +928,49 @@ export async function clearProcessedDrafts(): Promise<{ ok: boolean }> {
   });
 }
 
+// ── Bug Reports ────────────────────────────────────────────────────────
+
+export interface BugReport {
+  id: string;
+  title: string;
+  description: string;
+  source: 'dashboard' | 'telegram';
+  reporter_name: string | null;
+  reporter_contact: string | null;
+  order_reference: string | null;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getBugReports(): Promise<{ ok: boolean; reports: BugReport[] }> {
+  return fetchJson<{ ok: boolean; reports: BugReport[] }>('/bug-reports');
+}
+
+export async function reportBug(data: {
+  title: string;
+  description: string;
+  source?: 'dashboard' | 'telegram';
+  reporter_name?: string;
+  reporter_contact?: string;
+  order_reference?: string;
+}): Promise<{ ok: boolean; report: BugReport }> {
+  return fetchJson<{ ok: boolean; report: BugReport }>('/bug-reports', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateBugReportStatus(
+  id: string,
+  status: 'open' | 'in_progress' | 'resolved' | 'closed'
+): Promise<{ ok: boolean; report: BugReport }> {
+  return fetchJson<{ ok: boolean; report: BugReport }>(`/bug-reports/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
 // ── Order Files ────────────────────────────────────────────────────────
 
 export async function getOrderFiles(orderId: string): Promise<{ ok: boolean; files: OrderFile[] }> {

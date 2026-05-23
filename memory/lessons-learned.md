@@ -3648,3 +3648,51 @@ Guard side effects (like notifications, logging, or state updates) with explicit
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: VALID_TRANSITIONS missing inventory_verification stage
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c983c9769ad7e62ee8d2681bbb15d91a9a902027
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c983c9769ad7e62ee8d2681bbb15d91a9a902027
+**Files:** apps/api/src/server.ts,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A missing `inventory_verification` stage in the `VALID_TRANSITIONS` array, which prevented the system from transitioning to or from that stage during workflow state changes.
+
+**Why it broke:**  
+The `VALID_TRANSITIONS` constant was not updated when the `inventory_verification` stage was added to the workflow. This caused state machine validation to reject any transition involving that stage, effectively blocking the entire workflow step.
+
+**Reusable takeaway:**  
+When adding a new stage to a state machine or workflow, always update all transition validation logic (e.g., `VALID_TRANSITIONS`, allowed state arrays, guards) in the same commit. A missing entry in a validation list can silently break the entire flow. Use a single source of truth for stage definitions to prevent such omissions.
+
+---
+*Original commit message: fix: VALID_TRANSITIONS missing inventory_verification stage*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing `inventory_verification` stage in the `VALID_TRANSITIONS` array, which prevented the system from transitioning to or from that stage during workflow state changes.
+
+**Why it broke:**  
+The `VALID_TRANSITIONS` constant was not updated when the `inventory_verification` stage was added to the workflow. This caused state machine validation to reject any transition involving that stage, effectively blocking the entire workflow step.
+
+**Reusable takeaway:**  
+When adding a new stage to a state machine or workflow, always update all transition validation logic (e.g., `VALID_TRANSITIONS`, allowed state arrays, guards) in the same commit. A missing entry in a validation list can silently break the entire flow. Use a single source of truth for stage definitions to prevent such omissions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -371,7 +371,13 @@ app.post('/auth/verify-otp-for-action', async (request, reply) => {
 // push it to Telegram, and require the user to type it back in the GUI.
 const ACTION_CODE_TTL = 300; // 5 minutes
 const ACTION_CODE_MAX_ATTEMPTS = 5;
-const ACTION_VERIFY_CHAT_ID = process.env.ACTION_VERIFY_TELEGRAM_CHAT_ID ?? ESCALATION_CHAT_ID;
+// Fallback chain: dedicated env → escalation group → production group → collection group
+const ACTION_VERIFY_CHAT_ID =
+  process.env.ACTION_VERIFY_TELEGRAM_CHAT_ID ??
+  ESCALATION_CHAT_ID ??
+  PRODUCTION_CHAT_ID ??
+  COLLECTION_CHAT_ID ??
+  null;
 
 app.post('/auth/send-action-code', async (request, reply) => {
   const { email } = z.object({ email: z.string().email() }).parse(request.body);
@@ -5044,6 +5050,72 @@ app.post('/inventory/drafts/clear', async (_request, reply) => {
   await query(`DELETE FROM inventory_drafts WHERE status IN ('approved', 'rejected')`);
   await invalidateCache(['inventory:*', '/inventory/drafts']);
   return { ok: true };
+});
+
+// ── Bug Reports ────────────────────────────────────────────────────────
+
+const bugReportSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(5000),
+  source: z.enum(['dashboard', 'telegram']).default('dashboard'),
+  reporter_name: z.string().max(200).optional(),
+  reporter_contact: z.string().max(200).optional(),
+  order_reference: z.string().max(100).optional(),
+});
+
+app.post('/bug-reports', async (request, reply) => {
+  const body = bugReportSchema.parse(request.body);
+
+  const rows = await query(
+    `INSERT INTO bug_reports (title, description, source, reporter_name, reporter_contact, order_reference)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [body.title, body.description, body.source, body.reporter_name ?? null, body.reporter_contact ?? null, body.order_reference ?? null]
+  );
+
+  const report = rows[0];
+
+  // Notify escalation group about the bug report
+  const sourceLabel = body.source === 'telegram' ? '🤖 Telegram' : '🌐 Dashboard';
+  const reporterInfo = body.reporter_name
+    ? `\nReporter: ${body.reporter_name}${body.reporter_contact ? ` (${body.reporter_contact})` : ''}`
+    : '';
+  const orderRef = body.order_reference ? `\nOrder: ${body.order_reference}` : '';
+
+  await notifyManualChange(
+    '🐛 Bug Report Submitted',
+    `Title: *${body.title}*\nSource: ${sourceLabel}${reporterInfo}${orderRef}\n\nDescription:\n${body.description}`,
+  );
+
+  await invalidateCache(['bug-reports:*']);
+  broadcastSSE('bug_report_created', { id: report.id });
+
+  return reply.code(201).send({ ok: true, report });
+});
+
+app.get('/bug-reports', async () => {
+  const rows = await query(
+    `SELECT * FROM bug_reports ORDER BY created_at DESC LIMIT 100`
+  );
+  return { ok: true, reports: rows };
+});
+
+app.patch('/bug-reports/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
+  }).parse(request.body);
+
+  const rows = await query(
+    `UPDATE bug_reports SET status = COALESCE($1, status), updated_at = NOW() WHERE id = $2 RETURNING *`,
+    [body.status ?? null, params.id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Bug report not found' });
+
+  await invalidateCache(['bug-reports:*']);
+  broadcastSSE('bug_report_updated', { id: params.id });
+
+  return reply.send({ ok: true, report: rows[0] });
 });
 
 // SSE Endpoint
