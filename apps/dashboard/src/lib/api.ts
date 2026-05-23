@@ -283,21 +283,21 @@ export async function setProduction(
 
 export async function reportProductionStatus(
   id: string,
-  data: { on_time: boolean; delay_days?: number }
+  data: { on_time: boolean; delay_days?: number; updated_by?: string }
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/report-production-status`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, updated_by: 'dashboard_quick_action' }),
   });
 }
 
 export async function finishProduction(
   id: string,
-  data: { delivery_estimated_days: number }
+  data: { delivery_estimated_days: number; updated_by?: string }
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/finish-production`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, updated_by: 'dashboard_quick_action' }),
   });
 }
 
@@ -316,13 +316,13 @@ export async function recalcProductionReminders(
 
 export async function confirmEnRoute(
   id: string,
-  data: { estimated_arrival_days: number }
+  data: { estimated_arrival_days: number; updated_by?: string }
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>(
     `/orders/${encodeURIComponent(id)}/confirm-en-route`,
     {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, updated_by: 'dashboard_quick_action' }),
     }
   );
 }

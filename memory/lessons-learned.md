@@ -3552,3 +3552,51 @@ When extending data models (e.g., adding address fields), ensure all CRUD endpoi
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add notifyManualChange + notifyGroupChat to POST /orders endpoint
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f1d799adb0c5f10af6f7c26c89ad07dd74016bf1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f1d799adb0c5f10af6f7c26c89ad07dd74016bf1
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+Added `notifyManualChange` and `notifyGroupChat` calls to the `POST /orders` endpoint.
+
+**Why it broke:**  
+The endpoint was missing post-processing notifications that other order-modifying endpoints included. This caused silent failures in downstream workflows (e.g., team chat alerts, manual change logs) when orders were created via POST.
+
+**Reusable takeaway:**  
+When adding new endpoints that modify core entities, audit all existing side effects (notifications, logging, webhooks) from similar endpoints. Missing a single side effect can break dependent systems silently. Use a checklist or shared middleware to enforce consistent post-processing across all mutation endpoints.
+
+---
+*Original commit message: fix: add notifyManualChange + notifyGroupChat to POST /orders endpoint*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added `notifyManualChange` and `notifyGroupChat` calls to the `POST /orders` endpoint.
+
+**Why it broke:**  
+The endpoint was missing post-processing notifications that other order-modifying endpoints included. This caused silent failures in downstream workflows (e.g., team chat alerts, manual change logs) when orders were created via POST.
+
+**Reusable takeaway:**  
+When adding new endpoints that modify core entities, audit all existing side effects (notifications, logging, webhooks) from similar endpoints. Missing a single side effect can break dependent systems silently. Use a checklist or shared middleware to enforce consistent post-processing across all mutation endpoints.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

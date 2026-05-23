@@ -1092,6 +1092,7 @@ app.post('/orders/:id/partial-production-items', async (request, reply) => {
 const reportProductionStatusSchema = z.object({
   on_time: z.boolean(),
   delay_days: z.number().int().min(0).optional(),
+  updated_by: z.string().optional(),
 });
 
 app.post('/orders/:id/report-production-status', async (request, reply) => {
@@ -1116,11 +1117,13 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   // Notify production agent immediately about the production status update
   triggerAgentsForStage('production_confirmed', rows[0].quotation_number, rows[0].client_name);
 
-  // Notify escalation group about production status report
-  await notifyManualChange(
-    body.on_time ? 'Production reported on time' : 'Production reported delayed',
-    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nStatus: ${body.on_time ? '✅ On time' : '⚠️ Delayed'}${body.delay_days ? `\nDelay: ${body.delay_days} day(s)` : ''}`,
-  );
+  // Notify escalation group about production status report (dashboard only)
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      body.on_time ? 'Production reported on time' : 'Production reported delayed',
+      `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nStatus: ${body.on_time ? '✅ On time' : '⚠️ Delayed'}${body.delay_days ? `\nDelay: ${body.delay_days} day(s)` : ''}`,
+    );
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1129,6 +1132,7 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
 
 const finishProductionSchema = z.object({
   delivery_estimated_days: z.number().int().positive(),
+  updated_by: z.string().optional(),
 });
 
 app.post('/orders/:id/finish-production', async (request, reply) => {
@@ -1194,11 +1198,13 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   // Notify production + inventory agents immediately that production is finished (order is en route)
   triggerAgentsForStage('en_route', rows[0].quotation_number, rows[0].client_name);
 
-  // Notify escalation group about production finished
-  await notifyManualChange(
-    'Production finished',
-    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nDelivery estimated: ${body.delivery_estimated_days} day(s)`,
-  );
+  // Notify escalation group about production finished (dashboard only)
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      'Production finished',
+      `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nDelivery estimated: ${body.delivery_estimated_days} day(s)`,
+    );
+  }
 
   // Notify production group directly
   if (groupChatId) {
@@ -1227,6 +1233,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 // The order moves from 'en_route' to 'inventory_arrived'.
 const confirmEnRouteSchema = z.object({
   estimated_arrival_days: z.number().int().positive(),
+  updated_by: z.string().optional(),
 });
 
 app.post('/orders/:id/confirm-en-route', async (request, reply) => {
@@ -1258,11 +1265,13 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   // Notify inventory agent immediately that inventory verification is needed
   triggerAgentsForStage('inventory_verification', rows[0].quotation_number, rows[0].client_name);
 
-  // Notify escalation group about en route confirmation
-  await notifyManualChange(
-    'En route confirmed',
-    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nEstimated arrival: ${body.estimated_arrival_days} day(s)`,
-  );
+  // Notify escalation group about en route confirmation (dashboard only)
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      'En route confirmed',
+      `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nEstimated arrival: ${body.estimated_arrival_days} day(s)`,
+    );
+  }
 
   // Notify production group directly
   const prodChatId = process.env.PRODUCTION_CHAT_ID;
@@ -1374,8 +1383,13 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
  * POST /orders/:id/complete-inventory-verification
  * Manually mark inventory verification as complete and advance to inventory_arrived.
  */
+const completeInventoryVerificationSchema = z.object({
+  updated_by: z.string().optional(),
+});
+
 app.post('/orders/:id/complete-inventory-verification', async (request, reply) => {
   const { id } = request.params as { id: string };
+  const body = completeInventoryVerificationSchema.parse(request.body);
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -1407,11 +1421,13 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
   // Fire inventory agent for the new stage
   triggerAgentsForStage('inventory_arrived', orderRows[0].quotation_number, orderRows[0].client_name);
 
-  // Notify escalation group about inventory verification completion
-  await notifyManualChange(
-    'Inventory verification completed',
-    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Inventory Arrived`,
-  );
+  // Notify escalation group about inventory verification completion (dashboard only)
+  if (isDashboardQuickAction(body.updated_by)) {
+    await notifyManualChange(
+      'Inventory verification completed',
+      `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Inventory Arrived`,
+    );
+  }
 
   // Notify delivery group directly
   if (DELIVERY_CHAT_ID) {
