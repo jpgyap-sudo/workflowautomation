@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import OtpModal from '@/components/OtpModal';
-import { recordDeposit, payBalance, recordStageUpdate } from '@/lib/api';
-import { CreditCard, Scale, CalendarDays, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { recordDepositWithFile, payBalanceWithFile, recordStageUpdate } from '@/lib/api';
+import { CreditCard, Scale, CalendarDays, CheckCircle, AlertCircle, Loader2, Paperclip, X } from 'lucide-react';
 
 type ActionResult = { ok: boolean; message: string } | null;
 const QUICK_ACTION_UPDATED_BY = 'dashboard_quick_action';
@@ -53,13 +53,77 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20';
 
+/** Convert a File to base64 string (without data-URL prefix). */
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Small pill showing the attached filename with a remove button. */
+function FileChip({ file, onRemove }: { file: File; onRemove: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
+      <Paperclip className="h-3 w-3 text-gray-400" />
+      <span className="max-w-[180px] truncate">{file.name}</span>
+      <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-500">
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+/** Reusable file-picker trigger button. */
+function AttachButton({
+  inputRef,
+  disabled,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => inputRef.current?.click()}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+    >
+      <Paperclip className="h-3.5 w-3.5" />
+      Attach file
+    </button>
+  );
+}
+
+// ── Deposit Form ────────────────────────────────────────────────────────
+
 function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   const [qn, setQn] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
   const [pending, setPending] = useState<{ quotation_number: string; amount: number; deposit_paid_at?: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    e.target.value = '';
+    if (!f) return;
+    const ok = f.type.startsWith('image/') || f.type === 'application/pdf';
+    if (!ok) {
+      onResult({ ok: false, message: 'Only JPEG, PNG, or PDF files are supported.' });
+      return;
+    }
+    setFile(f);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,9 +141,24 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
     if (!pending) return;
     setLoading(true);
     try {
-      await recordDeposit({ ...pending, updated_by: QUICK_ACTION_UPDATED_BY, action_token: actionToken });
-      onResult({ ok: true, message: `Downpayment of ₱${pending.amount.toLocaleString()} recorded for ${pending.quotation_number}.` });
-      setQn(''); setAmount(''); setDate(''); setPending(null);
+      let imageBase64: string | undefined;
+      if (file) imageBase64 = await fileToBase64(file);
+
+      await recordDepositWithFile({
+        quotation_number: pending.quotation_number,
+        amount: pending.amount,
+        deposit_paid_at: pending.deposit_paid_at,
+        updated_by: QUICK_ACTION_UPDATED_BY,
+        image_base64: imageBase64,
+        mime_type: file?.type,
+        original_filename: file?.name,
+      });
+
+      onResult({
+        ok: true,
+        message: `Downpayment of ₱${pending.amount.toLocaleString()} recorded for ${pending.quotation_number}.${file ? ' Deposit slip uploaded.' : ''}`,
+      });
+      setQn(''); setAmount(''); setDate(''); setFile(null); setPending(null);
     } catch (err: unknown) {
       onResult({ ok: false, message: getErrorMessage(err, 'Failed to record downpayment.') });
     } finally {
@@ -90,24 +169,68 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Quotation Number"><input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} /></Field>
-        <Field label="Downpayment Amount (₱)"><input className={inputCls} placeholder="5000" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} /></Field>
-        <Field label="Payment Date (optional)"><input type="date" className={inputCls} value={date} onChange={e => setDate(e.target.value)} /></Field>
-        <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50">
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />} Record Downpayment
+        <Field label="Quotation Number">
+          <input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} />
+        </Field>
+        <Field label="Downpayment Amount (₱)">
+          <input className={inputCls} placeholder="5000" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+        </Field>
+        <Field label="Payment Date (optional)">
+          <input type="date" className={inputCls} value={date} onChange={e => setDate(e.target.value)} />
+        </Field>
+
+        {/* File attachment */}
+        <Field label="Deposit Slip (JPEG / PDF) — optional">
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={handleFileChange} className="hidden" />
+          {file ? (
+            <FileChip file={file} onRemove={() => setFile(null)} />
+          ) : (
+            <AttachButton inputRef={fileInputRef} disabled={loading} />
+          )}
+        </Field>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+        >
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Record Downpayment
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Downpayment" description={`You are about to record a downpayment for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <OtpModal
+        open={otpOpen}
+        title="Confirm Downpayment"
+        description={`You are about to record a downpayment for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`}
+        onVerified={handleVerified}
+        onClose={() => setOtpOpen(false)}
+      />
     </>
   );
 }
 
+// ── Pay Balance Form ────────────────────────────────────────────────────
+
 function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   const [qn, setQn] = useState('');
   const [amount, setAmount] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
   const [pending, setPending] = useState<{ quotation_number: string; amount: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    e.target.value = '';
+    if (!f) return;
+    const ok = f.type.startsWith('image/') || f.type === 'application/pdf';
+    if (!ok) {
+      onResult({ ok: false, message: 'Only JPEG, PNG, or PDF files are supported.' });
+      return;
+    }
+    setFile(f);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -125,11 +248,24 @@ function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
     if (!pending) return;
     setLoading(true);
     try {
-      const res = await payBalance({ ...pending, updated_by: QUICK_ACTION_UPDATED_BY, action_token: actionToken });
+      let imageBase64: string | undefined;
+      if (file) imageBase64 = await fileToBase64(file);
+
+      const res = await payBalanceWithFile({
+        quotation_number: pending.quotation_number,
+        amount: pending.amount,
+        updated_by: QUICK_ACTION_UPDATED_BY,
+        action_token: actionToken,
+        image_base64: imageBase64,
+        mime_type: file?.type,
+        original_filename: file?.name,
+      });
+
       let msg = `Balance of ₱${pending.amount.toLocaleString()} recorded for ${pending.quotation_number}.`;
+      if (file) msg += ' Payment proof uploaded.';
       if (res.overpayment && res.overpayment > 0) msg += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
       onResult({ ok: true, message: msg });
-      setQn(''); setAmount(''); setPending(null);
+      setQn(''); setAmount(''); setFile(null); setPending(null);
     } catch (err: unknown) {
       onResult({ ok: false, message: getErrorMessage(err, 'Failed to record balance payment.') });
     } finally {
@@ -140,16 +276,44 @@ function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Quotation Number"><input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} /></Field>
-        <Field label="Balance Amount (₱)"><input className={inputCls} placeholder="15000" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} /></Field>
-        <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />} Record Balance Payment
+        <Field label="Quotation Number">
+          <input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} />
+        </Field>
+        <Field label="Balance Amount (₱)">
+          <input className={inputCls} placeholder="15000" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+        </Field>
+
+        {/* File attachment */}
+        <Field label="Payment Proof (JPEG / PDF) — optional">
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={handleFileChange} className="hidden" />
+          {file ? (
+            <FileChip file={file} onRemove={() => setFile(null)} />
+          ) : (
+            <AttachButton inputRef={fileInputRef} disabled={loading} />
+          )}
+        </Field>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Record Balance Payment
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Balance Payment" description={`You are about to record a balance payment for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <OtpModal
+        open={otpOpen}
+        title="Confirm Balance Payment"
+        description={`You are about to record a balance payment for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`}
+        onVerified={handleVerified}
+        onClose={() => setOtpOpen(false)}
+      />
     </>
   );
 }
+
+// ── Schedule Delivery Form ──────────────────────────────────────────────
 
 function ScheduleDeliveryForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   const [qn, setQn] = useState('');
@@ -198,6 +362,8 @@ function ScheduleDeliveryForm({ onResult }: { onResult: (r: ActionResult) => voi
   );
 }
 
+// ── Mark Delivered Form ─────────────────────────────────────────────────
+
 function MarkDeliveredForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   const [qn, setQn] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -244,6 +410,8 @@ function MarkDeliveredForm({ onResult }: { onResult: (r: ActionResult) => void }
   );
 }
 
+// ── Page ────────────────────────────────────────────────────────────────
+
 export default function ActionsPage() {
   const [result, setResult] = useState<ActionResult>(null);
 
@@ -267,4 +435,3 @@ export default function ActionsPage() {
     </div>
   );
 }
-

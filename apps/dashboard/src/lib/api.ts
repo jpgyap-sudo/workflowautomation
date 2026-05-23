@@ -260,6 +260,37 @@ export async function payBalance(data: {
   });
 }
 
+export async function payBalanceWithFile(data: {
+  quotation_number: string;
+  amount: number;
+  updated_by?: string;
+  action_token?: string;
+  image_base64?: string;
+  mime_type?: string;
+  original_filename?: string;
+}): Promise<{ ok: boolean; overpayment?: number }> {
+  // Upload the proof file first if provided
+  if (data.image_base64 && data.original_filename) {
+    await uploadOrderFile({
+      quotation_number: data.quotation_number,
+      file_type: 'balance_proof',
+      original_filename: data.original_filename,
+      mime_type: data.mime_type ?? 'image/jpeg',
+      file_data: data.image_base64,
+    });
+  }
+
+  return fetchJson<{ ok: boolean; overpayment?: number }>('/pay-balance', {
+    method: 'POST',
+    body: JSON.stringify({
+      quotation_number: data.quotation_number,
+      amount: data.amount,
+      updated_by: data.updated_by ?? 'dashboard_quick_action',
+      action_token: data.action_token,
+    }),
+  });
+}
+
 export async function verifyDeposit(
   id: string,
   data: { verified_by?: string; action_token: string },
