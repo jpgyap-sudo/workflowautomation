@@ -1316,7 +1316,7 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
 const finishProductionSchema = z.object({
   delivery_estimated_days: z.number().int().positive(),
   updated_by: z.string().optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/finish-production', async (request, reply) => {
@@ -1446,7 +1446,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 const confirmEnRouteSchema = z.object({
   estimated_arrival_days: z.number().int().positive(),
   updated_by: z.string().optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/confirm-en-route', async (request, reply) => {
