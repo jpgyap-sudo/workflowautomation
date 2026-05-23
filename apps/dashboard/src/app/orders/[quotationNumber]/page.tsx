@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
+import { useAuth } from '@/lib/auth';
 import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, visionExtract, verifyDeposit, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
@@ -23,6 +24,7 @@ export default function OrderDetailPage() {
   const params = useParams();
   const quotationNumber = params.quotationNumber as string;
   const { data: order, error, isLoading } = useOrder(quotationNumber);
+  const { user } = useAuth();
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [showVerifyDepositOtp, setShowVerifyDepositOtp] = useState(false);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
@@ -437,12 +439,14 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
-      {/* Item-Level Tracking */}
-      <ItemTrackingSection
-        orderId={order.id}
-        quotationNumber={order.quotation_number}
-        currentStage={order.current_stage}
-      />
+      {/* Item-Level Tracking (admin only) */}
+      {user?.role === 'admin' && (
+        <ItemTrackingSection
+          orderId={order.id}
+          quotationNumber={order.quotation_number}
+          currentStage={order.current_stage}
+        />
+      )}
 
       {/* Agent Notes */}
       <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} />

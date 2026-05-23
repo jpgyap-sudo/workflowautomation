@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useOrdersByStage } from '@/lib/useApi';
+import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import { updateOrder, deleteOrder, setProduction, getItemCompletion, getOrderItems, verifyDeposit } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
@@ -330,6 +332,23 @@ function OrderSection({
 }
 
 export default function PurchasingPage() {
+  const { user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      router.replace('/');
+    }
+  }, [user, router]);
+
+  if (!user || user.role !== 'admin') {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
   const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
     useOrdersByStage('purchasing_pending');
   const { data: depositPendingOrders = [], isLoading: loadingDepositPending, error: errorDepositPending, mutate: mutateDepositPending } =
