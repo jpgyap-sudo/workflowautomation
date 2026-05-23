@@ -6954,3 +6954,170 @@ Do not let AI vision payment extraction go straight to a terminal state. The das
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: infinite loop in item_prod handler + skip confirmation for item status toggles
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9270afb6f80d7218c7648215aa089ea158536731
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9270afb6f80d7218c7648215aa089ea158536731
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+An infinite loop in the `item_prod` handler and a missing skip of confirmation for item status toggles.
+
+**Why it broke:**  
+The `item_prod` handler recursively triggered itself without a termination condition, causing an infinite loop. Additionally, toggling item statuses prompted unnecessary confirmation dialogs, breaking the intended UX flow.
+
+**Reusable takeaway:**  
+Always ensure recursive handlers have explicit base cases or exit conditions to prevent infinite loops. For UI toggles, skip confirmation dialogs when the action is reversible or low-risk, and validate state transitions to avoid redundant prompts.
+
+---
+*Original commit message: fix: infinite loop in item_prod handler + skip confirmation for item status toggles*
+
+#### Lesson Learned
+
+**What was fixed:**  
+An infinite loop in the `item_prod` handler and a missing skip of confirmation for item status toggles.
+
+**Why it broke:**  
+The `item_prod` handler recursively triggered itself without a termination condition, causing an infinite loop. Additionally, toggling item statuses prompted unnecessary confirmation dialogs, breaking the intended UX flow.
+
+**Reusable takeaway:**  
+Always ensure recursive handlers have explicit base cases or exit conditions to prevent infinite loops. For UI toggles, skip confirmation dialogs when the action is reversible or low-risk, and validate state transitions to avoid redundant prompts.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: stop infinite loop when clicking 'Not Yet' on already-not_yet items
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit dd63058871dd29cda5f50f4aca3833f76b46dbf2
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** dd63058871dd29cda5f50f4aca3833f76b46dbf2
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+An infinite loop triggered when clicking the "Not Yet" button on items already in the "not_yet" state.
+
+**Why it broke:**  
+The button handler did not check the current item state before processing the action. Clicking "Not Yet" on an already-not_yet item caused the same state transition to fire repeatedly, creating a recursive loop.
+
+**Reusable takeaway:**  
+Always guard state-dependent actions with a precondition check against the current state. If the action would result in no state change (idempotent), either skip the handler entirely or return early. This prevents unintended loops and redundant processing.
+
+---
+*Original commit message: fix: stop infinite loop when clicking 'Not Yet' on already-not_yet items*
+
+#### Lesson Learned
+
+**What was fixed:**  
+An infinite loop triggered when clicking the "Not Yet" button on items already in the "not_yet" state.
+
+**Why it broke:**  
+The button handler did not check the current item state before processing the action. Clicking "Not Yet" on an already-not_yet item caused the same state transition to fire repeatedly, creating a recursive loop.
+
+**Reusable takeaway:**  
+Always guard state-dependent actions with a precondition check against the current state. If the action would result in no state change (idempotent), either skip the handler entirely or return early. This prevents unintended loops and redundant processing.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: replace early-return with skip-set to allow progressing through remaining items
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 624feccd9b0e4c4442b84d56f7b1ef9efab33be5
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 624feccd9b0e4c4442b84d56f7b1ef9efab33be5
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+A bug where the Telegram bot would stop processing remaining items after encountering a single item that didn't require updates (e.g., already up-to-date). The fix replaced an early `return` with a `skip-set` pattern, allowing the loop to continue to subsequent items.
+
+**Why it broke:**  
+The original code used an early `return` inside a loop when an item was skipped. This prematurely exited the entire function, preventing the bot from progressing through the rest of the items.
+
+**Reusable takeaway:**  
+When iterating over a collection and conditionally skipping items, use a `skip` or `continue` pattern (e.g., `if (skip) { continue; }`) instead of an early `return`. This ensures the loop processes all items without breaking early. Always verify loop control flow when handling conditional skips.
+
+---
+*Original commit message: fix: replace early-return with skip-set to allow progressing through remaining items*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the Telegram bot would stop processing remaining items after encountering a single item that didn't require updates (e.g., already up-to-date). The fix replaced an early `return` with a `skip-set` pattern, allowing the loop to continue to subsequent items.
+
+**Why it broke:**  
+The original code used an early `return` inside a loop when an item was skipped. This prematurely exited the entire function, preventing the bot from progressing through the rest of the items.
+
+**Reusable takeaway:**  
+When iterating over a collection and conditionally skipping items, use a `skip` or `continue` pattern (e.g., `if (skip) { continue; }`) instead of an early `return`. This ensures the loop processes all items without breaking early. Always verify loop control flow when handling conditional skips.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [quotation-automation-system] production Telegram inline dashboard categories
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Production Telegram chat dashboard should separate Pending Start, In Progress, Ready for Delivery, and En Route. Ready for Delivery means all production items are finished and order is waiting for dispatch/en-route updates; Production group should stop at en-route and not monitor inventory. Existing /production/board can derive sections from order current_stage, production_finished, item production_status, and item en_route_status, while keeping callback_data short with 8-char IDs.
+
+#### Lesson Learned
+
+Production Telegram chat dashboard should separate Pending Start, In Progress, Ready for Delivery, and En Route. Ready for Delivery means all production items are finished and order is waiting for dispatch/en-route updates; Production group should stop at en-route and not monitor inventory. Existing /production/board can derive sections from order current_stage, production_finished, item production_status, and item en_route_status, while keeping callback_data short with 8-char IDs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

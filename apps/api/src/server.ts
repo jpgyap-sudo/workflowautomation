@@ -1320,12 +1320,14 @@ app.get('/production/board', async (_request, reply) => {
   const orders = await query<{
     id: string; quotation_number: string | null; client_name: string | null;
     current_stage: string; production_started: boolean | null; production_finished: boolean | null;
+    en_route_confirmed: boolean | null;
     estimated_production_days: number | null; production_started_at: string | null;
   }>(
     `SELECT id, quotation_number, client_name, current_stage,
-            production_started, production_finished, estimated_production_days, production_started_at
+            production_started, production_finished, en_route_confirmed,
+            estimated_production_days, production_started_at
      FROM orders
-     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending')
+     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending', 'partial_production', 'en_route')
        AND status = 'active'
      ORDER BY updated_at DESC
      LIMIT 30`,
@@ -1334,9 +1336,9 @@ app.get('/production/board', async (_request, reply) => {
   const items = orders.length > 0
     ? await query<{
         id: string; order_id: string; name: string; quantity: number;
-        production_status: string;
+        production_status: string; en_route_status: string;
       }>(
-        `SELECT id, order_id, name, quantity, production_status
+        `SELECT id, order_id, name, quantity, production_status, en_route_status
          FROM order_items
          WHERE order_id = ANY($1::uuid[])
          ORDER BY created_at ASC`,
@@ -1364,6 +1366,7 @@ app.get('/production/board', async (_request, reply) => {
 const boardItemUpdateSchema = z.object({
   order_id_prefix: z.string().min(8),
   item_id_prefix: z.string().min(8),
+  area: z.enum(['production', 'en_route']).optional().default('production'),
   status: z.enum(['pending', 'in_progress', 'finished']),
 });
 
@@ -1377,28 +1380,65 @@ app.post('/production/board/item', async (request, reply) => {
   if (!orderRow[0]) return reply.status(404).send({ error: 'Order not found' });
   const orderId = orderRow[0].id;
 
-  const itemRow = await query<{ id: string; name: string; production_status: string }>(
-    `SELECT id, name, production_status FROM order_items WHERE id::text LIKE $1 AND order_id = $2 LIMIT 1`,
+  const itemRow = await query<{ id: string; name: string; production_status: string; en_route_status: string }>(
+    `SELECT id, name, production_status, en_route_status FROM order_items WHERE id::text LIKE $1 AND order_id = $2 LIMIT 1`,
     [`${body.item_id_prefix}%`, orderId],
   );
   if (!itemRow[0]) return reply.status(404).send({ error: 'Item not found' });
 
-  await query(
-    `UPDATE order_items SET production_status = $1, updated_at = NOW() WHERE id = $2`,
-    [body.status, itemRow[0].id],
-  );
+  if (body.area === 'en_route') {
+    const enRouteStatus = body.status === 'finished' ? 'en_route' : 'not_yet';
+    await query(
+      `UPDATE order_items SET en_route_status = $1, updated_at = NOW() WHERE id = $2`,
+      [enRouteStatus, itemRow[0].id],
+    );
+  } else {
+    await query(
+      `UPDATE order_items SET production_status = $1, updated_at = NOW() WHERE id = $2`,
+      [body.status, itemRow[0].id],
+    );
+  }
 
   // Recompute completion and maybe advance stage
-  const allItems = await query<{ production_status: string }>(
-    `SELECT production_status FROM order_items WHERE order_id = $1`,
+  const allItems = await query<{ production_status: string; en_route_status: string }>(
+    `SELECT production_status, en_route_status FROM order_items WHERE order_id = $1`,
     [orderId],
   );
   const allDone = allItems.length > 0 && allItems.every((i) => i.production_status === 'finished');
+  const allEnRoute = allItems.length > 0 && allItems.every((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
+
+  if (body.area === 'production' && allDone) {
+    await query(
+      `UPDATE orders
+       SET production_started = TRUE,
+           production_finished = TRUE,
+           production_finished_at = COALESCE(production_finished_at, NOW()),
+           current_stage = 'en_route',
+           updated_at = NOW()
+       WHERE id = $1`,
+      [orderId],
+    );
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'en_route', 'production_finished', 'All production board items marked finished; ready for delivery / dispatch.', 'production_board')`,
+      [orderId],
+    );
+  } else if (body.area === 'production' && body.status === 'in_progress') {
+    await query(
+      `UPDATE orders
+       SET production_started = TRUE,
+           production_started_at = COALESCE(production_started_at, NOW()),
+           current_stage = CASE WHEN current_stage IN ('purchasing_pending', 'production_pending') THEN 'production_confirmed' ELSE current_stage END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [orderId],
+    );
+  }
 
   await invalidateCache(['orders:*', `orders:stage:*`, 'dashboard:*']);
   broadcastSSE('order_updated', { id: orderId });
 
-  return reply.send({ ok: true, item: itemRow[0].name, status: body.status, all_done: allDone, order_id: orderId });
+  return reply.send({ ok: true, item: itemRow[0].name, status: body.status, all_done: allDone, all_en_route: allEnRoute, order_id: orderId });
 });
 
 // ── Production Assistant (NLU chat endpoint) ─────────────────────────────

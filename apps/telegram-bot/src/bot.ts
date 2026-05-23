@@ -2667,19 +2667,31 @@ bot.on(message('text'), async (ctx) => {
 //
 // Callback data max is 64 bytes. Using 8-char ID prefixes keeps us well under.
 
+
+type BoardCategory = 'pending_start' | 'in_progress' | 'ready_for_delivery' | 'en_route';
+
 interface BoardOrder {
   id: string;
   quotation_number: string | null;
   client_name: string | null;
   current_stage: string;
   production_started: boolean | null;
-  items: { id: string; name: string; quantity: number; production_status: string }[];
+  production_finished: boolean | null;
+  en_route_confirmed: boolean | null;
+  items: { id: string; name: string; quantity: number; production_status: string; en_route_status: string }[];
 }
 
 interface BoardResponse {
   ok: boolean;
   orders: BoardOrder[];
 }
+
+const BOARD_CATEGORIES: { id: BoardCategory; label: string; icon: string }[] = [
+  { id: 'pending_start', label: 'Pending Start', icon: '?' },
+  { id: 'in_progress', label: 'In Progress', icon: '??' },
+  { id: 'ready_for_delivery', label: 'Ready for Delivery', icon: '?' },
+  { id: 'en_route', label: 'En Route', icon: '??' },
+];
 
 async function fetchBoard(): Promise<BoardOrder[]> {
   const res = await fetch(`${apiBaseUrl}/production/board`);
@@ -2688,158 +2700,233 @@ async function fetchBoard(): Promise<BoardOrder[]> {
   return data.orders ?? [];
 }
 
-function boardOrderList(orders: BoardOrder[]): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
-  if (orders.length === 0) {
+function productionDone(order: BoardOrder): boolean {
+  return order.production_finished === true || (order.items.length > 0 && order.items.every((i) => i.production_status === 'finished'));
+}
+
+function anyItemStarted(order: BoardOrder): boolean {
+  return order.items.some((i) => i.production_status === 'in_progress' || i.production_status === 'finished');
+}
+
+function anyItemEnRoute(order: BoardOrder): boolean {
+  return order.items.some((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
+}
+
+function boardCategory(order: BoardOrder): BoardCategory {
+  if (order.current_stage === 'en_route' || productionDone(order)) {
+    return anyItemEnRoute(order) || order.en_route_confirmed ? 'en_route' : 'ready_for_delivery';
+  }
+  if (order.production_started || anyItemStarted(order) || order.current_stage === 'production_confirmed' || order.current_stage === 'partial_production') {
+    return 'in_progress';
+  }
+  return 'pending_start';
+}
+
+function boardDashboard(orders: BoardOrder[]): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
+  const counts = new Map<BoardCategory, number>();
+  for (const c of BOARD_CATEGORIES) counts.set(c.id, 0);
+  for (const order of orders) counts.set(boardCategory(order), (counts.get(boardCategory(order)) ?? 0) + 1);
+
+  const lines = BOARD_CATEGORIES.map((c) => `${c.icon} ${c.label}: *${counts.get(c.id) ?? 0}*`);
+  return {
+    text: `?? *Production Dashboard*\n\n${lines.join('\n')}\n\nProduction chat monitors only production, ready-for-delivery, and en-route work. Tap a section:`,
+    keyboard: Markup.inlineKeyboard([
+      [
+        Markup.button.callback(`? Pending Start (${counts.get('pending_start') ?? 0})`, 'prd:cat:pending_start'),
+        Markup.button.callback(`?? In Progress (${counts.get('in_progress') ?? 0})`, 'prd:cat:in_progress'),
+      ],
+      [Markup.button.callback(`? Ready for Delivery (${counts.get('ready_for_delivery') ?? 0})`, 'prd:cat:ready_for_delivery')],
+      [Markup.button.callback(`?? En Route (${counts.get('en_route') ?? 0})`, 'prd:cat:en_route')],
+      [Markup.button.callback('?? Refresh', 'prd:list')],
+    ]),
+  };
+}
+
+function boardOrderList(orders: BoardOrder[], category: BoardCategory): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
+  const meta = BOARD_CATEGORIES.find((c) => c.id === category)!;
+  const filtered = orders.filter((o) => boardCategory(o) === category);
+
+  if (filtered.length === 0) {
     return {
-      text: '🏭 Production Board\n\nNo active production orders.',
-      keyboard: Markup.inlineKeyboard([]),
+      text: `${meta.icon} *${meta.label}*\n\nNo orders in this section.`,
+      keyboard: Markup.inlineKeyboard([[Markup.button.callback('? Back to Production Dashboard', 'prd:list')]]),
     };
   }
 
-  const lines = orders.map((o) => {
+  const lines = filtered.map((o) => {
     const total = o.items.length;
-    const done = o.items.filter((i) => i.production_status === 'finished').length;
-    const allDone = total > 0 && done === total;
-    const icon = allDone ? '✅' : done > 0 ? '🔄' : '⏳';
-    const progress = total > 0 ? ` ${done}/${total}` : ' no items';
-    return `${icon} ${o.quotation_number ?? o.id.slice(0, 8)} — ${o.client_name ?? 'Unknown'}${progress}`;
+    const produced = o.items.filter((i) => i.production_status === 'finished').length;
+    const routed = o.items.filter((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+    const progress = category === 'ready_for_delivery' || category === 'en_route'
+      ? `${routed}/${total || 'no'} en route`
+      : `${produced}/${total || 'no'} produced`;
+    return `? *${o.quotation_number ?? o.id.slice(0, 8)}* ? ${o.client_name ?? 'Unknown'} (${progress})`;
   });
 
-  const buttons = orders.map((o) => [
+  const buttons = filtered.slice(0, 20).map((o) => [
     Markup.button.callback(
-      `${o.quotation_number ?? o.id.slice(0, 8)} · ${o.client_name ?? '—'}`,
+      `${o.quotation_number ?? o.id.slice(0, 8)} ? ${o.client_name ?? '?'}`.slice(0, 58),
       `prd:o:${o.id.slice(0, 8)}`,
     ),
   ]);
+  buttons.push([Markup.button.callback('? Back to Production Dashboard', 'prd:list')]);
 
   return {
-    text: `🏭 *Production Board* — ${orders.length} order(s)\n\n${lines.join('\n')}\n\nTap an order to see items:`,
+    text: `${meta.icon} *${meta.label}* ? ${filtered.length} order(s)\n\n${lines.join('\n')}\n\nTap an order to update item-by-item:`,
     keyboard: Markup.inlineKeyboard(buttons),
   };
 }
 
 function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
   const qn = order.quotation_number ?? order.id.slice(0, 8);
+  const category = boardCategory(order);
+  const categoryMeta = BOARD_CATEGORIES.find((c) => c.id === category)!;
   const total = order.items.length;
-  const done = order.items.filter((i) => i.production_status === 'finished').length;
+  const produced = order.items.filter((i) => i.production_status === 'finished').length;
+  const routed = order.items.filter((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
 
-  let text = `📦 *${qn}* — ${order.client_name ?? 'Unknown'}\n`;
+  let text = `${categoryMeta.icon} *${qn}* ? ${order.client_name ?? 'Unknown'}\n`;
+  text += `Section: *${categoryMeta.label}*\n`;
+  text += `Production: ${produced}/${total} finished\n`;
+  text += `En route: ${routed}/${total} dispatched\n\n`;
+
   if (total === 0) {
-    text += '\n_No items on record._';
+    text += '_No items on record._';
   } else {
-    text += `Progress: ${done}/${total} produced\n\n`;
     for (const item of order.items) {
-      const icon =
-        item.production_status === 'finished'   ? '✅' :
-        item.production_status === 'in_progress' ? '🔄' : '⬜';
-      const label =
-        item.production_status === 'finished'   ? 'Produced' :
-        item.production_status === 'in_progress' ? 'In Progress' : 'Not started';
-      text += `${icon} ${item.name} ×${item.quantity} — ${label}\n`;
+      const prodIcon = item.production_status === 'finished' ? '?' : item.production_status === 'in_progress' ? '??' : '?';
+      const routeIcon = item.en_route_status === 'en_route' || item.en_route_status === 'arrived' ? '??' : '??';
+      text += `${prodIcon}${routeIcon} ${item.name} ?${item.quantity}\n`;
     }
   }
 
   const rows: ReturnType<typeof Markup.button.callback>[][] = [];
+  const orderPrefix = order.id.slice(0, 8);
 
-  // One row per non-finished item, with state-aware buttons:
-  //   pending     → [▶ Start] only  (can't finish what hasn't started)
-  //   in_progress → [✅ Finish] only (already started, next step is finish)
-  for (const item of order.items) {
-    if (item.production_status === 'finished') continue;
-    const iid = item.id.slice(0, 8);
-    const oid = order.id.slice(0, 8);
-    if (item.production_status === 'in_progress') {
+  if (category === 'ready_for_delivery' || category === 'en_route') {
+    for (const item of order.items) {
+      if (item.en_route_status === 'en_route' || item.en_route_status === 'arrived') continue;
       rows.push([
-        Markup.button.callback(`✅ Mark done — ${item.name}`, `prd:i:${iid}:${oid}:f`),
+        Markup.button.callback(`?? Mark en route ? ${item.name}`.slice(0, 60), `prd:i:${item.id.slice(0, 8)}:${orderPrefix}:e`),
       ]);
-    } else {
-      // pending — only allow starting, not finishing
-      rows.push([
-        Markup.button.callback(`▶ Start — ${item.name}`, `prd:i:${iid}:${oid}:s`),
-      ]);
+    }
+  } else {
+    for (const item of order.items) {
+      if (item.production_status === 'finished') continue;
+      if (item.production_status === 'in_progress') {
+        rows.push([
+          Markup.button.callback(`? Finish ? ${item.name}`.slice(0, 60), `prd:i:${item.id.slice(0, 8)}:${orderPrefix}:f`),
+        ]);
+      } else {
+        rows.push([
+          Markup.button.callback(`? Start ? ${item.name}`.slice(0, 60), `prd:i:${item.id.slice(0, 8)}:${orderPrefix}:s`),
+        ]);
+      }
     }
   }
 
-  rows.push([Markup.button.callback('↩ Back to orders', 'prd:list')]);
+  if (rows.length === 0 && category === 'ready_for_delivery') {
+    rows.push([Markup.button.callback('?? All items are en route', 'noop')]);
+  } else if (rows.length === 0 && category !== 'en_route') {
+    rows.push([Markup.button.callback('? All production items finished', 'noop')]);
+  }
+
+  rows.push([Markup.button.callback(`? Back to ${categoryMeta.label}`, `prd:cat:${category}`)]);
+  rows.push([Markup.button.callback('?? Production Dashboard', 'prd:list')]);
 
   return { text, keyboard: Markup.inlineKeyboard(rows) };
 }
 
-// /prod command — show production board
+// /prod command ? show production dashboard
 bot.command('prod', async (ctx) => {
   const orders = await fetchBoard();
-  const { text, keyboard } = boardOrderList(orders);
+  const { text, keyboard } = boardDashboard(orders);
   await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
 });
 
 // Also allow /production as alias
 bot.command('production', async (ctx) => {
   const orders = await fetchBoard();
-  const { text, keyboard } = boardOrderList(orders);
+  const { text, keyboard } = boardDashboard(orders);
   await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
 });
 
-// prd:list — refresh/back to order list
+// prd:list ? refresh/back to production dashboard
 bot.action('prd:list', async (ctx) => {
   const orders = await fetchBoard();
-  const { text, keyboard } = boardOrderList(orders);
+  const { text, keyboard } = boardDashboard(orders);
   await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
 });
 
-// prd:o:{orderId8} — show items for a specific order
+// prd:cat:{category} ? show a section list
+bot.action(/^prd:cat:(pending_start|in_progress|ready_for_delivery|en_route)$/, async (ctx) => {
+  const category = ctx.match[1] as BoardCategory;
+  const orders = await fetchBoard();
+  const { text, keyboard } = boardOrderList(orders, category);
+  await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
+});
+
+// prd:o:{orderId8} ? show items for a specific order
 bot.action(/^prd:o:(.{8})$/, async (ctx) => {
   const prefix = ctx.match[1];
   const orders = await fetchBoard();
   const order = orders.find((o) => o.id.startsWith(prefix));
   if (!order) {
-    await ctx.editMessageText('⚠️ Order not found. It may have moved to the next stage.').catch(() => {});
+    await ctx.editMessageText('?? Order not found. It may have moved to inventory or another stage.').catch(() => {});
     return;
   }
   const { text, keyboard } = boardItemView(order);
   await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
 });
 
-// prd:i:{itemId8}:{orderId8}:{status} — update item status
-// status: f=finished, s=in_progress, p=pending
-bot.action(/^prd:i:(.{8}):(.{8}):(f|s|p)$/, async (ctx) => {
+// prd:i:{itemId8}:{orderId8}:{status} ? update item status
+// status: f=production finished, s=production in_progress, p=production pending, e=item en_route
+bot.action(/^prd:i:(.{8}):(.{8}):(f|s|p|e)$/, async (ctx) => {
   const itemPrefix = ctx.match[1];
   const orderPrefix = ctx.match[2];
   const statusCode = ctx.match[3];
-  const statusMap: Record<string, string> = { f: 'finished', s: 'in_progress', p: 'pending' };
+  const isEnRouteUpdate = statusCode === 'e';
+  const statusMap: Record<string, string> = { f: 'finished', s: 'in_progress', p: 'pending', e: 'finished' };
   const status = statusMap[statusCode];
 
   try {
     const res = await fetch(`${apiBaseUrl}/production/board/item`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ order_id_prefix: orderPrefix, item_id_prefix: itemPrefix, status }),
+      body: JSON.stringify({
+        order_id_prefix: orderPrefix,
+        item_id_prefix: itemPrefix,
+        area: isEnRouteUpdate ? 'en_route' : 'production',
+        status,
+      }),
     });
 
     if (!res.ok) {
-      await ctx.answerCbQuery('❌ Update failed').catch(() => {});
+      await ctx.answerCbQuery('? Update failed').catch(() => {});
       return;
     }
 
-    const data = await res.json() as { ok: boolean; item: string; all_done: boolean };
-    const label = status === 'finished' ? `✅ ${data.item} marked as produced` : `🔄 ${data.item} marked as in progress`;
+    const data = await res.json() as { ok: boolean; item: string; all_done: boolean; all_en_route: boolean };
+    const label = isEnRouteUpdate
+      ? `?? ${data.item} marked en route`
+      : status === 'finished'
+        ? `? ${data.item} finished`
+        : `?? ${data.item} in progress`;
     await ctx.answerCbQuery(label).catch(() => {});
 
-    // Refresh the item view
     const orders = await fetchBoard();
     const order = orders.find((o) => o.id.startsWith(orderPrefix));
     if (!order) {
-      await ctx.editMessageText('✅ All done! Order has moved to the next stage.').catch(() => {});
+      await ctx.editMessageText('? Updated. Order has moved out of production monitoring.').catch(() => {});
       return;
     }
     const { text, keyboard } = boardItemView(order);
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
   } catch (err) {
     console.error('[bot] Board item update error:', err);
-    await ctx.answerCbQuery('❌ Request failed').catch(() => {});
+    await ctx.answerCbQuery('? Request failed').catch(() => {});
   }
 });
-
-// ── Production Assistant confirmation callbacks ────────────────────────
 
 bot.action('assistant:cancel', async (ctx) => {
   await ctx.editMessageText('Okay, no changes made.').catch(() => {});
