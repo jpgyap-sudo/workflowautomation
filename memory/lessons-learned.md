@@ -5595,3 +5595,51 @@ When using Telegram inline buttons, always ensure `callback_data` fits within 64
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: shorten reminder:item_prod and reminder:item_en_route callback_data to use 8-char UUID prefix + quotation number
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c98d791926a5bd9a21ecabcfc19ae776fc133d52
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c98d791926a5bd9a21ecabcfc19ae776fc133d52
+**Files:** apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Callback data for `reminder:item_prod` and `reminder:item_en_route` was truncated or malformed, causing Telegram inline button callbacks to fail silently.
+
+**Why it broke:**  
+Telegram’s `callback_data` field has a 64-byte limit. The original implementation used full UUIDs (36 chars) plus quotation numbers, exceeding this limit when concatenated. The excess data was silently dropped, breaking callback routing.
+
+**Reusable takeaway:**  
+When designing callback data for Telegram inline keyboards, always enforce a strict length budget. Use truncated identifiers (e.g., first 8 characters of a UUID) combined with minimal context (e.g., quotation number). Validate total length against the 64-byte limit before deployment. This prevents silent failures that are hard to debug in production.
+
+---
+*Original commit message: fix: shorten reminder:item_prod and reminder:item_en_route callback_data to use 8-char UUID prefix + quotation number*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Callback data for `reminder:item_prod` and `reminder:item_en_route` was truncated or malformed, causing Telegram inline button callbacks to fail silently.
+
+**Why it broke:**  
+Telegram’s `callback_data` field has a 64-byte limit. The original implementation used full UUIDs (36 chars) plus quotation numbers, exceeding this limit when concatenated. The excess data was silently dropped, breaking callback routing.
+
+**Reusable takeaway:**  
+When designing callback data for Telegram inline keyboards, always enforce a strict length budget. Use truncated identifiers (e.g., first 8 characters of a UUID) combined with minimal context (e.g., quotation number). Validate total length against the 64-byte limit before deployment. This prevents silent failures that are hard to debug in production.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
