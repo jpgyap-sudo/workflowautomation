@@ -4825,3 +4825,51 @@ When continuing the dashboard OTP hardening work, ensure action confirmation sta
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add email OTP fallback, agent notes OTP, and type fixes
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9f9c848f093feb37b87ba5965286e1b58b6dcca2
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9f9c848f093feb37b87ba5965286e1b58b6dcca2
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/agents/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Added email OTP fallback when SMS fails, agent notes OTP for internal verification, and corrected type definitions across dashboard components.
+
+**Why it broke:**  
+SMS delivery is unreliable in some regions; OTP modal assumed SMS always succeeds. Agent notes lacked a verification step, causing security gaps. Type mismatches in API responses caused runtime errors.
+
+**Reusable takeaway:**  
+Always implement a fallback channel for critical verification steps (e.g., email when SMS fails). For internal actions (like agent notes), require re-authentication via OTP to prevent unauthorized edits. Validate API response types against frontend expectations to catch mismatches early.
+
+---
+*Original commit message: fix: add email OTP fallback, agent notes OTP, and type fixes*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added email OTP fallback when SMS fails, agent notes OTP for internal verification, and corrected type definitions across dashboard components.
+
+**Why it broke:**  
+SMS delivery is unreliable in some regions; OTP modal assumed SMS always succeeds. Agent notes lacked a verification step, causing security gaps. Type mismatches in API responses caused runtime errors.
+
+**Reusable takeaway:**  
+Always implement a fallback channel for critical verification steps (e.g., email when SMS fails). For internal actions (like agent notes), require re-authentication via OTP to prevent unauthorized edits. Validate API response types against frontend expectations to catch mismatches early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
