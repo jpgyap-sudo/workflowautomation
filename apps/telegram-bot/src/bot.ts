@@ -550,6 +550,8 @@ const SAFE_PREFIXES = [
   'date:custom:',
   'production:delivery_custom:',
   'en_route:arrival_custom:',
+  // Delivery day-before acknowledgement — no API call, just a confirmation message
+  'delivery:ready:',
   // Vision flow navigation (no state changes)
   'vision:type_',
   'vision:ignore',
@@ -5010,12 +5012,12 @@ bot.action(/^delivery:yes:(.+):(.+)$/, async (ctx) => {
   }
 });
 
-// User said item has NOT been delivered yet
+// User said item has NOT been delivered yet — ask for new date
 bot.action(/^delivery:no:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
-  const orderIdPrefix = ctx.match[1]; // 8-char prefix — not used for API calls
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
 
   botLog({
@@ -5025,10 +5027,51 @@ bot.action(/^delivery:no:(.+):(.+)$/, async (ctx) => {
     direction: 'incoming',
   });
 
+  try {
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    await showDeliveryDatePicker(ctx, chatId, quotationNumber, order, true);
+  } catch {
+    await ctx.editMessageText(
+      `❌ Order *${quotationNumber}* not found.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
+});
+
+// Day-before check: user confirmed ready for tomorrow
+bot.action(/^delivery:ready:(.+):(.+)$/, async (ctx) => {
+  const quotationNumber = ctx.match[2];
+  await ctx.answerCbQuery();
   await ctx.editMessageText(
-    `⏳ *Delivery Pending* — ${quotationNumber}\n\nNoted. The bot will check again tomorrow.\nPlease update once the item has been delivered.`,
+    `✅ *Ready for Tomorrow* — ${quotationNumber}\n\nGreat! Delivery is confirmed for tomorrow. Good luck! 🚚`,
     { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('🏠 Main Menu', 'menu:main')]]) }
   );
+});
+
+// Day-before check: delivery is delayed — show date picker for new schedule
+bot.action(/^delivery:delayed:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const orderIdPrefix = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `delivery:delayed:${orderIdPrefix}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    await showDeliveryDatePicker(ctx, chatId, quotationNumber, order, true);
+  } catch {
+    await ctx.editMessageText(
+      `❌ Order *${quotationNumber}* not found.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
 });
 
 // ── Gemini Vision Callback Handlers ──────────────────────────────────

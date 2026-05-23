@@ -289,15 +289,16 @@ export async function processDueReminders(): Promise<number> {
       // Only fire this reminder when the delivery date has actually arrived.
       // If the delivery date is still in the future, snooze to the day before instead.
       const deliveryDate = (reminder as any).delivery_date;
+      let deliveryDiffDays = 0; // default: treat as delivery day if no date set
       if (deliveryDate) {
-        const pht = new Date(Date.now() + 8 * 60 * 60 * 1000); // current PHT time
+        const pht = new Date(Date.now() + 8 * 60 * 60 * 1000);
         const deliveryPht = new Date(new Date(deliveryDate).getTime() + 8 * 60 * 60 * 1000);
-        const diffDays = Math.ceil(
+        deliveryDiffDays = Math.ceil(
           (deliveryPht.setHours(0,0,0,0) - pht.setHours(0,0,0,0)) / 86_400_000
         );
 
-        if (diffDays > 1) {
-          // Too early — snooze to 8 AM the day before delivery
+        if (deliveryDiffDays > 1) {
+          // Too early — snooze to 8 AM PHT the day before delivery
           const dayBefore = new Date(new Date(deliveryDate).getTime() - 24 * 60 * 60 * 1000);
           dayBefore.setUTCHours(0, 0, 0, 0); // midnight UTC = 8 AM PHT
           await query(
@@ -308,13 +309,22 @@ export async function processDueReminders(): Promise<number> {
         }
       }
 
-      // Delivery is today, tomorrow, or overdue — ask if delivered
-      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
-        [
-          { text: '✅ Yes, Delivered', callback_data: `delivery:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
-          { text: '❌ Not Yet', callback_data: `delivery:no:${orderId.slice(0, 8)}:${quotationNumber}` },
-        ],
-      ]);
+      // Day before: ask if ready; delivery day/overdue: ask if delivered
+      if (deliveryDiffDays === 1) {
+        ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+          [
+            { text: '✅ Yes, Ready', callback_data: `delivery:ready:${orderId.slice(0, 8)}:${quotationNumber}` },
+            { text: '⚠️ No, Delayed', callback_data: `delivery:delayed:${orderId.slice(0, 8)}:${quotationNumber}` },
+          ],
+        ]);
+      } else {
+        ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+          [
+            { text: '✅ Yes, Delivered', callback_data: `delivery:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+            { text: '❌ Not Yet', callback_data: `delivery:no:${orderId.slice(0, 8)}:${quotationNumber}` },
+          ],
+        ]);
+      }
     } else if (reminder.stage === 'countered') {
       // Countered: ask if payment has been received
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
