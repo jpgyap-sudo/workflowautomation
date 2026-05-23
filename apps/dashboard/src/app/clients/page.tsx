@@ -1,10 +1,10 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useCallback, useRef } from 'react';
 import { useClients } from '@/lib/useApi';
 import type { Client } from '@/lib/api';
 import { createClient, updateClient, deleteClient, searchClients, getClientOrders } from '@/lib/api';
-import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText, AlertTriangle } from 'lucide-react';
 import { useEffect } from 'react';
 import OtpModal from '@/components/OtpModal';
 
@@ -30,9 +30,55 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
   const [authReceiverName, setAuthReceiverName] = useState(client?.authorized_receiver_name ?? '');
   const [authReceiverContact, setAuthReceiverContact] = useState(client?.authorized_receiver_contact ?? '');
   const [notes, setNotes] = useState(client?.notes ?? '');
+  const [duplicates, setDuplicates] = useState<Client[] | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced duplicate check when client name changes (only for new clients)
+  useEffect(() => {
+    if (client) {
+      // Editing — no duplicate check needed
+      setDuplicates(null);
+      setDuplicateConfirmed(false);
+      return;
+    }
+    const name = clientName.trim();
+    if (!name || name.length < 2) {
+      setDuplicates(null);
+      setDuplicateConfirmed(false);
+      return;
+    }
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setCheckingDuplicates(true);
+      try {
+        const results = await searchClients(name);
+        // Filter out exact name match (server will upsert anyway)
+        const exactMatch = results.filter(
+          (r) => r.client_name.toLowerCase() === name.toLowerCase()
+        );
+        setDuplicates(exactMatch.length > 0 ? exactMatch : null);
+        setDuplicateConfirmed(false);
+      } catch {
+        setDuplicates(null);
+      } finally {
+        setCheckingDuplicates(false);
+      }
+    }, 400);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [clientName, client]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // If duplicates exist and user hasn't confirmed, block submission
+    if (!client && duplicates && duplicates.length > 0 && !duplicateConfirmed) {
+      return;
+    }
     const optional = (value: string) => {
       const trimmed = value.trim();
       return client ? (trimmed || null) : (trimmed || undefined);
@@ -63,6 +109,9 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             required
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
           />
+          {checkingDuplicates && !client && (
+            <p className="mt-1 text-xs text-gray-400">Checking for duplicates...</p>
+          )}
         </div>
         <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Address</label>
@@ -111,6 +160,39 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
           />
         </div>
       </div>
+
+      {/* Duplicate Warning Banner */}
+      {!client && duplicates && duplicates.length > 0 && !duplicateConfirmed && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="text-xs text-amber-800">
+              <p className="font-semibold">Duplicate client detected</p>
+              <p className="mt-1">
+                A client named <strong>"{duplicates[0].client_name}"</strong> already exists in the database.
+                Saving will <strong>update</strong> the existing client's details rather than creating a new entry.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDuplicateConfirmed(true)}
+                  className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700"
+                >
+                  I understand — proceed to update
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClientName('')}
+                  className="rounded-md border border-amber-300 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                >
+                  Change name
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center justify-end gap-2">
         <button
           type="button"
@@ -122,7 +204,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
         </button>
         <button
           type="submit"
-          disabled={saving || !clientName.trim()}
+          disabled={saving || !clientName.trim() || Boolean(!client && duplicates && duplicates.length > 0 && !duplicateConfirmed)}
           className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
         >
           <Check className="h-4 w-4" />

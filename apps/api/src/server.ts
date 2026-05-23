@@ -5146,16 +5146,52 @@ app.post('/clients', async (request, reply) => {
   const tokenPayload = JSON.parse(tokenData);
   const userEmail: string | null = tokenPayload.email ?? null;
 
+  // Check for existing client with same normalized name
+  const normalized = normalizeClientName(body.client_name);
+  const existing = await query(
+    `SELECT id, client_name, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact, notes
+     FROM clients WHERE ${CLIENT_NORMALIZED_SQL('clients')} = $1 LIMIT 1`,
+    [normalized]
+  );
+
+  if (existing.length > 0) {
+    // Duplicate detected — upsert the existing record
+    const existingClient = existing[0];
+    const rows = await query(
+      `UPDATE clients SET
+        delivery_address = COALESCE($2, clients.delivery_address),
+        contact_number = COALESCE($3, clients.contact_number),
+        authorized_receiver_name = COALESCE($4, clients.authorized_receiver_name),
+        authorized_receiver_contact = COALESCE($5, clients.authorized_receiver_contact),
+        notes = COALESCE($6, clients.notes),
+        updated_at = NOW()
+      WHERE id = $7
+      RETURNING *`,
+      [
+        body.client_name,
+        nullableText(body.delivery_address) ?? null,
+        nullableText(body.contact_number) ?? null,
+        nullableText(body.authorized_receiver_name) ?? null,
+        nullableText(body.authorized_receiver_contact) ?? null,
+        nullableText(body.notes) ?? null,
+        existingClient.id,
+      ]
+    );
+
+    await notifyManualChange(
+      'Client updated (duplicate merged)',
+      `Client: *${body.client_name}* (existing record updated)\n${body.delivery_address ? `Address: ${body.delivery_address}\n` : ''}${body.contact_number ? `Contact: ${body.contact_number}` : ''}`,
+      userEmail,
+    );
+
+    await invalidateCache(['clients:*', '/clients', 'dashboard:*']);
+    broadcastSSE('client_updated', { id: rows[0].id });
+    return reply.send({ ...rows[0], _duplicate: true, _existing_id: existingClient.id });
+  }
+
   const rows = await query(
     `INSERT INTO clients (client_name, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact, notes)
      VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (client_name) DO UPDATE SET
-       delivery_address = COALESCE(EXCLUDED.delivery_address, clients.delivery_address),
-       contact_number = COALESCE(EXCLUDED.contact_number, clients.contact_number),
-       authorized_receiver_name = COALESCE(EXCLUDED.authorized_receiver_name, clients.authorized_receiver_name),
-       authorized_receiver_contact = COALESCE(EXCLUDED.authorized_receiver_contact, clients.authorized_receiver_contact),
-       notes = COALESCE(EXCLUDED.notes, clients.notes),
-       updated_at = NOW()
      RETURNING *`,
     [
       body.client_name,
@@ -5168,7 +5204,7 @@ app.post('/clients', async (request, reply) => {
   );
 
   await notifyManualChange(
-    'Client created/updated',
+    'Client created',
     `Client: *${body.client_name}*\n${body.delivery_address ? `Address: ${body.delivery_address}\n` : ''}${body.contact_number ? `Contact: ${body.contact_number}` : ''}`,
     userEmail,
   );
