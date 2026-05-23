@@ -102,7 +102,7 @@ export default function InventoryPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete' | 'bulk-upload' | 'approve-selected' | 'approve-all';
+    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete' | 'bulk-upload' | 'approve-selected' | 'approve-all' | 'reject-draft' | 'clear-drafts';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Initialize draft edits when drafts load
@@ -369,17 +369,32 @@ export default function InventoryPage() {
     }
   }
 
-  async function handleRejectDraft(id: string) {
+  function handleRejectDraft(id: string) {
+    const edits = draftEdits[id];
+    (window as any).__pendingRejectDraft = { id };
+    setOtpModal({
+      open: true,
+      title: 'Reject Draft',
+      description: `Confirm rejecting draft "${edits?.product_name.trim() || id}". This cannot be undone.`,
+      pendingAction: 'reject-draft',
+    });
+  }
+
+  async function handleRejectDraftVerified(actionToken: string) {
+    const pending = (window as any).__pendingRejectDraft as { id: string } | undefined;
+    if (!pending) return;
     try {
-      await rejectInventoryDraft(id);
+      await rejectInventoryDraft(pending.id, actionToken);
       mutateDrafts();
       setSelectedDrafts((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(pending.id);
         return next;
       });
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Reject failed');
+    } finally {
+      (window as any).__pendingRejectDraft = null;
     }
   }
 
@@ -452,6 +467,18 @@ export default function InventoryPage() {
     else if (otpModal.pendingAction === 'bulk-upload') handleBulkUploadVerified(actionToken);
     else if (otpModal.pendingAction === 'approve-selected') handleApproveSelectedVerified(actionToken);
     else if (otpModal.pendingAction === 'approve-all') handleApproveAllVerified(actionToken);
+    else if (otpModal.pendingAction === 'reject-draft') handleRejectDraftVerified(actionToken);
+    else if (otpModal.pendingAction === 'clear-drafts') handleClearDraftsVerified(actionToken);
+
+  }
+
+  async function handleClearDraftsVerified(actionToken: string) {
+    try {
+      await clearProcessedDrafts(actionToken);
+      mutateDrafts();
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Clear failed');
+    }
   }
 
   function closeModal() {
@@ -1016,13 +1043,13 @@ export default function InventoryPage() {
 
             <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
               <button
-                onClick={async () => {
-                  try {
-                    await clearProcessedDrafts();
-                    mutateDrafts();
-                  } catch (err) {
-                    setDraftError(err instanceof Error ? err.message : 'Failed to clear drafts');
-                  }
+                onClick={() => {
+                  setOtpModal({
+                    open: true,
+                    title: 'Clear Processed Drafts',
+                    description: 'Confirm clearing all approved and rejected drafts. This cannot be undone.',
+                    pendingAction: 'clear-drafts',
+                  });
                 }}
                 className="text-xs text-gray-400 hover:text-gray-600"
               >
@@ -1048,6 +1075,7 @@ export default function InventoryPage() {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingInventoryEdit = null;
           (window as any).__pendingInventoryDelete = null;
+          (window as any).__pendingRejectDraft = null;
         }}
       />
     </div>

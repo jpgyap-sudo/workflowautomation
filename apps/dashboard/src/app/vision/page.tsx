@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ScanEye, Upload, FileText, User, DollarSign, Hash, Loader2, CheckCircle, XCircle, AlertCircle, ExternalLink, Clock, Image as ImageIcon, Eye } from 'lucide-react';
+import OtpModal from '@/components/OtpModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
@@ -90,6 +91,7 @@ function VisionPageContent() {
   const [loadingShare, setLoadingShare] = useState(false);
   const [recentUploads, setRecentUploads] = useState<UploadSummary[]>([]);
   const [loadingUploads, setLoadingUploads] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
 
   // Editable fields after extraction
   const [quotationNumber, setQuotationNumber] = useState('');
@@ -119,21 +121,23 @@ function VisionPageContent() {
           setPreview(dataUrl);
           setFileName(data.file_name);
 
-          // Set extracted fields
-          const ext = data.extracted as ExtractedQuotation;
-          if (data.type === 'quotation' && ext) {
-            setQuotationNumber(ext.quotation_number ?? '');
-            setClientName(ext.client_name ?? '');
-            setSalesAgent(ext.sales_agent ?? '');
-            setTotalAmount(ext.total_amount ? String(ext.total_amount) : '');
-            setOrderDate(ext.order_date ?? '');
-            setItems(normalizeExtractedItems(ext.items));
+          // Set extracted fields — handle all types (quotation, payment, inventory, unknown)
+          const ext = data.extracted as Record<string, unknown>;
+          if (ext) {
+            setQuotationNumber(typeof ext.quotation_number === 'string' ? ext.quotation_number : '');
+            setClientName(typeof ext.client_name === 'string' ? ext.client_name : '');
+            setSalesAgent(typeof ext.sales_agent === 'string' ? ext.sales_agent : '');
+            setTotalAmount(typeof ext.total_amount === 'number' ? String(ext.total_amount) : '');
+            setOrderDate(typeof ext.order_date === 'string' ? ext.order_date : '');
+            // Items may be in ext.items (from inventory type) or ext.items (from quotation type)
+            const rawItems = ext.items;
+            setItems(normalizeExtractedItems(rawItems));
           }
 
           setResult({
             ok: true,
             type: data.type,
-            quotation: data.type === 'quotation' ? ext : undefined,
+            quotation: data.type === 'quotation' ? (ext as ExtractedQuotation) : undefined,
             raw_text: data.raw_text,
             confidence: data.confidence,
           });
@@ -233,14 +237,18 @@ function VisionPageContent() {
     }
   }
 
-  async function handleCreateOrder() {
+  function handleCreateOrder() {
     if (!quotationNumber && !clientName) {
       setError('At least a quotation number or client name is required.');
       return;
     }
+    setShowOtp(true);
+  }
 
+  async function executeCreateOrder(actionToken: string) {
     setStep('creating');
     setError('');
+    setShowOtp(false);
 
     try {
       const res = await fetch(`${API_BASE}/orders`, {
@@ -256,6 +264,7 @@ function VisionPageContent() {
             name: item.product_name,
             quantity: item.quantity,
           })) : undefined,
+          action_token: actionToken,
         }),
       });
 
@@ -698,6 +707,15 @@ function VisionPageContent() {
           </button>
         </div>
       )}
+
+      {/* OTP Modal */}
+      <OtpModal
+        open={showOtp}
+        title="Create Order"
+        description={`Confirm creating order "${quotationNumber || clientName || '—'}". Enter the OTP sent to your email to confirm.`}
+        onVerified={executeCreateOrder}
+        onClose={() => setShowOtp(false)}
+      />
     </div>
   );
 }

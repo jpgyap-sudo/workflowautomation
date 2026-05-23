@@ -6,7 +6,7 @@ import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
   reportProductionStatus, finishProduction, confirmEnRoute,
-  getItemCompletion, getOrderItems,
+  getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
@@ -81,6 +81,7 @@ function ProductionInfoCards({ order }: { order: Order }) {
   const [loadingCompletion, setLoadingCompletion] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +110,30 @@ function ProductionInfoCards({ order }: { order: Order }) {
     }
     return () => { cancelled = true; };
   }, [order.id, order.production_started, order.current_stage]);
+
+  async function refreshItemState() {
+    const [itemsRes, completionRes] = await Promise.all([
+      getOrderItems(order.id),
+      getItemCompletion(order.id).catch(() => null),
+    ]);
+    if (itemsRes.ok) setItems(itemsRes.items);
+    if (completionRes?.ok) setCompletion(completionRes);
+  }
+
+  async function handleItemProductionStatus(
+    item: OrderItem,
+    productionStatus: 'pending' | 'in_progress' | 'finished'
+  ) {
+    setUpdatingItemId(item.id);
+    try {
+      await updateOrderItem(order.id, item.id, { production_status: productionStatus });
+      await refreshItemState();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update item production status');
+    } finally {
+      setUpdatingItemId(null);
+    }
+  }
 
   if (!order.production_started && !order.partial_production_items?.length && items.length === 0) return null;
   const finishDate = computeFinishDate(order);
@@ -145,6 +170,7 @@ function ProductionInfoCards({ order }: { order: Order }) {
                   <th className="px-3 py-2">Production</th>
                   <th className="px-3 py-2">En Route</th>
                   <th className="px-3 py-2">Inventory</th>
+                  <th className="px-3 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -186,6 +212,33 @@ function ProductionInfoCards({ order }: { order: Order }) {
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {(['pending', 'in_progress', 'finished'] as const).map((status) => {
+                          const isActive = item.production_status === status;
+                          const label = status === 'pending' ? 'Pending' : status === 'in_progress' ? 'Started' : 'Finished';
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              disabled={isActive || updatingItemId === item.id}
+                              onClick={() => handleItemProductionStatus(item, status)}
+                              className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                                isActive
+                                  ? 'cursor-default border-gray-200 bg-gray-100 text-gray-400'
+                                  : status === 'finished'
+                                    ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                                    : status === 'in_progress'
+                                      ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              {updatingItemId === item.id && !isActive ? 'Saving...' : label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </td>
                   </tr>
                 ))}

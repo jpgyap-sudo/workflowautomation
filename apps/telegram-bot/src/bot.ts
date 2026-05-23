@@ -299,6 +299,53 @@ async function getJson(path: string) {
   return res.json();
 }
 
+
+async function buildProductionPromptPayload(quotationNumber: string) {
+  const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+  let items: any[] = [];
+  try {
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/items`);
+    const itemsData = itemsRes.ok ? await itemsRes.json() : { items: [] };
+    items = Array.isArray(itemsData?.items) ? itemsData.items : [];
+  } catch {
+    items = [];
+  }
+
+  if (items.length === 0) {
+    return {
+      text: `Production for ${quotationNumber}\n\nHas production/purchasing started?`,
+      keyboard: Markup.inlineKeyboard([
+        [Markup.button.callback('Yes, started', `produce:yes:${quotationNumber}`)],
+        [Markup.button.callback('Partial - some items started', `produce:partial:${quotationNumber}`)],
+        [Markup.button.callback('Not yet', `produce:no:${quotationNumber}`)],
+        [Markup.button.callback('Cancel', 'action:cancel')],
+      ]),
+    };
+  }
+
+  const itemLines = items.map((item, index) => {
+    const status = item.production_status === 'finished'
+      ? 'finished'
+      : item.production_status === 'in_progress'
+        ? 'in progress'
+        : 'not started';
+    return `${index + 1}. ${item.name} x${item.quantity} - ${status}`;
+  }).join('\n');
+
+  return {
+    text:
+      `Production for ${quotationNumber}\n\n` +
+      `Items extracted from the quotation:\n${itemLines}\n\n` +
+      `Production can proceed item-by-item. If only some items started, update the items instead of marking the whole order started.`,
+    keyboard: Markup.inlineKeyboard([
+      [Markup.button.callback('Update item-by-item', `produce:partial:${order.id}:${quotationNumber}`)],
+      [Markup.button.callback('Whole order started', `produce:yes:${order.id}:${quotationNumber}`)],
+      [Markup.button.callback('None started yet', `produce:no:${order.id}:${quotationNumber}`)],
+      [Markup.button.callback('Cancel', 'action:cancel')],
+    ]),
+  };
+}
+
 function parseProductionDays(text: string): number | null {
   const match = text.trim().match(/(\d+)/);
   if (!match) return null;
@@ -887,18 +934,8 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
 
     case 'produce': {
       setStep(chatId, { action: 'awaiting_produce_status', quotationNumber });
-      await ctx.editMessageText(
-        `🛒 *Production for ${quotationNumber}*\n\nHas production/purchasing started?`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Yes, started', `produce:yes:${quotationNumber}`)],
-            [Markup.button.callback('⚠️ Partial — some items started', `produce:partial:${quotationNumber}`)],
-            [Markup.button.callback('⏳ Not yet', `produce:no:${quotationNumber}`)],
-            [Markup.button.callback('❌ Cancel', 'action:cancel')],
-          ]),
-        }
-      );
+      const prompt = await buildProductionPromptPayload(quotationNumber);
+      await ctx.editMessageText(prompt.text, { parse_mode: 'Markdown', ...prompt.keyboard });
       break;
     }
 
@@ -1269,18 +1306,8 @@ bot.on(message('text'), async (ctx) => {
         return;
       }
       setStep(chatId, { action: 'awaiting_produce_status', quotationNumber });
-      await ctx.reply(
-        `🛒 *Production for ${quotationNumber}*\n\nHas production/purchasing started?`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Yes, started', `produce:yes:${quotationNumber}`)],
-            [Markup.button.callback('⚠️ Partial — some items started', `produce:partial:${quotationNumber}`)],
-            [Markup.button.callback('⏳ Not yet', `produce:no:${quotationNumber}`)],
-            [Markup.button.callback('❌ Cancel', 'action:cancel')],
-          ]),
-        }
-      );
+      const prompt = await buildProductionPromptPayload(quotationNumber);
+      await ctx.reply(prompt.text, { parse_mode: 'Markdown', ...prompt.keyboard });
       break;
     }
 
@@ -3696,6 +3723,22 @@ bot.action('vision:extract_yes', async (ctx) => {
 
     const data = await res.json();
 
+    // Build the extracted payload — include ALL data (quotation, payment, items, raw text)
+    const extractedPayload: Record<string, unknown> = {};
+    if (data.quotation) {
+      Object.assign(extractedPayload, data.quotation);
+    }
+    if (data.payment) {
+      Object.assign(extractedPayload, data.payment);
+    }
+    if (data.inventory) {
+      extractedPayload.items = data.inventory;
+    }
+    // Also include top-level items if present (from autoExtract)
+    if (data.quotation?.items) {
+      extractedPayload.items = data.quotation.items;
+    }
+
     // Store the extracted data + image via the share endpoint
     const shareRes = await fetch(`${apiBaseUrl}/vision/share`, {
       method: 'POST',
@@ -3704,7 +3747,7 @@ bot.action('vision:extract_yes', async (ctx) => {
         image_base64: imageBase64,
         mime_type: mimeType,
         file_name: fileName,
-        extracted: data.quotation || data.payment || {},
+        extracted: extractedPayload,
         type: data.type,
         confidence: data.confidence,
         raw_text: data.raw_text || '',
@@ -3712,7 +3755,9 @@ bot.action('vision:extract_yes', async (ctx) => {
     });
 
     if (!shareRes.ok) {
-      throw new Error('Failed to create share link');
+      const shareErrText = await shareRes.text().catch(() => '');
+      console.error(`[vision] Share failed (HTTP ${shareRes.status}): ${shareErrText}`);
+      throw new Error(`Failed to create share link (HTTP ${shareRes.status})`);
     }
 
     const shareData = await shareRes.json();
@@ -3733,50 +3778,52 @@ bot.action('vision:extract_yes', async (ctx) => {
       status: 'success',
     });
 
-    if (data.type === 'quotation' && data.quotation) {
-      const q = data.quotation;
-      const itemsList = (q.items && q.items.length > 0)
-        ? q.items.map((item: any, i: number) =>
-            `${i + 1}. ${item.product_name || 'Unknown'} — x${item.quantity || 1}`
-          ).join('\n')
-        : null;
+    // Build items list for display (works for quotation, inventory, or any type with items)
+    const allItems = data.quotation?.items || data.inventory || [];
+    const itemsList = Array.isArray(allItems) && allItems.length > 0
+      ? allItems.map((item: any, i: number) =>
+          `${i + 1}. ${item.product_name || 'Unknown'} — x${item.quantity || 1}`
+        ).join('\n')
+      : null;
 
-      const fields = [
-        `📋 *Extracted Quotation Info:*`,
-        q.quotation_number ? `🔢 Number: \`${q.quotation_number}\`` : null,
-        q.client_name ? `👤 Client: ${q.client_name}` : null,
-        q.sales_agent ? `🧑‍💼 Agent: ${q.sales_agent}` : null,
-        q.total_amount ? `💰 Amount: ₱${Number(q.total_amount).toLocaleString()}` : null,
-        itemsList ? `\n📦 *Items (${q.items.length}):*\n${itemsList}` : null,
-        `📊 Confidence: ${data.confidence}`,
-      ].filter(Boolean).join('\n');
+    // Always show the dashboard link — regardless of type
+    const typeLabel = data.type === 'payment' ? '💳 Payment' :
+                      data.type === 'inventory' ? '📦 Inventory' :
+                      data.type === 'quotation' ? '📋 Quotation' :
+                      '📄 Document';
 
-      await ctx.editMessageText(
-        `${fields}\n\n` +
-        `✅ *Information extracted!*\n\n` +
-        `👉 [Open in Dashboard to review & create order](${visionUrl})\n\n` +
-        `The extracted data has been sent to the dashboard. You can edit the fields and create the order there.`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.url('🚀 Open in Dashboard', visionUrl)],
-            [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
-          ]),
-        }
-      );
-    } else if (data.type === 'payment' && data.payment) {
+    const fields = [
+      `${typeLabel} *Extracted Info:*`,
+      data.quotation?.quotation_number ? `🔢 Number: \`${data.quotation.quotation_number}\`` : null,
+      data.quotation?.client_name ? `👤 Client: ${data.quotation.client_name}` : null,
+      data.quotation?.sales_agent ? `🧑‍💼 Agent: ${data.quotation.sales_agent}` : null,
+      data.quotation?.total_amount ? `💰 Amount: ₱${Number(data.quotation.total_amount).toLocaleString()}` : null,
+      data.payment?.amount ? `💰 Amount: ₱${Number(data.payment.amount).toLocaleString()}` : null,
+      data.payment?.reference_number ? `🔖 Ref: \`${data.payment.reference_number}\`` : null,
+      data.payment?.paid_by ? `👤 Paid by: ${data.payment.paid_by}` : null,
+      itemsList ? `\n📦 *Items (${allItems.length}):*\n${itemsList}` : null,
+      `📊 Confidence: ${data.confidence}`,
+    ].filter(Boolean).join('\n');
+
+    await ctx.editMessageText(
+      `${fields}\n\n` +
+      `✅ *Information extracted!*\n\n` +
+      `👉 [Open in Dashboard to review & create order](${visionUrl})\n\n` +
+      `The extracted data has been sent to the dashboard. You can edit the fields and create the order there.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('🚀 Open in Dashboard', visionUrl)],
+          [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
+        ]),
+      }
+    );
+
+    // If it's a payment with amount, also try deposit/balance matching
+    if (data.type === 'payment' && data.payment) {
       const p = data.payment;
       const depositAmount = p.amount ? Number(p.amount) : 0;
       const paymentDate: string | undefined = p.payment_date ?? undefined;
-      const fields = [
-        `💳 *Extracted Payment Info:*`,
-        p.amount ? `💰 Amount: ₱${depositAmount.toLocaleString()}` : null,
-        p.type !== 'unknown' ? `📌 Type: ${p.type}` : null,
-        p.reference_number ? `🔖 Ref: \`${p.reference_number}\`` : null,
-        p.paid_by ? `👤 Paid by: ${p.paid_by}` : null,
-        paymentDate ? `📅 Date: ${paymentDate}` : null,
-        `📊 Confidence: ${data.confidence}`,
-      ].filter(Boolean).join('\n');
 
       if (depositAmount > 0) {
         // Try to match this deposit to an order
@@ -3966,11 +4013,6 @@ bot.action('vision:extract_yes', async (ctx) => {
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       }
-    } else {
-      await ctx.editMessageText(
-        `🤷 Could not identify this image as a quotation or payment receipt.\nRaw text: ${data.raw_text?.slice(0, 200) || 'none'}`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
     }
   } catch (error: any) {
     console.error('[vision] Extraction error:', error);
@@ -4611,6 +4653,22 @@ bot.action('vision:retry_extract', async (ctx) => {
 
     const data = await res.json();
 
+    // Build the extracted payload — include ALL data (quotation, payment, items, raw text)
+    const extractedPayload: Record<string, unknown> = {};
+    if (data.quotation) {
+      Object.assign(extractedPayload, data.quotation);
+    }
+    if (data.payment) {
+      Object.assign(extractedPayload, data.payment);
+    }
+    if (data.inventory) {
+      extractedPayload.items = data.inventory;
+    }
+    // Also include top-level items if present (from autoExtract)
+    if (data.quotation?.items) {
+      extractedPayload.items = data.quotation.items;
+    }
+
     // Store the extracted data + image via the share endpoint
     const shareRes = await fetch(`${apiBaseUrl}/vision/share`, {
       method: 'POST',
@@ -4619,7 +4677,7 @@ bot.action('vision:retry_extract', async (ctx) => {
         image_base64: imageBase64,
         mime_type: mimeType,
         file_name: fileName,
-        extracted: data.quotation || data.payment || {},
+        extracted: extractedPayload,
         type: data.type,
         confidence: data.confidence,
         raw_text: data.raw_text || '',
@@ -4627,7 +4685,9 @@ bot.action('vision:retry_extract', async (ctx) => {
     });
 
     if (!shareRes.ok) {
-      throw new Error('Failed to create share link');
+      const shareErrText = await shareRes.text().catch(() => '');
+      console.error(`[vision] Retry share failed (HTTP ${shareRes.status}): ${shareErrText}`);
+      throw new Error(`Failed to create share link (HTTP ${shareRes.status})`);
     }
 
     const shareData = await shareRes.json();
@@ -4648,58 +4708,46 @@ bot.action('vision:retry_extract', async (ctx) => {
       status: 'success',
     });
 
-    if (data.type === 'quotation' && data.quotation) {
-      const q = data.quotation;
-      const itemsList = (q.items && q.items.length > 0)
-        ? q.items.map((item: any, i: number) =>
-            `${i + 1}. ${item.product_name || 'Unknown'} — x${item.quantity || 1}`
-          ).join('\n')
-        : null;
-      const fields = [
-        `📋 *Extracted Quotation Info:*`,
-        q.quotation_number ? `🔢 Number: \`${q.quotation_number}\`` : null,
-        q.client_name ? `👤 Client: ${q.client_name}` : null,
-        q.sales_agent ? `🧑‍💼 Agent: ${q.sales_agent}` : null,
-        q.total_amount ? `💰 Amount: ₱${Number(q.total_amount).toLocaleString()}` : null,
-        itemsList ? `\n📦 *Items (${q.items.length}):*\n${itemsList}` : null,
-        `📊 Confidence: ${data.confidence}`,
-      ].filter(Boolean).join('\n');
+    // Build items list for display (works for quotation, inventory, or any type with items)
+    const allItems = data.quotation?.items || data.inventory || [];
+    const itemsList = Array.isArray(allItems) && allItems.length > 0
+      ? allItems.map((item: any, i: number) =>
+          `${i + 1}. ${item.product_name || 'Unknown'} — x${item.quantity || 1}`
+        ).join('\n')
+      : null;
 
-      await ctx.editMessageText(
-        `${fields}\n\n` +
-        `✅ *Information extracted!*\n\n` +
-        `👉 [Open in Dashboard to review & create order](${visionUrl})\n\n` +
-        `The extracted data has been sent to the dashboard. You can edit the fields and create the order there.`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.url('🚀 Open in Dashboard', visionUrl)],
-            [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
-          ]),
-        }
-      );
-    } else if (data.type === 'payment' && data.payment) {
-      const p = data.payment;
-      const fields = [
-        `💳 *Extracted Payment Info:*`,
-        p.amount ? `💰 Amount: ₱${Number(p.amount).toLocaleString()}` : null,
-        p.type !== 'unknown' ? `📌 Type: ${p.type}` : null,
-        p.reference_number ? `🔖 Ref: \`${p.reference_number}\`` : null,
-        p.paid_by ? `👤 Paid by: ${p.paid_by}` : null,
-        `📊 Confidence: ${data.confidence}`,
-      ].filter(Boolean).join('\n');
+    // Always show the dashboard link — regardless of type
+    const typeLabel = data.type === 'payment' ? '💳 Payment' :
+                      data.type === 'inventory' ? '📦 Inventory' :
+                      data.type === 'quotation' ? '📋 Quotation' :
+                      '📄 Document';
 
-      await ctx.editMessageText(
-        `${fields}\n\n` +
-        `ℹ️ Payment info extracted. To record this payment, use the order status menu in the dashboard.`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
-    } else {
-      await ctx.editMessageText(
-        `🤷 Could not identify this image as a quotation or payment receipt.\nRaw text: ${data.raw_text?.slice(0, 200) || 'none'}`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
-    }
+    const fields = [
+      `${typeLabel} *Extracted Info:*`,
+      data.quotation?.quotation_number ? `🔢 Number: \`${data.quotation.quotation_number}\`` : null,
+      data.quotation?.client_name ? `👤 Client: ${data.quotation.client_name}` : null,
+      data.quotation?.sales_agent ? `🧑‍💼 Agent: ${data.quotation.sales_agent}` : null,
+      data.quotation?.total_amount ? `💰 Amount: ₱${Number(data.quotation.total_amount).toLocaleString()}` : null,
+      data.payment?.amount ? `💰 Amount: ₱${Number(data.payment.amount).toLocaleString()}` : null,
+      data.payment?.reference_number ? `🔖 Ref: \`${data.payment.reference_number}\`` : null,
+      data.payment?.paid_by ? `👤 Paid by: ${data.payment.paid_by}` : null,
+      itemsList ? `\n📦 *Items (${allItems.length}):*\n${itemsList}` : null,
+      `📊 Confidence: ${data.confidence}`,
+    ].filter(Boolean).join('\n');
+
+    await ctx.editMessageText(
+      `${fields}\n\n` +
+      `✅ *Information extracted!*\n\n` +
+      `👉 [Open in Dashboard to review & create order](${visionUrl})\n\n` +
+      `The extracted data has been sent to the dashboard. You can edit the fields and create the order there.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('🚀 Open in Dashboard', visionUrl)],
+          [Markup.button.callback('📤 Upload to Drive instead', 'vision:upload')],
+        ]),
+      }
+    );
   } catch (error: any) {
     console.error('[vision] Retry extraction error:', error);
     botLog({

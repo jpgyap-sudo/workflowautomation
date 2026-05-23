@@ -199,6 +199,11 @@ export default function BugsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [otpModal, setOtpModal] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+  }>({ open: false, title: '', description: '' });
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -217,17 +222,33 @@ export default function BugsPage() {
     fetchReports();
   }, [fetchReports]);
 
-  async function handleStatusChange(id: string, status: 'open' | 'in_progress' | 'resolved' | 'closed') {
-    setUpdatingId(id);
+  function handleStatusChange(id: string, status: 'open' | 'in_progress' | 'resolved' | 'closed') {
+    const report = reports.find((r) => r.id === id);
+    (window as any).__pendingBugStatusChange = { id, status };
+    setOtpModal({
+      open: true,
+      title: 'Update Bug Status',
+      description: `Confirm changing "${report?.title ?? 'this report'}" to ${status.replace(/_/g, ' ')}.`,
+    });
+  }
+
+  async function handleStatusChangeVerified(actionToken: string) {
+    const pending = (window as any).__pendingBugStatusChange as
+      | { id: string; status: 'open' | 'in_progress' | 'resolved' | 'closed' }
+      | undefined;
+    if (!pending) return;
+    setUpdatingId(pending.id);
     try {
-      await updateBugReportStatus(id, status);
+      await updateBugReportStatus(pending.id, pending.status, actionToken);
       setReports((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status, updated_at: new Date().toISOString() } : r))
+        prev.map((r) => (r.id === pending.id ? { ...r, status: pending.status, updated_at: new Date().toISOString() } : r))
       );
     } catch (err: any) {
       console.error('Failed to update status:', err);
+      alert(err.message ?? 'Failed to update status');
     } finally {
       setUpdatingId(null);
+      (window as any).__pendingBugStatusChange = null;
     }
   }
 
@@ -396,6 +417,18 @@ export default function BugsPage() {
           onCreated={fetchReports}
         />
       )}
+
+      {/* OTP Modal */}
+      <OtpModal
+        open={otpModal.open}
+        title={otpModal.title}
+        description={otpModal.description}
+        onVerified={handleStatusChangeVerified}
+        onClose={() => {
+          setOtpModal({ ...otpModal, open: false });
+          (window as any).__pendingBugStatusChange = null;
+        }}
+      />
     </div>
   );
 }

@@ -135,7 +135,10 @@ export interface AgentLog {
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
-    headers: { 'content-type': 'application/json', ...options?.headers },
+    headers: {
+      ...(options?.body ? { 'content-type': 'application/json' } : {}),
+      ...options?.headers,
+    },
   });
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${await res.text()}`);
@@ -332,7 +335,7 @@ export async function confirmEnRoute(
 
 export async function inventoryVerifyItem(
   id: string,
-  data: { item_id: string; action: 'all' | 'partial' | 'not_yet'; verified_qty?: number }
+  data: { item_id: string; action: 'all' | 'partial' | 'not_yet'; verified_qty?: number; action_token: string }
 ): Promise<{ ok: boolean; item_id: string; verified_qty: number; verification_pct: number }> {
   return fetchJson(
     `/orders/${encodeURIComponent(id)}/inventory-verify-item`,
@@ -472,13 +475,14 @@ export async function addProductionLog(
 // ── Item Extraction ──────────────────────────────────────────────────
 
 export async function extractOrderItems(
-  orderId: string
+  orderId: string,
+  actionToken: string,
 ): Promise<{ ok: boolean; items: OrderItem[]; extracted: { name: string; quantity: number }[]; raw_text: string }> {
   return fetchJson<{ ok: boolean; items: OrderItem[]; extracted: { name: string; quantity: number }[]; raw_text: string }>(
     `/orders/${encodeURIComponent(orderId)}/extract-items`,
     {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ action_token: actionToken }),
     }
   );
 }
@@ -939,15 +943,17 @@ export async function approveAllInventoryDrafts(actionToken?: string): Promise<{
   });
 }
 
-export async function rejectInventoryDraft(id: string): Promise<{ ok: boolean }> {
+export async function rejectInventoryDraft(id: string, actionToken: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>(`/inventory/drafts/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    body: JSON.stringify({ action_token: actionToken }),
   });
 }
 
-export async function clearProcessedDrafts(): Promise<{ ok: boolean }> {
+export async function clearProcessedDrafts(actionToken: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/inventory/drafts/clear', {
     method: 'POST',
+    body: JSON.stringify({ action_token: actionToken }),
   });
 }
 
@@ -987,11 +993,12 @@ export async function reportBug(data: {
 
 export async function updateBugReportStatus(
   id: string,
-  status: 'open' | 'in_progress' | 'resolved' | 'closed'
+  status: 'open' | 'in_progress' | 'resolved' | 'closed',
+  actionToken: string,
 ): Promise<{ ok: boolean; report: BugReport }> {
   return fetchJson<{ ok: boolean; report: BugReport }>(`/bug-reports/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, action_token: actionToken }),
   });
 }
 
@@ -1016,6 +1023,24 @@ export async function uploadOrderFile(data: {
   return fetchJson<{ ok: boolean; file: OrderFile }>('/files/upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function runAgent(name: string, actionToken: string): Promise<{ ok: boolean; message?: string }> {
+  return fetchJson<{ ok: boolean; message?: string }>(`/agents/run/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    body: JSON.stringify({ action_token: actionToken }),
+  });
+}
+
+export async function postAgentNote(orderId: string, data: {
+  agent_name: string;
+  note: string;
+  action_token: string;
+}): Promise<{ ok: boolean; id: string; agent_name: string; note: string; created_at: string }> {
+  return fetchJson(`/orders/${encodeURIComponent(orderId)}/notes`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 }

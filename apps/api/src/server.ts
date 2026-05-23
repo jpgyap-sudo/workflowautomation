@@ -961,25 +961,28 @@ app.post('/orders/bulk-delete', async (request, reply) => {
 const setProductionSchema = z.object({
   production_started: z.boolean(),
   estimated_production_days: z.number().int().positive().optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/set-production', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = setProductionSchema.parse(request.body);
 
-  // Verify action token and extract email
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  // Dashboard calls provide an action token. Telegram bot callbacks run server-to-server and may not.
+  let userEmail: string | null = null;
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
 
   const existingRows = await query(
     `SELECT id, quotation_number, current_stage FROM orders WHERE id = $1`,
@@ -1116,25 +1119,28 @@ app.post('/orders/:id/set-production', async (request, reply) => {
 
 const partialProductionSchema = z.object({
   missing_items: z.array(z.string().min(1)).min(1),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/partial-production', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = partialProductionSchema.parse(request.body);
 
-  // Verify action token and extract email
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  // Dashboard calls provide an action token. Telegram item-level callbacks may call this without one.
+  let userEmail: string | null = null;
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
 
   const existingRows = await query(
     `SELECT id, quotation_number, client_name FROM orders WHERE id = $1`,
@@ -1505,6 +1511,7 @@ const inventoryVerifyItemSchema = z.object({
   item_id: z.string(),
   action: z.enum(['all', 'partial', 'not_yet']),
   verified_qty: z.number().int().min(0).optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
@@ -2060,6 +2067,18 @@ app.post('/orders/:id/production-logs', async (request, reply) => {
 
 app.post('/orders/:id/extract-items', async (request, reply) => {
   const { id } = request.params as { id: string };
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
 
   // Get the order's quotation number
   const orderRows = await query(
@@ -3708,7 +3727,19 @@ app.post('/orders/:order_id/notes', async (request, reply) => {
   const body = z.object({
     agent_name: z.string().min(1),
     note: z.string().min(1),
+    action_token: z.string(),
   }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
   const rows = await query(
     `INSERT INTO agent_notes (order_id, agent_name, note) VALUES ($1, $2, $3) RETURNING *`,
     [params.order_id, body.agent_name, body.note]
@@ -3969,6 +4000,19 @@ app.get('/agents', async () => {
  */
 app.post('/agents/run/:name', async (request, reply) => {
   const params = z.object({ name: z.string() }).parse(request.params);
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
   const result = await runAgentByName(params.name);
   if (!result.ok) return reply.code(400).send(result);
   return result;
@@ -5618,12 +5662,38 @@ app.post('/inventory/drafts/approve-all', async (request, reply) => {
 
 app.delete('/inventory/drafts/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
   await query(`UPDATE inventory_drafts SET status='rejected', updated_at=NOW() WHERE id=$1`, [params.id]);
   await invalidateCache(['inventory:*', '/inventory/drafts']);
   return { ok: true };
 });
 
-app.post('/inventory/drafts/clear', async (_request, reply) => {
+app.post('/inventory/drafts/clear', async (request, reply) => {
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
   await query(`DELETE FROM inventory_drafts WHERE status IN ('approved', 'rejected')`);
   await invalidateCache(['inventory:*', '/inventory/drafts']);
   return { ok: true };
@@ -5698,7 +5768,19 @@ app.patch('/bug-reports/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = z.object({
     status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
+    action_token: z.string(),
   }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
 
   const rows = await query(
     `UPDATE bug_reports SET status = COALESCE($1, status), updated_at = NOW() WHERE id = $2 RETURNING *`,

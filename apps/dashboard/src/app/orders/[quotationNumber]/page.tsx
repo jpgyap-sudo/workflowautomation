@@ -451,7 +451,14 @@ function ItemTrackingSection({
   const [completingVerification, setCompletingVerification] = useState(false);
   const [arrivingItemId, setArrivingItemId] = useState<string | null>(null);
   const [confirmingArrival, setConfirmingArrival] = useState(false);
-  const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | null>(null);
+  const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | 'extract_items' | 'upload_extract' | null>(null);
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [otpModal, setOtpModal] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    pendingAction: 'verify_item' | 'mark_arrived';
+  }>({ open: false, title: '', description: '', pendingAction: 'verify_item' });
 
   const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
 
@@ -486,14 +493,19 @@ function ItemTrackingSection({
     return () => { cancelled = true; };
   }, [orderId, currentStage]);
 
-  async function handleExtractItems() {
+  function handleExtractItems() {
+    setExtractError('');
+    setShowOtp('extract_items');
+  }
+
+  async function doExtractItems(actionToken: string) {
+    setShowOtp(null);
     setExtracting(true);
     setExtractError('');
     try {
-      const res = await extractOrderItems(orderId);
+      const res = await extractOrderItems(orderId, actionToken);
       if (res.ok && res.items.length > 0) {
         setItems(res.items);
-        // Also refresh completion
         const compRes = await getItemCompletion(orderId);
         if (compRes.ok) setCompletion(compRes);
       } else {
@@ -519,7 +531,7 @@ function ItemTrackingSection({
     });
   }
 
-  async function handleQuotationUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleQuotationUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -533,6 +545,17 @@ function ItemTrackingSection({
       setExtractError('This order has no quotation number, so the uploaded quotation cannot be linked for extraction.');
       return;
     }
+
+    setPendingUploadFile(file);
+    setExtractError('');
+    setShowOtp('upload_extract');
+  }
+
+  async function doUploadAndExtract(actionToken: string) {
+    setShowOtp(null);
+    const file = pendingUploadFile;
+    setPendingUploadFile(null);
+    if (!file) return;
 
     setUploadingQuotation(true);
     setExtracting(true);
@@ -550,7 +573,7 @@ function ItemTrackingSection({
       });
 
       setUploadMessage('Quotation uploaded. Extracting items...');
-      const res = await extractOrderItems(orderId);
+      const res = await extractOrderItems(orderId, actionToken);
       await refreshItemTracking();
 
       if (!res.ok || res.items.length === 0) {
@@ -566,11 +589,31 @@ function ItemTrackingSection({
     }
   }
 
-  async function handleVerifyItem(itemId: string, action: 'all' | 'partial' | 'not_yet', verifiedQty?: number) {
-    setVerifyingItemId(itemId);
+  function handleVerifyItem(itemId: string, action: 'all' | 'partial' | 'not_yet', verifiedQty?: number) {
+    const item = items.find((i) => i.id === itemId);
+    (window as any).__pendingVerifyItem = { itemId, action, verifiedQty };
+    setOtpModal({
+      open: true,
+      title: 'Verify Inventory Item',
+      description: `Confirm ${action === 'all' ? 'full' : action === 'partial' ? 'partial' : 'no'} verification for "${item?.name ?? itemId}".`,
+      pendingAction: 'verify_item',
+    });
+  }
+
+  async function executeVerifyItem(actionToken: string) {
+    const pending = (window as any).__pendingVerifyItem as
+      | { itemId: string; action: 'all' | 'partial' | 'not_yet'; verifiedQty?: number }
+      | undefined;
+    if (!pending) return;
+    setOtpModal((prev) => ({ ...prev, open: false }));
+    setVerifyingItemId(pending.itemId);
     try {
-      await inventoryVerifyItem(orderId, { item_id: itemId, action, verified_qty: verifiedQty });
-      // Refresh items
+      await inventoryVerifyItem(orderId, {
+        item_id: pending.itemId,
+        action: pending.action,
+        verified_qty: pending.verifiedQty,
+        action_token: actionToken,
+      });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
       const compRes = await getItemCompletion(orderId);
@@ -579,6 +622,7 @@ function ItemTrackingSection({
       alert(err.message ?? 'Verification failed');
     } finally {
       setVerifyingItemId(null);
+      (window as any).__pendingVerifyItem = null;
     }
   }
 
@@ -595,11 +639,24 @@ function ItemTrackingSection({
     }
   }
 
-  async function handleMarkItemArrived(itemId: string) {
-    setArrivingItemId(itemId);
+  function handleMarkItemArrived(itemId: string) {
+    const item = items.find((i) => i.id === itemId);
+    (window as any).__pendingMarkArrived = { itemId };
+    setOtpModal({
+      open: true,
+      title: 'Mark Item Arrived',
+      description: `Confirm marking "${item?.name ?? itemId}" as arrived.`,
+      pendingAction: 'mark_arrived',
+    });
+  }
+
+  async function executeMarkItemArrived(actionToken: string) {
+    const pending = (window as any).__pendingMarkArrived as { itemId: string } | undefined;
+    if (!pending) return;
+    setOtpModal((prev) => ({ ...prev, open: false }));
+    setArrivingItemId(pending.itemId);
     try {
-      await updateOrderItem(orderId, itemId, { en_route_status: 'arrived' });
-      // Refresh items
+      await updateOrderItem(orderId, pending.itemId, { en_route_status: 'arrived', action_token: actionToken });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
       const compRes = await getItemCompletion(orderId);
@@ -608,6 +665,7 @@ function ItemTrackingSection({
       alert(err.message ?? 'Failed to mark item as arrived');
     } finally {
       setArrivingItemId(null);
+      (window as any).__pendingMarkArrived = null;
     }
   }
 
@@ -918,6 +976,40 @@ function ItemTrackingSection({
           onClose={() => setShowOtp(null)}
         />
       )}
+      {showOtp === 'extract_items' && (
+        <OtpModal
+          open={true}
+          title="Extract Items from Quotation"
+          description="Verify your identity to extract line items from this order's quotation using AI vision."
+          onVerified={doExtractItems}
+          onClose={() => setShowOtp(null)}
+        />
+      )}
+      {showOtp === 'upload_extract' && (
+        <OtpModal
+          open={true}
+          title="Upload Quotation & Extract Items"
+          description="Verify your identity to upload the quotation file and extract line items using AI vision."
+          onVerified={doUploadAndExtract}
+          onClose={() => { setShowOtp(null); setPendingUploadFile(null); }}
+        />
+      )}
+
+      {/* OTP Modal for verify item / mark arrived */}
+      <OtpModal
+        open={otpModal.open}
+        title={otpModal.title}
+        description={otpModal.description}
+        onVerified={(token) => {
+          if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
+          else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
+        }}
+        onClose={() => {
+          setOtpModal((prev) => ({ ...prev, open: false }));
+          (window as any).__pendingVerifyItem = null;
+          (window as any).__pendingMarkArrived = null;
+        }}
+      />
 
       {/* Production update logs */}
       {logs.length > 0 && (
