@@ -1005,11 +1005,20 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   }
 
   const existingRows = await query(
-    `SELECT id, quotation_number, current_stage FROM orders WHERE id = $1`,
+    `SELECT id, quotation_number, current_stage, deposit_verified, production_exception FROM orders WHERE id = $1`,
     [id]
   );
   if (!existingRows[0]) return reply.code(404).send({ error: 'Order not found' });
   const previousStage = existingRows[0].current_stage;
+
+  if (body.production_started && !existingRows[0].deposit_verified && !existingRows[0].production_exception) {
+    return reply.code(400).send({
+      error: 'Cannot start production: downpayment must be verified first, unless a production special-case exception is granted.',
+      current_stage: previousStage,
+      deposit_verified: existingRows[0].deposit_verified,
+      production_exception: existingRows[0].production_exception,
+    });
+  }
 
   const setClauses: string[] = ['production_started = $1'];
   const values: any[] = [body.production_started];
@@ -2303,7 +2312,11 @@ app.post('/stage-updates', async (request, reply) => {
       userEmail = tokenPayload.email ?? null;
     } catch { /* non-fatal */ }
   }
-  const orders = await query(`SELECT id, total_amount, deposit_amount, balance_paid, current_stage FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
+  const orders = await query(
+    `SELECT id, total_amount, deposit_amount, balance_paid, current_stage, deposit_verified, production_exception
+     FROM orders WHERE quotation_number=$1`,
+    [body.quotation_number]
+  );
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
   const order = orders[0];
@@ -2311,10 +2324,11 @@ app.post('/stage-updates', async (request, reply) => {
   // ── Workflow Guard: Valid Stage Transitions ──────────────────────────
   // Prevent invalid jumps (e.g., balance_due → payment_confirmed without delivery)
   const VALID_TRANSITIONS: Record<string, string[]> = {
-    deposit_pending:           ['quotation_received', 'order_confirmation_received'],
-    quotation_received:        ['order_confirmation_received', 'math_verified', 'production_pending'],
-    order_confirmation_received: ['math_verified', 'production_pending'],
-    math_verified:             ['purchasing_pending', 'production_pending'],
+    quotation_received:        ['order_confirmation_received', 'math_verified', 'deposit_pending'],
+    order_confirmation_received: ['math_verified', 'deposit_pending'],
+    math_verified:             ['deposit_pending'],
+    deposit_pending:           ['deposit_verification'],
+    deposit_verification:      ['purchasing_pending'],
     purchasing_pending:        ['production_pending'],
     production_pending:        ['production_confirmed'],
     production_confirmed:      ['en_route', 'partial_production'],
@@ -2334,17 +2348,29 @@ app.post('/stage-updates', async (request, reply) => {
 
   const previousStage = order.current_stage;
   const targetStage = body.stage;
+  const productionGatedStages = new Set(['production_pending', 'production_confirmed', 'partial_production', 'en_route']);
+  const hasProductionClearance = Boolean(order.deposit_verified || order.production_exception);
 
   // Allow transitions that are in the valid map, or if the stage hasn't changed
   if (previousStage !== targetStage) {
     const allowedNext = VALID_TRANSITIONS[previousStage];
-    if (allowedNext && !allowedNext.includes(targetStage)) {
+    const allowedByProductionException = productionGatedStages.has(targetStage) && Boolean(order.production_exception);
+    if (allowedNext && !allowedNext.includes(targetStage) && !allowedByProductionException) {
       return reply.code(400).send({
         error: `Invalid stage transition: cannot move from '${previousStage}' to '${targetStage}'. Allowed transitions: ${allowedNext.join(', ')}.`,
         current_stage: previousStage,
         allowed_stages: allowedNext,
       });
     }
+  }
+
+  if (productionGatedStages.has(targetStage) && !hasProductionClearance) {
+    return reply.code(400).send({
+      error: 'Cannot move to production: downpayment must be verified first, unless a production special-case exception is granted.',
+      current_stage: previousStage,
+      deposit_verified: order.deposit_verified,
+      production_exception: order.production_exception,
+    });
   }
 
   // Guard: Block delivery_scheduled if balance is not paid
@@ -2523,7 +2549,7 @@ app.post('/deposits', async (request, reply) => {
 
     // Update deposit fields.
     // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
-    // Stage advances to deposit_pending (not production_pending) until deposit is verified.
+    // Stage advances to deposit_verification until the downpayment is verified.
     await query(
       `UPDATE orders SET
          deposit_paid=TRUE,
@@ -2532,8 +2558,8 @@ app.post('/deposits', async (request, reply) => {
          deposit_image_url=COALESCE($2, deposit_image_url),
          deposit_paid_at=COALESCE($4, deposit_paid_at),
          current_stage=CASE
-           WHEN current_stage IN ('order_confirmation_received', 'math_verified')
-           THEN 'deposit_pending'
+           WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
+           THEN 'deposit_verification'
            ELSE current_stage
          END,
          updated_at=NOW()
@@ -2545,6 +2571,10 @@ app.post('/deposits', async (request, reply) => {
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
       [orderId, 'deposit_pending', 'deposit_paid', `Downpayment of ₱${body.amount} recorded`, body.updated_by ?? null]
+    );
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
+      [orderId, 'deposit_verification', 'pending', 'Downpayment recorded; awaiting payment verification', body.updated_by ?? null]
     );
 
     // Complete any deposit reminders for this order
@@ -2572,7 +2602,7 @@ app.post('/deposits', async (request, reply) => {
     }
 
     // Notify collection agent immediately that a deposit needs verification
-    triggerAgentsForStage('deposit_pending', quotationNumber, clientName);
+    triggerAgentsForStage('deposit_verification', quotationNumber, clientName);
 
     // Notify collection group immediately — deposit recorded, needs verification
     setImmediate(() => {
@@ -2674,8 +2704,8 @@ app.post('/deposits/match-and-record', async (request, reply) => {
            deposit_image_url=COALESCE($2, deposit_image_url),
            deposit_paid_at=COALESCE($4, deposit_paid_at),
            current_stage=CASE
-             WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
-             THEN 'deposit_pending'
+             WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
+             THEN 'deposit_verification'
              ELSE current_stage
            END,
            updated_at=NOW()
@@ -2687,6 +2717,11 @@ app.post('/deposits/match-and-record', async (request, reply) => {
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
          VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
         [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+      );
+      await query(
+        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+         VALUES ($1, 'deposit_verification', 'pending', 'Downpayment recorded; awaiting payment verification', 'telegram_bot')`,
+        [order.id]
       );
 
       // Complete any deposit reminders
@@ -2713,7 +2748,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       }
 
       // Notify collection agent immediately that a deposit needs verification
-      triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
+      triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
 
       try {
         await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2755,7 +2790,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
         : null;
 
       // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
-      // Stage advances to deposit_pending (not purchasing_pending) until deposit is verified.
+      // Stage advances to deposit_verification until the downpayment is verified.
       await query(
         `UPDATE orders SET
            deposit_paid=TRUE,
@@ -2764,8 +2799,8 @@ app.post('/deposits/match-and-record', async (request, reply) => {
            deposit_image_url=COALESCE($2, deposit_image_url),
            deposit_paid_at=COALESCE($4, deposit_paid_at),
            current_stage=CASE
-             WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified')
-             THEN 'deposit_pending'
+             WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
+             THEN 'deposit_verification'
              ELSE current_stage
            END,
            updated_at=NOW()
@@ -2777,6 +2812,11 @@ app.post('/deposits/match-and-record', async (request, reply) => {
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
          VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
         [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+      );
+      await query(
+        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+         VALUES ($1, 'deposit_verification', 'pending', 'Downpayment recorded; awaiting payment verification', 'telegram_bot')`,
+        [order.id]
       );
 
       // Complete any deposit reminders
@@ -2803,7 +2843,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       }
 
       // Notify collection agent immediately that a deposit needs verification
-      triggerAgentsForStage('deposit_pending', order.quotation_number, order.client_name);
+      triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
 
       try {
         await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -3268,13 +3308,14 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     return reply.code(400).send({ error: 'Deposit is already verified.' });
   }
 
-  // Determine next stage based on whether the order needs purchasing
-  // If the order is at any pre-production stage (quotation_received, deposit_pending, etc.),
-  // advance to production_pending after deposit verification
-  const preProductionStages = ['quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'production_confirmed', 'en_route'];
-  const nextStage = preProductionStages.includes(order.current_stage)
-    ? 'production_pending'
-    : order.current_stage;
+  if (!['deposit_pending', 'deposit_verification'].includes(order.current_stage)) {
+    return reply.code(400).send({
+      error: `Deposit can only be verified from deposit_pending or deposit_verification. Current stage: ${order.current_stage}.`,
+      current_stage: order.current_stage,
+    });
+  }
+
+  const nextStage = 'purchasing_pending';
 
   await query(
     `UPDATE orders SET
@@ -3287,11 +3328,16 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id, body.verified_by ?? null, nextStage],
   );
 
-  // Record stage update
+  // Record stage updates
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, $2, 'deposit_verified', $3, $4)`,
-    [id, nextStage, `Deposit verified by ${body.verified_by ?? 'team'}. Advancing to ${nextStage}.`, body.verified_by ?? null],
+     VALUES ($1, 'deposit_verification', 'deposit_verified', $2, $3)`,
+    [id, `Deposit verified by ${body.verified_by ?? 'team'}. Advancing to ${nextStage}.`, body.verified_by ?? null],
+  );
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'purchasing_pending', 'ready', 'Downpayment verified; ready for purchasing/production preparation.', $2)`,
+    [id, body.verified_by ?? null],
   );
 
   // Complete deposit_verification reminders
@@ -3301,17 +3347,8 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id],
   );
 
-  // Create a production_pending reminder — goes to the PRODUCTION group, not the deposit/quotation group
-  await query(
-    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-     VALUES ($1, 'production_pending', $2,
-             'Deposit has been verified. Production should start now. Has production started for this order?',
-             'daily', NOW() + INTERVAL '5 minutes', 'active')
-     ON CONFLICT DO NOTHING`,
-    [id, PRODUCTION_CHAT_ID],
-  );
 
-  // Notify purchasing agent immediately that deposit is verified and order needs production
+  // Notify purchasing agent immediately that deposit is verified and order is ready for purchasing
   triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
 
   // Notify collection group immediately — deposit verified, advancing to production
@@ -3322,30 +3359,17 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
       `Quotation: <b>${order.quotation_number}</b>\n` +
       `Client: ${order.client_name ?? 'N/A'}\n` +
       `Verified by: ${body.verified_by ?? 'team'}\n` +
-      `Next stage: <b>${nextStage === 'production_pending' ? 'Production Pending' : nextStage}</b>\n\n` +
+      `Next stage: <b>Purchasing Pending</b>\n\n` +
       `Deposit has been verified on the dashboard.`
     );
   });
 
-  // Notify production group immediately if advancing to production_pending
-  if (nextStage === 'production_pending') {
-    setImmediate(() => {
-      notifyGroupChat(
-        PRODUCTION_CHAT_ID,
-        `🏭 <b>Deposit Verified — Ready for Production</b>\n\n` +
-        `Quotation: <b>${order.quotation_number}</b>\n` +
-        `Client: ${order.client_name ?? 'N/A'}\n` +
-        `Deposit verified by: ${body.verified_by ?? 'team'}\n\n` +
-        `Order is now in <b>Production Pending</b> stage. Please start production.`
-      );
-    });
-  }
 
   // Notify escalation group about deposit verification (dashboard only)
   if (isDashboardOrigin(body.verified_by)) {
     await notifyManualChange(
       'Deposit verified',
-      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${nextStage === 'production_pending' ? 'Production Pending' : nextStage}`,
+      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: Purchasing Pending`,
       userEmail,
     );
   }
