@@ -6668,3 +6668,45 @@ When redesigning UI navigation, always verify that all critical user paths remai
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: delivery_scheduled reminder must not fire before delivery date
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 97ad8ce0f97b4fb07565536dc388dcf601372167
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 97ad8ce0f97b4fb07565536dc388dcf601372167
+**Files:** 
+
+**Summary:**
+**What was fixed:** A bug where the `delivery_scheduled` reminder was firing before the actual delivery date.
+
+**Why it broke:** The reminder trigger logic did not include a check comparing the current time against the scheduled delivery date. It likely used only a relative offset (e.g., "remind X days before") without verifying that the delivery date had not yet passed, causing premature notifications.
+
+**Reusable takeaway:** When scheduling time-based reminders or triggers, always include an explicit upper-bound check (e.g., "fire only if current time ≤ event time") in addition to the lower-bound offset. This prevents alerts from firing after the event has occurred or before it is valid, especially when data may be backfilled or processed asynchronously.
+
+---
+*Original commit message: fix: delivery_scheduled reminder must not fire before delivery date*
+
+#### Lesson Learned
+
+**What was fixed:** A bug where the `delivery_scheduled` reminder was firing before the actual delivery date.
+
+**Why it broke:** The reminder trigger logic did not include a check comparing the current time against the scheduled delivery date. It likely used only a relative offset (e.g., "remind X days before") without verifying that the delivery date had not yet passed, causing premature notifications.
+
+**Reusable takeaway:** When scheduling time-based reminders or triggers, always include an explicit upper-bound check (e.g., "fire only if current time ≤ event time") in addition to the lower-bound offset. This prevents alerts from firing after the event has occurred or before it is valid, especially when data may be backfilled or processed asynchronously.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
