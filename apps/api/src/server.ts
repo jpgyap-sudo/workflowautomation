@@ -1086,7 +1086,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
            escalation_level=0,
            updated_at=NOW()`,
         [id, groupChatId,
-         `*Production Due* - ${ref} (${client})\nThe ${body.estimated_production_days}-day production window is now complete.\nIs production finished?`,
+         `*Production Due* - ${ref} (${client})\nThe ${body.estimated_production_days}-day production window is now complete.\nDownpayment deposit has been confirmed and verified. Has the production started?`,
          finishDate.toISOString()]
       );
     }

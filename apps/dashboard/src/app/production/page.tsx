@@ -5,7 +5,7 @@ import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
-  reportProductionStatus, finishProduction, confirmEnRoute,
+  reportProductionStatus, finishProduction, confirmEnRoute, setProduction,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
 } from '@/lib/api';
@@ -383,6 +383,7 @@ interface OrderRowProps {
   onEdit: (o: Order) => void;
   onDelete: (o: Order) => void;
   onViewFiles?: (o: Order) => void;
+  onStartProduction?: (o: Order) => void;
   onReportOnTime?: (o: Order) => void;
   onReportDelayed?: (o: Order) => void;
   onFinishProduction?: (o: Order) => void;
@@ -391,7 +392,7 @@ interface OrderRowProps {
   onRevokeException?: (o: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onGrantException, onRevokeException }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onGrantException, onRevokeException }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -510,6 +511,13 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
         <>
           <ProductionInfoCards order={order} />
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
+            {/* Start Production button for production_pending orders */}
+            {onStartProduction && !order.production_started && (
+              <button onClick={() => onStartProduction(order)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+                Start Production
+              </button>
+            )}
             {/* Production Confirmed actions */}
             {order.production_started && !order.production_finished && order.current_stage !== 'en_route' && (
               <>
@@ -675,7 +683,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'grantProductionException' | 'revokeProductionException';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'grantProductionException' | 'revokeProductionException' | 'setProduction';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); }
@@ -716,6 +724,7 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'reportStatus') handleReportStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'finishProduction') handleFinishProductionVerified(actionToken);
     else if (otpModal.pendingAction === 'confirmEnRoute') handleConfirmEnRouteVerified(actionToken);
+    else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
     else if (otpModal.pendingAction === 'grantProductionException') handleGrantExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeExceptionVerified(actionToken);
   }
@@ -748,6 +757,16 @@ export default function ProductionPage() {
       refresh();
     } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
     finally { (window as any).__pendingReportStatusData = null; }
+  }
+
+  async function handleStartProductionVerified(actionToken: string) {
+    const pending = (window as any).__pendingStartProductionData;
+    if (!pending) return;
+    try {
+      await setProduction(pending.orderId, { production_started: true, estimated_production_days: pending.days, action_token: actionToken });
+      refresh();
+    } catch (err: any) { alert('Failed to start production: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingStartProductionData = null; }
   }
 
   async function handleFinishProductionVerified(actionToken: string) {
@@ -804,6 +823,17 @@ export default function ProductionPage() {
       description: `You are about to report order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s). Enter the OTP sent to your email to confirm.`,
       pendingAction: 'reportStatus' });
     (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: false, delay_days: days } };
+  }
+
+  async function handleStartProduction(order: Order) {
+    const input = window.prompt('Estimated production days?', order.estimated_production_days?.toString() ?? '');
+    if (!input) return;
+    const days = Number(input.replace(/[^0-9]/g, ''));
+    if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
+    setOtpModal({ open: true, title: 'Start Production',
+      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'setProduction' });
+    (window as any).__pendingStartProductionData = { orderId: order.id, days };
   }
 
   async function handleFinishProduction(order: Order) {
@@ -876,7 +906,7 @@ export default function ProductionPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onStartProduction={handleStartProduction} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}

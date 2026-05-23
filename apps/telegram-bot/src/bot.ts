@@ -1422,7 +1422,7 @@ bot.on(message('text'), async (ctx) => {
         await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nMidpoint and due reminders are scheduled. The bot will ask if production is finished when the date arrives.`,
+          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nMidpoint and due reminders are scheduled. The bot will check if production has started when the date arrives.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -1452,7 +1452,7 @@ bot.on(message('text'), async (ctx) => {
         await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nMidpoint and due reminders are scheduled. The bot will ask if production is finished when the date arrives.`,
+          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nMidpoint and due reminders are scheduled. The bot will check if production has started when the date arrives.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -2303,8 +2303,14 @@ bot.action(/^produce:days:(\d+):([^:]*):(.+)$/, async (ctx) => {
     });
     await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${days} day(s)` });
     await ctx.editMessageText(
-      `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${days} days*\n\nMidpoint and due reminders are scheduled. The bot will ask if production is finished when the date arrives.`,
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${days} days*\n\nMidpoint and due reminders are scheduled. The bot will check if production has started when the date arrives.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Mark Production Finished', `production:finished:${order.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
     );
   } catch (err: any) {
     await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
@@ -2556,7 +2562,7 @@ bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
     await logAction({ chatId, userId, username, label: 'Production On Time', quotationNumber });
     resetStep(chatId);
     await ctx.editMessageText(
-      `✅ *On Time* — ${quotationNumber}\n\nProduction is on schedule. A reminder will be sent at the estimated completion date.`,
+      `✅ *On Time* — ${quotationNumber}\n\nProduction is on schedule. A reminder will be sent at the estimated completion date to check if production has started.`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {
@@ -2660,7 +2666,7 @@ bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
         order_id: orderId,
         stage: 'production_due',
         group_chat_id: groupChatId,
-        message: `🏭 *Production Due* — ${quotationNumber} (${order.client_name ?? 'Unknown'})\nThe production window is now complete.\nIs production finished?`,
+        message: `🏭 *Production Due* — ${quotationNumber} (${order.client_name ?? 'Unknown'})\nThe production window is now complete.\nDownpayment deposit has been confirmed and verified. Has the production started?`,
         frequency: 'once',
         next_run_at: tomorrow.toISOString(),
       });

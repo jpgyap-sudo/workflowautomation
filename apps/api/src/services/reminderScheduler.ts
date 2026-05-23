@@ -206,12 +206,13 @@ export async function processDueReminders(): Promise<number> {
         ],
       ]);
     } else if (reminder.stage === 'production_due') {
-      // Production due: ask if finished
+      // Production due: ask if production has started (not if finished)
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Finished', callback_data: `production:finished:${orderId.slice(0, 8)}:${quotationNumber}` },
-          { text: '❌ Not Yet', callback_data: `production:not_finished:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
+        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'en_route_reminder') {
       // En route check: ask if order is en route
