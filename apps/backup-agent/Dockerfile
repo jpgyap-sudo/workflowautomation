@@ -7,7 +7,8 @@ WORKDIR /app
 RUN apk add --no-cache docker-cli postgresql16-client curl
 
 COPY package*.json ./
-RUN npm ci
+# Use npm install (no lockfile committed for this app)
+RUN npm install
 
 COPY tsconfig.json ./
 COPY src ./src
