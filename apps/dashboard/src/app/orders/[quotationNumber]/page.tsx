@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles } from 'lucide-react';
 import Link from 'next/link';
@@ -394,8 +394,10 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState('');
+  const [verifyingItemId, setVerifyingItemId] = useState<string | null>(null);
+  const [completingVerification, setCompletingVerification] = useState(false);
 
-  const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
+  const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
 
   useEffect(() => {
     if (!stagesWithItems.includes(currentStage)) {
@@ -434,6 +436,36 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
       setExtractError(err instanceof Error ? err.message : 'Extraction failed');
     } finally {
       setExtracting(false);
+    }
+  }
+
+  async function handleVerifyItem(itemId: string, action: 'all' | 'partial' | 'not_yet', verifiedQty?: number) {
+    setVerifyingItemId(itemId);
+    try {
+      await inventoryVerifyItem(orderId, { item_id: itemId, action, verified_qty: verifiedQty });
+      // Refresh items
+      const res = await getOrderItems(orderId);
+      if (res.ok) setItems(res.items);
+      const compRes = await getItemCompletion(orderId);
+      if (compRes.ok) setCompletion(compRes);
+    } catch (err: any) {
+      alert(err.message ?? 'Verification failed');
+    } finally {
+      setVerifyingItemId(null);
+    }
+  }
+
+  async function handleCompleteVerification() {
+    if (!window.confirm('Mark inventory verification as complete? This will advance the order to Inventory Arrived.')) return;
+    setCompletingVerification(true);
+    try {
+      await completeInventoryVerification(orderId);
+      // Refresh order data by reloading page or using mutate
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message ?? 'Failed to complete verification');
+    } finally {
+      setCompletingVerification(false);
     }
   }
 
@@ -554,6 +586,7 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                 <th className="py-2 pr-3">Qty</th>
                 <th className="py-2 pr-3">Production</th>
                 <th className="py-2 pr-3">En Route</th>
+                {currentStage === 'inventory_verification' && <th className="py-2 pr-3">Verification</th>}
                 <th className="py-2 pr-3">Arrival Est.</th>
               </tr>
             </thead>
@@ -584,6 +617,42 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                         : '○ Not Yet'}
                     </span>
                   </td>
+                  {currentStage === 'inventory_verification' && (
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-full rounded-full bg-teal-500"
+                            style={{ width: `${Math.min(((item.verified_qty ?? 0) / item.quantity) * 100, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-gray-600">{item.verified_qty ?? 0}/{item.quantity}</span>
+                        {(item.verified_qty ?? 0) < item.quantity ? (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleVerifyItem(item.id, 'all')}
+                              disabled={verifyingItemId === item.id}
+                              className="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                            >
+                              {verifyingItemId === item.id ? '...' : '✓ All'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                const qty = window.prompt(`Enter verified quantity for ${item.name} (max ${item.quantity}):`);
+                                if (qty) handleVerifyItem(item.id, 'partial', Number(qty));
+                              }}
+                              disabled={verifyingItemId === item.id}
+                              className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              Partial
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-medium text-green-600">✓ Verified</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
                   <td className="py-2 pr-3 text-gray-600">
                     {item.estimated_arrival_days != null ? `${item.estimated_arrival_days}d` : '—'}
                   </td>
@@ -591,6 +660,25 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Complete Verification button */}
+      {currentStage === 'inventory_verification' && items.length > 0 && (
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50/50 p-3">
+          <div>
+            <p className="text-xs font-medium text-teal-800">Inventory Verification</p>
+            <p className="text-[10px] text-teal-600">
+              {items.filter(i => (i.verified_qty ?? 0) >= i.quantity).length}/{items.length} items fully verified
+            </p>
+          </div>
+          <button
+            onClick={handleCompleteVerification}
+            disabled={completingVerification || items.some(i => (i.verified_qty ?? 0) < i.quantity)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {completingVerification ? 'Completing...' : '✓ Complete Verification'}
+          </button>
         </div>
       )}
 

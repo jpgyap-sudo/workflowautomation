@@ -3890,3 +3890,51 @@ When designing workflow automation, explicitly model all failure and timeout pat
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: inventory GUI gaps - real quotation numbers, progress bars, agent status badges, /inventory command, photo upload p
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 08cc708cf98a9b31e6266ecbc2ceaa9379692c42
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 08cc708cf98a9b31e6266ecbc2ceaa9379692c42
+**Files:** apps/dashboard/src/app/inventory/page.tsx,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Multiple UI gaps in the inventory dashboard: real quotation numbers, progress bars, agent status badges, the `/inventory` command, a photo upload prompt, and View Items links.
+
+**Why it broke:**  
+These features were either missing from the initial implementation or not wired to live data sources, causing the inventory page to display static or incomplete information.
+
+**Reusable takeaway:**  
+When building data-heavy dashboards, always validate that every UI element (badges, bars, links, commands) is connected to a real data source or API endpoint before marking the feature complete. Use a checklist of all visible components and their data dependencies to catch gaps early.
+
+---
+*Original commit message: fix: inventory GUI gaps - real quotation numbers, progress bars, agent status badges, /inventory command, photo upload prompt, View Items links*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Multiple UI gaps in the inventory dashboard: real quotation numbers, progress bars, agent status badges, the `/inventory` command, a photo upload prompt, and View Items links.
+
+**Why it broke:**  
+These features were either missing from the initial implementation or not wired to live data sources, causing the inventory page to display static or incomplete information.
+
+**Reusable takeaway:**  
+When building data-heavy dashboards, always validate that every UI element (badges, bars, links, commands) is connected to a real data source or API endpoint before marking the feature complete. Use a checklist of all visible components and their data dependencies to catch gaps early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

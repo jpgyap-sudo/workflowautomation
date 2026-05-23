@@ -188,9 +188,27 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
 
     // Fetch items
     const items = await getOrderItems(order.id);
-    if (items.length === 0) return null; // No items to track — fall back
-
     const escalationLevel = await getEscalationLevel(order.id, 'inventory_verification');
+
+    if (items.length === 0) {
+      // No items defined — remind inventory group to extract items
+      const qn = order.quotation_number ?? 'unknown';
+      const client = order.client_name ?? 'Unknown';
+      const groupChatId = getGroupChatId(AGENT_NAME);
+      if (groupChatId) {
+        const msg = `🔍 <b>Inventory Verification</b>\n\nOrder: #${qn} (${client})\n\n⚠️ No items have been extracted for this order yet. Please extract items from the quotation image using the dashboard or Telegram bot before proceeding with inventory verification.`;
+        await sendTelegramMessage(groupChatId, msg);
+      }
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `Inventory verification for #${qn} blocked: no items extracted.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'blocked', order.id);
+      return result;
+    }
 
     // Calculate verification % based on verified_qty vs total quantity
     const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
