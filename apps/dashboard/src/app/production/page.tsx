@@ -488,7 +488,7 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onReportOnTime, onRepo
               </button>
             )}
             {/* Production Exception actions */}
-            {!order.deposit_verified && !order.production_exception && onGrantException && (
+            {(!order.deposit_paid || !order.deposit_verified) && !order.production_exception && onGrantException && (
               <button onClick={() => onGrantException(order)}
                 className="rounded-lg bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100">
                 Grant Exception (No DP)
@@ -838,6 +838,8 @@ export default function ProductionPage() {
             <OrderRow
               order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
               onConfirmEnRoute={handleConfirmEnRoute}
+              onGrantException={handleGrantException}
+              onRevokeException={handleRevokeException}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />

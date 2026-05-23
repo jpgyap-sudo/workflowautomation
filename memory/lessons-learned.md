@@ -3696,3 +3696,45 @@ When adding a new stage to a state machine or workflow, always update all transi
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: add bug report system with dashboard page, Telegram /bug command, and escalation notifications
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit db27fb35a0f2adcc6943710b13732d74421a5cc0
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** db27fb35a0f2adcc6943710b13732d74421a5cc0
+**Files:** .env.example,apps/api/src/server.ts,apps/dashboard/src/app/bugs/page.tsx,apps/dashboard/src/components/Sidebar.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,database/migrations/026_bug_reports.sql,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Added a complete bug report system including a dashboard page, Telegram `/bug` command, and escalation notifications.
+
+**Why it broke:** This is a feature addition, not a fix. The system previously lacked any structured bug reporting mechanism, causing issues to be reported ad-hoc via scattered channels (e.g., direct messages, email) with no central tracking or escalation path.
+
+**Reusable takeaway:** When building workflow automation tools, always include a structured, multi-channel bug reporting system from the start. Use a database-backed model (migration `026_bug_reports.sql`) to persist reports, provide a dashboard for visibility, and integrate with communication tools (Telegram) for low-friction submission. Escalation notifications ensure critical issues are not missed. This pattern prevents chaos and ensures accountability in any automated system.
+
+---
+*Original commit message: feat: add bug report system with dashboard page, Telegram /bug command, and escalation notifications*
+
+#### Lesson Learned
+
+**What was fixed:** Added a complete bug report system including a dashboard page, Telegram `/bug` command, and escalation notifications.
+
+**Why it broke:** This is a feature addition, not a fix. The system previously lacked any structured bug reporting mechanism, causing issues to be reported ad-hoc via scattered channels (e.g., direct messages, email) with no central tracking or escalation path.
+
+**Reusable takeaway:** When building workflow automation tools, always include a structured, multi-channel bug reporting system from the start. Use a database-backed model (migration `026_bug_reports.sql`) to persist reports, provide a dashboard for visibility, and integrate with communication tools (Telegram) for low-friction submission. Escalation notifications ensure critical issues are not missed. This pattern prevents chaos and ensures accountability in any automated system.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

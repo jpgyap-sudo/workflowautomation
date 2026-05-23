@@ -230,6 +230,57 @@ async function botLog(params: {
   }
 }
 
+// ── Escalation Action Logger ───────────────────────────────────────────
+// Logs a completed write action to the DB and notifies the escalation group.
+
+const ESCALATION_NOTIFY_CHAT_ID =
+  process.env.ESCALATION_GROUP_CHAT_ID ??
+  process.env.ESCALATION_GROUP_ID ??
+  null;
+
+async function logAction(params: {
+  chatId: string;
+  userId: string;
+  username?: string;
+  label: string;            // Short action name, e.g. "Record Downpayment"
+  quotationNumber?: string; // Order reference
+  details?: string;         // Human-readable detail line, e.g. "₱5,000"
+  metadata?: Record<string, unknown>;
+}) {
+  const actor = params.username ? `@${params.username}` : `user #${params.userId}`;
+  const content = [params.label, params.quotationNumber ? `[${params.quotationNumber}]` : '', params.details ?? '']
+    .filter(Boolean).join(' ');
+
+  // 1. Persist to bot_logs DB table
+  await botLog({
+    chatId: params.chatId,
+    userId: params.userId,
+    username: params.username,
+    messageType: 'telegram_action',
+    direction: 'incoming',
+    content,
+    metadata: {
+      label: params.label,
+      quotationNumber: params.quotationNumber,
+      details: params.details,
+      ...params.metadata,
+    },
+    status: 'success',
+  });
+
+  // 2. Notify escalation group (fire-and-forget — never block the bot)
+  if (!ESCALATION_NOTIFY_CHAT_ID || !token) return;
+  const orderLine = params.quotationNumber ? `\n📋 Order: <b>${params.quotationNumber}</b>` : '';
+  const detailLine = params.details ? `\n📝 ${params.details}` : '';
+  const msg = `🤖 <b>Telegram Action</b>\n👤 By: ${actor}${orderLine}\n✅ ${params.label}${detailLine}`;
+
+  fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chat_id: ESCALATION_NOTIFY_CHAT_ID, text: msg, parse_mode: 'HTML' }),
+  }).catch((err) => console.error('[escalation-log] Failed to send:', err));
+}
+
 // ── API Helpers ────────────────────────────────────────────────────────
 
 async function postJson(path: string, body: unknown) {
@@ -1025,6 +1076,7 @@ bot.action(/^date:(today|tomorrow|plus2|friday|custom):(.+)$/, async (ctx) => {
       remarks: dateText,
       updated_by: username ?? String(userId),
     });
+    await logAction({ chatId, userId, username, label: 'Schedule Delivery', quotationNumber, details: `Date: ${dateText}` });
     resetStep(chatId);
     await ctx.editMessageText(
       `🚚 *Delivery Scheduled*\n\nOrder: *${quotationNumber}*\nDate: ${dateText}`,
@@ -1053,6 +1105,7 @@ bot.action(/^skip_remarks:(.+)$/, async (ctx) => {
       remarks: '',
       updated_by: username ?? String(userId),
     });
+    await logAction({ chatId, userId, username, label: 'Mark as Delivered', quotationNumber });
     resetStep(chatId);
     await ctx.editMessageText(
       `✅ *Delivered*\n\nOrder: *${quotationNumber}*`,
@@ -1196,6 +1249,7 @@ bot.on(message('text'), async (ctx) => {
           production_started: status === 'yes',
           estimated_production_days: estimatedDays,
         });
+        await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
           `Production Confirmed
@@ -1258,6 +1312,7 @@ Midpoint and due reminders are now scheduled.`,
           amount,
           updated_by: ctx.from?.username ?? String(ctx.from?.id),
         });
+        await logAction({ chatId, userId, username, label: 'Record Downpayment', quotationNumber, details: `₱${amount.toLocaleString()}` });
         resetStep(chatId);
         await ctx.reply(
           `✅ *Downpayment Recorded*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}\n\nProduction can now proceed.`,
@@ -1315,6 +1370,7 @@ Midpoint and due reminders are now scheduled.`,
           amount,
           updated_by: ctx.from?.username ?? String(ctx.from?.id),
         });
+        await logAction({ chatId, userId, username, label: 'Pay Balance', quotationNumber, details: `₱${amount.toLocaleString()}` });
         resetStep(chatId);
         let msg = `✅ *Balance Paid*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}`;
         if (result.overpayment > 0) {
@@ -1395,6 +1451,7 @@ Midpoint and due reminders are now scheduled.`,
           remarks: dateText,
           updated_by: ctx.from?.username ?? String(ctx.from?.id),
         });
+        await logAction({ chatId, userId, username, label: 'Schedule Delivery', quotationNumber, details: `Date: ${dateText}` });
         resetStep(chatId);
         await ctx.reply(
           `🚚 *Delivery Scheduled*\n\nOrder: *${quotationNumber}*\nDate: ${dateText}`,
@@ -1454,6 +1511,7 @@ Midpoint and due reminders are now scheduled.`,
           remarks,
           updated_by: ctx.from?.username ?? String(ctx.from?.id),
         });
+        await logAction({ chatId, userId, username, label: 'Mark as Delivered', quotationNumber, details: remarks ? `Remarks: ${remarks}` : undefined });
         resetStep(chatId);
         await ctx.reply(
           `✅ *Delivered*\n\nOrder: *${quotationNumber}*\nRemarks: ${remarks || '—'}`,
