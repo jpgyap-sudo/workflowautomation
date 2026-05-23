@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Order, OrderFile } from '@/lib/api';
 import { getOrderFiles, getOrderFileDownloadUrl, uploadOrderFile } from '@/lib/api';
 import { X, FileText, ExternalLink, Upload, Loader2 } from 'lucide-react';
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
 
 // ── File Viewer Modal ──────────────────────────────────────────────────
 
@@ -16,7 +20,7 @@ export function FileViewerModal({
   order: Order;
   files: OrderFile[];
   onClose: () => void;
-  onUploadComplete?: () => void;
+  onUploadComplete?: () => void | Promise<void>;
 }) {
   const imageFiles = files.filter((f) => {
     const mt = f.mime_type ?? '';
@@ -29,11 +33,15 @@ export function FileViewerModal({
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputId = `order-file-upload-${order.id}`;
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setUploadSuccess(null);
 
     // Validate file type
     const isImage = file.type.startsWith('image/');
@@ -68,10 +76,11 @@ export function FileViewerModal({
         file_data: base64,
       });
 
-      // Refresh files list
-      if (onUploadComplete) onUploadComplete();
-    } catch (err: any) {
-      setUploadError(err.message ?? 'Upload failed');
+      // Refresh files list before showing success so the uploaded file appears immediately.
+      if (onUploadComplete) await onUploadComplete();
+      setUploadSuccess(`Uploaded "${file.name}" successfully.`);
+    } catch (err: unknown) {
+      setUploadError(getErrorMessage(err, 'Upload failed'));
     } finally {
       setUploading(false);
       // Reset input so the same file can be re-selected
@@ -99,6 +108,16 @@ export function FileViewerModal({
           </button>
         </div>
         <div className="max-h-[70vh] overflow-auto p-6">
+          <input
+            id={fileInputId}
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/*,application/pdf"
+            onChange={handleFileSelect}
+            className="sr-only"
+            aria-label="Upload quotation or order confirmation file"
+          />
+
           {files.length === 0 && !uploading ? (
             <div className="py-8 text-center text-sm text-gray-400">
               <FileText className="mx-auto mb-2 h-8 w-8 text-gray-300" />
@@ -106,35 +125,38 @@ export function FileViewerModal({
               <p className="mb-4 text-xs text-gray-400">
                 Upload a quotation or order confirmation file (JPEG/PDF).
               </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+              {uploadError && (
+                <div className="mx-auto mb-4 max-w-md rounded-lg bg-red-50 p-3 text-xs text-red-600">
+                  {uploadError}
+                </div>
+              )}
+              {uploadSuccess && (
+                <div className="mx-auto mb-4 max-w-md rounded-lg bg-green-50 p-3 text-xs text-green-700">
+                  {uploadSuccess}
+                </div>
+              )}
+              <label
+                htmlFor={fileInputId}
+                onClick={() => {
+                  setUploadError(null);
+                  setUploadSuccess(null);
+                }}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9]"
               >
                 <Upload className="h-4 w-4" />
                 Upload File
-              </button>
+              </label>
             </div>
           ) : (
             <div className="space-y-6">
               {/* Upload button at top when files exist */}
               <div className="flex justify-end">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => {
+                    setUploadError(null);
+                    setUploadSuccess(null);
+                    fileInputRef.current?.click();
+                  }}
                   disabled={uploading}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
@@ -150,6 +172,11 @@ export function FileViewerModal({
               {uploadError && (
                 <div className="rounded-lg bg-red-50 p-3 text-xs text-red-600">
                   {uploadError}
+                </div>
+              )}
+              {uploadSuccess && (
+                <div className="rounded-lg bg-green-50 p-3 text-xs text-green-700">
+                  {uploadSuccess}
                 </div>
               )}
 
@@ -237,7 +264,7 @@ export function useOrderFileViewer() {
     try {
       const result = await getOrderFiles(order.id);
       setOrderFiles(result.files ?? []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load order files:', err);
       setOrderFiles([]);
     } finally {
@@ -250,10 +277,20 @@ export function useOrderFileViewer() {
     try {
       const result = await getOrderFiles(viewingFilesOrder.id);
       setOrderFiles(result.files ?? []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to refresh order files:', err);
     }
   }
+
+  useEffect(() => {
+    if (!viewingFilesOrder) return;
+    const interval = window.setInterval(() => {
+      getOrderFiles(viewingFilesOrder.id)
+        .then((result) => setOrderFiles(result.files ?? []))
+        .catch((err: unknown) => console.error('Failed to refresh order files:', err));
+    }, 7000);
+    return () => window.clearInterval(interval);
+  }, [viewingFilesOrder]);
 
   function closeViewer() {
     setViewingFilesOrder(null);

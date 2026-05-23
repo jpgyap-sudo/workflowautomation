@@ -144,7 +144,15 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     headers,
   });
   if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${await res.text()}`);
+    const text = await res.text();
+    let message = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: string; message?: string; detail?: string };
+      message = parsed.error || parsed.message || parsed.detail || text;
+    } catch {
+      // Keep raw response text.
+    }
+    throw new Error(`API error ${res.status}: ${message}`);
   }
   return res.json();
 }

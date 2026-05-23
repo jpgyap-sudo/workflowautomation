@@ -6710,3 +6710,82 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: drop duplicate reminders unique constraint and escape Markdown in error messages
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 31146cc39d71e776caeaf75cca242eae2a78530d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 31146cc39d71e776caeaf75cca242eae2a78530d
+**Files:** apps/telegram-bot/src/bot.ts,database/migrations/028_drop_old_reminders_unique_constraint.sql
+
+**Summary:**
+**What was fixed:**  
+- Removed a duplicate unique constraint on reminders that caused silent failures when users created multiple identical reminders.  
+- Escaped Markdown in error messages to prevent malformed Telegram bot responses.  
+
+**Why it broke:**  
+- The unique constraint was originally added to prevent duplicate reminders, but a later migration inadvertently created a second, conflicting constraint. This caused `INSERT` failures without clear user feedback.  
+- Error messages containing Markdown characters (e.g., `*`, `_`) were not escaped, breaking Telegram’s message rendering.  
+
+**Reusable takeaway:**  
+- **Database migrations:** Always verify that new constraints don’t duplicate or conflict with existing ones. Use `DROP CONSTRAINT IF EXISTS` before adding to avoid silent failures.  
+- **User-facing errors:** Escape special characters (e.g., Markdown, HTML) in error messages to ensure they render correctly in chat interfaces.  
+- **Testing:** Add integration tests for constraint violations and message formatting edge cases.
+
+---
+*Original commit message: fix: drop duplicate reminders unique constraint and escape Markdown in error messages*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Removed a duplicate unique constraint on reminders that caused silent failures when users created multiple identical reminders.  
+- Escaped Markdown in error messages to prevent malformed Telegram bot responses.  
+
+**Why it broke:**  
+- The unique constraint was originally added to prevent duplicate reminders, but a later migration inadvertently created a second, conflicting constraint. This caused `INSERT` failures without clear user feedback.  
+- Error messages containing Markdown characters (e.g., `*`, `_`) were not escaped, breaking Telegram’s message rendering.  
+
+**Reusable takeaway:**  
+- **Database migrations:** Always verify that new constraints don’t duplicate or conflict with existing ones. Use `DROP CONSTRAINT IF EXISTS` before adding to avoid silent failures.  
+- **User-facing errors:** Escape special characters (e.g., Markdown, HTML) in error messages to ensure they render correctly in chat interfaces.  
+- **Testing:** Add integration tests for constraint violations and message formatting edge cases.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [quotation-automation-system] fix order file upload feedback and Telegram file attachment
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When dashboard order file modals upload base64 files through /files/upload, always surface API errors/success in the modal, await file-list refresh, and fail /files/upload if file-store cannot persist the binary so users do not see silent success. Telegram/Vision-created orders must attach the original image/PDF via /files/upload with order_id after order creation; stale routes like /drive/upload leave files invisible in the order modal. Poll open file modals periodically so Telegram-side linked uploads appear without closing/reopening.
+
+#### Lesson Learned
+
+When dashboard order file modals upload base64 files through /files/upload, always surface API errors/success in the modal, await file-list refresh, and fail /files/upload if file-store cannot persist the binary so users do not see silent success. Telegram/Vision-created orders must attach the original image/PDF via /files/upload with order_id after order creation; stale routes like /drive/upload leave files invisible in the order modal. Poll open file modals periodically so Telegram-side linked uploads appear without closing/reopening.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

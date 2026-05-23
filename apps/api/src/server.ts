@@ -4578,6 +4578,7 @@ app.post('/files/upload', async (request, reply) => {
   const body = fileUploadSchema.parse(request.body);
   const FILE_STORE_URL = process.env.FILE_STORE_URL ?? 'http://file-store:8090';
   let localFilePath: string | null = null;
+  let binaryStoreError: string | null = null;
 
   // Resolve order_id from quotation_number if not provided directly
   let resolvedOrderId: string | null = body.order_id ?? null;
@@ -4631,10 +4632,24 @@ app.post('/files/upload', async (request, reply) => {
       if (res.ok) {
         const result = await res.json() as { path?: string };
         localFilePath = result.path ?? null;
+        if (!localFilePath) {
+          binaryStoreError = 'File-store did not return a stored file path';
+        }
+      } else {
+        const text = await res.text().catch(() => '');
+        binaryStoreError = `File-store rejected binary upload (HTTP ${res.status})${text ? `: ${text}` : ''}`;
       }
     } catch (err) {
       console.error('[DriveUpload] Failed to store binary in file-store:', err);
+      binaryStoreError = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  if (binaryStoreError) {
+    return reply.code(502).send({
+      error: 'Failed to store file binary',
+      detail: binaryStoreError,
+    });
   }
 
   // Store file reference in DB

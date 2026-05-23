@@ -277,22 +277,29 @@ function VisionPageContent() {
       const order = (await res.json()) as CreatedOrder;
       setCreatedOrder(order);
 
-      // Also upload the image to Drive linked to this order
+      // Also attach the original Telegram/dashboard upload to the order so it
+      // appears in the order file viewer modal. The old /drive/upload route no
+      // longer exists; /files/upload stores the binary and DB file record.
       if (preview) {
         const base64 = preview.split(',')[1];
         const mimeType = preview.split(';')[0].split(':')[1];
 
-        await fetch(`${API_BASE}/drive/upload`, {
+        const uploadRes = await fetch(`${API_BASE}/files/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            file_type: mimeType,
+            order_id: order.id,
+            file_type: 'quotation',
             original_filename: fileName,
             mime_type: mimeType,
             file_data: base64,
             quotation_number: order.quotation_number,
           }),
         });
+        if (!uploadRes.ok) {
+          const err = (await uploadRes.json().catch(() => ({ error: 'File upload failed' }))) as { error?: string };
+          throw new Error(err.error || `Order created, but file attach failed (HTTP ${uploadRes.status})`);
+        }
       }
 
       setStep('done');

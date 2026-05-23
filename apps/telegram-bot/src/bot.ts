@@ -4900,7 +4900,8 @@ bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):([^:]+):(
       );
     }
   } catch (err: any) {
-    await ctx.reply(`❌ Error updating item from reminder: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+    const safeMsg = err.message.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+    await ctx.reply(`❌ Error updating item from reminder: ${safeMsg}`, { parse_mode: 'MarkdownV2', ...cancelButton() });
   }
 });
 
