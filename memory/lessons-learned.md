@@ -4155,3 +4155,65 @@ When adding timestamps to the quotation dashboard, centralize formatting in apps
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: en route notification clarity, reminder timing/group, and legacy agent messaging
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 358a703dad5e807176b0db4411fac90e92124320
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 358a703dad5e807176b0db4411fac90e92124320
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+- En route notifications lacked clarity.  
+- Reminder timing and grouping were incorrect.  
+- Legacy agent messaging was broken or inconsistent.
+
+**Why it broke:**  
+- Notification logic did not account for distinct user roles (e.g., current vs. legacy agents).  
+- Reminder scheduling and grouping rules were not aligned with actual workflow states.  
+- Legacy agent message routing used outdated or mismatched identifiers.
+
+**Reusable takeaway:**  
+When updating notification or messaging systems, always:  
+1. Validate timing and grouping logic against real workflow state transitions.  
+2. Explicitly separate message flows for legacy vs. current system components.  
+3. Use role-aware routing to prevent cross-contamination of messages between different agent types.
+
+---
+*Original commit message: fix: en route notification clarity, reminder timing/group, and legacy agent messaging*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- En route notifications lacked clarity.  
+- Reminder timing and grouping were incorrect.  
+- Legacy agent messaging was broken or inconsistent.
+
+**Why it broke:**  
+- Notification logic did not account for distinct user roles (e.g., current vs. legacy agents).  
+- Reminder scheduling and grouping rules were not aligned with actual workflow states.  
+- Legacy agent message routing used outdated or mismatched identifiers.
+
+**Reusable takeaway:**  
+When updating notification or messaging systems, always:  
+1. Validate timing and grouping logic against real workflow state transitions.  
+2. Explicitly separate message flows for legacy vs. current system components.  
+3. Use role-aware routing to prevent cross-contamination of messages between different agent types.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

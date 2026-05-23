@@ -163,6 +163,15 @@ function NewBugModal({
           </div>
         </form>
       </div>
+      {showOtp && (
+        <OtpModal
+          open={showOtp}
+          title="Report a Bug"
+          description={`You are about to submit a bug report "${title}". Enter the OTP sent to your email to confirm.`}
+          onVerified={handleVerified}
+          onClose={() => setShowOtp(false)}
+        />
+      )}
     </div>
   );
 }
