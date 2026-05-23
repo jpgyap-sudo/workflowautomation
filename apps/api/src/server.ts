@@ -91,9 +91,10 @@ const COLLECTION_CHAT_ID = process.env.COLLECTION_GROUP_CHAT_ID ?? null;
 const DELIVERY_CHAT_ID = process.env.DELIVERY_GROUP_CHAT_ID ?? null;
 const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? null;
 
-async function notifyManualChange(action: string, details: string): Promise<void> {
+async function notifyManualChange(action: string, details: string, email?: string | null): Promise<void> {
   if (!_TELEGRAM_BOT_TOKEN || !ESCALATION_CHAT_ID) return;
-  const msg = `🔔 <b>Dashboard Manual Change</b>\n\n${action}\n\n${details}`;
+  const byLine = email ? `\n👤 By: <b>${email}</b>` : '';
+  const msg = `🔔 <b>Dashboard Manual Change</b>\n\n${action}\n\n${details}${byLine}`;
   try {
     await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -713,8 +714,26 @@ app.get('/orders/:quotation_number', async (request, reply) => {
     [params.quotation_number]
   );
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
-  await cacheSet(cacheKey, rows[0]);
-  return rows[0];
+
+  const order = rows[0];
+
+  // Fetch files and stage updates in parallel
+  const [files, stageUpdates] = await Promise.all([
+    query(
+      `SELECT id, order_id, file_type, original_filename, storage_backend, local_file_path, mime_type, extracted_text, created_at
+       FROM files WHERE order_id = $1 ORDER BY created_at DESC`,
+      [order.id]
+    ),
+    query(
+      `SELECT id, order_id, stage, status, remarks, updated_by, created_at
+       FROM stage_updates WHERE order_id = $1 ORDER BY created_at DESC`,
+      [order.id]
+    ),
+  ]);
+
+  const result = { ...order, files: files ?? [], stage_updates: stageUpdates ?? [] };
+  await cacheSet(cacheKey, result);
+  return result;
 });
 
 // ── Update Order (requires action token) ────────────────────────────
@@ -737,7 +756,7 @@ app.patch('/orders/:id', async (request, reply) => {
   const params = z.object({ id: z.string() }).parse(request.params);
   const body = updateOrderSchema.parse(request.body);
 
-  // Verify action token
+  // Verify action token and extract email
   if (!cacheClient?.isOpen) {
     return reply.status(503).send({ error: 'Action verification unavailable' });
   }
@@ -747,6 +766,8 @@ app.patch('/orders/:id', async (request, reply) => {
     return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
   }
   await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   // Build SET clause dynamically
   const fields: string[] = [];
@@ -815,6 +836,7 @@ app.patch('/orders/:id', async (request, reply) => {
   await notifyManualChange(
     `✏️ Order edited via dashboard`,
     `Quotation: *${rows[0].quotation_number ?? params.id}*\nClient: ${rows[0].client_name ?? '—'}\nFields changed: ${updatedFields}`,
+    userEmail,
   );
 
   return reply.send(rows[0]);
@@ -908,11 +930,25 @@ app.post('/orders/bulk-delete', async (request, reply) => {
 const setProductionSchema = z.object({
   production_started: z.boolean(),
   estimated_production_days: z.number().int().positive().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/set-production', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = setProductionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const existingRows = await query(
     `SELECT id, quotation_number, current_stage FROM orders WHERE id = $1`,
@@ -1020,6 +1056,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
     await notifyManualChange(
       'Production started',
       `Quotation: *${updatedOrder.quotation_number ?? 'N/A'}*\nClient: *${updatedOrder.client_name ?? 'Unknown'}*\nEstimated: ${body.estimated_production_days ?? 'N/A'} day(s)`,
+      userEmail,
     );
   }
 
@@ -1048,11 +1085,25 @@ app.post('/orders/:id/set-production', async (request, reply) => {
 
 const partialProductionSchema = z.object({
   missing_items: z.array(z.string().min(1)).min(1),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/partial-production', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = partialProductionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const existingRows = await query(
     `SELECT id, quotation_number, client_name FROM orders WHERE id = $1`,
@@ -1104,11 +1155,25 @@ app.post('/orders/:id/partial-production', async (request, reply) => {
 
 const updatePartialItemsSchema = z.object({
   remaining_items: z.array(z.string()),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/partial-production-items', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = updatePartialItemsSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET partial_production_items = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
@@ -1141,11 +1206,25 @@ const reportProductionStatusSchema = z.object({
   on_time: z.boolean(),
   delay_days: z.number().int().min(0).optional(),
   updated_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/report-production-status', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = reportProductionStatusSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET production_delayed = $1, production_delay_days = $2, updated_at = NOW()
@@ -1166,12 +1245,11 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   triggerAgentsForStage('production_confirmed', rows[0].quotation_number, rows[0].client_name);
 
   // Notify escalation group about production status report (dashboard only)
-  if (isDashboardQuickAction(body.updated_by)) {
-    await notifyManualChange(
-      body.on_time ? 'Production reported on time' : 'Production reported delayed',
-      `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nStatus: ${body.on_time ? '✅ On time' : '⚠️ Delayed'}${body.delay_days ? `\nDelay: ${body.delay_days} day(s)` : ''}`,
-    );
-  }
+  await notifyManualChange(
+    body.on_time ? 'Production reported on time' : 'Production reported delayed',
+    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nStatus: ${body.on_time ? '✅ On time' : '⚠️ Delayed'}${body.delay_days ? `\nDelay: ${body.delay_days} day(s)` : ''}`,
+    userEmail,
+  );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
@@ -1181,11 +1259,25 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
 const finishProductionSchema = z.object({
   delivery_estimated_days: z.number().int().positive(),
   updated_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/finish-production', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = finishProductionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
@@ -1247,20 +1339,20 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   triggerAgentsForStage('en_route', rows[0].quotation_number, rows[0].client_name);
 
   // Notify escalation group about production finished (dashboard only)
-  if (isDashboardQuickAction(body.updated_by)) {
-    await notifyManualChange(
-      'Production finished',
-      `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nDelivery estimated: ${body.delivery_estimated_days} day(s)`,
-    );
-  }
+  await notifyManualChange(
+    'Production finished',
+    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nDelivery estimated: ${body.delivery_estimated_days} day(s)`,
+    userEmail,
+  );
 
-  // Notify production group directly
-  if (groupChatId) {
+  // Notify production group directly (FIXED: was using PURCHASING_GROUP_CHAT_ID)
+  const productionGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+  if (productionGroupChatId) {
     const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = rows[0].client_name ?? 'Unknown';
     setImmediate(() => {
       notifyGroupChat(
-        groupChatId,
+        productionGroupChatId,
         `✅ <b>Production Finished (Dashboard)</b>\n\n` +
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n` +
@@ -1282,11 +1374,25 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 const confirmEnRouteSchema = z.object({
   estimated_arrival_days: z.number().int().positive(),
   updated_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = confirmEnRouteSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
@@ -1314,12 +1420,11 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   triggerAgentsForStage('inventory_verification', rows[0].quotation_number, rows[0].client_name);
 
   // Notify escalation group about en route confirmation (dashboard only)
-  if (isDashboardQuickAction(body.updated_by)) {
-    await notifyManualChange(
-      'En route confirmed',
-      `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nEstimated arrival: ${body.estimated_arrival_days} day(s)`,
-    );
-  }
+  await notifyManualChange(
+    'En route confirmed',
+    `Quotation: *${rows[0].quotation_number ?? 'N/A'}*\nClient: *${rows[0].client_name ?? 'Unknown'}*\nEstimated arrival: ${body.estimated_arrival_days} day(s)`,
+    userEmail,
+  );
 
   // Notify production group directly
   const prodChatId = process.env.PRODUCTION_CHAT_ID;
@@ -1433,11 +1538,25 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
  */
 const completeInventoryVerificationSchema = z.object({
   updated_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/complete-inventory-verification', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = completeInventoryVerificationSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -1484,12 +1603,11 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
   triggerAgentsForStage('inventory_arrived', orderRows[0].quotation_number, orderRows[0].client_name);
 
   // Notify escalation group about inventory verification completion (dashboard only)
-  if (isDashboardQuickAction(body.updated_by)) {
-    await notifyManualChange(
-      'Inventory verification completed',
-      `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Inventory Arrived`,
-    );
-  }
+  await notifyManualChange(
+    'Inventory verification completed',
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Inventory Arrived`,
+    userEmail,
+  );
 
   // Notify delivery group directly
   if (DELIVERY_CHAT_ID) {
@@ -2156,7 +2274,23 @@ const depositSchema = z.object({
  */
 app.post('/deposits', async (request, reply) => {
   const body = depositSchema.parse(request.body);
-  if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (isDashboardQuickAction(body.updated_by)) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  }
+
   const orders = await query(`SELECT id, current_stage, quotation_number, client_name FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
   if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
@@ -2232,6 +2366,7 @@ app.post('/deposits', async (request, reply) => {
     await notifyManualChange(
       'Quick Action: Downpayment recorded',
       `Quotation: *${quotationNumber ?? body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nDate: ${body.deposit_paid_at ?? 'now'}`,
+      userEmail,
     );
   }
 
@@ -2654,7 +2789,23 @@ const payBalanceSchema = z.object({
 
 app.post('/pay-balance', async (request, reply) => {
   const body = payBalanceSchema.parse(request.body);
-  if (isDashboardQuickAction(body.updated_by) && !(await verifyActionTokenOrReply(body.action_token, reply))) return;
+
+  // Verify action token and extract email
+  let userEmail: string | null = null;
+  if (isDashboardQuickAction(body.updated_by)) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  }
+
   const orders = await query(
     `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid, client_name FROM orders WHERE quotation_number=$1`,
     [body.quotation_number]
@@ -2760,6 +2911,7 @@ app.post('/pay-balance', async (request, reply) => {
     await notifyManualChange(
       'Quick Action: Balance payment recorded',
       `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nExpected balance: PHP ${expectedBalance.toLocaleString()}\nOverpayment: PHP ${overpayment.toLocaleString()}`,
+      userEmail,
     );
   }
 
@@ -2784,11 +2936,25 @@ app.post('/pay-balance', async (request, reply) => {
  */
 const verifyDepositSchema = z.object({
   verified_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/verify-deposit', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = verifyDepositSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const orders = await query(
     `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified
@@ -2886,6 +3052,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   await notifyManualChange(
     'Deposit verified',
     `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${nextStage === 'production_pending' ? 'Production Pending' : nextStage}`,
+    userEmail,
   );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -2905,11 +3072,25 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
  */
 const verifyBalanceSchema = z.object({
   verified_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/:id/verify-balance', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = verifyBalanceSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const orders = await query(
     `SELECT id, quotation_number, client_name, current_stage, balance_paid, balance_verified
@@ -2998,6 +3179,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   await notifyManualChange(
     'Balance verified',
     `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${stageLabel}`,
+    userEmail,
   );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -3010,10 +3192,24 @@ const deliveryExceptionSchema = z.object({
   order_id: z.string(),
   notes: z.string().optional(),
   granted_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/delivery-exception', async (request, reply) => {
   const body = deliveryExceptionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3041,6 +3237,7 @@ app.post('/orders/delivery-exception', async (request, reply) => {
   await notifyManualChange(
     'Delivery exception granted',
     `Order ID: *${body.order_id.slice(0, 8)}...*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}`,
+    userEmail,
   );
 
   // Notify delivery group directly
@@ -3063,8 +3260,26 @@ app.post('/orders/delivery-exception', async (request, reply) => {
 });
 
 // ── Revoke Delivery Exception ───────────────────────────────────────
+const revokeDeliveryExceptionSchema = z.object({
+  order_id: z.string(),
+  action_token: z.string(),
+});
+
 app.post('/orders/revoke-delivery-exception', async (request, reply) => {
-  const body = z.object({ order_id: z.string() }).parse(request.body);
+  const body = revokeDeliveryExceptionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3089,6 +3304,7 @@ app.post('/orders/revoke-delivery-exception', async (request, reply) => {
   await notifyManualChange(
     'Delivery exception revoked',
     `Order ID: *${body.order_id.slice(0, 8)}...*`,
+    userEmail,
   );
 
   // Notify delivery group directly
@@ -3114,10 +3330,24 @@ const productionExceptionSchema = z.object({
   order_id: z.string(),
   notes: z.string().optional(),
   granted_by: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.post('/orders/production-exception', async (request, reply) => {
   const body = productionExceptionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3144,6 +3374,7 @@ app.post('/orders/production-exception', async (request, reply) => {
   await notifyManualChange(
     'Production exception granted',
     `Order ID: *${body.order_id.slice(0, 8)}...*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}`,
+    userEmail,
   );
 
   const PRODUCTION_CHAT_ID = process.env.PRODUCTION_CHAT_ID;
@@ -3166,8 +3397,26 @@ app.post('/orders/production-exception', async (request, reply) => {
 });
 
 // ── Revoke Production Exception ───────────────────────────────────────
+const revokeProductionExceptionSchema = z.object({
+  order_id: z.string(),
+  action_token: z.string(),
+});
+
 app.post('/orders/revoke-production-exception', async (request, reply) => {
-  const body = z.object({ order_id: z.string() }).parse(request.body);
+  const body = revokeProductionExceptionSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3191,6 +3440,7 @@ app.post('/orders/revoke-production-exception', async (request, reply) => {
   await notifyManualChange(
     'Production exception revoked',
     `Order ID: *${body.order_id.slice(0, 8)}...*`,
+    userEmail,
   );
 
   const PRODUCTION_CHAT_ID = process.env.PRODUCTION_CHAT_ID;
@@ -3890,6 +4140,14 @@ app.post('/files/upload', async (request, reply) => {
     ]
   );
 
+  // Invalidate caches so dashboard shows the new file
+  if (resolvedOrderId || body.quotation_number) {
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+    if (resolvedOrderId) {
+      broadcastSSE('order_updated', { id: resolvedOrderId });
+    }
+  }
+
   return reply.send({
     ok: true,
     file: fileRecord[0],
@@ -4333,6 +4591,7 @@ const clientSchema = z.object({
   authorized_receiver_name: z.string().nullable().optional(),
   authorized_receiver_contact: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  action_token: z.string(),
 });
 
 const clientUpdateSchema = clientSchema.partial().extend({
@@ -4450,6 +4709,20 @@ function clientStatsQuery(where = '', limit = 500): string {
 
 app.post('/clients', async (request, reply) => {
   const body = clientSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
+
   const rows = await query(
     `INSERT INTO clients (client_name, delivery_address, contact_number, authorized_receiver_name, authorized_receiver_contact, notes)
      VALUES ($1,$2,$3,$4,$5,$6)
@@ -4474,6 +4747,7 @@ app.post('/clients', async (request, reply) => {
   await notifyManualChange(
     'Client created/updated',
     `Client: *${body.client_name}*\n${body.delivery_address ? `Address: ${body.delivery_address}\n` : ''}${body.contact_number ? `Contact: ${body.contact_number}` : ''}`,
+    userEmail,
   );
 
   await invalidateCache(['clients:*', '/clients', 'dashboard:*']);

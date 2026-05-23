@@ -33,7 +33,8 @@ function getFilePath(quotationNumber) {
 
 /**
  * Get the binary file path for a given order's uploaded file.
- * Structure: /data/files/binaries/YYYY-MM/QTN-XXXX.{ext}
+ * Structure: /data/files/binaries/YYYY-MM/QTN-XXXX_{timestamp}.{ext}
+ * Includes a timestamp suffix to prevent overwriting previous uploads.
  */
 function getBinaryFilePath(quotationNumber, mimeType, originalFilename) {
   const now = new Date();
@@ -51,28 +52,39 @@ function getBinaryFilePath(quotationNumber, mimeType, originalFilename) {
     const parts = originalFilename.split('.');
     ext = parts[parts.length - 1];
   }
-  return join(DATA_DIR, 'binaries', monthDir, `${quotationNumber}.${ext}`);
+  const ts = Date.now();
+  return join(DATA_DIR, 'binaries', monthDir, `${quotationNumber}_${ts}.${ext}`);
 }
 
 /**
  * Search for any binary file matching a quotation number across all month dirs.
+ * Returns the most recently modified file if multiple exist.
  */
 async function findBinaryFile(quotationNumber) {
   const binaryDir = join(DATA_DIR, 'binaries');
   if (!existsSync(binaryDir)) return null;
   const dirs = await readdir(binaryDir).catch(() => []);
+  let bestMatch = null;
+  let bestMtime = 0;
   for (const dir of dirs) {
     const dirPath = join(binaryDir, dir);
     try {
       const entries = await readdir(dirPath);
       for (const entry of entries) {
-        if (entry.startsWith(`${quotationNumber}.`)) {
-          return join(dirPath, entry);
+        if (entry.startsWith(`${quotationNumber}_`)) {
+          const filePath = join(dirPath, entry);
+          try {
+            const stats = await stat(filePath);
+            if (stats.mtimeMs > bestMtime) {
+              bestMtime = stats.mtimeMs;
+              bestMatch = filePath;
+            }
+          } catch { continue; }
         }
       }
     } catch { continue; }
   }
-  return null;
+  return bestMatch;
 }
 
 /**

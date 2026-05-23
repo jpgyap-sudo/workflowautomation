@@ -5014,6 +5014,72 @@ bot.on(['document', 'photo'], async (ctx) => {
       return;
     }
 
+    // If user explicitly chose "Upload File", bypass vision workflow and upload directly
+    if (session.step.action === 'awaiting_file_upload') {
+      const quotationNumber = session.linkedOrder;
+      await ctx.reply(`📤 Uploading file...`);
+
+      try {
+        const uploadResult = await uploadFileAndRecord({
+          chatId,
+          imageBase64,
+          mimeType,
+          fileName,
+          quotationNumber,
+          telegramMessageId: messageId,
+          uploadedBy: from,
+        });
+
+        botLog({
+          chatId, userId, username: from,
+          messageType: 'upload',
+          content: fileName,
+          metadata: {
+            fileId, mimeType, messageId,
+            quotationNumber,
+          },
+          status: 'success',
+        });
+
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *File uploaded!*
+📄 ${escapeMarkdown(fileName)}` +
+            (quotationNumber ? `
+📦 Linked to order: ${escapeMarkdown(quotationNumber)}` : ''),
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (error: any) {
+        console.error('Upload error:', error);
+        botLog({
+          chatId, userId, username: from,
+          messageType: 'upload',
+          content: fileName,
+          metadata: {
+            fileId, mimeType, messageId,
+            quotationNumber,
+            errorMessage: String(error.message ?? error),
+          },
+          status: 'error',
+        });
+        setStep(chatId, {
+          action: 'awaiting_upload_retry',
+          imageBase64,
+          mimeType,
+          fileName,
+          quotationNumber,
+          telegramMessageId: messageId,
+          uploadedBy: from,
+        });
+        await ctx.reply(`❌ Upload failed: ${String(error.message ?? error)}
+
+Tap Retry upload to try again.`, {
+          ...retryUploadKeyboard(),
+        });
+      }
+      return;
+    }
+
     // Step 2: Ask user what type of document this is
     // For images and PDFs, offer the vision workflow
     const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
