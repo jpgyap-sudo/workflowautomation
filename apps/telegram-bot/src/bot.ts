@@ -2847,12 +2847,11 @@ bot.action(/^produce:partial:(.+)$/, async (ctx) => {
       msg += `Items: ${finishedCount}/${totalCount} finished\n\n`;
       msg += `*Process of Elimination:*\n`;
       msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
-      msg += `Has *${unfinishedItem.name}* started or finished production?`;
+      msg += `Has *${unfinishedItem.name}* started production?`;
 
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
@@ -3340,12 +3339,11 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       msg += `Items: ${finishedCount}/${totalCount} finished\n\n`;
       msg += `*Process of Elimination:*\n`;
       msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
-      msg += `Has *${unfinishedItem.name}* started or finished production?`;
+      msg += `Has *${unfinishedItem.name}* started production?`;
 
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),

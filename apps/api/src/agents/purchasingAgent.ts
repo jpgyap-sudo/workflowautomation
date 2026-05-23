@@ -24,21 +24,8 @@ import {
 export async function runPurchasingAgent(): Promise<AgentResult[]> {
   const results: AgentResult[] = [];
 
-  // Check orders stuck at production_pending
-  const orders = await getActiveOrdersByStage('production_pending');
-
-  for (const order of orders) {
-    const result = await checkPurchasing(order);
-    // Create reminder if needed — send to production group since this is about production start
-    if (result.reminder_needed) {
-      const groupChatId = getGroupChatId('production-agent');
-      if (groupChatId) {
-        await createReminder(order.id, 'production_pending', groupChatId, result.message);
-        await notifyPurchasing(groupChatId, order, result);
-      }
-    }
-    results.push(result);
-  }
+  // production_pending is now handled by the production agent
+  // (routed via AGENT_TRIGGER_MAP in server.ts)
 
   return results;
 }

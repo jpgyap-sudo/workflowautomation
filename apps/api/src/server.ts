@@ -177,7 +177,7 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   math_verified:         ['purchasing-agent', 'collection-agent'],
   // Purchasing → Production + Collection Agent
   purchasing_pending:    ['purchasing-agent', 'collection-agent'],
-  production_pending:    ['purchasing-agent', 'collection-agent'],
+  production_pending:    ['production-agent', 'collection-agent'],
   production_confirmed:  ['production-agent'],
   // Production → En Route
   en_route:              ['production-agent', 'inventory-agent'],

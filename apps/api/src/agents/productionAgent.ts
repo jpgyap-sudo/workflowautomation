@@ -12,6 +12,7 @@ import {
   advanceStage,
   addAgentNote,
   inlineKeyboard,
+  createReminder,
 } from '../services/agentRunner.js';
 import { query } from '../db.js';
 import {
@@ -829,6 +830,97 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     console.log('[ProductionAgent] Hermes Claw AI unavailable — using rule-based fallback');
   }
 
+  // 0. Production pending — ask if production has started (moved from purchasing agent)
+  const pendingOrders = await getActiveOrdersByStage('production_pending');
+  for (const order of pendingOrders) {
+    const escalationLevel = await getEscalationLevel(order.id, 'production_pending');
+    const daysWaiting = daysSince(order.created_at);
+
+    // If production is finished → stop reminding
+    if (order.production_finished === true) {
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ Production for #${order.quotation_number ?? 'unknown'} is finished. No further production pending reminders needed.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('production-agent', order, result, 'complete', order.id);
+      results.push(result);
+      continue;
+    }
+
+    // If production was reported as delayed → log it and keep reminding
+    if (order.production_delayed === true) {
+      const delayMsg = order.production_delay_days
+        ? ` (${order.production_delay_days} days delay reported)`
+        : '';
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `⚠️ Production for #${order.quotation_number ?? 'unknown'} is delayed${delayMsg}. Estimated ${order.estimated_production_days ?? '?'} days total.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('production-agent', order, result, 'needs_review', order.id);
+      results.push(result);
+      continue;
+    }
+
+    // If production_started is true and estimated_production_days is set → fully tracked, stop reminding
+    if (order.production_started === true && order.estimated_production_days != null) {
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ Production for #${order.quotation_number ?? 'unknown'} has started and estimated at ${order.estimated_production_days} days. Midpoint and due reminders are active.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('production-agent', order, result, 'complete', order.id);
+      results.push(result);
+      continue;
+    }
+
+    // If production_started is true but estimated_production_days is not set → ask about duration
+    if (order.production_started === true && order.estimated_production_days == null) {
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `🏭 Production has started for this order. How long is the estimated production time? (Standard: 4 weeks, or enter custom days)`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('production-agent', order, result, 'needs_review', order.id);
+      results.push(result);
+      continue;
+    }
+
+    // If escalated 3+ times, flag for manager attention
+    if (escalationLevel >= 3) {
+      const result: AgentResult = {
+        status: 'blocked',
+        message: `🔴 Order stuck at production pending for ${daysWaiting} days with ${escalationLevel} reminders sent. Manager intervention required.`,
+        next_stage: null,
+        reminder_needed: true,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('production-agent', order, result, 'blocked', order.id);
+      results.push(result);
+      continue;
+    }
+
+    // production_started is false or null → keep reminding daily
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Has production started for this order? It's been ${daysWaiting} days since creation. Please confirm Yes or No.`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+    await logAgentAction('production-agent', order, result, 'needs_review', order.id);
+    results.push(result);
+  }
+
   // 1. Production confirmed — adaptive frequency
   const confirmedOrders = await getActiveOrdersByStage('production_confirmed');
   for (const order of confirmedOrders) {
@@ -898,5 +990,19 @@ export async function notifyProduction(
   result: AgentResult,
 ): Promise<void> {
   const msg = buildAgentMessage(AGENT_NAME, order, result.message, result.escalation_level);
-  await sendTelegramMessage(groupChatId, msg);
+  const qn = order.quotation_number;
+
+  // Show Yes / Partial / No buttons when asking about production start (production_pending)
+  const keyboard =
+    qn && result.status === 'needs_review' && !order.production_started
+      ? inlineKeyboard([
+          [
+            { text: '✅ Yes, started', callback_data: `produce:yes:${qn}` },
+            { text: '⚠️ Partial', callback_data: `produce:partial:${qn}` },
+          ],
+          [{ text: '⏳ Not yet', callback_data: `produce:no:${qn}` }],
+        ])
+      : undefined;
+
+  await sendTelegramMessage(groupChatId, msg, keyboard);
 }
