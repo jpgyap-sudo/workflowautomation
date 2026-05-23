@@ -5089,3 +5089,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: auto-update lesson memory files
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 484d0dda529c1d705eec81b80476ec96004cc153
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 484d0dda529c1d705eec81b80476ec96004cc153
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Automated synchronization of lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) to ensure they remain in sync and up-to-date without manual intervention.
+
+**Why it broke:**  
+The memory files were previously updated manually or inconsistently, leading to drift between the index and the detailed lessons file. This caused stale or missing entries when the workflow automation relied on these files for context.
+
+**Reusable takeaway:**  
+When maintaining paired or indexed data files (e.g., a summary index and a detailed log), automate their synchronization as part of the same workflow step. This prevents drift, reduces manual error, and ensures both files reflect the same state. Use a single source of truth (e.g., a script that reads one file and updates the other) rather than allowing independent edits.
+
+---
+*Original commit message: chore: auto-update lesson memory files*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Automated synchronization of lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) to ensure they remain in sync and up-to-date without manual intervention.
+
+**Why it broke:**  
+The memory files were previously updated manually or inconsistently, leading to drift between the index and the detailed lessons file. This caused stale or missing entries when the workflow automation relied on these files for context.
+
+**Reusable takeaway:**  
+When maintaining paired or indexed data files (e.g., a summary index and a detailed log), automate their synchronization as part of the same workflow step. This prevents drift, reduces manual error, and ensures both files reflect the same state. Use a single source of truth (e.g., a script that reads one file and updates the other) rather than allowing independent edits.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
