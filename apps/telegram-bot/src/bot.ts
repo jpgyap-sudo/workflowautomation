@@ -1317,8 +1317,83 @@ bot.on(message('text'), async (ctx) => {
     metadata: { step: session.step.action },
   });
 
-  // If idle, show main menu
+  // ── Idle: production assistant (group) or main menu (DM) ────────────
   if (session.step.action === 'idle') {
+    const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PRODUCTION_GROUP_ID ?? '';
+    const isProductionChat = PRODUCTION_CHAT_ID && chatId === PRODUCTION_CHAT_ID;
+
+    if (isProductionChat) {
+      // Only engage when the message is clearly production-related.
+      const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
+      const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
+      const hasQtn = /qtn[-\s]?\w+/i.test(text);
+      const hasKeyword = /\b(done|finished|produced|complete|shipped|en.?route|dispatched|status|progress|pending|delayed|ready|how.?long|when|still|all|items?)\b/i.test(text);
+
+      if (mentionsBot || hasQtn || hasKeyword) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/production/chat`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text, username: username ?? null }),
+            signal: AbortSignal.timeout(20_000),
+          });
+
+          if (res.ok) {
+            const data = await res.json() as {
+              reply: string | null;
+              action?: {
+                type: 'mark_items_produced' | 'confirm_en_route';
+                orderId: string;
+                quotationNumber: string;
+                itemIds?: string[];
+              };
+            };
+
+            if (!data.reply) return; // 'ignore' intent — stay silent
+
+            if (data.action?.type === 'mark_items_produced' && data.action.itemIds?.length) {
+              const { orderId, quotationNumber, itemIds } = data.action;
+              await ctx.reply(
+                `${data.reply}\n\nShould I mark ${itemIds.length} item(s) as produced for *${quotationNumber}*?`,
+                {
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [
+                      Markup.button.callback('✅ Yes, mark produced', `assistant:mark_produced:${orderId}:${quotationNumber}:${itemIds.join(',')}`),
+                      Markup.button.callback('❌ No', 'assistant:cancel'),
+                    ],
+                  ]),
+                }
+              );
+            } else if (data.action?.type === 'confirm_en_route') {
+              const { orderId, quotationNumber } = data.action;
+              await ctx.reply(
+                `${data.reply}\n\nShould I mark *${quotationNumber}* as en route?`,
+                {
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [
+                      Markup.button.callback('✅ Yes, en route', `assistant:en_route:${orderId}:${quotationNumber}`),
+                      Markup.button.callback('❌ No', 'assistant:cancel'),
+                    ],
+                  ]),
+                }
+              );
+            } else {
+              await ctx.reply(data.reply);
+            }
+            return;
+          }
+        } catch (err) {
+          console.error('[bot] Production assistant error:', err);
+          // Swallow — don't spam the group on AI failures
+        }
+      }
+      // Non-keyword message or AI failure → stay silent in the group
+      return;
+    }
+
+    // DM or non-production group: show main menu
     await ctx.reply(
       '🏠 *Main Menu*\nChoose an action below:',
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -2247,94 +2322,8 @@ bot.on(message('text'), async (ctx) => {
       break;
     }
 
-    case 'idle': {
-      // ── Production Assistant: natural language in the production group ──
-      const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PRODUCTION_GROUP_ID ?? '';
-      const isProductionChat = PRODUCTION_CHAT_ID && chatId === PRODUCTION_CHAT_ID;
-
-      if (isProductionChat) {
-        // Only activate when the message mentions a quotation number, a
-        // production keyword, or @-mentions the bot — ignore casual chatter.
-        const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
-        const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
-        const hasQtn = /qtn[-\s]?\w+/i.test(text);
-        const hasKeyword = /\b(done|finished|produced|complete|shipped|en.?route|dispatched|status|progress|pending|delayed|ready|how.?long|when|still|all|items?)\b/i.test(text);
-
-        if (mentionsBot || hasQtn || hasKeyword) {
-          try {
-            const res = await fetch(`${apiBaseUrl}/production/chat`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ text, username: username ?? null }),
-              signal: AbortSignal.timeout(20_000),
-            });
-
-            if (res.ok) {
-              const data = await res.json() as {
-                reply: string | null;
-                action?: {
-                  type: 'mark_items_produced' | 'confirm_en_route';
-                  orderId: string;
-                  quotationNumber: string;
-                  itemIds?: string[];
-                };
-              };
-
-              if (!data.reply) break; // 'ignore' intent — stay silent
-
-              if (data.action?.type === 'mark_items_produced' && data.action.itemIds?.length) {
-                // Ask for confirmation before updating
-                const { orderId, quotationNumber, itemIds } = data.action;
-                await ctx.reply(
-                  `${data.reply}\n\nShould I mark ${itemIds.length} item(s) as produced for *${quotationNumber}*?`,
-                  {
-                    parse_mode: 'Markdown',
-                    ...Markup.inlineKeyboard([
-                      [
-                        Markup.button.callback('✅ Yes, mark produced', `assistant:mark_produced:${orderId}:${quotationNumber}:${itemIds.join(',')}`),
-                        Markup.button.callback('❌ No', 'assistant:cancel'),
-                      ],
-                    ]),
-                  }
-                );
-              } else if (data.action?.type === 'confirm_en_route') {
-                const { orderId, quotationNumber } = data.action;
-                await ctx.reply(
-                  `${data.reply}\n\nShould I mark *${quotationNumber}* as en route?`,
-                  {
-                    parse_mode: 'Markdown',
-                    ...Markup.inlineKeyboard([
-                      [
-                        Markup.button.callback('✅ Yes, en route', `assistant:en_route:${orderId}:${quotationNumber}`),
-                        Markup.button.callback('❌ No', 'assistant:cancel'),
-                      ],
-                    ]),
-                  }
-                );
-              } else {
-                await ctx.reply(data.reply);
-              }
-              break;
-            }
-          } catch (err) {
-            console.error('[bot] Production assistant error:', err);
-            // Fall through to silence — don't crash the group chat
-          }
-        }
-        // Non-keyword message in production chat → stay silent
-        break;
-      }
-
-      // Not in production chat + idle → show main menu hint (DMs / other groups)
-      await ctx.reply(
-        'Use /start to see the available commands.',
-        { parse_mode: 'Markdown' }
-      );
-      break;
-    }
-
     default:
-      // Active flow but unrecognized step — preserve it, show guidance.
+      // Active flow but unrecognized step — preserve it and guide the user.
       await ctx.reply(
         '❓ I didn\'t understand that. You are currently in a flow. Please follow the prompts above, or press *Cancel* to go back to the Main Menu.',
         { parse_mode: 'Markdown', ...cancelButton() }
@@ -2343,6 +2332,62 @@ bot.on(message('text'), async (ctx) => {
 });
 
 // ── Inline Callback Handlers ───────────────────────────────────────────
+
+// ── Production Assistant confirmation callbacks ────────────────────────
+
+bot.action('assistant:cancel', async (ctx) => {
+  await ctx.editMessageText('Okay, no changes made.').catch(() => {});
+});
+
+// assistant:mark_produced:{orderId}:{quotationNumber}:{itemId1,itemId2,...}
+bot.action(/^assistant:mark_produced:([^:]+):([^:]+):(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const itemIds = ctx.match[3].split(',').filter(Boolean);
+
+  await ctx.editMessageText(`⏳ Marking ${itemIds.length} item(s) as produced for ${quotationNumber}...`).catch(() => {});
+
+  let successCount = 0;
+  for (const itemId of itemIds) {
+    try {
+      const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ production_status: 'finished' }),
+      });
+      if (res.ok) successCount++;
+    } catch {
+      // continue with remaining items
+    }
+  }
+
+  await ctx.editMessageText(
+    successCount === itemIds.length
+      ? `✅ Marked ${successCount} item(s) as produced for ${quotationNumber}.`
+      : `⚠️ Marked ${successCount}/${itemIds.length} item(s) for ${quotationNumber}. Check the dashboard for any failures.`
+  ).catch(() => {});
+});
+
+// assistant:en_route:{orderId}:{quotationNumber}
+bot.action(/^assistant:en_route:([^:]+):(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  await ctx.editMessageText(`⏳ Confirming en route for ${quotationNumber}...`).catch(() => {});
+  try {
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/confirm-en-route`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ estimated_arrival_days: 28, updated_by: 'production_assistant' }),
+    });
+    if (res.ok) {
+      await ctx.editMessageText(`✅ ${quotationNumber} marked as en route. Estimated arrival: 28 days (update from the dashboard if different).`).catch(() => {});
+    } else {
+      await ctx.editMessageText(`❌ Failed to mark en route. Use the dashboard or /produce command instead.`).catch(() => {});
+    }
+  } catch {
+    await ctx.editMessageText(`❌ Request failed. Use the dashboard or /produce command instead.`).catch(() => {});
+  }
+});
 
 // Production status callback
 bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {

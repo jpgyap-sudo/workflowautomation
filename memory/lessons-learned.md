@@ -6138,3 +6138,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: corrupted 'use client' directive in production/page.tsx
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 31c3aa3e5add9a40376186ee9aea6ba99f9becc7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 31c3aa3e5add9a40376186ee9aea6ba99f9becc7
+**Files:** apps/api/src/server.ts,apps/api/src/services/productionAssistant.ts,apps/dashboard/src/app/production/page.tsx,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A corrupted `'use client'` directive in `production/page.tsx` that caused the production dashboard page to break in client-side rendering.
+
+**Why it broke:**  
+The directive was incorrectly placed or malformed (e.g., missing quotes, wrong casing, or extra characters), making the file fail to be recognized as a client component by the bundler. This led to runtime errors or blank pages in production builds.
+
+**Reusable takeaway:**  
+Always validate `'use client'` / `'use server'` directives for exact syntax—no typos, no extra whitespace, and correct single quotes. Use linting rules (e.g., `react/no-typos`) or a pre-commit hook to catch directive errors early. When debugging production-only rendering issues, check directive placement first.
+
+---
+*Original commit message: fix: corrupted 'use client' directive in production/page.tsx*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A corrupted `'use client'` directive in `production/page.tsx` that caused the production dashboard page to break in client-side rendering.
+
+**Why it broke:**  
+The directive was incorrectly placed or malformed (e.g., missing quotes, wrong casing, or extra characters), making the file fail to be recognized as a client component by the bundler. This led to runtime errors or blank pages in production builds.
+
+**Reusable takeaway:**  
+Always validate `'use client'` / `'use server'` directives for exact syntax—no typos, no extra whitespace, and correct single quotes. Use linting rules (e.g., `react/no-typos`) or a pre-commit hook to catch directive errors early. When debugging production-only rendering issues, check directive placement first.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

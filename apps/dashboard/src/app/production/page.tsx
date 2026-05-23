@@ -675,6 +675,10 @@ export default function ProductionPage() {
   const { data: enRouteOrders = [], isLoading: loadingEnRoute, error: errorEnRoute, mutate: mutateEnRoute } =
     useOrdersByStage('en_route');
 
+  // Split confirmed orders into in-progress vs finished
+  const inProgressOrders = confirmedOrders.filter((o: Order) => !o.production_finished);
+  const finishedOrders = confirmedOrders.filter((o: Order) => o.production_finished);
+
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
@@ -875,7 +879,7 @@ export default function ProductionPage() {
     (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
 
-  const totalActive = pendingOrders.length + partialOrders.length + confirmedOrders.length + enRouteOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length;
 
   return (
     <div className="space-y-6">
@@ -934,15 +938,15 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* Production Confirmed */}
+      {/* Production In Progress */}
       <OrderSection
         icon={<Factory className="h-4 w-4 text-indigo-500" />}
-        title="Production Confirmed"
-        count={confirmedOrders.length}
+        title="Production In Progress"
+        count={inProgressOrders.length}
         countBg="bg-indigo-100" countText="text-indigo-700"
-        orders={confirmedOrders} isLoading={loadingConfirmed} error={errorConfirmed}
+        orders={inProgressOrders} isLoading={loadingConfirmed} error={errorConfirmed}
         onRetry={() => mutateConfirmed()}
-        emptyText="No production confirmed orders"
+        emptyText="No orders in production"
       >
         {(order) => (
           <>
@@ -950,6 +954,31 @@ export default function ProductionPage() {
               order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
               onReportOnTime={handleReportOnTime}
               onReportDelayed={handleReportDelayed}
+              onFinishProduction={handleFinishProduction}
+              onGrantException={handleGrantException}
+              onRevokeException={handleRevokeException}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* Production Finished */}
+      <OrderSection
+        icon={<CheckCircle className="h-4 w-4 text-green-500" />}
+        title="Production Finished"
+        count={finishedOrders.length}
+        countBg="bg-green-100" countText="text-green-700"
+        orders={finishedOrders} isLoading={loadingConfirmed} error={errorConfirmed}
+        onRetry={() => mutateConfirmed()}
+        emptyText="No finished orders awaiting en-route confirmation"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
               onFinishProduction={handleFinishProduction}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
