@@ -3980,3 +3980,59 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: add email OTP for all manual dashboard changes + fix production finished notification
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f8224ecb4a356a19add967c6cdd18afacfa8826d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f8224ecb4a356a19add967c6cdd18afacfa8826d
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/calendar/page.tsx,apps/dashboard/src/app/clients/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+- Added email OTP verification for all manual dashboard changes (calendar, clients, inventory).  
+- Fixed a broken "production finished" notification that wasn't firing correctly.  
+
+**Why it broke:**  
+- Manual dashboard edits lacked security validation, allowing unauthorized changes.  
+- The production finished notification had a logic error (likely missing trigger or incorrect state check).  
+
+**Reusable takeaway:**  
+- **Always gate manual data mutations with verification** (e.g., OTP) to prevent unauthorized edits, especially in multi-user dashboards.  
+- **Notifications must be tied to explicit state transitions**—ensure the trigger condition is correctly evaluated and not skipped by early returns or missing event hooks.  
+- **Update lesson memory files** (lesson-index.jsonl, lessons-learned.md) after fixes to institutionalize the pattern for future engineers.
+
+---
+*Original commit message: feat: add email OTP for all manual dashboard changes + fix production finished notification*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Added email OTP verification for all manual dashboard changes (calendar, clients, inventory).  
+- Fixed a broken "production finished" notification that wasn't firing correctly.  
+
+**Why it broke:**  
+- Manual dashboard edits lacked security validation, allowing unauthorized changes.  
+- The production finished notification had a logic error (likely missing trigger or incorrect state check).  
+
+**Reusable takeaway:**  
+- **Always gate manual data mutations with verification** (e.g., OTP) to prevent unauthorized edits, especially in multi-user dashboards.  
+- **Notifications must be tied to explicit state transitions**—ensure the trigger condition is correctly evaluated and not skipped by early returns or missing event hooks.  
+- **Update lesson memory files** (lesson-index.jsonl, lessons-learned.md) after fixes to institutionalize the pattern for future engineers.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
