@@ -161,7 +161,7 @@ The bot runs its own HTTP server (line 5829) that:
 
 **nginx reverse proxy** (on the VPS):
 ```
-https://track.abcx124.xyz/telegram-webhook → http://localhost:8443
+https://<your-domain>/telegram-webhook → http://localhost:8443
 ```
 
 ## Deployment

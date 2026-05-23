@@ -34,16 +34,7 @@ The web dashboard provides a full ERPNext-style interface for managing the quota
 
 ## Deployment
 
-### Production VPS
-
-| Detail | Value |
-|--------|-------|
-| **Host** | `100.86.182.7` (Tailscale IP) |
-| **User** | `root` |
-| **SSH Key** | `~/.ssh/id_ed25519_roo` |
-| **Repo path** | `/opt/quotation-automation` |
-| **Dashboard** | [`https://track.abcx124.xyz`](https://track.abcx124.xyz) |
-| **API health** | [`https://track.abcx124.xyz/api/health`](https://track.abcx124.xyz/api/health) |
+> ⚠️ **Security notice:** Infrastructure details (VPS IP, SSH key path, repo path, production domain) are stored in a local `.env` file and in the VPS's `.clinerules` — neither is committed to this repository. See [`.env.example`](.env.example) for the required environment variables.
 
 ### Option 1: Deploy from local machine (PowerShell)
 
@@ -69,8 +60,8 @@ Run this from the repo root on your local machine. It SSHs into the VPS via Tail
 ### Option 2: Deploy directly on VPS (SSH in)
 
 ```bash
-# SSH into VPS
-ssh root@100.86.182.7
+# SSH into VPS (replace with your VPS IP)
+ssh root@<your-vps-ip>
 
 # Go to project
 cd /opt/quotation-automation
@@ -117,17 +108,6 @@ Only sync `.env` and credentials when those secrets actually changed:
 node scripts/single-builder-deploy.mjs --sync-secrets
 ```
 
-Before every deploy, the builder reads `/opt/quotation-automation/.deployed-sha`, prints the commits between that SHA and the target SHA, and confirms that deploying the target SHA will release all listed commits together. After a successful deploy it updates `.deployed-sha` and appends an audit entry to `/opt/quotation-automation/.deployments/deploy-log.jsonl`.
-
-The builder agent enforces:
-- clean local git worktree, unless explicit `--auto-commit` is used
-- commit exists on a remote branch
-- committed-but-not-deployed commit review before deploy
-- remote deployment lock at `/opt/quotation-automation/.deploy.lock`
-- exact git archive of the target SHA
-- one-service-at-a-time rebuild/recreate for `api`, `dashboard`, and `telegram-bot`
-- API/dashboard/container health verification
-
 Full details: [`docs/deployment-builder.md`](docs/deployment-builder.md)
 
 ### Option 4: GitHub Actions CI/CD (automated)
@@ -135,27 +115,7 @@ Full details: [`docs/deployment-builder.md`](docs/deployment-builder.md)
 Every push to `master`/`main` automatically deploys to the VPS via Tailscale.
 
 **To enable:**
-1. Add the following secrets to your GitHub repo (Settings → Secrets and variables → Actions):
-
-| Secret | Description |
-|--------|-------------|
-| `TAILSCALE_OAUTH_CLIENT_ID` | Tailscale OAuth client ID (from Tailscale admin console) |
-| `TAILSCALE_OAUTH_SECRET` | Tailscale OAuth secret |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token |
-| `POSTGRES_USER` | `n8n` |
-| `POSTGRES_PASSWORD` | PostgreSQL password |
-| `POSTGRES_DB` | `quotation_automation` |
-| `PUBLIC_WEBHOOK_BASE_URL` | `https://track.abcx124.xyz` |
-| `PURCHASING_GROUP_CHAT_ID` through `QUOTATION_GROUP_CHAT_ID` | All 7 group chat IDs |
-| `PURCHASING_GROUP_ID` through `QUOTATION_GROUP_ID` | All 7 group IDs |
-| `GEMINI_API_KEY` | Gemini API key |
-| `OPENROUTER_API_KEY` | OpenRouter API key |
-| `OPENROUTER_MODEL` | `google/gemini-2.0-flash-001` |
-| `SMTP_USER` | Gmail address for email notifications |
-| `SMTP_PASS` | Gmail App Password |
-| `DASHBOARD_BASE_URL` | `https://track.abcx124.xyz` |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+1. Add the required secrets to your GitHub repo (Settings → Secrets and variables → Actions). See [`.env.example`](.env.example) for the full list of required variables.
 
 2. The workflow file is at [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
 
@@ -247,7 +207,7 @@ Key variables:
 | Variable | Purpose |
 |----------|---------|
 | `TELEGRAM_BOT_TOKEN` | Telegram bot authentication |
-| `PUBLIC_WEBHOOK_BASE_URL` | Public URL for Telegram webhook (`https://track.abcx124.xyz`) |
+| `PUBLIC_WEBHOOK_BASE_URL` | Public URL for Telegram webhook |
 | `PURCHASING_GROUP_CHAT_ID` through `QUOTATION_GROUP_CHAT_ID` | Agent notification targets (7 groups) |
 | `PURCHASING_GROUP_ID` through `QUOTATION_GROUP_ID` | Telegram bot authorization (7 groups) |
 | `GEMINI_API_KEY` | Primary AI provider (free tier) |

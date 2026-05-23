@@ -41,30 +41,21 @@ node scripts/single-builder-deploy.mjs --sync-secrets
 
 The builder script deploys an exact git SHA, takes `/opt/quotation-automation/.deploy.lock`, rebuilds/recreates `api`, `dashboard`, and `telegram-bot` one at a time, tags images with the SHA, then verifies API health and dashboard availability.
 
-Manual SSH is for inspection only:
+Manual SSH is for inspection only (replace with your VPS details):
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_roo root@165.22.110.111
+ssh -i ~/.ssh/<your-key> root@<your-vps-ip>
 cd /opt/quotation-automation
 cat .deployed-sha
-docker-compose ps
+docker compose ps
 curl -fsS http://127.0.0.1:8080/health
 ```
 
 See [`docs/deployment-builder.md`](docs/deployment-builder.md).
 
-### Wrong VPS (DO NOT USE)
-
-| Property | Value |
-|----------|-------|
-| IP | `104.248.225.250` |
-| SSH User | `superroo` |
-| SSH Key | `id_superroo_vps` |
-| Purpose | SuperRoo Cloud Dashboard (different project) |
-
 ## Nginx
 
-The site `track.abcx124.xyz` is served by nginx on the VPS. Config is at `/etc/nginx/sites-enabled/track.abcx124.xyz`. The dashboard container runs on port 3001 (mapped to container port 3000).
+The site is served by nginx on the VPS. The dashboard container runs on port 3001 (mapped to container port 3000).
 
 ## Learning Layer — Mandatory Lesson Recording
 
@@ -98,6 +89,4 @@ superroo-learn query "relevant topic"
 
 ## Domain
 
-- **Dashboard:** https://track.abcx124.xyz
-- **API:** https://track.abcx124.xyz/api
-- **Health:** https://track.abcx124.xyz/api/health
+Configured via `DASHBOARD_BASE_URL` and `PUBLIC_WEBHOOK_BASE_URL` in `.env`.
