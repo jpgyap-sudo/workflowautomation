@@ -100,7 +100,7 @@ export async function processDueReminders(): Promise<number> {
   // Fetch all active reminders where next_run_at <= now
   const dueReminders = await query(
     `SELECT r.*, o.quotation_number, o.client_name, o.current_stage, o.deposit_paid, o.balance_paid,
-            o.deposit_verified, o.balance_verified, o.production_started,
+            o.deposit_verified, o.balance_verified, o.production_started, o.delivery_date,
             COALESCE(o.partial_production_items, '[]'::jsonb) AS partial_production_items
      FROM reminders r
      JOIN orders o ON o.id = r.order_id
@@ -286,7 +286,29 @@ export async function processDueReminders(): Promise<number> {
         ],
       ]);
     } else if (reminder.stage === 'delivery_scheduled') {
-      // Delivery scheduled: ask if item has been delivered yet
+      // Only fire this reminder when the delivery date has actually arrived.
+      // If the delivery date is still in the future, snooze to the day before instead.
+      const deliveryDate = (reminder as any).delivery_date;
+      if (deliveryDate) {
+        const pht = new Date(Date.now() + 8 * 60 * 60 * 1000); // current PHT time
+        const deliveryPht = new Date(new Date(deliveryDate).getTime() + 8 * 60 * 60 * 1000);
+        const diffDays = Math.ceil(
+          (deliveryPht.setHours(0,0,0,0) - pht.setHours(0,0,0,0)) / 86_400_000
+        );
+
+        if (diffDays > 1) {
+          // Too early — snooze to 8 AM the day before delivery
+          const dayBefore = new Date(new Date(deliveryDate).getTime() - 24 * 60 * 60 * 1000);
+          dayBefore.setUTCHours(0, 0, 0, 0); // midnight UTC = 8 AM PHT
+          await query(
+            `UPDATE reminders SET next_run_at = $1, updated_at = NOW() WHERE id = $2`,
+            [dayBefore.toISOString(), reminder.id]
+          );
+          continue; // skip sending — not time yet
+        }
+      }
+
+      // Delivery is today, tomorrow, or overdue — ask if delivered
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
           { text: '✅ Yes, Delivered', callback_data: `delivery:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
