@@ -3752,7 +3752,8 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
       });
     }
   } catch (err: any) {
-    await ctx.reply(`❌ Error updating item en-route: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+    const safeMsg = err.message.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+    await ctx.reply(`❌ Error updating item en-route: ${safeMsg}`, { parse_mode: 'MarkdownV2', ...cancelButton() });
   }
 });
 
