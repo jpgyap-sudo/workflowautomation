@@ -77,11 +77,12 @@ export async function checkQuotation(order: OrderRow): Promise<AgentResult> {
     if (match) {
       // Math checks out — auto-advance to math_verified
       await advanceStage(order.id, 'math_verified', order.quotation_number ?? order.id, 'Quotation math verified automatically');
+      await advanceStage(order.id, 'deposit_pending', order.quotation_number ?? order.id, 'Math verified; awaiting downpayment before production can proceed');
 
       const result: AgentResult = {
         status: 'ok',
-        message: `✅ Math verified! Quoted: ₱${total.toLocaleString()}, Computed: ₱${computed.toLocaleString()}. Match confirmed.`,
-        next_stage: 'math_verified',
+        message: `✅ Math verified! Quoted: ₱${total.toLocaleString()}, Computed: ₱${computed.toLocaleString()}. Match confirmed. Downpayment is now pending before production can proceed.`,
+        next_stage: 'deposit_pending',
         reminder_needed: false,
         escalation_level: 0,
       };
