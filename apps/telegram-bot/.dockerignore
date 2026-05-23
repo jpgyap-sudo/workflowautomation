@@ -1,0 +1,9 @@
+node_modules
+.git
+.gitignore
+*.md
+.env
+.env.local
+.env.*.local
+tsconfig.json
+bot_header_new.ts

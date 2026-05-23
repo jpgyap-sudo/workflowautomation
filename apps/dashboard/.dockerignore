@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+.env
+.env.local
+.env.*.local
+.eslintrc*
+.eslint.config.mjs
+postcss.config.mjs
+tsconfig.json
+next.config.ts
+AGENTS.md
+CLAUDE.md

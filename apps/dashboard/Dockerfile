@@ -4,8 +4,10 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NODE_OPTIONS="--max-old-space-size=1024"
+
 COPY package*.json ./
-RUN npm config set maxsockets 2 && npm install --prefer-offline
+RUN npm config set maxsockets 2 && npm ci --prefer-offline
+
 COPY . .
 RUN npm run build
 
@@ -21,6 +23,9 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Clean npm cache from builder artifacts
+RUN rm -rf /app/node_modules/.cache && npm cache clean --force
 
 USER nextjs
 EXPOSE 3000
