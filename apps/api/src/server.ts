@@ -3138,25 +3138,28 @@ app.post('/pay-balance', async (request, reply) => {
  */
 const verifyDepositSchema = z.object({
   verified_by: z.string().optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/verify-deposit', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = verifyDepositSchema.parse(request.body);
 
-  // Verify action token and extract email
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  // Verify action token and extract email (dashboard only)
+  let userEmail: string | null = null;
+  if (isDashboardOrigin(body.verified_by)) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
 
   const orders = await query(
     `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified
@@ -3250,12 +3253,14 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     });
   }
 
-  // Notify escalation group about deposit verification
-  await notifyManualChange(
-    'Deposit verified',
-    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${nextStage === 'production_pending' ? 'Production Pending' : nextStage}`,
-    userEmail,
-  );
+  // Notify escalation group about deposit verification (dashboard only)
+  if (isDashboardOrigin(body.verified_by)) {
+    await notifyManualChange(
+      'Deposit verified',
+      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${nextStage === 'production_pending' ? 'Production Pending' : nextStage}`,
+      userEmail,
+    );
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -3274,25 +3279,28 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
  */
 const verifyBalanceSchema = z.object({
   verified_by: z.string().optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/verify-balance', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = verifyBalanceSchema.parse(request.body);
 
-  // Verify action token and extract email
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  // Verify action token and extract email (dashboard only)
+  let userEmail: string | null = null;
+  if (isDashboardOrigin(body.verified_by)) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
 
   const orders = await query(
     `SELECT id, quotation_number, client_name, current_stage, balance_paid, balance_verified
@@ -3377,12 +3385,14 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     });
   }
 
-  // Notify escalation group about balance verification
-  await notifyManualChange(
-    'Balance verified',
-    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${stageLabel}`,
-    userEmail,
-  );
+  // Notify escalation group about balance verification (dashboard only)
+  if (isDashboardOrigin(body.verified_by)) {
+    await notifyManualChange(
+      'Balance verified',
+      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${stageLabel}`,
+      userEmail,
+    );
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 

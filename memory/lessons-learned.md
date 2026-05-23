@@ -4999,3 +4999,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: auto-update lesson memory files
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b00a2bcf81098f009fd34f0085932f9b4b531929
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b00a2bcf81098f009fd34f0085932f9b4b531929
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) were not being automatically updated when new lessons were added to the workflow. The commit added automation to keep these files in sync.
+
+**Why it broke:**  
+Manual updates were required after each lesson addition, leading to stale or missing entries in the memory index and lessons-learned document. This caused inconsistencies and reduced the reliability of the lesson retrieval system.
+
+**Reusable takeaway:**  
+Automate synchronization of metadata or index files whenever source content changes. For any system that maintains a separate index or summary of dynamic content, implement a hook or scheduled task to regenerate those files—don’t rely on manual updates. This prevents drift, ensures consistency, and reduces maintenance overhead.
+
+---
+*Original commit message: chore: auto-update lesson memory files*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) were not being automatically updated when new lessons were added to the workflow. The commit added automation to keep these files in sync.
+
+**Why it broke:**  
+Manual updates were required after each lesson addition, leading to stale or missing entries in the memory index and lessons-learned document. This caused inconsistencies and reduced the reliability of the lesson retrieval system.
+
+**Reusable takeaway:**  
+Automate synchronization of metadata or index files whenever source content changes. For any system that maintains a separate index or summary of dynamic content, implement a hook or scheduled task to regenerate those files—don’t rely on manual updates. This prevents drift, ensures consistency, and reduces maintenance overhead.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
