@@ -20,8 +20,16 @@ interface ExtractedQuotation {
 
 interface VisionResult {
   ok: boolean;
-  type: 'quotation' | 'payment' | 'unknown';
+  type: 'quotation' | 'payment' | 'inventory' | 'unknown';
   quotation?: ExtractedQuotation;
+  payment?: {
+    amount?: number;
+    type?: 'deposit' | 'balance' | 'unknown';
+    reference_number?: string;
+    paid_by?: string;
+    payment_date?: string;
+  };
+  inventory?: { product_name?: string; quantity?: number }[];
   raw_text: string;
   confidence: 'high' | 'medium' | 'low';
   error?: string;
@@ -39,7 +47,7 @@ interface ShareData {
   mime_type: string;
   file_name: string;
   extracted: Record<string, unknown>;
-  type: 'quotation' | 'payment' | 'unknown';
+  type: 'quotation' | 'payment' | 'inventory' | 'unknown';
   confidence: 'high' | 'medium' | 'low';
   raw_text: string;
 }
@@ -69,6 +77,21 @@ function normalizeExtractedItems(rawItems: unknown): { product_name: string; qua
     .filter((item): item is { product_name: string; quantity: number } => Boolean(item?.product_name));
 }
 
+function getStringField(record: Record<string, unknown>, key: string): string {
+  return typeof record[key] === 'string' ? record[key] : '';
+}
+
+function getNumberStringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') return value;
+  return '';
+}
+
+function normalizePaymentType(value: unknown): 'deposit' | 'balance' | 'unknown' {
+  return value === 'deposit' || value === 'balance' ? value : 'unknown';
+}
+
 interface UploadSummary {
   token: string;
   file_name: string;
@@ -78,6 +101,7 @@ interface UploadSummary {
 }
 
 type Step = 'idle' | 'extracting' | 'review' | 'creating' | 'done' | 'error';
+type OtpAction = 'createOrder' | 'recordPayment';
 
 function VisionPageContent() {
   const searchParams = useSearchParams();
@@ -93,6 +117,7 @@ function VisionPageContent() {
   const [recentUploads, setRecentUploads] = useState<UploadSummary[]>([]);
   const [loadingUploads, setLoadingUploads] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
+  const [otpAction, setOtpAction] = useState<OtpAction>('createOrder');
 
   // Editable fields after extraction
   const [quotationNumber, setQuotationNumber] = useState('');
@@ -101,6 +126,12 @@ function VisionPageContent() {
   const [totalAmount, setTotalAmount] = useState('');
   const [orderDate, setOrderDate] = useState('');
   const [items, setItems] = useState<{ product_name: string; quantity: number }[]>([]);
+  const [paymentQuotationNumber, setPaymentQuotationNumber] = useState('');
+  const [paymentType, setPaymentType] = useState<'deposit' | 'balance' | 'unknown'>('unknown');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentPaidBy, setPaymentPaidBy] = useState('');
 
   // Load shared data from Telegram bot via ?token=xxx
   useEffect(() => {
@@ -130,6 +161,12 @@ function VisionPageContent() {
             setSalesAgent(typeof ext.sales_agent === 'string' ? ext.sales_agent : '');
             setTotalAmount(typeof ext.total_amount === 'number' ? String(ext.total_amount) : '');
             setOrderDate(typeof ext.order_date === 'string' ? ext.order_date : '');
+            setPaymentQuotationNumber(getStringField(ext, 'quotation_number'));
+            setPaymentType(normalizePaymentType(ext.type));
+            setPaymentAmount(getNumberStringField(ext, 'amount'));
+            setPaymentDate(getStringField(ext, 'payment_date'));
+            setPaymentReference(getStringField(ext, 'reference_number'));
+            setPaymentPaidBy(getStringField(ext, 'paid_by'));
             // Items may be in ext.items (from inventory type) or ext.items (from quotation type)
             const rawItems = ext.items;
             setItems(normalizeExtractedItems(rawItems));
@@ -139,6 +176,14 @@ function VisionPageContent() {
             ok: true,
             type: data.type,
             quotation: data.type === 'quotation' ? (ext as ExtractedQuotation) : undefined,
+            payment: data.type === 'payment' ? {
+              amount: typeof ext.amount === 'number' ? ext.amount : undefined,
+              type: normalizePaymentType(ext.type),
+              reference_number: getStringField(ext, 'reference_number') || undefined,
+              paid_by: getStringField(ext, 'paid_by') || undefined,
+              payment_date: getStringField(ext, 'payment_date') || undefined,
+            } : undefined,
+            inventory: data.type === 'inventory' ? normalizeExtractedItems(ext.items) : undefined,
             raw_text: data.raw_text,
             confidence: data.confidence,
           });
@@ -228,7 +273,16 @@ function VisionPageContent() {
         setItems(normalizeExtractedItems(data.quotation.items));
         setStep('review');
       } else if (data.type === 'payment') {
-        setStep('done');
+        setPaymentQuotationNumber(data.quotation?.quotation_number ?? '');
+        setPaymentType(data.payment?.type ?? 'unknown');
+        setPaymentAmount(data.payment?.amount ? String(data.payment.amount) : '');
+        setPaymentDate(data.payment?.payment_date ?? '');
+        setPaymentReference(data.payment?.reference_number ?? '');
+        setPaymentPaidBy(data.payment?.paid_by ?? '');
+        setStep('review');
+      } else if (data.type === 'inventory') {
+        setItems(normalizeExtractedItems(data.inventory));
+        setStep('review');
       } else {
         setStep('review');
       }
@@ -243,7 +297,92 @@ function VisionPageContent() {
       setError('At least a quotation number or client name is required.');
       return;
     }
+    setOtpAction('createOrder');
     setShowOtp(true);
+  }
+
+  function handleRecordPayment() {
+    if (!paymentQuotationNumber.trim()) {
+      setError('Quotation number is required to record this payment.');
+      return;
+    }
+    if (!paymentAmount || Number(paymentAmount) <= 0) {
+      setError('Payment amount is required.');
+      return;
+    }
+    if (paymentType !== 'deposit' && paymentType !== 'balance') {
+      setError('Choose whether this is a downpayment or balance payment.');
+      return;
+    }
+    setOtpAction('recordPayment');
+    setShowOtp(true);
+  }
+
+  async function executeRecordPayment(actionToken: string) {
+    setStep('creating');
+    setError('');
+    setShowOtp(false);
+
+    try {
+      const endpoint = paymentType === 'deposit' ? '/deposits' : '/pay-balance';
+      const body = paymentType === 'deposit'
+        ? {
+            quotation_number: paymentQuotationNumber.trim(),
+            amount: Number(paymentAmount),
+            deposit_paid_at: paymentDate || undefined,
+            updated_by: 'dashboard_quick_action',
+            action_token: actionToken,
+          }
+        : {
+            quotation_number: paymentQuotationNumber.trim(),
+            amount: Number(paymentAmount),
+            payment_date: paymentDate || undefined,
+            updated_by: 'dashboard_quick_action',
+            action_token: actionToken,
+          };
+
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({ error: 'Payment recording failed' }))) as { error?: string };
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      if (preview) {
+        const base64 = preview.split(',')[1];
+        const mimeType = preview.split(';')[0].split(':')[1];
+        await fetch(`${API_BASE}/files/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quotation_number: paymentQuotationNumber.trim(),
+            file_type: paymentType === 'deposit' ? 'deposit' : 'balance_proof',
+            original_filename: fileName,
+            mime_type: mimeType,
+            file_data: base64,
+          }),
+        }).catch(() => {
+          // Non-fatal: payment was recorded; user can re-upload proof from the order modal.
+        });
+      }
+
+      setStep('done');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Payment recording failed');
+      setStep('error');
+    }
+  }
+
+  function handleOtpVerified(actionToken: string) {
+    if (otpAction === 'recordPayment') {
+      executeRecordPayment(actionToken);
+      return;
+    }
+    executeCreateOrder(actionToken);
   }
 
   async function executeCreateOrder(actionToken: string) {
@@ -322,6 +461,12 @@ function VisionPageContent() {
     setTotalAmount('');
     setOrderDate('');
     setItems([]);
+    setPaymentQuotationNumber('');
+    setPaymentType('unknown');
+    setPaymentAmount('');
+    setPaymentDate('');
+    setPaymentReference('');
+    setPaymentPaidBy('');
     // Clear token from URL without reload
     const url = new URL(window.location.href);
     url.searchParams.delete('token');
@@ -568,6 +713,82 @@ function VisionPageContent() {
             </div>
           </div>
 
+          {result.type === 'payment' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+              <h3 className="mb-2 text-sm font-semibold text-amber-900">Editable Payment Extraction</h3>
+              <p className="mb-4 text-xs text-amber-700">
+                Please verify every AI-read value before recording. Blurry slips can produce wrong dates or amounts.
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Quotation / Order Number</label>
+                  <input
+                    type="text"
+                    value={paymentQuotationNumber}
+                    onChange={(e) => setPaymentQuotationNumber(e.target.value)}
+                    placeholder="e.g. qtn-julia"
+                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Payment Type</label>
+                    <select
+                      value={paymentType}
+                      onChange={(e) => setPaymentType(e.target.value as 'deposit' | 'balance' | 'unknown')}
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    >
+                      <option value="unknown">Choose type...</option>
+                      <option value="deposit">Downpayment / Deposit</option>
+                      <option value="balance">Balance Payment</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Amount (PHP)</label>
+                    <input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="e.g. 170000"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Payment Date</label>
+                    <input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Reference Number</label>
+                    <input
+                      type="text"
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Paid By</label>
+                  <input
+                    type="text"
+                    value={paymentPaidBy}
+                    onChange={(e) => setPaymentPaidBy(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Extracted Items */}
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <h3 className="mb-3 text-sm font-semibold text-gray-800">
@@ -634,14 +855,25 @@ function VisionPageContent() {
 
           {/* Action Buttons */}
           <div className="flex gap-3">
-            <button
-              onClick={handleCreateOrder}
-              disabled={!quotationNumber && !clientName}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CheckCircle className="h-4 w-4" />
-              Create Order
-            </button>
+            {result.type === 'payment' ? (
+              <button
+                onClick={handleRecordPayment}
+                disabled={!paymentQuotationNumber || !paymentAmount || paymentType === 'unknown'}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <CheckCircle className="h-4 w-4" />
+                Record Edited Payment
+              </button>
+            ) : (
+              <button
+                onClick={handleCreateOrder}
+                disabled={!quotationNumber && !clientName}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <CheckCircle className="h-4 w-4" />
+                Create Order
+              </button>
+            )}
             <button
               onClick={handleReset}
               className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
@@ -692,11 +924,11 @@ function VisionPageContent() {
 
       {/* Payment extracted (no order creation) */}
       {step === 'done' && result?.type === 'payment' && !createdOrder && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
-          <AlertCircle className="mx-auto mb-3 h-8 w-8 text-amber-500" />
-          <h3 className="text-sm font-semibold text-amber-800">Payment Info Extracted</h3>
-          <p className="mt-1 text-xs text-amber-700">
-            This appears to be a payment receipt. To record the payment, go to the order detail page.
+        <div className="rounded-xl border border-green-200 bg-green-50 p-6 text-center">
+          <CheckCircle className="mx-auto mb-3 h-8 w-8 text-green-600" />
+          <h3 className="text-sm font-semibold text-green-800">Payment Recorded</h3>
+          <p className="mt-1 text-xs text-green-700">
+            The edited {paymentType === 'deposit' ? 'downpayment' : 'balance payment'} values were recorded for {paymentQuotationNumber}.
           </p>
           <button onClick={handleReset} className="mt-4 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700">
             Upload Another
@@ -719,9 +951,13 @@ function VisionPageContent() {
       {/* OTP Modal */}
       <OtpModal
         open={showOtp}
-        title="Create Order"
-        description={`Confirm creating order "${quotationNumber || clientName || '—'}". Enter the OTP sent to your email to confirm.`}
-        onVerified={executeCreateOrder}
+        title={otpAction === 'recordPayment' ? 'Record Payment' : 'Create Order'}
+        description={
+          otpAction === 'recordPayment'
+            ? `Confirm recording the edited payment for "${paymentQuotationNumber || 'this order'}". Enter the OTP sent to your email to confirm.`
+            : `Confirm creating order "${quotationNumber || clientName || '?'}". Enter the OTP sent to your email to confirm.`
+        }
+        onVerified={handleOtpVerified}
         onClose={() => setShowOtp(false)}
       />
     </div>

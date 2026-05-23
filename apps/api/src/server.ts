@@ -3236,6 +3236,7 @@ app.post('/deposits/match-balance', async (request, reply) => {
 const payBalanceSchema = z.object({
   quotation_number: z.string(),
   amount: z.number().positive(),
+  payment_date: z.string().optional(),
   updated_by: z.string().optional(),
   action_token: z.string().optional(),
 });
@@ -3301,7 +3302,7 @@ app.post('/pay-balance', async (request, reply) => {
       `UPDATE orders SET
          balance_paid=TRUE,
          balance_verified=FALSE,
-         balance_paid_at=NOW(),
+         balance_paid_at=COALESCE($2, NOW()),
          current_stage=CASE
            WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
            THEN 'balance_verification'
@@ -3309,7 +3310,7 @@ app.post('/pay-balance', async (request, reply) => {
          END,
          updated_at=NOW()
        WHERE id=$1`,
-      [orderId]
+      [orderId, body.payment_date ?? null]
     );
 
     // Record stage update — balance paid → balance_verification

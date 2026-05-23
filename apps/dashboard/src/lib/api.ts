@@ -259,6 +259,7 @@ export async function recordDepositWithFile(data: {
 export async function payBalance(data: {
   quotation_number: string;
   amount: number;
+  payment_date?: string;
   updated_by?: string;
   action_token?: string;
 }): Promise<{ ok: boolean; overpayment?: number }> {
@@ -271,6 +272,7 @@ export async function payBalance(data: {
 export async function payBalanceWithFile(data: {
   quotation_number: string;
   amount: number;
+  payment_date?: string;
   updated_by?: string;
   action_token?: string;
   image_base64?: string;
@@ -293,6 +295,7 @@ export async function payBalanceWithFile(data: {
     body: JSON.stringify({
       quotation_number: data.quotation_number,
       amount: data.amount,
+      payment_date: data.payment_date,
       updated_by: data.updated_by ?? 'dashboard_quick_action',
       action_token: data.action_token,
     }),

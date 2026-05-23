@@ -6883,3 +6883,74 @@ When AI reads blurry deposit or balance slips, payment dates can be wrong (for e
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: infinite loop when clicking 'Not Yet' on already-not_yet item in en-route flow
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b1a1683a4b1b2702b8c7b3ba2abe2f05712c82a6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b1a1683a4b1b2702b8c7b3ba2abe2f05712c82a6
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+An infinite loop triggered when clicking "Not Yet" on an item already in `not_yet` status during the en-route flow.
+
+**Why it broke:**  
+The system lacked a guard to prevent re-processing items already marked as `not_yet`. The status transition logic allowed the same action to be applied repeatedly, causing the scheduler to re-trigger reminders in a cycle.
+
+**Reusable takeaway:**  
+Always add idempotency checks for state transitions. Before applying a status change, verify the current state differs from the target state. This prevents infinite loops, redundant processing, and scheduler storms. A simple guard like `if (currentStatus === targetStatus) return` can save significant debugging time.
+
+---
+*Original commit message: fix: infinite loop when clicking 'Not Yet' on already-not_yet item in en-route flow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+An infinite loop triggered when clicking "Not Yet" on an item already in `not_yet` status during the en-route flow.
+
+**Why it broke:**  
+The system lacked a guard to prevent re-processing items already marked as `not_yet`. The status transition logic allowed the same action to be applied repeatedly, causing the scheduler to re-trigger reminders in a cycle.
+
+**Reusable takeaway:**  
+Always add idempotency checks for state transitions. Before applying a status change, verify the current state differs from the target state. This prevents infinite loops, redundant processing, and scheduler storms. A simple guard like `if (currentStatus === targetStatus) return` can save significant debugging time.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [quotation-automation-system] make vision payment extraction editable
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Do not let AI vision payment extraction go straight to a terminal state. The dashboard Vision review page should expose editable fields for payment type, quotation/order number, amount, payment date, reference number, and payer before OTP-protected recording. /pay-balance should accept payment_date so corrected AI-read dates are stored as balance_paid_at instead of NOW(). Quotation and inventory extractions should continue through editable fields/items before create/commit.
+
+#### Lesson Learned
+
+Do not let AI vision payment extraction go straight to a terminal state. The dashboard Vision review page should expose editable fields for payment type, quotation/order number, amount, payment date, reference number, and payer before OTP-protected recording. /pay-balance should accept payment_date so corrected AI-read dates are stored as balance_paid_at instead of NOW(). Quotation and inventory extractions should continue through editable fields/items before create/commit.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

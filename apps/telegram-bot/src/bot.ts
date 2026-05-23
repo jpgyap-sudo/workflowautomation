@@ -558,6 +558,10 @@ const SAFE_PREFIXES = [
   'vision:retry_extract',
   'vision:upload',
   'upload:retry',
+  // Item-level production status updates — simple status toggles, not destructive
+  'item_prod:',
+  // Item-level en-route status updates — simple status toggles, not destructive
+  'item_en_route:',
 ];
 
 // Set of recently-confirmed callback keys (format: "callbackData:chatId").
@@ -3522,8 +3526,10 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     const completion = await completionRes.json();
 
     // Find the next unfinished item (process of elimination)
+    // Skip the current item if it's still pending (user confirmed "Not Yet"
+    // for an item that was already pending — avoid infinite loop)
     const unfinishedItem = items.find(
-      (item: any) => item.production_status !== 'finished'
+      (item: any) => item.production_status !== 'finished' && item.id !== itemId
     );
 
     if (!unfinishedItem) {
