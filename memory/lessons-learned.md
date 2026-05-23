@@ -4217,3 +4217,51 @@ When updating notification or messaging systems, always:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add email OTP for all remaining manual dashboard changes
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6bc1ba73d24fb11bd4d70a73d5dfe7f5214f4265
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6bc1ba73d24fb11bd4d70a73d5dfe7f5214f4265
+**Files:** apps/dashboard/src/app/bugs/page.tsx,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Added email OTP verification for all remaining manual dashboard changes (e.g., bug page edits) that previously bypassed authentication checks.
+
+**Why it broke:**  
+Manual dashboard changes (like editing bug pages) were not covered by the existing OTP flow, leaving a security gap where unauthorized modifications could be made without email verification.
+
+**Reusable takeaway:**  
+When implementing authentication or authorization flows, audit all entry points—especially manual/admin actions—to ensure they are uniformly protected. Don’t assume a single guard (e.g., API middleware) covers every UI-triggered mutation. Always map each user action to its required verification step.
+
+---
+*Original commit message: fix: add email OTP for all remaining manual dashboard changes*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added email OTP verification for all remaining manual dashboard changes (e.g., bug page edits) that previously bypassed authentication checks.
+
+**Why it broke:**  
+Manual dashboard changes (like editing bug pages) were not covered by the existing OTP flow, leaving a security gap where unauthorized modifications could be made without email verification.
+
+**Reusable takeaway:**  
+When implementing authentication or authorization flows, audit all entry points—especially manual/admin actions—to ensure they are uniformly protected. Don’t assume a single guard (e.g., API middleware) covers every UI-triggered mutation. Always map each user action to its required verification step.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
