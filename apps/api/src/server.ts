@@ -122,6 +122,26 @@ async function notifyGroupChat(chatId: string | null, message: string): Promise<
   } catch { /* non-fatal */ }
 }
 
+async function notifyGroupChatWithButtons(
+  chatId: string | null,
+  message: string,
+  buttons: { text: string; callback_data: string }[][],
+): Promise<void> {
+  if (!_TELEGRAM_BOT_TOKEN || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: buttons },
+      }),
+    });
+  } catch { /* non-fatal */ }
+}
+
 async function verifyActionTokenOrReply(actionToken: string | undefined, reply: any): Promise<boolean> {
   if (!actionToken) {
     reply.status(401).send({ error: 'Action token required. Please verify OTP first.' });
@@ -3369,14 +3389,17 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   // Notify delivery group immediately — balance verified, needs delivery date
   if (nextStage === 'delivery_pending') {
     setImmediate(() => {
-      notifyGroupChat(
+      notifyGroupChatWithButtons(
         DELIVERY_CHAT_ID,
         `📅 <b>Balance Verified — Delivery Date Needed</b>\n\n` +
         `Quotation: <b>${order.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n` +
         `Balance verified by: ${body.verified_by ?? 'team'}\n\n` +
         `Order is now in <b>Delivery Pending</b> stage.\n` +
-        `Please input the estimated delivery date so we can schedule delivery.`
+        `Tap the button below to set the delivery date.`,
+        [
+          [{ text: '📅 Schedule Delivery', callback_data: `delivery:schedule:${order.id.slice(0, 8)}:${order.quotation_number}` }],
+        ],
       );
     });
   }

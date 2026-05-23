@@ -21,6 +21,7 @@ import {
   completeInventoryVerification,
   confirmInventoryArrived,
   updateOrderItem,
+  type OrderItem,
 } from '@/lib/api';
 import {
   Package,
@@ -1221,6 +1222,10 @@ function InventoryArrivalSection() {
   // Fetch completion data for each order to get inventory_completion_pct
   const [completionMap, setCompletionMap] = useState<Record<string, number>>({});
   const [itemCountMap, setItemCountMap] = useState<Record<string, { arrived: number; total: number }>>({});
+  const [itemDetailsMap, setItemDetailsMap] = useState<Record<string, OrderItem[]>>({});
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [selectedArrivalItems, setSelectedArrivalItems] = useState<Record<string, string[]>>({});
+  const [updatingArrival, setUpdatingArrival] = useState<string | null>(null);
 
   // OTP modal state for "Confirm All Arrived" action
   const [arrivalOtp, setArrivalOtp] = useState<{ open: boolean; orderId: string; quotationNumber: string }>({
@@ -1235,6 +1240,7 @@ function InventoryArrivalSection() {
     async function fetchData() {
       const compMap: Record<string, number> = {};
       const itemMap: Record<string, { arrived: number; total: number }> = {};
+      const detailMap: Record<string, OrderItem[]> = {};
 
       await Promise.all(
         orders.map(async (order) => {
@@ -1248,6 +1254,7 @@ function InventoryArrivalSection() {
               const items = itemsRes.items ?? [];
               const arrived = items.filter((i) => i.en_route_status === 'arrived').length;
               itemMap[order.id] = { arrived, total: items.length };
+              detailMap[order.id] = items;
             }
           } catch {
             // Silently fail — progress bars just won't show
@@ -1258,6 +1265,7 @@ function InventoryArrivalSection() {
       if (!cancelled) {
         setCompletionMap(compMap);
         setItemCountMap(itemMap);
+        setItemDetailsMap(detailMap);
       }
     }
 
@@ -1276,6 +1284,74 @@ function InventoryArrivalSection() {
     } finally {
       setConfirming(false);
       setArrivalOtp({ open: false, orderId: '', quotationNumber: '' });
+    }
+  }
+
+  async function refreshArrivalData() {
+    mutate();
+    const refreshedEntries = await Promise.all(
+      orders.map(async (order) => {
+        const [completion, itemsRes] = await Promise.all([
+          getItemCompletion(order.id),
+          getOrderItems(order.id),
+        ]);
+        const items = itemsRes.items ?? [];
+        return {
+          orderId: order.id,
+          completionPct: completion.inventory_completion_pct ?? 0,
+          items,
+        };
+      })
+    );
+
+    setCompletionMap((prev) => {
+      const next = { ...prev };
+      for (const entry of refreshedEntries) next[entry.orderId] = entry.completionPct;
+      return next;
+    });
+    setItemDetailsMap((prev) => {
+      const next = { ...prev };
+      for (const entry of refreshedEntries) next[entry.orderId] = entry.items;
+      return next;
+    });
+    setItemCountMap((prev) => {
+      const next = { ...prev };
+      for (const entry of refreshedEntries) {
+        next[entry.orderId] = {
+          arrived: entry.items.filter((item) => item.en_route_status === 'arrived').length,
+          total: entry.items.length,
+        };
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectedArrivalItem(orderId: string, itemId: string) {
+    setSelectedArrivalItems((prev) => {
+      const selected = new Set(prev[orderId] ?? []);
+      if (selected.has(itemId)) selected.delete(itemId);
+      else selected.add(itemId);
+      return { ...prev, [orderId]: Array.from(selected) };
+    });
+  }
+
+  async function markArrivalItems(orderId: string, itemIds: string[]) {
+    if (itemIds.length === 0) {
+      alert('Select at least one item that arrived.');
+      return;
+    }
+
+    setUpdatingArrival(orderId);
+    try {
+      await Promise.all(
+        itemIds.map((itemId) => updateOrderItem(orderId, itemId, { en_route_status: 'arrived' }))
+      );
+      setSelectedArrivalItems((prev) => ({ ...prev, [orderId]: [] }));
+      await refreshArrivalData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update inventory arrival items');
+    } finally {
+      setUpdatingArrival(null);
     }
   }
 
@@ -1314,6 +1390,10 @@ function InventoryArrivalSection() {
         {orders.map((order) => {
           const arrivalPct = completionMap[order.id] ?? 0;
           const itemCount = itemCountMap[order.id];
+          const arrivalItems = itemDetailsMap[order.id] ?? [];
+          const notArrivedItems = arrivalItems.filter((item) => item.en_route_status !== 'arrived');
+          const selectedItems = selectedArrivalItems[order.id] ?? [];
+          const arrivalSelectorOpen = expandedOrderId === order.id;
           const hasArrivalData = arrivalPct > 0 || (itemCount && itemCount.total > 0);
 
           // Determine agent status: actively processing vs awaiting response
@@ -1322,7 +1402,8 @@ function InventoryArrivalSection() {
           const isAwaiting = arrivalPct === 0;
 
           return (
-            <div key={order.id} className="flex items-center justify-between py-2">
+            <div key={order.id} className="py-2">
+              <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Package className="h-4 w-4 text-cyan-500" />
                 <div>
@@ -1356,7 +1437,27 @@ function InventoryArrivalSection() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {arrivalItems.length > 0 && notArrivedItems.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => markArrivalItems(order.id, notArrivedItems.map((item) => item.id))}
+                      disabled={updatingArrival === order.id}
+                      className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-cyan-700 disabled:opacity-50"
+                    >
+                      {updatingArrival === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                      Inventory Arrived
+                    </button>
+                    <button
+                      onClick={() => setExpandedOrderId(arrivalSelectorOpen ? null : order.id)}
+                      disabled={updatingArrival === order.id}
+                      className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      <CheckSquare className="h-3 w-3" />
+                      Partial Arrived
+                    </button>
+                  </>
+                )}
                 {/* Gap 3: Quick-action "Confirm All Arrived" button */}
                 {isComplete && (
                   <button
@@ -1409,6 +1510,48 @@ function InventoryArrivalSection() {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
+              </div>
+
+              {arrivalSelectorOpen && (
+                <div className="mt-3 rounded-lg border border-cyan-200 bg-white/80 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-cyan-900">Select item(s) that arrived</p>
+                    <button
+                      onClick={() => markArrivalItems(order.id, selectedItems)}
+                      disabled={updatingArrival === order.id || selectedItems.length === 0}
+                      className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {updatingArrival === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                      Mark Selected Arrived
+                    </button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {notArrivedItems.map((item) => {
+                      const checked = selectedItems.includes(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-xs transition-colors ${
+                            checked ? 'border-green-300 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-700 hover:border-cyan-200'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSelectedArrivalItem(order.id, item.id)}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                          <span className="text-[10px] text-gray-400">x{item.quantity}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[10px] text-gray-500">
+                    Items marked arrived are removed from future item-by-item reminders. Remaining items stay in the reminder queue.
+                  </p>
+                </div>
+              )}
             </div>
           );
         })}

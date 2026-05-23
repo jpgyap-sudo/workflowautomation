@@ -467,7 +467,9 @@ function ItemTrackingSection({
     pendingAction: 'verify_item' | 'mark_arrived';
   }>({ open: false, title: '', description: '', pendingAction: 'verify_item' });
 
-  const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
+  // Show item tracking for all stages — items can be extracted at any point in the workflow
+  const stageShowsInventoryCols = currentStage === 'inventory_verification';
+  const stageShowsArrivalCols = currentStage === 'inventory_arrived';
 
   async function refreshItemTracking() {
     const [itemsRes, compRes, logsRes] = await Promise.all([
@@ -481,10 +483,6 @@ function ItemTrackingSection({
   }
 
   useEffect(() => {
-    if (!stagesWithItems.includes(currentStage)) {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     Promise.all([
       getOrderItems(orderId),
@@ -743,8 +741,6 @@ function ItemTrackingSection({
     );
   }
 
-  if (!stagesWithItems.includes(currentStage)) return null;
-
   if (loading) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -883,8 +879,8 @@ function ItemTrackingSection({
                 <th className="py-2 pr-3">Qty</th>
                 <th className="py-2 pr-3">Production</th>
                 <th className="py-2 pr-3">En Route</th>
-                {currentStage === 'inventory_verification' && <th className="py-2 pr-3">Verification</th>}
-                {currentStage === 'inventory_arrived' && <th className="py-2 pr-3">Arrival</th>}
+                {stageShowsInventoryCols && <th className="py-2 pr-3">Verification</th>}
+                {stageShowsArrivalCols && <th className="py-2 pr-3">Arrival</th>}
                 <th className="py-2 pr-3">Arrival Est.</th>
                 <th className="py-2 pr-3">Updated</th>
               </tr>
@@ -916,7 +912,7 @@ function ItemTrackingSection({
                         : '○ Not Yet'}
                     </span>
                   </td>
-                  {currentStage === 'inventory_verification' && (
+                  {stageShowsInventoryCols && (
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2">
                         <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-200">
@@ -952,7 +948,7 @@ function ItemTrackingSection({
                       </div>
                     </td>
                   )}
-                  {currentStage === 'inventory_arrived' && (
+                  {stageShowsArrivalCols && (
                     <td className="py-2 pr-3">
                       {item.en_route_status === 'arrived' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-600">
@@ -984,7 +980,7 @@ function ItemTrackingSection({
       )}
 
       {/* Complete Verification button (with OTP) */}
-      {currentStage === 'inventory_verification' && items.length > 0 && (
+      {stageShowsInventoryCols && items.length > 0 && (
         <div className="mt-4 flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50/50 p-3">
           <div>
             <p className="text-xs font-medium text-teal-800">Inventory Verification</p>
@@ -1003,7 +999,7 @@ function ItemTrackingSection({
       )}
 
       {/* Confirm All Arrived button (with OTP) */}
-      {currentStage === 'inventory_arrived' && items.length > 0 && (
+      {stageShowsArrivalCols && items.length > 0 && (
         <div className="mt-4 flex items-center justify-between rounded-lg border border-cyan-200 bg-cyan-50/50 p-3">
           <div>
             <p className="text-xs font-medium text-cyan-800">Inventory Arrival</p>

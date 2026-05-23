@@ -628,7 +628,7 @@ async function uploadFileAndRecord(params: {
   uploadedBy?: string;
 }) {
   const payload: Record<string, unknown> = {
-    file_type: params.mimeType,
+    file_type: 'quotation',
     original_filename: params.fileName,
     mime_type: params.mimeType,
     file_data: params.imageBase64,
@@ -3752,13 +3752,13 @@ bot.action(/^delivery:yes:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1]; // 8-char prefix — not used for API calls
   const quotationNumber = ctx.match[2];
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `delivery:yes:${orderId}:${quotationNumber}`,
+    content: `delivery:yes:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
@@ -3795,13 +3795,13 @@ bot.action(/^delivery:no:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1]; // 8-char prefix — not used for API calls
   const quotationNumber = ctx.match[2];
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `delivery:no:${orderId}:${quotationNumber}`,
+    content: `delivery:no:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 

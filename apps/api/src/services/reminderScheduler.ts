@@ -288,8 +288,8 @@ export async function processDueReminders(): Promise<number> {
       // Delivery scheduled: ask if item has been delivered yet
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes, Delivered', callback_data: `delivery:yes:${orderId}:${quotationNumber}` },
-          { text: '❌ Not Yet', callback_data: `delivery:no:${orderId}:${quotationNumber}` },
+          { text: '✅ Yes, Delivered', callback_data: `delivery:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `delivery:no:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'countered') {

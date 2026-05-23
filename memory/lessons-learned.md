@@ -5463,3 +5463,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: handle payment buttons at balance stage
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 601b326f6ab5752eefa5eef47632e2fe54b6c54c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 601b326f6ab5752eefa5eef47632e2fe54b6c54c
+**Files:** apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Payment buttons were not appearing during the "balance" stage of a workflow, causing users to be stuck without payment options.
+
+**Why it broke:** The reminder scheduler and Telegram bot logic did not properly check for or render payment buttons when the workflow state transitioned to the balance stage. The condition for displaying payment UI was missing or incorrectly scoped.
+
+**Reusable takeaway:** When adding UI elements tied to workflow stages, ensure all state transitions that require that UI are explicitly handled. Do not assume a button or prompt will appear automatically—verify that each stage's rendering logic includes the necessary condition. Also, update both service and bot layers in sync to avoid partial fixes.
+
+---
+*Original commit message: fix: handle payment buttons at balance stage*
+
+#### Lesson Learned
+
+**What was fixed:** Payment buttons were not appearing during the "balance" stage of a workflow, causing users to be stuck without payment options.
+
+**Why it broke:** The reminder scheduler and Telegram bot logic did not properly check for or render payment buttons when the workflow state transitioned to the balance stage. The condition for displaying payment UI was missing or incorrectly scoped.
+
+**Reusable takeaway:** When adding UI elements tied to workflow stages, ensure all state transitions that require that UI are explicitly handled. Do not assume a button or prompt will appear automatically—verify that each stage's rendering logic includes the necessary condition. Also, update both service and bot layers in sync to avoid partial fixes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

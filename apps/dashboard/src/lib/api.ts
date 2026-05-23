@@ -133,12 +133,15 @@ export interface AgentLog {
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  // Build headers: start with content-type for POST/PATCH/PUT with body,
+  // then merge any caller-supplied headers (e.g. Content-Type, Authorization)
+  const headers: Record<string, string> = {
+    ...(options?.body ? { 'content-type': 'application/json' } : {}),
+    ...(options?.headers as Record<string, string> | undefined),
+  };
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
-    headers: {
-      ...(options?.body ? { 'content-type': 'application/json' } : {}),
-      ...options?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${await res.text()}`);
