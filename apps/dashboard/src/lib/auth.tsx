@@ -77,11 +77,17 @@ function getStoredAccounts(): Account[] {
         for (const def of DEFAULT_ACCOUNTS) {
           const idx = parsed.findIndex((a: Account) => a.email.toLowerCase() === def.email.toLowerCase());
           if (idx >= 0) {
-            // Update password from defaults (in case it changed)
+            // Merge any new fields from defaults (password, subUsers, etc.)
+            let accountChanged = false;
             if (parsed[idx].password !== def.password) {
               parsed[idx].password = def.password;
-              changed = true;
+              accountChanged = true;
             }
+            if (def.subUsers && JSON.stringify(parsed[idx].subUsers) !== JSON.stringify(def.subUsers)) {
+              parsed[idx].subUsers = def.subUsers;
+              accountChanged = true;
+            }
+            if (accountChanged) changed = true;
           } else {
             // Add new default account that doesn't exist in storage
             parsed.push(def);
