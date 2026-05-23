@@ -4915,3 +4915,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: update lesson memory files
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 133e6bfb62582505df72d91207eeb7024893d4e5
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 133e6bfb62582505df72d91207eeb7024893d4e5
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Fix:** Updated lesson memory files to ensure accurate tracking of past engineering lessons.
+
+**Root Cause:** The memory files were stale or missing recent lessons, causing the system to lose context from previous fixes and decisions.
+
+**Reusable Takeaway:** Lesson memory files must be updated as part of every fix or feature commit. Without this, the system repeats mistakes or loses institutional knowledge. Automate the update step in the commit workflow (e.g., via a pre-commit hook or CI step) to ensure lessons are always current.
+
+---
+*Original commit message: chore: update lesson memory files*
+
+#### Lesson Learned
+
+**Fix:** Updated lesson memory files to ensure accurate tracking of past engineering lessons.
+
+**Root Cause:** The memory files were stale or missing recent lessons, causing the system to lose context from previous fixes and decisions.
+
+**Reusable Takeaway:** Lesson memory files must be updated as part of every fix or feature commit. Without this, the system repeats mistakes or loses institutional knowledge. Automate the update step in the commit workflow (e.g., via a pre-commit hook or CI step) to ensure lessons are always current.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
