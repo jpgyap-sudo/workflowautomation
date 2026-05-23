@@ -622,7 +622,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); }
@@ -659,7 +659,40 @@ export default function ProductionPage() {
 
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
-    else handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'reportStatus') handleReportStatusVerified(actionToken);
+    else if (otpModal.pendingAction === 'finishProduction') handleFinishProductionVerified(actionToken);
+    else if (otpModal.pendingAction === 'confirmEnRoute') handleConfirmEnRouteVerified(actionToken);
+  }
+
+  async function handleReportStatusVerified(actionToken: string) {
+    const pending = (window as any).__pendingReportStatusData;
+    if (!pending) return;
+    try {
+      await reportProductionStatus(pending.orderId, { ...pending.data, action_token: actionToken });
+      refresh();
+    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingReportStatusData = null; }
+  }
+
+  async function handleFinishProductionVerified(actionToken: string) {
+    const pending = (window as any).__pendingFinishProductionData;
+    if (!pending) return;
+    try {
+      await finishProduction(pending.orderId, { delivery_estimated_days: pending.days, action_token: actionToken });
+      refresh();
+    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingFinishProductionData = null; }
+  }
+
+  async function handleConfirmEnRouteVerified(actionToken: string) {
+    const pending = (window as any).__pendingConfirmEnRouteData;
+    if (!pending) return;
+    try {
+      await confirmEnRoute(pending.orderId, { estimated_arrival_days: pending.days, action_token: actionToken });
+      refresh();
+    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingConfirmEnRouteData = null; }
   }
 
   function handleEdit(order: Order) { setEditingOrder(order); }
@@ -681,10 +714,10 @@ export default function ProductionPage() {
   }
 
   async function handleReportOnTime(order: Order) {
-    try {
-      await reportProductionStatus(order.id, { on_time: true, delay_days: 0 });
-      refresh();
-    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    setOtpModal({ open: true, title: 'Report Production Status',
+      description: `You are about to report order "${order.quotation_number ?? '—'}" as on time. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'reportStatus' });
+    (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: true, delay_days: 0 } };
   }
 
   async function handleReportDelayed(order: Order) {
@@ -692,10 +725,10 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days < 0) { alert('Please enter a valid delay in days.'); return; }
-    try {
-      await reportProductionStatus(order.id, { on_time: false, delay_days: days });
-      refresh();
-    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    setOtpModal({ open: true, title: 'Report Production Status',
+      description: `You are about to report order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s). Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'reportStatus' });
+    (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: false, delay_days: days } };
   }
 
   async function handleFinishProduction(order: Order) {
@@ -703,10 +736,10 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    try {
-      await finishProduction(order.id, { delivery_estimated_days: days });
-      refresh();
-    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    setOtpModal({ open: true, title: 'Finish Production',
+      description: `You are about to mark order "${order.quotation_number ?? '—'}" as finished with ${days} day(s) delivery estimate. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'finishProduction' });
+    (window as any).__pendingFinishProductionData = { orderId: order.id, days };
   }
 
   async function handleConfirmEnRoute(order: Order) {
@@ -714,10 +747,10 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    try {
-      await confirmEnRoute(order.id, { estimated_arrival_days: days });
-      refresh();
-    } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
+    setOtpModal({ open: true, title: 'Confirm En Route',
+      description: `You are about to confirm order "${order.quotation_number ?? '—'}" as en route with ${days} day(s) estimated arrival. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'confirmEnRoute' });
+    (window as any).__pendingConfirmEnRouteData = { orderId: order.id, days };
   }
 
   async function handleGrantException(order: Order) {
