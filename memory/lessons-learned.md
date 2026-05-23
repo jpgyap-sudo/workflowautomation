@@ -4265,3 +4265,51 @@ When implementing authentication or authorization flows, audit all entry pointsâ
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add OTP verification to production page actions (report, finish, confirm-en-route)
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4e3c3f9cdc1104c119a220588bbc48a09d32e321
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 4e3c3f9cdc1104c119a220588bbc48a09d32e321
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Added OTP verification to three production page actions: report, finish, and confirm-en-route. Previously, these actions could be executed without any secondary authentication.
+
+**Why it broke:**  
+The system assumed that once a user was logged in, all subsequent actions were authorized. However, these production actions are high-impact (e.g., finishing a job, confirming arrival) and could be triggered accidentally or maliciously without an extra verification step. The missing OTP check allowed unauthorized or unintended state changes.
+
+**Reusable takeaway:**  
+High-impact or irreversible actions (e.g., finishing a task, confirming a critical event) should always require a secondary verification step (e.g., OTP, confirmation dialog, re-authentication), even if the user is already logged in. This prevents accidental or unauthorized state changes and adds a safety layer for production-critical workflows.
+
+---
+*Original commit message: fix: add OTP verification to production page actions (report, finish, confirm-en-route)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added OTP verification to three production page actions: report, finish, and confirm-en-route. Previously, these actions could be executed without any secondary authentication.
+
+**Why it broke:**  
+The system assumed that once a user was logged in, all subsequent actions were authorized. However, these production actions are high-impact (e.g., finishing a job, confirming arrival) and could be triggered accidentally or maliciously without an extra verification step. The missing OTP check allowed unauthorized or unintended state changes.
+
+**Reusable takeaway:**  
+High-impact or irreversible actions (e.g., finishing a task, confirming a critical event) should always require a secondary verification step (e.g., OTP, confirmation dialog, re-authentication), even if the user is already logged in. This prevents accidental or unauthorized state changes and adds a safety layer for production-critical workflows.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

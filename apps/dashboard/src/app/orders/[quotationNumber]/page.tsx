@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles } from 'lucide-react';
+import OtpModal from '@/components/OtpModal';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
@@ -434,6 +435,9 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
   const [extractError, setExtractError] = useState('');
   const [verifyingItemId, setVerifyingItemId] = useState<string | null>(null);
   const [completingVerification, setCompletingVerification] = useState(false);
+  const [arrivingItemId, setArrivingItemId] = useState<string | null>(null);
+  const [confirmingArrival, setConfirmingArrival] = useState(false);
+  const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | null>(null);
 
   const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
 
@@ -493,17 +497,45 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
     }
   }
 
-  async function handleCompleteVerification() {
-    if (!window.confirm('Mark inventory verification as complete? This will advance the order to Inventory Arrived.')) return;
+  async function handleCompleteVerification(actionToken: string) {
     setCompletingVerification(true);
+    setShowOtp(null);
     try {
-      await completeInventoryVerification(orderId);
-      // Refresh order data by reloading page or using mutate
+      await completeInventoryVerification(orderId, actionToken);
       window.location.reload();
     } catch (err: any) {
       alert(err.message ?? 'Failed to complete verification');
     } finally {
       setCompletingVerification(false);
+    }
+  }
+
+  async function handleMarkItemArrived(itemId: string) {
+    setArrivingItemId(itemId);
+    try {
+      await updateOrderItem(orderId, itemId, { en_route_status: 'arrived' });
+      // Refresh items
+      const res = await getOrderItems(orderId);
+      if (res.ok) setItems(res.items);
+      const compRes = await getItemCompletion(orderId);
+      if (compRes.ok) setCompletion(compRes);
+    } catch (err: any) {
+      alert(err.message ?? 'Failed to mark item as arrived');
+    } finally {
+      setArrivingItemId(null);
+    }
+  }
+
+  async function handleConfirmAllArrived(actionToken: string) {
+    setConfirmingArrival(true);
+    setShowOtp(null);
+    try {
+      await confirmInventoryArrived(orderId, actionToken);
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message ?? 'Failed to confirm arrival');
+    } finally {
+      setConfirmingArrival(false);
     }
   }
 
@@ -625,6 +657,7 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                 <th className="py-2 pr-3">Production</th>
                 <th className="py-2 pr-3">En Route</th>
                 {currentStage === 'inventory_verification' && <th className="py-2 pr-3">Verification</th>}
+                {currentStage === 'inventory_arrived' && <th className="py-2 pr-3">Arrival</th>}
                 <th className="py-2 pr-3">Arrival Est.</th>
                 <th className="py-2 pr-3">Updated</th>
               </tr>
@@ -692,6 +725,24 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
                       </div>
                     </td>
                   )}
+                  {currentStage === 'inventory_arrived' && (
+                    <td className="py-2 pr-3">
+                      {item.en_route_status === 'arrived' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-600">
+                          <CheckCircle className="h-3 w-3" />
+                          Arrived
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleMarkItemArrived(item.id)}
+                          disabled={arrivingItemId === item.id}
+                          className="rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 hover:bg-cyan-100 disabled:opacity-50"
+                        >
+                          {arrivingItemId === item.id ? '...' : '✓ Mark Arrived'}
+                        </button>
+                      )}
+                    </td>
+                  )}
                   <td className="py-2 pr-3 text-gray-600">
                     {item.estimated_arrival_days != null ? `${item.estimated_arrival_days}d` : '—'}
                   </td>
@@ -705,7 +756,7 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
         </div>
       )}
 
-      {/* Complete Verification button */}
+      {/* Complete Verification button (with OTP) */}
       {currentStage === 'inventory_verification' && items.length > 0 && (
         <div className="mt-4 flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50/50 p-3">
           <div>
@@ -715,13 +766,52 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
             </p>
           </div>
           <button
-            onClick={handleCompleteVerification}
+            onClick={() => setShowOtp('complete_verification')}
             disabled={completingVerification || items.some(i => (i.verified_qty ?? 0) < i.quantity)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
           >
             {completingVerification ? 'Completing...' : '✓ Complete Verification'}
           </button>
         </div>
+      )}
+
+      {/* Confirm All Arrived button (with OTP) */}
+      {currentStage === 'inventory_arrived' && items.length > 0 && (
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-cyan-200 bg-cyan-50/50 p-3">
+          <div>
+            <p className="text-xs font-medium text-cyan-800">Inventory Arrival</p>
+            <p className="text-[10px] text-cyan-600">
+              {items.filter(i => i.en_route_status === 'arrived').length}/{items.length} items arrived
+            </p>
+          </div>
+          <button
+            onClick={() => setShowOtp('confirm_arrival')}
+            disabled={confirmingArrival || items.some(i => i.en_route_status !== 'arrived')}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-700 disabled:opacity-50"
+          >
+            {confirmingArrival ? 'Confirming...' : '✓ Confirm All Arrived'}
+          </button>
+        </div>
+      )}
+
+      {/* OTP Modal */}
+      {showOtp === 'complete_verification' && (
+        <OtpModal
+          open={true}
+          title="Complete Inventory Verification"
+          description="Verify your identity to mark inventory verification as complete and advance the order to Inventory Arrived."
+          onVerified={handleCompleteVerification}
+          onClose={() => setShowOtp(null)}
+        />
+      )}
+      {showOtp === 'confirm_arrival' && (
+        <OtpModal
+          open={true}
+          title="Confirm All Inventory Arrived"
+          description="Verify your identity to confirm all inventory has arrived and advance the order to Balance Due. The inventory group chat will be notified."
+          onVerified={handleConfirmAllArrived}
+          onClose={() => setShowOtp(null)}
+        />
       )}
 
       {/* Production update logs */}

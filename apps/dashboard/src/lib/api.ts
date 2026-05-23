@@ -344,12 +344,27 @@ export async function inventoryVerifyItem(
 }
 
 export async function completeInventoryVerification(
-  id: string
+  id: string,
+  actionToken: string
 ): Promise<{ ok: boolean; message: string }> {
   return fetchJson(
     `/orders/${encodeURIComponent(id)}/complete-inventory-verification`,
     {
       method: 'POST',
+      body: JSON.stringify({ action_token: actionToken }),
+    }
+  );
+}
+
+export async function confirmInventoryArrived(
+  id: string,
+  actionToken: string
+): Promise<{ ok: boolean; message: string }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/confirm-inventory-arrived`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ action_token: actionToken }),
     }
   );
 }

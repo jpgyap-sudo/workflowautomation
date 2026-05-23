@@ -1676,6 +1676,86 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
   return reply.send({ ok: true, message: 'Inventory verification completed. Advanced to inventory_arrived.' });
 });
 
+/**
+ * POST /orders/:id/confirm-inventory-arrived
+ * Manually confirm all inventory has arrived and advance to balance_due.
+ * Notifies the inventory group chat.
+ */
+app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = completeInventoryVerificationSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
+
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (orderRows[0].current_stage !== 'inventory_arrived') {
+    return reply.code(400).send({ error: 'Order is not in inventory arrival stage' });
+  }
+
+  // Advance to balance_due
+  await query(
+    `UPDATE orders SET current_stage = 'balance_due', updated_at = NOW()
+     WHERE id = $1`,
+    [id]
+  );
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'balance_due', 'auto_advanced', 'Inventory arrival confirmed. Proceeding to balance due.', 'inventory-agent')`,
+    [id]
+  );
+
+  // Complete reminders for inventory_arrived
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active' AND stage = 'inventory_arrived'`,
+    [id]
+  );
+
+  // Fire agents for the new stage
+  triggerAgentsForStage('balance_due', orderRows[0].quotation_number, orderRows[0].client_name);
+
+  // Notify escalation group
+  await notifyManualChange(
+    'Inventory arrival confirmed',
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Balance Due`,
+    userEmail,
+  );
+
+  // Notify inventory group chat
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `✅ <b>Inventory Arrival Confirmed (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `All inventory has been confirmed as arrived via dashboard. Order is now in Balance Due stage.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({ ok: true, message: 'Inventory arrival confirmed. Advanced to balance_due.' });
+});
+
 // ── Order Items (Item-Level Production Tracking) ─────────────────────
 // Phase 2: API endpoints for item-level production tracking
 // These endpoints manage order_items and production_update_logs tables.
