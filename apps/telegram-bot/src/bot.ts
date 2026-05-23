@@ -3503,6 +3503,17 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     }
     const itemId = targetItem.id;
 
+    // Check if the item's status is actually changing
+    // If user clicks "Not Yet" on an item already pending, it's a no-op —
+    // just acknowledge and stop, don't show the next item (avoids infinite loop)
+    if (newStatus === 'pending' && targetItem.production_status === 'pending') {
+      await ctx.editMessageText(
+        `⏳ Noted — *${targetItem.name}* has not started production yet.\n\nI'll check again when the agent runs next.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
     // Update the item's production status via API
     await patchJson(`/orders/${orderId}/items/${itemId}`, {
       production_status: newStatus,
@@ -3526,10 +3537,8 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     const completion = await completionRes.json();
 
     // Find the next unfinished item (process of elimination)
-    // Skip the current item if it's still pending (user confirmed "Not Yet"
-    // for an item that was already pending — avoid infinite loop)
     const unfinishedItem = items.find(
-      (item: any) => item.production_status !== 'finished' && item.id !== itemId
+      (item: any) => item.production_status !== 'finished'
     );
 
     if (!unfinishedItem) {
@@ -3681,6 +3690,17 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     };
     const enRouteStatus = statusMap[newStatus];
 
+    // Check if the item's status is actually changing
+    // If user clicks "Not Yet" on an item already not_yet, it's a no-op —
+    // just acknowledge and stop, don't show the next item (avoids infinite loop)
+    if (newStatus === 'no' && targetItem.en_route_status === 'not_yet') {
+      await ctx.editMessageText(
+        `⏳ Noted — *${targetItem.name}* is not yet en route.\n\nI'll check again when the agent runs next.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
     // Update the item's en_route status via API
     await patchJson(`/orders/${orderId}/items/${itemId}`, {
       en_route_status: enRouteStatus,
@@ -3711,10 +3731,8 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     const thresholdMet = enRoutePct > 50;
 
     // Find the next item not yet en route (process of elimination)
-    // Skip the current item if it's still not_yet (user confirmed "Not Yet"
-    // for an item that was already not_yet — avoid infinite loop)
     const notEnRouteItem = updatedItems.find(
-      (item: any) => item.en_route_status === 'not_yet' && item.id !== itemId
+      (item: any) => item.en_route_status === 'not_yet'
     );
 
     if (!notEnRouteItem) {
