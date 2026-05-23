@@ -509,6 +509,8 @@ type UserStep =
   // En route flow
   | { action: 'awaiting_en_route'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_arrival_days'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_en_route_item_days'; itemId: string; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_en_route_item_new_days'; itemId: string; quotationNumber: string }
   | { action: 'awaiting_client_search' }
   // Partial production flow
   | { action: 'awaiting_partial_missing_items'; orderId: string; quotationNumber: string }
@@ -2095,6 +2097,118 @@ bot.on(message('text'), async (ctx) => {
       break;
     }
 
+    // ── En Route Item: Custom arrival days ─────────────────────────
+    case 'awaiting_en_route_item_days': {
+      const { itemId: eiItemId, orderId: eiOrderId, quotationNumber: eiQuotationNumber } = session.step;
+      const arrivalDays = parseInt(text, 10);
+      if (isNaN(arrivalDays) || arrivalDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `28`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        // Find the full item ID from the prefix
+        const itemsRes = await fetch(`${apiBaseUrl}/orders/${eiOrderId}/items`);
+        const itemsData = await itemsRes.json();
+        const items = itemsData?.items ?? [];
+        const targetItem = items.find((i: any) => i.id?.startsWith(eiItemId));
+        if (!targetItem) {
+          await ctx.reply('❌ Item not found. It may have been removed.', { parse_mode: 'Markdown', ...cancelButton() });
+          resetStep(chatId);
+          break;
+        }
+
+        await patchJson(`/orders/${eiOrderId}/items/${targetItem.id}`, {
+          en_route_status: 'en_route',
+          estimated_arrival_days: arrivalDays,
+        });
+        await postJson(`/orders/${eiOrderId}/production-logs`, {
+          order_item_id: targetItem.id,
+          note: `🚚 ${targetItem.name} marked en route — estimated arrival: ${arrivalDays} days`,
+          log_type: 'user',
+          created_by: username ?? `user_${userId}`,
+        });
+
+        // Re-fetch to show next item or completion
+        const updatedItemsRes = await fetch(`${apiBaseUrl}/orders/${eiOrderId}/items`);
+        const updatedItemsData = await updatedItemsRes.json();
+        const updatedItems = updatedItemsData?.items ?? [];
+        const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+        const enRouteQty = updatedItems
+          .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
+          .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+        const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
+        const notEnRouteItem = updatedItems.find((i: any) => i.en_route_status === 'not_yet');
+
+        resetStep(chatId);
+
+        if (!notEnRouteItem) {
+          await postJson(`/orders/${eiOrderId}/confirm-en-route`, { estimated_arrival_days: arrivalDays });
+          await ctx.reply(
+            `✅ *All Items En Route!*\n\nOrder #${eiQuotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+          );
+        } else {
+          const enRouteCount = updatedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+          const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
+          let msg = `✅ *${targetItem.name}* is en route — arriving in *${arrivalDays} days*!\n\n`;
+          msg += `🚚 *Item-Level En Route* — ${enRouteCount}/${updatedItems.length} items (${enRoutePct}%) ${progressBar}\n\n`;
+          msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\nIs *${notEnRouteItem.name}* en route yet?`;
+          await ctx.reply(msg, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback(`🚚 Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${eiQuotationNumber}`)],
+              [Markup.button.callback(`❌ Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${eiQuotationNumber}`)],
+            ]),
+          });
+        }
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── En Route Item: New days after delay report ──────────────────
+    case 'awaiting_en_route_item_new_days': {
+      const { itemId: niItemId, quotationNumber: niQuotationNumber } = session.step;
+      const newDays = parseInt(text, 10);
+      if (isNaN(newDays) || newDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `42`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        const orderData = await getJson(`/orders/${encodeURIComponent(niQuotationNumber)}`);
+        const orderId = orderData.id;
+        const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+        const itemsData = await itemsRes.json();
+        const items = itemsData?.items ?? [];
+        const targetItem = items.find((i: any) => i.id?.startsWith(niItemId));
+        if (!targetItem) {
+          await ctx.reply('❌ Item not found.', { parse_mode: 'Markdown', ...cancelButton() });
+          resetStep(chatId);
+          break;
+        }
+
+        await patchJson(`/orders/${orderId}/items/${targetItem.id}`, {
+          estimated_arrival_days: newDays,
+        });
+        await postJson(`/orders/${orderId}/production-logs`, {
+          order_item_id: targetItem.id,
+          note: `⚠️ Arrival delay updated for ${targetItem.name} — new estimate: ${newDays} days`,
+          log_type: 'user',
+          created_by: username ?? `user_${userId}`,
+        });
+
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ Updated — *${targetItem.name}* arrival estimate is now *${newDays} days*.\n\nI'll check again when the new arrival date comes.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
     // ── Partial Production — enter missing items ────────────────────
     case 'awaiting_partial_missing_items': {
       const { orderId, quotationNumber } = session.step;
@@ -2405,25 +2519,35 @@ function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<
   } else {
     text += `Progress: ${done}/${total} produced\n\n`;
     for (const item of order.items) {
-      const icon = item.production_status === 'finished' ? '✅' : item.production_status === 'in_progress' ? '🔄' : '⬜';
-      text += `${icon} ${item.name} (×${item.quantity})\n`;
+      const icon =
+        item.production_status === 'finished'   ? '✅' :
+        item.production_status === 'in_progress' ? '🔄' : '⬜';
+      const label =
+        item.production_status === 'finished'   ? 'Produced' :
+        item.production_status === 'in_progress' ? 'In Progress' : 'Not started';
+      text += `${icon} ${item.name} ×${item.quantity} — ${label}\n`;
     }
   }
 
   const rows: ReturnType<typeof Markup.button.callback>[][] = [];
 
-  // One row per pending/in-progress item
+  // One row per non-finished item, with state-aware buttons:
+  //   pending     → [▶ Start] only  (can't finish what hasn't started)
+  //   in_progress → [✅ Finish] only (already started, next step is finish)
   for (const item of order.items) {
     if (item.production_status === 'finished') continue;
     const iid = item.id.slice(0, 8);
     const oid = order.id.slice(0, 8);
-    rows.push([
-      Markup.button.callback(
-        item.production_status === 'in_progress' ? `⬜ ${item.name}` : `🔄 ${item.name} — start`,
-        `prd:i:${iid}:${oid}:s`,
-      ),
-      Markup.button.callback(`✅ ${item.name} — done`, `prd:i:${iid}:${oid}:f`),
-    ]);
+    if (item.production_status === 'in_progress') {
+      rows.push([
+        Markup.button.callback(`✅ Mark done — ${item.name}`, `prd:i:${iid}:${oid}:f`),
+      ]);
+    } else {
+      // pending — only allow starting, not finishing
+      rows.push([
+        Markup.button.callback(`▶ Start — ${item.name}`, `prd:i:${iid}:${oid}:s`),
+      ]);
+    }
   }
 
   rows.push([Markup.button.callback('↩ Back to orders', 'prd:list')]);
@@ -3239,7 +3363,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
 
 // NOTE: callback_data format uses first 8 chars of item UUID + quotation_number
 // to stay within Telegram's 64-byte limit.
-bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
+bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
   const itemIdPrefix = ctx.match[2];
@@ -3276,9 +3400,32 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
     }
     const itemId = targetItem.id;
 
-    // Map callback status to en_route_status value
+    // "yes" → don't mark en_route yet, ask how many days first
+    if (newStatus === 'yes') {
+      await ctx.editMessageText(
+        `🚚 *${targetItem.name}* is en route!\n\nHow many days until it arrives at the inventory?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📅 28 days (standard)', `item_arr:28:${itemIdPrefix}:${quotationNumber}`)],
+            [Markup.button.callback('✏️ Custom days', `item_arr:custom:${itemIdPrefix}:${quotationNumber}`)],
+          ]),
+        }
+      );
+      return;
+    }
+
+    // "not_arrived" → just acknowledge, agent will ask again on next run
+    if (newStatus === 'not_arrived') {
+      await ctx.editMessageText(
+        `⏳ Noted — *${targetItem.name}* has not arrived yet.\n\nI'll check again when the arrival window passes.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
+    // Map remaining statuses (no, arrived) to en_route_status value
     const statusMap: Record<string, string> = {
-      yes: 'en_route',
       no: 'not_yet',
       arrived: 'arrived',
     };
@@ -3289,9 +3436,7 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       en_route_status: enRouteStatus,
     });
 
-    // Add a production update log
     const statusLabels: Record<string, string> = {
-      yes: '🚚 En Route',
       no: '⏳ Not Yet En Route',
       arrived: '📦 Arrived at Inventory',
     };
@@ -3302,25 +3447,26 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       created_by: username ?? `user_${userId}`,
     });
 
-    // Fetch updated completion
-    const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
-    const completion = await completionRes.json();
+    // Fetch updated items (re-fetch to get fresh statuses after patch)
+    const updatedItemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const updatedItemsData = await updatedItemsRes.json();
+    const updatedItems = updatedItemsData?.items ?? [];
 
     // Calculate en-route % based on quantity
-    const totalQty = items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-    const enRouteQty = items
+    const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRouteQty = updatedItems
       .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
       .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
     const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
     const thresholdMet = enRoutePct > 50;
 
     // Find the next item not yet en route (process of elimination)
-    const notEnRouteItem = items.find(
+    const notEnRouteItem = updatedItems.find(
       (item: any) => item.en_route_status === 'not_yet'
     );
 
     if (!notEnRouteItem) {
-      // All items en route! Advance the order immediately
+      // All items en route! Advance the order
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
         note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`,
@@ -3328,7 +3474,6 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
         created_by: username ?? `user_${userId}`,
       });
 
-      // Use standard 28-day arrival estimate (same default used by the production agent)
       await postJson(`/orders/${orderId}/confirm-en-route`, {
         estimated_arrival_days: 28,
       });
@@ -3340,8 +3485,8 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       );
     } else {
       // Ask about the next not-en-route item (process of elimination)
-      const enRouteCount = items.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
-      const totalCount = items.length;
+      const enRouteCount = updatedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+      const totalCount = updatedItems.length;
 
       const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
 
@@ -3358,14 +3503,158 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`📦 ${notEnRouteItem.name} — Arrived`, `item_en_route:arrived:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🚚 Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`❌ Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
     }
   } catch (err: any) {
     await ctx.reply(`❌ Error updating item en-route: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── Item En Route: Arrival Days Selection ────────────────────────────────────
+// Fires after user taps "Yes, En Route" for an item and picks arrival days.
+
+bot.action(/^item_arr:(28|custom):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const daysChoice = ctx.match[1];
+  const itemIdPrefix = ctx.match[2];
+  const quotationNumber = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `item_arr:${daysChoice}:${itemIdPrefix}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    // Custom days → prompt for text input
+    if (daysChoice === 'custom') {
+      const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+      setStep(chatId, {
+        action: 'awaiting_en_route_item_days',
+        itemId: itemIdPrefix,
+        orderId: orderData.id,
+        quotationNumber,
+      });
+      await ctx.editMessageText(
+        `✏️ How many days until this item arrives?\n\nEnter the number (e.g., \`14\`, \`45\`):`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
+    }
+
+    // Standard 28 days → mark item en_route immediately
+    const arrivalDays = 28;
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    const items = itemsData?.items ?? [];
+    const targetItem = items.find((item: any) => item.id?.startsWith(itemIdPrefix));
+    if (!targetItem) {
+      await ctx.editMessageText('❌ Item not found. It may have been removed.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const itemId = targetItem.id;
+
+    await patchJson(`/orders/${orderId}/items/${itemId}`, {
+      en_route_status: 'en_route',
+      estimated_arrival_days: arrivalDays,
+    });
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `🚚 ${targetItem.name} marked en route — estimated arrival: ${arrivalDays} days`,
+      log_type: 'user',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    // Re-fetch updated items to show next in process of elimination
+    const updatedItemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const updatedItemsData = await updatedItemsRes.json();
+    const updatedItems = updatedItemsData?.items ?? [];
+
+    const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRouteQty = updatedItems
+      .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
+      .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
+
+    const notEnRouteItem = updatedItems.find((i: any) => i.en_route_status === 'not_yet');
+
+    if (!notEnRouteItem) {
+      await postJson(`/orders/${orderId}/confirm-en-route`, { estimated_arrival_days: arrivalDays });
+      await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${quotationNumber} auto-advanced` });
+      await ctx.editMessageText(
+        `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      const enRouteCount = updatedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+      const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
+
+      let msg = `✅ *${targetItem.name}* is en route — arriving in *${arrivalDays} days*!\n\n`;
+      msg += `🚚 *Item-Level En Route* — ${enRouteCount}/${updatedItems.length} items (${enRoutePct}%) ${progressBar}\n\n`;
+      msg += `*Process of Elimination:*\n`;
+      msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\n`;
+      msg += `Is *${notEnRouteItem.name}* en route yet?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`🚚 Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`❌ Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+        ]),
+      });
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── Item Arrival Check: On Time / Delayed ────────────────────────────────────
+// Sent by the production agent at the halfway point.
+
+bot.action(/^item_arr_check:(ontime|delayed):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const checkResult = ctx.match[1];
+  const itemIdPrefix = ctx.match[2];
+  const quotationNumber = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `item_arr_check:${checkResult}:${itemIdPrefix}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    if (checkResult === 'ontime') {
+      await ctx.editMessageText(
+        `✅ Great! Noted — the item is on track to arrive on time.\n\nI'll ask again when the arrival date comes.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      // Delayed — ask for new estimated days
+      setStep(chatId, {
+        action: 'awaiting_en_route_item_new_days',
+        itemId: itemIdPrefix,
+        quotationNumber,
+      });
+      await ctx.editMessageText(
+        `⚠️ Noted — item is delayed.\n\nHow many *total days* do you now estimate for arrival? (e.g., \`42\`):`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+    }
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
   }
 });
 
@@ -5056,6 +5345,77 @@ bot.action(/^deposit:no:(.+):(.+)$/, async (ctx) => {
     `⏳ No problem! I'll check again tomorrow.\n\n` +
     `When the deposit for *${quotationNumber}* is ready, just upload the deposit slip photo here.`,
     { parse_mode: 'Markdown' }
+  );
+});
+
+// ── Deposit Verified → Production Workflow Start ─────────────────────
+// Called from server.ts after deposit is verified on the dashboard.
+// Asks the production team if they've started the production workflow.
+
+// User clicked "Yes, started" — advance to production_pending
+bot.action(/^deposit:start_production:yes:([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `deposit:start_production:yes:${orderId.slice(0, 8)}:${quotationNumber}`, direction: 'incoming' });
+
+  await ctx.editMessageText(
+    `⏳ Advancing *${quotationNumber}* to production pending...`,
+    { parse_mode: 'Markdown' }
+  );
+
+  try {
+    // Advance stage to production_pending via stage-updates endpoint
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'production_pending',
+      status: 'ready',
+      remarks: 'Deposit verified — production workflow started.',
+      updated_by: username ?? String(ctx.from?.id),
+    });
+
+    await logAction({ chatId, userId, username, label: 'Production Workflow Started', quotationNumber, details: 'After deposit verification' });
+
+    await ctx.editMessageText(
+      `✅ *Production Workflow Started* — ${quotationNumber}\n\n` +
+      `The order has been moved to production pending.\n\n` +
+      `Use /produce to start production tracking when ready.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// User clicked "Not yet" — acknowledge and continue reminders
+bot.action(/^deposit:start_production:no:([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `deposit:start_production:no:${orderId.slice(0, 8)}:${quotationNumber}`, direction: 'incoming' });
+
+  await logAction({ chatId, userId, username, label: 'Production Workflow Not Started', quotationNumber, details: 'After deposit verification' });
+
+  await ctx.editMessageText(
+    `⏳ Noted. Production workflow for *${quotationNumber}* has not started yet.\n\n` +
+    `The purchasing agent will continue to send reminders. When production is ready, use /produce to start tracking.`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+      ]),
+    }
   );
 });
 

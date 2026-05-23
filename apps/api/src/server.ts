@@ -3494,6 +3494,27 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     );
   });
 
+  // Notify production group — ask if production workflow has started
+  // The deposit is now verified, so the production gate is cleared.
+  setImmediate(() => {
+    const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+    if (prodGroupChatId && _TELEGRAM_BOT_TOKEN) {
+      notifyGroupChatWithButtons(
+        prodGroupChatId,
+        `💰 <b>Downpayment Verified</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n\n` +
+        `The client has made the downpayment and the deposit is now verified.\n\n` +
+        `❓ <b>Have you started the production workflow?</b>`,
+        [
+          [
+            { text: '✅ Yes, started', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
+            { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${id}:${order.quotation_number}` },
+          ],
+        ]
+      );
+    }
+  });
 
   // Notify escalation group about deposit verification (dashboard only)
   if (isDashboardOrigin(body.verified_by)) {

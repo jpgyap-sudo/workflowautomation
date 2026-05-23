@@ -53,6 +53,7 @@ interface OrderItemRow {
   production_status: 'pending' | 'in_progress' | 'finished';
   en_route_status: 'not_yet' | 'en_route' | 'arrived';
   estimated_arrival_days: number | null;
+  updated_at: string;
 }
 
 interface CompletionRow {
@@ -698,18 +699,15 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     message += `Next item: <b>${notEnRouteItem.name}</b> x${notEnRouteItem.quantity}\n\n`;
     message += `Is <b>${notEnRouteItem.name}</b> en route yet?`;
 
-    // Build inline keyboard for this specific item
-    // NOTE: callback_data uses first 8 chars of item UUID + quotation_number (short)
-    // to stay within Telegram's 64-byte limit for callback_data.
+    // Build inline keyboard — only "Yes, En Route" or "Not Yet".
+    // "Arrived" is NEVER shown here; it only appears after the item is
+    // already confirmed en_route and its estimated arrival date is reached.
     const keyboard = inlineKeyboard([
       [
         { text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
       ],
       [
         { text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
-      ],
-      [
-        { text: `📦 ${notEnRouteItem.name} — Arrived`, callback_data: `item_en_route:arrived:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
       ],
     ]);
 
@@ -745,6 +743,68 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     };
     await logAgentAction(AGENT_NAME, input, result, 'error', order.id, errorMsg);
     return result;
+  }
+}
+
+/**
+ * Check items that are already confirmed en_route and ask:
+ *   — At halfway point: "On time or delayed?"
+ *   — At/past arrival date: "Has X arrived yet?"
+ *
+ * This runs daily for every en_route order alongside checkItemLevelEnRoute.
+ */
+async function checkEnRouteItemProgress(order: OrderRow): Promise<void> {
+  if (order.current_stage !== 'en_route') return;
+
+  const items = await getOrderItems(order.id);
+  const enRouteItems = items.filter((i) => i.en_route_status === 'en_route');
+  if (enRouteItems.length === 0) return;
+
+  const groupChatId = getGroupChatId(AGENT_NAME);
+  if (!groupChatId) return;
+
+  const qn = order.quotation_number ?? 'unknown';
+  const now = Date.now();
+
+  for (const item of enRouteItems) {
+    if (!item.estimated_arrival_days) continue;
+
+    const confirmedAt = new Date(item.updated_at).getTime();
+    const daysElapsed = Math.floor((now - confirmedAt) / 86_400_000);
+    const halfway = Math.floor(item.estimated_arrival_days / 2);
+
+    // ── Arrival date reached → ask "Has it arrived?" ──────────────────
+    if (daysElapsed >= item.estimated_arrival_days) {
+      const msg =
+        `📦 <b>Arrival Check</b>\n\n` +
+        `Order: #${qn} (${order.client_name ?? 'Unknown'})\n` +
+        `Item: <b>${item.name}</b> ×${item.quantity}\n` +
+        `Estimated arrival was <b>${item.estimated_arrival_days} day(s)</b> ago.\n\n` +
+        `Has <b>${item.name}</b> arrived at the inventory?`;
+
+      const keyboard = inlineKeyboard([
+        [{ text: `📦 ${item.name} — Yes, Arrived`, callback_data: `item_en_route:arrived:${item.id.slice(0, 8)}:${qn}` }],
+        [{ text: `⏳ ${item.name} — Not Yet`, callback_data: `item_en_route:not_arrived:${item.id.slice(0, 8)}:${qn}` }],
+      ]);
+      await sendTelegramMessage(groupChatId, msg, keyboard);
+      continue;
+    }
+
+    // ── Halfway point → ask "On time or delayed?" (once) ─────────────
+    if (daysElapsed === halfway) {
+      const msg =
+        `⏱ <b>Halfway Check</b>\n\n` +
+        `Order: #${qn} (${order.client_name ?? 'Unknown'})\n` +
+        `Item: <b>${item.name}</b> ×${item.quantity}\n` +
+        `${daysElapsed} day(s) elapsed of ${item.estimated_arrival_days} estimated.\n\n` +
+        `Will <b>${item.name}</b> arrive on time?`;
+
+      const keyboard = inlineKeyboard([
+        [{ text: `✅ On Time`, callback_data: `item_arr_check:ontime:${item.id.slice(0, 8)}:${qn}` }],
+        [{ text: `⚠️ Delayed — update days`, callback_data: `item_arr_check:delayed:${item.id.slice(0, 8)}:${qn}` }],
+      ]);
+      await sendTelegramMessage(groupChatId, msg, keyboard);
+    }
   }
 }
 
@@ -825,6 +885,8 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     if (itemResult) {
       results.push(itemResult);
     }
+    // Check halfway / arrival progress for items already confirmed en_route
+    await checkEnRouteItemProgress(order);
   }
 
   return results;
