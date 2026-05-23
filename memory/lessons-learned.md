@@ -5398,3 +5398,68 @@ Inventory-arrived Telegram notifications must include inline Yes/No/Partial call
 cross-project, local-fallback
 
 ---
+
+### Lesson: Payment status buttons on balance_due
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Telegram payment status buttons can be shown while an order is still balance_due. Do not stage-update directly to payment_received/payment_confirmed from balance_due; route the user into awaiting_paybalance_amount and avoid Markdown parse failures in error messages by escaping or using plain text.
+
+#### Lesson Learned
+
+Telegram payment status buttons can be shown while an order is still balance_due. Do not stage-update directly to payment_received/payment_confirmed from balance_due; route the user into awaiting_paybalance_amount and avoid Markdown parse failures in error messages by escaping or using plain text.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: handle payment buttons at balance stage
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9844a2c776fb365eb42f14c28e975a23bed268db
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9844a2c776fb365eb42f14c28e975a23bed268db
+**Files:** apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Payment buttons were not appearing when users reached the balance stage in the workflow. The fix ensures buttons render correctly at that stage.
+
+**Why it broke:** The reminder scheduler and Telegram bot logic did not properly handle the transition to the balance stage, likely due to missing conditional checks or incorrect stage mapping in the button generation flow.
+
+**Reusable takeaway:** When adding new workflow stages, always verify that all downstream UI components (e.g., buttons, prompts) are explicitly wired to handle that stage. A missing conditional or stage reference can silently break user interactions.
+
+---
+*Original commit message: fix: handle payment buttons at balance stage*
+
+#### Lesson Learned
+
+**What was fixed:** Payment buttons were not appearing when users reached the balance stage in the workflow. The fix ensures buttons render correctly at that stage.
+
+**Why it broke:** The reminder scheduler and Telegram bot logic did not properly handle the transition to the balance stage, likely due to missing conditional checks or incorrect stage mapping in the button generation flow.
+
+**Reusable takeaway:** When adding new workflow stages, always verify that all downstream UI components (e.g., buttons, prompts) are explicitly wired to handle that stage. A missing conditional or stage reference can silently break user interactions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

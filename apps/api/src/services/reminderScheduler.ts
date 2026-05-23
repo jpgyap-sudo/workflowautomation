@@ -201,16 +201,16 @@ export async function processDueReminders(): Promise<number> {
       // Midpoint check: ask if on time or delayed
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ On Time', callback_data: `production:ontime:${orderId}:${quotationNumber}` },
-          { text: '⚠️ Delayed', callback_data: `production:delayed:${orderId}:${quotationNumber}` },
+          { text: '✅ On Time', callback_data: `production:ontime:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⚠️ Delayed', callback_data: `production:delayed:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'production_due') {
       // Production due: ask if finished
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Finished', callback_data: `production:finished:${orderId}:${quotationNumber}` },
-          { text: '❌ Not Yet', callback_data: `production:not_finished:${orderId}:${quotationNumber}` },
+          { text: '✅ Finished', callback_data: `production:finished:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `production:not_finished:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'en_route_reminder') {
@@ -231,7 +231,7 @@ export async function processDueReminders(): Promise<number> {
         : '\n\nNo items listed — all may have been produced.';
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text + itemsList, [
         [
-          { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId}:${quotationNumber}` },
+          { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'production_pending') {

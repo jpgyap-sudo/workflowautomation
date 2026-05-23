@@ -2264,7 +2264,8 @@ bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
     }
 
     const list = remainingItems.map(i => `• ${i}`).join('\n');
-    setStep(chatId, { action: 'awaiting_partial_items_update', orderId, quotationNumber, remainingItems });
+    // Use full orderId from order lookup, not the 8-char prefix from callback
+    setStep(chatId, { action: 'awaiting_partial_items_update', orderId: order.id, quotationNumber, remainingItems });
     await ctx.editMessageText(
       `📝 *Update Items — ${quotationNumber}*\n\nCurrently pending:\n${list}\n\nWhich items have been produced? (comma or newline separated, or type \`all\` if all are done):`,
       { parse_mode: 'Markdown', ...cancelButton() }
@@ -2297,9 +2298,40 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
   });
 
   try {
+    const order: any = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const currentStage = order?.current_stage;
+
+    // If the order is still in balance collection, these payment-status buttons should not
+    // jump to payment_received/payment_confirmed. Ask for the balance amount instead.
+    if (!order?.balance_paid && ['balance_due', 'inventory_arrived', 'delivery_scheduled'].includes(currentStage)) {
+      const totalAmount = Number(order?.total_amount ?? 0);
+      const depositAmount = Number(order?.deposit_amount ?? 0);
+      const balance = Math.max(totalAmount - depositAmount, 0);
+      setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+      await ctx.editMessageText(
+        `*Balance Payment for ${escapeMarkdown(quotationNumber)}*\n\n` +
+        `This order is still at *Balance Due*. Enter the balance amount in PHP to record the payment.\n\n` +
+        (balance > 0 ? `Expected balance: *PHP ${balance.toLocaleString()}*\n\n` : '') +
+        `Example: \`15000\``,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
+    }
+
+    const targetStage = status === 'confirmed' ? 'payment_confirmed' : 'payment_received';
+    const allowedPaymentStages = ['delivered', 'countered', 'payment_received', 'payment_confirmed'];
+    if (!allowedPaymentStages.includes(currentStage)) {
+      await ctx.editMessageText(
+        `Payment status cannot be recorded from the current stage: ${currentStage ?? 'unknown'}.\n\n` +
+        `If this is a balance payment, use Pay Balance first. If the item was delivered, mark it delivered first.`,
+        mainMenuKeyboard()
+      );
+      return;
+    }
+
     await postJson('/stage-updates', {
       quotation_number: quotationNumber,
-      stage: status === 'confirmed' ? 'payment_confirmed' : 'payment_received',
+      stage: targetStage,
       status,
       remarks: status === 'confirmed' ? 'Payment confirmed' : 'Payment received, pending confirmation',
       updated_by: ctx.from?.username ?? String(ctx.from?.id),
@@ -2307,15 +2339,14 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
     await logAction({ chatId, userId, username, label: status === 'confirmed' ? 'Payment Confirmed' : 'Payment Received', quotationNumber });
     resetStep(chatId);
     const msg = status === 'confirmed'
-      ? `✅ *Payment Confirmed*\n\nOrder: *${quotationNumber}*\n\nOrder is now complete! 🏁`
-      : `💰 *Payment Received*\n\nOrder: *${quotationNumber}*\n\nAwaiting confirmation.`;
+      ? `*Payment Confirmed*\n\nOrder: *${escapeMarkdown(quotationNumber)}*\n\nOrder is now complete.`
+      : `*Payment Received*\n\nOrder: *${escapeMarkdown(quotationNumber)}*\n\nAwaiting confirmation.`;
     await ctx.editMessageText(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
   } catch (err: any) {
-    await ctx.editMessageText(`❌ Error: ${err.message}`, {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    console.error('[payment callback] Error:', err);
+    await ctx.editMessageText(`Error processing payment button: ${err.message ?? String(err)}`, mainMenuKeyboard());
   }
+
 });
 
 // ── Production Tracking Callback Handlers ────────────────────────────
@@ -2328,7 +2359,7 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
 // Midpoint check: On Time
 bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2336,11 +2367,14 @@ bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `production:ontime:${orderId}:${quotationNumber}`,
+    content: `production:ontime:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
     // Report on-time status to API
     await postJson(`/orders/${orderId}/report-production-status`, {
       on_time: true,
@@ -2360,7 +2394,7 @@ bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
 // Midpoint check: Delayed
 bot.action(/^production:delayed:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2368,22 +2402,29 @@ bot.action(/^production:delayed:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `production:delayed:${orderId}:${quotationNumber}`,
+    content: `production:delayed:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
-  // Set step to ask for delay days
-  setStep(chatId, { action: 'awaiting_delay_days', orderId, quotationNumber });
-  await ctx.editMessageText(
-    `⚠️ *Delayed* — ${quotationNumber}\n\nHow many days is the delay? (Enter a number)`,
-    { parse_mode: 'Markdown', ...cancelButton() }
-  );
+  try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+    // Set step to ask for delay days
+    setStep(chatId, { action: 'awaiting_delay_days', orderId, quotationNumber });
+    await ctx.editMessageText(
+      `⚠️ *Delayed* — ${quotationNumber}\n\nHow many days is the delay? (Enter a number)`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
 });
 
 // Production due: Finished
 bot.action(/^production:finished:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2391,29 +2432,36 @@ bot.action(/^production:finished:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `production:finished:${orderId}:${quotationNumber}`,
+    content: `production:finished:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
-  // Ask for delivery timeline (how many days until available for delivery)
-  setStep(chatId, { action: 'awaiting_delivery_timeline', orderId, quotationNumber });
-  await ctx.editMessageText(
-    `✅ *Production Finished* — ${quotationNumber}\n\nHow long until it's available for delivery?`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('📦 Standard (4 weeks)', `production:delivery_standard:${orderId}:${quotationNumber}`)],
-        [Markup.button.callback('📦 Custom', `production:delivery_custom:${orderId}:${quotationNumber}`)],
-        [Markup.button.callback('❌ Cancel', 'action:cancel')],
-      ]),
-    }
-  );
+  try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+    // Ask for delivery timeline (how many days until available for delivery)
+    setStep(chatId, { action: 'awaiting_delivery_timeline', orderId, quotationNumber });
+    await ctx.editMessageText(
+      `✅ *Production Finished* — ${quotationNumber}\n\nHow long until it's available for delivery?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📦 Standard (4 weeks)', `production:delivery_standard:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('📦 Custom', `production:delivery_custom:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('❌ Cancel', 'action:cancel')],
+        ]),
+      }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
 });
 
 // Production due: Not Yet Finished
 bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2421,7 +2469,7 @@ bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `production:not_finished:${orderId}:${quotationNumber}`,
+    content: `production:not_finished:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
@@ -2429,7 +2477,9 @@ bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
   try {
     const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
     const order = await orderRes.json();
-    const groupChatId = process.env.PURCHASING_GROUP_ID;
+    // Resolve full orderId from order lookup (callback uses 8-char prefix)
+    const orderId = order.id;
+    const groupChatId = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PURCHASING_GROUP_ID;
     if (groupChatId && order) {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -2740,7 +2790,7 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
 // Delivery timeline: Standard (4 weeks)
 bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2748,11 +2798,14 @@ bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `production:delivery_standard:${orderId}:${quotationNumber}`,
+    content: `production:delivery_standard:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
     // Finish production with standard 4 weeks (28 days) delivery estimate
     await postJson(`/orders/${orderId}/finish-production`, {
       delivery_estimated_days: 28,
@@ -2778,7 +2831,7 @@ bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
 // Delivery timeline: Custom
 bot.action(/^production:delivery_custom:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2786,16 +2839,23 @@ bot.action(/^production:delivery_custom:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `production:delivery_custom:${orderId}:${quotationNumber}`,
+    content: `production:delivery_custom:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
-  // Ask for custom delivery days
-  setStep(chatId, { action: 'awaiting_custom_delivery_days', orderId, quotationNumber });
-  await ctx.editMessageText(
-    `📦 *Custom Delivery Timeline* — ${quotationNumber}\n\nEnter the number of days until available for delivery:`,
-    { parse_mode: 'Markdown', ...cancelButton() }
-  );
+  try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+    // Ask for custom delivery days
+    setStep(chatId, { action: 'awaiting_custom_delivery_days', orderId, quotationNumber });
+    await ctx.editMessageText(
+      `📦 *Custom Delivery Timeline* — ${quotationNumber}\n\nEnter the number of days until available for delivery:`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
 });
 
 // ── En Route Callback Handlers ────────────────────────────────────────
