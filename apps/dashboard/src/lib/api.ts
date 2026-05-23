@@ -179,6 +179,75 @@ export async function recordDeposit(data: {
   });
 }
 
+export interface VisionExtractResult {
+  ok: boolean;
+  type: 'quotation' | 'payment' | 'inventory' | 'unknown';
+  payment?: {
+    amount?: number;
+    type?: 'deposit' | 'balance' | 'unknown';
+    reference_number?: string;
+    paid_by?: string;
+    payment_date?: string;
+  };
+  quotation?: {
+    quotation_number?: string;
+    client_name?: string;
+    sales_agent?: string;
+    total_amount?: number;
+    order_date?: string;
+    items?: { product_name?: string; quantity?: number }[];
+  };
+  raw_text: string;
+  confidence: 'high' | 'medium' | 'low';
+  error?: string;
+}
+
+export async function visionExtract(data: {
+  image_base64: string;
+  mime_type: string;
+  mode?: 'auto' | 'quotation' | 'payment';
+}): Promise<VisionExtractResult> {
+  return fetchJson<VisionExtractResult>('/vision/extract', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function recordDepositWithFile(data: {
+  quotation_number: string;
+  amount: number;
+  deposit_paid_at?: string;
+  updated_by?: string;
+  image_base64?: string;
+  mime_type?: string;
+  original_filename?: string;
+}): Promise<{ ok: boolean; quotation_number: string; amount: number }> {
+  // First upload the file if provided
+  if (data.image_base64 && data.original_filename) {
+    await uploadOrderFile({
+      quotation_number: data.quotation_number,
+      file_type: 'deposit',
+      original_filename: data.original_filename,
+      mime_type: data.mime_type ?? 'image/jpeg',
+      file_data: data.image_base64,
+    }).catch((err) => {
+      console.warn('[recordDepositWithFile] File upload failed (non-fatal):', err);
+    });
+  }
+
+  // Then record the deposit
+  return fetchJson<{ ok: boolean; quotation_number: string; amount: number }>('/deposits', {
+    method: 'POST',
+    body: JSON.stringify({
+      quotation_number: data.quotation_number,
+      amount: data.amount,
+      deposit_paid_at: data.deposit_paid_at,
+      updated_by: data.updated_by ?? 'dashboard_quick_action',
+      image_url: null,
+    }),
+  });
+}
+
 export async function payBalance(data: {
   quotation_number: string;
   amount: number;

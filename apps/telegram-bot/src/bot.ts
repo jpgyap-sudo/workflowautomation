@@ -26,6 +26,7 @@ bot.use(async (ctx, next) => {
     return await next();
   } catch (err: any) {
     console.error('[bot] Unhandled error in handler:', err);
+    await logBotError(ctx, err, 'handler');
     if (ctx.callbackQuery) {
       await ctx.reply(
         '❌ Something went wrong. Please try again or contact support if the problem persists.',
@@ -232,6 +233,83 @@ async function botLog(params: {
 
 // ── Escalation Action Logger ───────────────────────────────────────────
 // Logs a completed write action to the DB and notifies the escalation group.
+
+function serializeError(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    const details: Record<string, unknown> = {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+    const maybeAny = err as any;
+    if (maybeAny.code !== undefined) details.code = maybeAny.code;
+    if (maybeAny.description !== undefined) details.description = maybeAny.description;
+    if (maybeAny.response !== undefined) details.response = maybeAny.response;
+    if (maybeAny.parameters !== undefined) details.parameters = maybeAny.parameters;
+    return details;
+  }
+
+  return {
+    message: typeof err === 'string' ? err : 'Non-Error thrown',
+    value: err,
+  };
+}
+
+function getUpdateTrace(ctx: any): Record<string, unknown> {
+  const message = ctx.message ?? ctx.update?.message;
+  const callbackQuery = ctx.callbackQuery ?? ctx.update?.callback_query;
+  const callbackMessage = callbackQuery?.message;
+
+  return {
+    updateId: ctx.update?.update_id,
+    updateType: ctx.updateType,
+    chatId: String(ctx.chat?.id ?? message?.chat?.id ?? callbackMessage?.chat?.id ?? 'unknown'),
+    chatType: ctx.chat?.type ?? message?.chat?.type ?? callbackMessage?.chat?.type,
+    messageId: message?.message_id ?? callbackMessage?.message_id,
+    callbackData: callbackQuery?.data,
+    text: message?.text,
+    from: {
+      id: ctx.from?.id ?? callbackQuery?.from?.id ?? message?.from?.id,
+      username: ctx.from?.username ?? callbackQuery?.from?.username ?? message?.from?.username,
+      firstName: ctx.from?.first_name ?? callbackQuery?.from?.first_name ?? message?.from?.first_name,
+    },
+  };
+}
+
+async function logBotError(ctx: any, err: unknown, source: string, extraMetadata?: Record<string, unknown>) {
+  const trace = getUpdateTrace(ctx);
+  const from = trace.from as Record<string, unknown> | undefined;
+  await botLog({
+    chatId: String(trace.chatId ?? 'unknown'),
+    userId: from?.id !== undefined ? String(from.id) : undefined,
+    username: from?.username !== undefined ? String(from.username) : undefined,
+    messageType: 'error',
+    direction: 'internal',
+    content: `[${source}] ${err instanceof Error ? err.message : String(err)}`,
+    status: 'error',
+    metadata: {
+      source,
+      trace,
+      error: serializeError(err),
+      ...extraMetadata,
+    },
+  });
+}
+
+async function logSystemBotError(err: unknown, source: string, extraMetadata?: Record<string, unknown>) {
+  await botLog({
+    chatId: 'system',
+    messageType: 'error',
+    direction: 'internal',
+    content: `[${source}] ${err instanceof Error ? err.message : String(err)}`,
+    status: 'error',
+    metadata: {
+      source,
+      error: serializeError(err),
+      ...extraMetadata,
+    },
+  });
+}
 
 const ESCALATION_NOTIFY_CHAT_ID =
   process.env.ESCALATION_GROUP_CHAT_ID ??
@@ -1409,10 +1487,23 @@ Midpoint and due reminders are now scheduled.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
-        await ctx.reply(`❌ Error recording downpayment: ${err.message}`, {
-          parse_mode: 'Markdown',
-          ...cancelButton(),
-        });
+        const errorMsg = err.message ?? String(err);
+        const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
+        await ctx.reply(
+          `❌ *Error Recording Downpayment*\n\n` +
+          `Order: *${quotationNumber}*\n` +
+          `Amount: ₱${amount.toLocaleString()}\n\n` +
+          `Error: ${escapeMarkdown(errorMsg)}\n\n` +
+          `You can try again or record this on the dashboard:\n` +
+          `🔗 ${dashboardBase}/orders/${encodeURIComponent(quotationNumber)}`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('🔄 Try Again', `pick:deposit:${quotationNumber}`)],
+              [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+            ]),
+          }
+        );
       }
       break;
     }
@@ -4549,9 +4640,23 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       metadata: { quotationNumber, amount: depositAmount, errorMessage: String(error.message ?? error) },
       status: 'error',
     });
+    const errorMsg = error.message ?? String(error);
+    // Provide a fallback: let the user try manual entry or record via dashboard
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
     await ctx.editMessageText(
-      `❌ Failed to record deposit: ${error.message}\n\nYou can try again from the main menu.`,
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      `❌ *Failed to record deposit*\n\n` +
+      `Order: *${quotationNumber}*\n` +
+      `Amount: ₱${depositAmount.toLocaleString()}\n\n` +
+      `Error: ${escapeMarkdown(errorMsg)}\n\n` +
+      `You can try again or record this deposit manually on the dashboard:\n` +
+      `🔗 ${dashboardBase}/orders/${encodeURIComponent(quotationNumber)}`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Try Again', `deposit:confirm_yes:${quotationNumber}`)],
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
     );
   }
 });
@@ -5895,6 +6000,10 @@ async function startWebhook(): Promise<void> {
         res.end('OK');
       } catch (err) {
         console.error('[bot] Error parsing webhook body:', err);
+        void logSystemBotError(err, 'webhook_parse', {
+          bodyPreview: body.slice(0, 500),
+          contentLength: req.headers['content-length'],
+        });
         res.writeHead(400);
         res.end('Bad Request');
       }
@@ -5917,6 +6026,7 @@ async function launchWithRetry(maxRetries = 30, baseDelayMs = 5000): Promise<voi
       console.log(`[bot] Launched successfully on attempt ${attempt}`);
       return;
     } catch (err: any) {
+      await logSystemBotError(err, 'launch', { attempt, maxRetries });
       const errCode = err?.response?.error_code ?? err?.code ?? 0;
       const errMsg = err?.message ?? '';
       const is409 = errCode === 409 || errMsg.includes('409');
@@ -5943,8 +6053,20 @@ async function launchWithRetry(maxRetries = 30, baseDelayMs = 5000): Promise<voi
   }
 }
 
-launchWithRetry().catch((err) => {
+launchWithRetry().catch(async (err) => {
   console.error('[bot] Failed to launch after all retries:', err);
+  await logSystemBotError(err, 'launch_final');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[bot] Unhandled promise rejection:', reason);
+  void logSystemBotError(reason, 'unhandled_rejection');
+});
+
+process.on('uncaughtException', async (err) => {
+  console.error('[bot] Uncaught exception:', err);
+  await logSystemBotError(err, 'uncaught_exception');
   process.exit(1);
 });
 

@@ -1,14 +1,14 @@
 'use client';
 
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, visionExtract, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
@@ -266,9 +266,16 @@ export default function OrderDetailPage() {
           )}
         </div>
         {!order.deposit_paid && (
-          <p className="mt-2 text-xs text-amber-600">
-            Downpayment required before production can proceed. Use /deposit in Telegram to record payment.
-          </p>
+          <div className="mt-3">
+            <p className="mb-2 text-xs text-amber-600">
+              Downpayment required before production can proceed. Record it here or via Telegram.
+            </p>
+            <DepositUploadSection
+              quotationNumber={order.quotation_number ?? ''}
+              orderId={order.id}
+              onDepositRecorded={() => window.location.reload()}
+            />
+          </div>
         )}
       </div>
 
@@ -399,18 +406,34 @@ export default function OrderDetailPage() {
         </div>
         {order.files && order.files.length > 0 ? (
           <div className="space-y-2">
-            {order.files.map((file) => (
-              <div key={file.id} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
-                <FileText className="h-4 w-4 text-gray-400" />
-                <div className="flex-1">
-                  <p className="text-sm text-gray-900">{file.original_filename ?? 'Unnamed file'}</p>
-                  <p className="text-xs text-gray-400">{file.file_type}</p>
-                  {file.created_at && (
-                    <p className="text-[10px] text-gray-400">Uploaded <Timestamp value={file.created_at} variant="compact" /></p>
-                  )}
+            {(() => {
+              const quotations = order.files.filter((f: any) => f.file_type === 'quotation');
+              const deposits = order.files.filter((f: any) => f.file_type === 'deposit');
+              const others = order.files.filter((f: any) => f.file_type !== 'quotation' && f.file_type !== 'deposit');
+              const sections: { label: string; icon: string; color: string; files: any[] }[] = [];
+              if (quotations.length > 0) sections.push({ label: 'Quotations', icon: '📄', color: 'border-l-blue-400', files: quotations });
+              if (deposits.length > 0) sections.push({ label: 'Deposit Slips', icon: '💰', color: 'border-l-green-400', files: deposits });
+              if (others.length > 0) sections.push({ label: 'Other Files', icon: '📎', color: 'border-l-gray-400', files: others });
+              return sections.map((section) => (
+                <div key={section.label}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    {section.icon} {section.label}
+                  </p>
+                  {section.files.map((file) => (
+                    <div key={file.id} className={`flex items-center gap-3 rounded-lg border border-gray-100 border-l-4 p-3 ${section.color}`}>
+                      <FileText className="h-4 w-4 text-gray-400" />
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-900">{file.original_filename ?? 'Unnamed file'}</p>
+                        <p className="text-xs text-gray-400">{file.file_type}</p>
+                        {file.created_at && (
+                          <p className="text-[10px] text-gray-400">Uploaded <Timestamp value={file.created_at} variant="compact" /></p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         ) : (
           <p className="text-sm text-gray-400">No files uploaded yet.</p>
@@ -1197,6 +1220,187 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
         onVerified={executePostNote}
         onClose={() => setShowOtp(false)}
       />
+    </div>
+  );
+}
+
+// ── Deposit Upload Section ──────────────────────────────────────────────
+
+function DepositUploadSection({
+  quotationNumber,
+  orderId,
+  onDepositRecorded,
+}: {
+  quotationNumber: string;
+  orderId: string;
+  onDepositRecorded: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function fileToBase64(f: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        const commaIndex = result.indexOf(',');
+        resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(f);
+    });
+  }
+
+  async function handleExtractWithAI() {
+    if (!file) return;
+    setExtracting(true);
+    setResult(null);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await visionExtract({
+        image_base64: base64,
+        mime_type: file.type,
+        mode: 'payment',
+      });
+      if (res.ok && res.payment?.amount) {
+        setAmount(String(res.payment.amount));
+        if (res.payment.payment_date) {
+          setPaymentDate(res.payment.payment_date);
+        }
+        setResult({ ok: true, message: `AI extracted amount: ₱${res.payment.amount.toLocaleString()}` });
+      } else {
+        setResult({ ok: false, message: 'AI could not extract an amount. Please enter it manually.' });
+      }
+    } catch (err: any) {
+      setResult({ ok: false, message: err.message ?? 'AI extraction failed' });
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function handleRecordDeposit() {
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setResult({ ok: false, message: 'Please enter a valid deposit amount.' });
+      return;
+    }
+    if (!quotationNumber) {
+      setResult({ ok: false, message: 'This order has no quotation number.' });
+      return;
+    }
+
+    setRecording(true);
+    setResult(null);
+    try {
+      let imageBase64: string | undefined;
+      let mimeType: string | undefined;
+      let originalFilename: string | undefined;
+
+      if (file) {
+        imageBase64 = await fileToBase64(file);
+        mimeType = file.type;
+        originalFilename = file.name;
+      }
+
+      await recordDepositWithFile({
+        quotation_number: quotationNumber,
+        amount: parsedAmount,
+        deposit_paid_at: paymentDate || undefined,
+        updated_by: 'dashboard_quick_action',
+        image_base64: imageBase64,
+        mime_type: mimeType,
+        original_filename: originalFilename,
+      });
+
+      setResult({ ok: true, message: `✅ Deposit of ₱${parsedAmount.toLocaleString()} recorded successfully!` });
+      setTimeout(onDepositRecorded, 1500);
+    } catch (err: any) {
+      setResult({ ok: false, message: err.message ?? 'Failed to record deposit' });
+    } finally {
+      setRecording(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <p className="text-xs font-semibold text-blue-800">📥 Record Downpayment</p>
+
+      {/* File upload */}
+      <div>
+        <label className="text-xs font-medium text-blue-700">Deposit Slip (JPEG/PDF) — optional</label>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-blue-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-blue-700 hover:file:bg-blue-200"
+          />
+          {file && (
+            <button
+              onClick={handleExtractWithAI}
+              disabled={extracting}
+              className="flex items-center gap-1 rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-50"
+            >
+              {extracting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <SparklesIcon className="h-3 w-3" />
+              )}
+              AI Extract
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Amount */}
+      <div>
+        <label className="text-xs font-medium text-blue-700">Amount (₱)</label>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="e.g. 5000"
+          className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
+      {/* Payment date */}
+      <div>
+        <label className="text-xs font-medium text-blue-700">Payment Date (optional)</label>
+        <input
+          type="date"
+          value={paymentDate}
+          onChange={(e) => setPaymentDate(e.target.value)}
+          className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
+      {/* Submit */}
+      <button
+        onClick={handleRecordDeposit}
+        disabled={recording || !amount}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+      >
+        {recording ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Upload className="h-4 w-4" />
+        )}
+        {recording ? 'Recording...' : 'Record Deposit'}
+      </button>
+
+      {/* Result message */}
+      {result && (
+        <p className={`text-xs font-medium ${result.ok ? 'text-green-700' : 'text-red-600'}`}>
+          {result.message}
+        </p>
+      )}
     </div>
   );
 }

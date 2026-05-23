@@ -5643,3 +5643,199 @@ When designing callback data for Telegram inline keyboards, always enforce a str
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: replace full UUID order.id with quotationNumber in produce:partial callback_data (lines 2218-2220)
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 06fd66e7134f9abf18557006c5da20375564ef92
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 06fd66e7134f9abf18557006c5da20375564ef92
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Replaced the full UUID `order.id` with a shorter `quotationNumber` in the `produce:partial` callback data.
+
+**Why it broke:**  
+Full UUIDs exceeded Telegram’s 64-byte callback data limit, causing silent failures or truncated data when users interacted with inline buttons.
+
+**Reusable takeaway:**  
+When passing data through constrained channels (e.g., Telegram callback_data, URL query strings), always use short, unique identifiers (e.g., sequential IDs, hashed references) instead of full-length UUIDs. Validate payload size against platform limits early in development.
+
+---
+*Original commit message: fix: replace full UUID order.id with quotationNumber in produce:partial callback_data (lines 2218-2220)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Replaced the full UUID `order.id` with a shorter `quotationNumber` in the `produce:partial` callback data.
+
+**Why it broke:**  
+Full UUIDs exceeded Telegram’s 64-byte callback data limit, causing silent failures or truncated data when users interacted with inline buttons.
+
+**Reusable takeaway:**  
+When passing data through constrained channels (e.g., Telegram callback_data, URL query strings), always use short, unique identifiers (e.g., sequential IDs, hashed references) instead of full-length UUIDs. Validate payload size against platform limits early in development.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: use patchJson instead of postJson for item update API calls (lines 2553, 2706)
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d56625dd9ffbc799907a5381bca9a38897ed0694
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d56625dd9ffbc799907a5381bca9a38897ed0694
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Changed two API calls from `postJson` to `patchJson` for item update operations in a Telegram bot.
+
+**Why it broke:**  
+The code was using HTTP POST for updates, which typically creates new resources. The correct semantic for partial updates is PATCH (or PUT for full replacements). Using POST could cause duplicate entries, incorrect state, or server rejection.
+
+**Reusable takeaway:**  
+Always match HTTP methods to their intended semantics:  
+- **POST** → create new resources  
+- **PATCH** → partial update of existing resources  
+- **PUT** → full replacement of existing resources  
+
+Mismatching methods can lead to data corruption, duplicate records, or API errors. When updating existing items, prefer PATCH unless the API explicitly requires PUT or POST.
+
+---
+*Original commit message: fix: use patchJson instead of postJson for item update API calls (lines 2553, 2706)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Changed two API calls from `postJson` to `patchJson` for item update operations in a Telegram bot.
+
+**Why it broke:**  
+The code was using HTTP POST for updates, which typically creates new resources. The correct semantic for partial updates is PATCH (or PUT for full replacements). Using POST could cause duplicate entries, incorrect state, or server rejection.
+
+**Reusable takeaway:**  
+Always match HTTP methods to their intended semantics:  
+- **POST** → create new resources  
+- **PATCH** → partial update of existing resources  
+- **PUT** → full replacement of existing resources  
+
+Mismatching methods can lead to data corruption, duplicate records, or API errors. When updating existing items, prefer PATCH unless the API explicitly requires PUT or POST.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: make action_token optional in finishProductionSchema and confirmEnRouteSchema for Telegram bot calls
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f521a00a0dbf496a6dae83e2ef51df2ed99d138d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f521a00a0dbf496a6dae83e2ef51df2ed99d138d
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+Made `action_token` optional in `finishProductionSchema` and `confirmEnRouteSchema` to prevent validation failures when Telegram bot calls these endpoints without an `action_token`.
+
+**Why it broke:**  
+Telegram bot interactions do not include an `action_token` in their requests, but the schemas required it. This caused validation errors and blocked legitimate bot-initiated workflow updates.
+
+**Reusable takeaway:**  
+When designing API schemas for multi-channel systems (e.g., web UI + bot), identify fields that are only present in one channel. Make such fields optional in shared schemas, or use channel-specific validation logic, to avoid breaking non-web clients.
+
+---
+*Original commit message: fix: make action_token optional in finishProductionSchema and confirmEnRouteSchema for Telegram bot calls*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Made `action_token` optional in `finishProductionSchema` and `confirmEnRouteSchema` to prevent validation failures when Telegram bot calls these endpoints without an `action_token`.
+
+**Why it broke:**  
+Telegram bot interactions do not include an `action_token` in their requests, but the schemas required it. This caused validation errors and blocked legitimate bot-initiated workflow updates.
+
+**Reusable takeaway:**  
+When designing API schemas for multi-channel systems (e.g., web UI + bot), identify fields that are only present in one channel. Make such fields optional in shared schemas, or use channel-specific validation logic, to avoid breaking non-web clients.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add try/catch to deposit/balance endpoints and fix Zod null validation
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a79403751410ddc21f081cd8c88f9d3428b5e4aa
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a79403751410ddc21f081cd8c88f9d3428b5e4aa
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** Added try/catch error handling to deposit and balance API endpoints, and corrected Zod schema validation to allow null values.
+
+**Why it broke:** The deposit/balance endpoints lacked error boundaries, causing unhandled promise rejections when external services failed. Additionally, Zod schemas were too strict, rejecting valid null responses from the database.
+
+**Reusable takeaway:** Always wrap async API handlers in try/catch blocks, even for seemingly simple endpoints. When using Zod for validation, explicitly account for nullable fields (`z.nullable()`) to match real-world data shapes. This prevents silent failures and 500 errors from unexpected null values.
+
+---
+*Original commit message: fix: add try/catch to deposit/balance endpoints and fix Zod null validation*
+
+#### Lesson Learned
+
+**What was fixed:** Added try/catch error handling to deposit and balance API endpoints, and corrected Zod schema validation to allow null values.
+
+**Why it broke:** The deposit/balance endpoints lacked error boundaries, causing unhandled promise rejections when external services failed. Additionally, Zod schemas were too strict, rejecting valid null responses from the database.
+
+**Reusable takeaway:** Always wrap async API handlers in try/catch blocks, even for seemingly simple endpoints. When using Zod for validation, explicitly account for nullable fields (`z.nullable()`) to match real-world data shapes. This prevents silent failures and 500 errors from unexpected null values.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
