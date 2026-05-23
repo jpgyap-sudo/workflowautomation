@@ -505,6 +505,7 @@ type UserStep =
   | { action: 'awaiting_delay_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_delivery_timeline'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_custom_delivery_days'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_remaining_production_days'; orderId: string; quotationNumber: string }
   // En route flow
   | { action: 'awaiting_en_route'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_arrival_days'; orderId: string; quotationNumber: string }
@@ -1422,7 +1423,7 @@ bot.on(message('text'), async (ctx) => {
         await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nMidpoint and due reminders are scheduled. The bot will check if production has started when the date arrives.`,
+          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nA midpoint check will be sent in *${Math.max(1, Math.floor(estimatedDays / 2))} days* to confirm if production is on time, early, or delayed. A due reminder will follow at the end of the production window.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -1452,7 +1453,7 @@ bot.on(message('text'), async (ctx) => {
         await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nMidpoint and due reminders are scheduled. The bot will check if production has started when the date arrives.`,
+          `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${estimatedDays} days*\n\nA midpoint check will be sent in *${Math.max(1, Math.floor(estimatedDays / 2))} days* to confirm if production is on time, early, or delayed. A due reminder will follow at the end of the production window.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -1924,10 +1925,17 @@ bot.on(message('text'), async (ctx) => {
           delay_days: days,
         });
         await logAction({ chatId, userId, username, label: 'Production Delay Recorded', quotationNumber, details: `Delay: ${days} day(s)` });
-        resetStep(chatId);
+        // After recording delay, ask how many days left to finish
+        setStep(chatId, { action: 'awaiting_remaining_production_days', orderId, quotationNumber });
         await ctx.reply(
-          `⚠️ *Delay Recorded* — ${quotationNumber}\n\nDelay of ${days} day(s) has been recorded. The dashboard has been updated.\n\nA reminder will be sent at the estimated completion date.`,
-          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+          `⚠️ *Delay Recorded* — ${quotationNumber}\n\nDelay of ${days} day(s) has been recorded.\n\nNow, how many days left to finish production?`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('📅 14 days (estimated)', `prod_remaining:14:${orderId.slice(0, 8)}:${quotationNumber}`)],
+              [Markup.button.callback('✏️ Enter custom days', `prod_remaining:custom:${orderId.slice(0, 8)}:${quotationNumber}`)],
+            ]),
+          }
         );
       } catch (err: any) {
         await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
@@ -1958,6 +1966,30 @@ bot.on(message('text'), async (ctx) => {
               [Markup.button.callback('❌ Not yet', `en_route:no:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
             ]),
           }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── Awaiting remaining production days (after midpoint check) ──────
+    case 'awaiting_remaining_production_days': {
+      const { orderId: rOrderId, quotationNumber: rQuotationNumber } = session.step;
+      const remainingDays = parseInt(text, 10);
+      if (isNaN(remainingDays) || remainingDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `14`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await postJson(`/orders/${rOrderId}/recalc-production-reminders`, {
+          remaining_production_days: remainingDays,
+        });
+        await logAction({ chatId, userId, username, label: 'Production Remaining Days Set', quotationNumber: rQuotationNumber, details: `${remainingDays} day(s) left` });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Noted* — ${rQuotationNumber}\n\n*${remainingDays} days* remaining to finish production.\n\nA reminder will be sent when the production window ends to confirm if production has finished.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
         await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
@@ -2303,11 +2335,10 @@ bot.action(/^produce:days:(\d+):([^:]*):(.+)$/, async (ctx) => {
     });
     await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${days} day(s)` });
     await ctx.editMessageText(
-      `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${days} days*\n\nMidpoint and due reminders are scheduled. The bot will check if production has started when the date arrives.`,
+      `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${days} days*\n\nA midpoint check will be sent in *${Math.max(1, Math.floor(days / 2))} days* to confirm if production is on time, early, or delayed. A due reminder will follow at the end of the production window.`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Mark Production Finished', `production:finished:${order.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback('🏠 Main Menu', 'menu:main')],
         ]),
       }
@@ -2555,15 +2586,31 @@ bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
     const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
     const orderId = orderData.id;
     // Report on-time status to API
+    // Fetch order to get estimated_production_days for midpoint calculation
+    const order = orderData;
+    const totalDays = order.estimated_production_days ?? 28;
+    const elapsedDays = order.production_started_at
+      ? Math.floor((Date.now() - new Date(order.production_started_at).getTime()) / (1000 * 60 * 60 * 24))
+      : Math.floor(totalDays / 2);
+    const remainingDays = Math.max(1, totalDays - elapsedDays);
+
     await postJson(`/orders/${orderId}/report-production-status`, {
       on_time: true,
       delay_days: 0,
     });
     await logAction({ chatId, userId, username, label: 'Production On Time', quotationNumber });
     resetStep(chatId);
+    // Ask how many days left to finish — default is the remaining days
+    setStep(chatId, { action: 'awaiting_remaining_production_days', orderId, quotationNumber });
     await ctx.editMessageText(
-      `✅ *On Time* — ${quotationNumber}\n\nProduction is on schedule. A reminder will be sent at the estimated completion date to check if production has started.`,
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      `✅ *On Time* — ${quotationNumber}\n\nProduction is on schedule.\n\nHow many days left to finish production?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`📅 ${remainingDays} days (estimated)`, `prod_remaining:${remainingDays}:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('✏️ Enter custom days', `prod_remaining:custom:${orderId.slice(0, 8)}:${quotationNumber}`)],
+        ]),
+      }
     );
   } catch (err: any) {
     await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
@@ -2592,8 +2639,61 @@ bot.action(/^production:delayed:(.+):(.+)$/, async (ctx) => {
     // Set step to ask for delay days
     setStep(chatId, { action: 'awaiting_delay_days', orderId, quotationNumber });
     await ctx.editMessageText(
-      `⚠️ *Delayed* — ${quotationNumber}\n\nHow many days is the delay? (Enter a number)`,
+      `⚠️ *Delayed* — ${quotationNumber}\n\nHow many days is the delay? (Enter a number)\n\nAfter that, you'll be asked how many days remain to finish production.`,
       { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── prod_remaining — User confirms remaining days to finish production ──
+// Callback: prod_remaining:{days}:{orderIdPrefix}:{quotationNumber}
+// Callback: prod_remaining:custom:{orderIdPrefix}:{quotationNumber}
+bot.action(/^prod_remaining:(\d+|custom):([^:]*):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const daysOrCustom = ctx.match[1];
+  const orderIdPrefix = ctx.match[2];
+  const quotationNumber = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `prod_remaining:${daysOrCustom}:${orderIdPrefix}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  if (daysOrCustom === 'custom') {
+    // Ask user to type the number of days
+    try {
+      const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+      const orderId = orderData.id;
+      setStep(chatId, { action: 'awaiting_remaining_production_days', orderId, quotationNumber });
+      await ctx.editMessageText(
+        `✏️ *Remaining Days* — ${quotationNumber}\n\nEnter the number of days left to finish production:`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+    } catch (err: any) {
+      await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+    }
+    return;
+  }
+
+  const remainingDays = parseInt(daysOrCustom, 10);
+  try {
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+    // Record remaining days and schedule a due reminder
+    await postJson(`/orders/${orderId}/recalc-production-reminders`, {
+      remaining_production_days: remainingDays,
+    });
+    await logAction({ chatId, userId, username, label: 'Production Remaining Days Set', quotationNumber, details: `${remainingDays} day(s) left` });
+    resetStep(chatId);
+    await ctx.editMessageText(
+      `✅ *Noted* — ${quotationNumber}\n\n*${remainingDays} days* remaining to finish production.\n\nA reminder will be sent when the production window ends to confirm if production has finished.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {
     await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });

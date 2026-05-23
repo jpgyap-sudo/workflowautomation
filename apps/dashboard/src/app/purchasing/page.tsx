@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
-import type { Order, ItemCompletion } from '@/lib/api';
-import { updateOrder, deleteOrder, setProduction, getItemCompletion, verifyDeposit } from '@/lib/api';
+import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
+import { updateOrder, deleteOrder, setProduction, getItemCompletion, getOrderItems, verifyDeposit } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import {
   ShoppingCart, Clock, Package,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  AlertTriangle, RefreshCw, List, Truck, CheckCircle,
+  AlertTriangle, RefreshCw, CheckCircle,
   Shield, DollarSign, ShieldAlert, Loader2,
 } from 'lucide-react';
 
@@ -26,17 +26,30 @@ interface OrderRowProps {
 function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onVerifyDeposit }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
+  const [items, setItems] = useState<OrderItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    // Fetch item-level completion for all stages that might have items
-    if (['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled'].includes(order.current_stage)) {
-      getItemCompletion(order.id).then((res) => {
-        if (!cancelled && res.ok) setCompletion(res);
-      }).catch(() => {});
+    getItemCompletion(order.id).then((res) => {
+      if (!cancelled && res.ok) setCompletion(res);
+    }).catch(() => {});
+
+    if (order.current_stage === 'purchasing_pending') {
+      setLoadingItems(true);
+      getOrderItems(order.id).then((res) => {
+        if (!cancelled && res.ok) {
+          setItems(res.items);
+          setLoadingItems(false);
+        }
+      }).catch(() => { if (!cancelled) setLoadingItems(false); });
     }
     return () => { cancelled = true; };
   }, [order.id, order.current_stage]);
+
+  // Order stays in this tab until all items are marked produced in the Production tab
+  const allItemsProduced = items.length === 0 || (completion !== null && completion.production_completion_pct >= 100);
+  const pendingItemCount = items.filter((i) => i.production_status !== 'finished').length;
 
   return (
     <div>
@@ -54,8 +67,25 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onV
                 ))}
               </span>
             )}
-            {/* Item-level completion badges inline */}
-            {completion && (
+            {/* Item-level production badges for purchasing_pending */}
+            {order.current_stage === 'purchasing_pending' && items.length > 0 && (
+              allItemsProduced ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                  <CheckCircle className="h-3 w-3" /> All Produced
+                </span>
+              ) : (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  completion && completion.production_completion_pct >= 50
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}>
+                  <Package className="h-3 w-3" />
+                  {pendingItemCount} item{pendingItemCount !== 1 ? 's' : ''} pending
+                  {completion && completion.production_completion_pct > 0 && ` · ${completion.production_completion_pct}%`}
+                </span>
+              )
+            )}
+            {completion && order.current_stage !== 'purchasing_pending' && (
               <>
                 {completion.production_completion_pct > 0 && completion.production_completion_pct < 100 && (
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -64,33 +94,9 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onV
                     <Package className="h-3 w-3" /> Prod: {completion.production_completion_pct}%
                   </span>
                 )}
-                {completion.en_route_completion_pct > 0 && completion.en_route_completion_pct < 100 && (
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    completion.en_route_completion_pct >= 50 ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    <Truck className="h-3 w-3" /> En Route: {completion.en_route_completion_pct}%
-                  </span>
-                )}
-                {completion.inventory_completion_pct > 0 && completion.inventory_completion_pct < 100 && (
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    completion.inventory_completion_pct >= 50 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    <Package className="h-3 w-3" /> Inv: {completion.inventory_completion_pct}%
-                  </span>
-                )}
                 {completion.production_completion_pct >= 100 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
                     <CheckCircle className="h-3 w-3" /> Prod Complete
-                  </span>
-                )}
-                {completion.en_route_completion_pct >= 100 && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
-                    <CheckCircle className="h-3 w-3" /> All En Route
-                  </span>
-                )}
-                {completion.inventory_completion_pct >= 100 && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
-                    <CheckCircle className="h-3 w-3" /> All Arrived
                   </span>
                 )}
               </>
@@ -131,63 +137,107 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onV
         </div>
       </button>
       {expanded && (
-        <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
-          {onVerifyDeposit && order.deposit_paid && !order.deposit_verified && (
-            <button
-              onClick={() => onVerifyDeposit(order)}
-              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
-            >
-              <Shield className="mr-1 inline-block h-3.5 w-3.5" />
-              Verify Deposit
-            </button>
-          )}
-          {onStartProduction && !order.production_started && (
-            <button
-              onClick={() => onStartProduction(order)}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-            >
-              Mark Production Started
-            </button>
-          )}
-
-          {/* Item-level completion bars for expanded view */}
-          {completion && (
-            <div className="w-full space-y-2">
-              {completion.production_completion_pct > 0 && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Package className="h-3 w-3 text-indigo-500" />
-                  <span>Production</span>
-                  <span className={`ml-auto font-semibold ${
-                    completion.production_completion_pct >= 100 ? 'text-green-600' : completion.production_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
-                  }`}>{completion.production_completion_pct}%</span>
+        <div className="border-t border-gray-100 bg-gray-50/50">
+          {/* Item production tracking table (purchasing_pending only) */}
+          {order.current_stage === 'purchasing_pending' && (
+            <div className="px-6 py-3">
+              {loadingItems && items.length === 0 ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
                 </div>
-              )}
-              {completion.en_route_completion_pct > 0 && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Truck className="h-3 w-3 text-sky-500" />
-                  <span>En Route</span>
-                  <span className={`ml-auto font-semibold ${
-                    completion.en_route_completion_pct >= 100 ? 'text-green-600' : completion.en_route_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
-                  }`}>{completion.en_route_completion_pct}%</span>
+              ) : items.length > 0 ? (
+                <div className="mb-3">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Items ({items.length}) — mark each as produced before advancing to production
+                  </p>
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                          <th className="px-3 py-2">Item</th>
+                          <th className="px-3 py-2">Qty</th>
+                          <th className="px-3 py-2">Production Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {items.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                            <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                item.production_status === 'finished'
+                                  ? 'bg-green-100 text-green-700'
+                                  : item.production_status === 'in_progress'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {item.production_status === 'finished' ? '✓ Produced' : item.production_status === 'in_progress' ? '⟳ In Progress' : '○ Pending'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Production progress bar */}
+                  {completion && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            completion.production_completion_pct >= 100 ? 'bg-green-500' : completion.production_completion_pct >= 50 ? 'bg-amber-500' : 'bg-gray-400'
+                          }`}
+                          style={{ width: `${Math.min(completion.production_completion_pct, 100)}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-semibold ${
+                        completion.production_completion_pct >= 100 ? 'text-green-600' : completion.production_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
+                      }`}>
+                        {completion.production_completion_pct}%
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {completion.inventory_completion_pct > 0 && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Package className="h-3 w-3 text-emerald-500" />
-                  <span>Inventory Arrival</span>
-                  <span className={`ml-auto font-semibold ${
-                    completion.inventory_completion_pct >= 100 ? 'text-green-600' : completion.inventory_completion_pct >= 50 ? 'text-amber-600' : 'text-gray-500'
-                  }`}>{completion.inventory_completion_pct}%</span>
-                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No items on record — you can advance to production directly.</p>
               )}
             </div>
           )}
 
-          <span className="self-center text-xs text-gray-500">
-            Downpayment: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
-            {' · '}
-            Balance: {order.balance_paid ? 'Paid' : 'Pending'}
-          </span>
+          <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
+            {onVerifyDeposit && order.deposit_paid && !order.deposit_verified && (
+              <button
+                onClick={() => onVerifyDeposit(order)}
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
+              >
+                <Shield className="mr-1 inline-block h-3.5 w-3.5" />
+                Verify Deposit
+              </button>
+            )}
+            {/* Only show Mark Production Started once all items are produced (or no items exist) */}
+            {onStartProduction && !order.production_started && allItemsProduced && (
+              <button
+                onClick={() => onStartProduction(order)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+              >
+                Mark Production Started
+              </button>
+            )}
+            {/* Show a hint when items are still pending */}
+            {onStartProduction && !order.production_started && !allItemsProduced && (
+              <span className="self-center inline-flex items-center gap-1 text-xs text-amber-600">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {pendingItemCount} item{pendingItemCount !== 1 ? 's' : ''} still pending — mark all as produced to advance
+              </span>
+            )}
+
+            <span className="self-center text-xs text-gray-500">
+              Downpayment: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
+              {' · '}
+              Balance: {order.balance_paid ? 'Paid' : 'Pending'}
+            </span>
+          </div>
         </div>
       )}
     </div>

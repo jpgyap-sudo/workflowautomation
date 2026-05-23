@@ -5839,3 +5839,260 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: QAS downpayment gate before production
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When enforcing QAS workflow, keep STAGE_ORDER as order confirmation/math -> deposit_pending -> deposit_verification -> purchasing/production. After quotation math auto-verifies, advance to deposit_pending so the dashboard current stage shows downpayment is next. Production transitions and set-production must require deposit_verified=true unless production_exception=true.
+
+#### Lesson Learned
+
+When enforcing QAS workflow, keep STAGE_ORDER as order confirmation/math -> deposit_pending -> deposit_verification -> purchasing/production. After quotation math auto-verifies, advance to deposit_pending so the dashboard current stage shows downpayment is next. Production transitions and set-production must require deposit_verified=true unless production_exception=true.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: move production notification from order creation to deposit recording
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ef093a9d1e9c7b3242e152165637fcc6dfdb490e
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ef093a9d1e9c7b3242e152165637fcc6dfdb490e
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** The production notification was moved from order creation to deposit recording.
+
+**Why it broke:** The notification was triggered prematurely during order creation, before the deposit was actually recorded. This caused false or incomplete notifications to be sent to production systems, as the deposit state was not yet finalized.
+
+**Reusable takeaway:** Notifications should be triggered only after the critical business event they represent has been fully committed and persisted. In event-driven workflows, always attach notifications to the *completion* of the underlying data mutation, not to an earlier intermediate step. This prevents race conditions and ensures notifications reflect the true system state.
+
+---
+*Original commit message: fix: move production notification from order creation to deposit recording*
+
+#### Lesson Learned
+
+**What was fixed:** The production notification was moved from order creation to deposit recording.
+
+**Why it broke:** The notification was triggered prematurely during order creation, before the deposit was actually recorded. This caused false or incomplete notifications to be sent to production systems, as the deposit state was not yet finalized.
+
+**Reusable takeaway:** Notifications should be triggered only after the critical business event they represent has been fully committed and persisted. In event-driven workflows, always attach notifications to the *completion* of the underlying data mutation, not to an earlier intermediate step. This prevents race conditions and ensures notifications reflect the true system state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: redesign production start flow — 28-day standard button + custom input, only ask finished at due date
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4165f543fbaf80ae844b0308a90d271957467103
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 4165f543fbaf80ae844b0308a90d271957467103
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+The production start flow was redesigned to replace a confusing, multi-step prompt with a clear 28-day standard button and a custom input option. The "ask for finished date" was deferred to the actual due date, reducing premature decisions.
+
+**Why it broke:**  
+The original flow forced users to specify a finished date at the start of production, causing friction, errors, and mismatches with actual scheduling. The rigid, upfront date requirement didn't align with real-world workflow flexibility.
+
+**Reusable takeaway:**  
+Defer non-critical inputs (like completion dates) to the moment they are needed. Offer sensible defaults (e.g., 28-day standard) with a custom override, rather than forcing all users through a single, inflexible path. This reduces cognitive load and improves flow adoption.
+
+---
+*Original commit message: fix: redesign production start flow — 28-day standard button + custom input, only ask finished at due date*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The production start flow was redesigned to replace a confusing, multi-step prompt with a clear 28-day standard button and a custom input option. The "ask for finished date" was deferred to the actual due date, reducing premature decisions.
+
+**Why it broke:**  
+The original flow forced users to specify a finished date at the start of production, causing friction, errors, and mismatches with actual scheduling. The rigid, upfront date requirement didn't align with real-world workflow flexibility.
+
+**Reusable takeaway:**  
+Defer non-critical inputs (like completion dates) to the moment they are needed. Offer sensible defaults (e.g., 28-day standard) with a custom override, rather than forcing all users through a single, inflexible path. This reduces cognitive load and improves flow adoption.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: upload deposit/payment slip images to file store on Telegram confirmation
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d058ae4a411da391c6a4db47515345c5c573ef58
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d058ae4a411da391c6a4db47515345c5c573ef58
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Uploading deposit/payment slip images to the file store was not happening when users confirmed via Telegram. The fix ensures images are stored upon Telegram confirmation.
+
+**Why it broke:**  
+The Telegram confirmation flow lacked the logic to trigger file upload for attached slip images. The upload step was either omitted or incorrectly placed outside the confirmation handler.
+
+**Reusable takeaway:**  
+When building multi-step workflows (e.g., user uploads image → confirms action), ensure all side effects (like file storage) are triggered at the correct step in the flow. Map each user action to its required system action, especially when confirmation changes the state. Test edge cases where uploads depend on explicit user confirmation.
+
+---
+*Original commit message: fix: upload deposit/payment slip images to file store on Telegram confirmation*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Uploading deposit/payment slip images to the file store was not happening when users confirmed via Telegram. The fix ensures images are stored upon Telegram confirmation.
+
+**Why it broke:**  
+The Telegram confirmation flow lacked the logic to trigger file upload for attached slip images. The upload step was either omitted or incorrectly placed outside the confirmation handler.
+
+**Reusable takeaway:**  
+When building multi-step workflows (e.g., user uploads image → confirms action), ensure all side effects (like file storage) are triggered at the correct step in the flow. Map each user action to its required system action, especially when confirmation changes the state. Test edge cases where uploads depend on explicit user confirmation.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove client-side duplicate warning — silently merge into existing client
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 29a9bf1d881ea09bc47bace90b89f5a7633d2d92
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 29a9bf1d881ea09bc47bace90b89f5a7633d2d92
+**Files:** apps/dashboard/src/app/clients/page.tsx
+
+**Summary:**
+**What was fixed:**  
+Removed a duplicate client warning that appeared when the same client was added again. Instead of alerting the user, the system now silently merges the new entry into the existing client record.
+
+**Why it broke:**  
+The original code checked for duplicate client IDs but only warned the user without handling the duplication gracefully. This caused a disruptive user experience and left the client list in an inconsistent state.
+
+**Reusable takeaway:**  
+When handling duplicate data entries, prefer silent merging over user warnings. This maintains data integrity and improves UX by avoiding unnecessary interruptions. Always ensure duplicate detection leads to a deterministic action (merge, update, or skip) rather than just a notification.
+
+---
+*Original commit message: fix: remove client-side duplicate warning — silently merge into existing client*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Removed a duplicate client warning that appeared when the same client was added again. Instead of alerting the user, the system now silently merges the new entry into the existing client record.
+
+**Why it broke:**  
+The original code checked for duplicate client IDs but only warned the user without handling the duplication gracefully. This caused a disruptive user experience and left the client list in an inconsistent state.
+
+**Reusable takeaway:**  
+When handling duplicate data entries, prefer silent merging over user warnings. This maintains data integrity and improves UX by avoiding unnecessary interruptions. Always ensure duplicate detection leads to a deterministic action (merge, update, or skip) rather than just a notification.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: production workflow gaps - notification asks 'Has production started?' not 'Is production finished?', production ta
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8da66f620e61ef177b9d753a9ea1711f6acfbf78
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8da66f620e61ef177b9d753a9ea1711f6acfbf78
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/production/page.tsx,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Production workflow logic was corrected: the notification now asks "Has production started?" instead of "Is production finished?"; the production tab includes a Start button with a days input; a manual "Production Finished" button was added in the bot; reminder buttons were updated.
+
+**Why it broke:**  
+The original workflow assumed production completion as the trigger, but the actual process requires confirmation of production *start* before tracking progress. This mismatch caused premature or irrelevant notifications.
+
+**Reusable takeaway:**  
+Always align notification triggers with the *first actionable event* in a workflow, not the final state. Validate that each step’s confirmation matches the user’s real-world sequence of actions.
+
+---
+*Original commit message: fix: production workflow gaps - notification asks 'Has production started?' not 'Is production finished?', production tab Start button with days input, manual Production Finished button in bot, updated reminder buttons*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Production workflow logic was corrected: the notification now asks "Has production started?" instead of "Is production finished?"; the production tab includes a Start button with a days input; a manual "Production Finished" button was added in the bot; reminder buttons were updated.
+
+**Why it broke:**  
+The original workflow assumed production completion as the trigger, but the actual process requires confirmation of production *start* before tracking progress. This mismatch caused premature or irrelevant notifications.
+
+**Reusable takeaway:**  
+Always align notification triggers with the *first actionable event* in a workflow, not the final state. Validate that each step’s confirmation matches the user’s real-world sequence of actions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -2154,30 +2154,31 @@ app.post('/orders/:id/extract-items', async (request, reply) => {
 
 // ── Recalculate Production Reminders ─────────────────────────────────
 // When estimated_production_days changes, recalculate midpoint and due reminders
+// Also accepts remaining_production_days (from midpoint check) to schedule a due reminder from NOW
 const recalcProductionRemindersSchema = z.object({
-  estimated_production_days: z.number().int().positive(),
-  action_token: z.string(),
+  estimated_production_days: z.number().int().positive().optional(),
+  remaining_production_days: z.number().int().positive().optional(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = recalcProductionRemindersSchema.parse(request.body);
 
-  // Verify action token and extract email
+  // Verify action token and extract email (optional — bot calls may not provide it)
   let userEmail: string | null = null;
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  if (body.action_token && cacheClient?.isOpen) {
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  try {
-    const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
-  } catch { /* non-fatal */ }
 
   const rows = await query(
     `SELECT id, quotation_number, client_name, production_started_at, estimated_production_days
@@ -2199,28 +2200,50 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
   const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
   const client = order.client_name ?? 'Unknown';
   const productionStart = new Date(order.production_started_at);
-  const finishDate = new Date(productionStart);
-  finishDate.setDate(finishDate.getDate() + body.estimated_production_days);
-  const midpointDays = Math.max(1, Math.floor(body.estimated_production_days / 2));
-  const midpointDate = new Date(productionStart);
-  midpointDate.setDate(midpointDate.getDate() + midpointDays);
 
-  // Upsert midpoint reminder
-  await query(
-    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-     VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
-     ON CONFLICT (order_id, stage) DO UPDATE SET
-       group_chat_id=EXCLUDED.group_chat_id,
-       message=EXCLUDED.message,
-       frequency=EXCLUDED.frequency,
-       next_run_at=EXCLUDED.next_run_at,
-       status='active',
-       escalation_level=0,
-       updated_at=NOW()`,
-    [id, groupChatId,
-     `*Midpoint Check* - ${ref} (${client})\nProduction is estimated at ${body.estimated_production_days} days.\nIs this order on time or delayed?`,
-     midpointDate.toISOString()]
-  );
+  // Determine effective days and finish date
+  let effectiveDays: number;
+  let finishDate: Date;
+  let midpointDays: number;
+  let midpointDate: Date;
+
+  if (body.remaining_production_days) {
+    // Called from midpoint check — schedule due reminder from NOW + remaining days
+    effectiveDays = body.remaining_production_days;
+    finishDate = new Date(Date.now() + effectiveDays * 24 * 60 * 60 * 1000);
+    // Keep existing midpoint reminder as-is (already fired)
+    midpointDays = 0;
+    midpointDate = new Date(0); // placeholder, won't be upserted
+  } else if (body.estimated_production_days) {
+    // Called from production start — schedule midpoint and due from production_started_at
+    effectiveDays = body.estimated_production_days;
+    finishDate = new Date(productionStart);
+    finishDate.setDate(finishDate.getDate() + effectiveDays);
+    midpointDays = Math.max(1, Math.floor(effectiveDays / 2));
+    midpointDate = new Date(productionStart);
+    midpointDate.setDate(midpointDate.getDate() + midpointDays);
+  } else {
+    return reply.status(400).send({ error: 'Either estimated_production_days or remaining_production_days is required' });
+  }
+
+  // Upsert midpoint reminder (only when estimated_production_days is provided)
+  if (body.estimated_production_days) {
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
+       ON CONFLICT (order_id, stage) DO UPDATE SET
+         group_chat_id=EXCLUDED.group_chat_id,
+         message=EXCLUDED.message,
+         frequency=EXCLUDED.frequency,
+         next_run_at=EXCLUDED.next_run_at,
+         status='active',
+         escalation_level=0,
+         updated_at=NOW()`,
+      [id, groupChatId,
+       `*Midpoint Check* - ${ref} (${client})\nProduction is estimated at ${body.estimated_production_days} days.\nIs this order on time or delayed?`,
+       midpointDate.toISOString()]
+    );
+  }
 
   // Upsert due reminder
   await query(
@@ -2235,19 +2258,21 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
        escalation_level=0,
        updated_at=NOW()`,
     [id, groupChatId,
-     `*Production Due* - ${ref} (${client})\nThe ${body.estimated_production_days}-day production window is now complete.\nIs production finished?`,
+     `*Production Due* - ${ref} (${client})\nThe production window is now complete.\nHas production finished?`,
      finishDate.toISOString()]
   );
 
-  // Also update the estimated_production_days on the order
-  await query(
-    `UPDATE orders SET estimated_production_days = $1, updated_at = NOW() WHERE id = $2`,
-    [body.estimated_production_days, id]
-  );
+  // Update estimated_production_days on the order if provided
+  if (body.estimated_production_days) {
+    await query(
+      `UPDATE orders SET estimated_production_days = $1, updated_at = NOW() WHERE id = $2`,
+      [body.estimated_production_days, id]
+    );
+  }
 
   await notifyManualChange(
     'Production reminders recalculated',
-    `Quotation: *${ref}*\nClient: *${client}*\nEstimated: ${body.estimated_production_days} day(s)\nMidpoint: ${midpointDate.toISOString().split('T')[0]}\nFinish: ${finishDate.toISOString().split('T')[0]}`,
+    `Quotation: *${ref}*\nClient: *${client}*\nDays: ${effectiveDays}\nFinish: ${finishDate.toISOString().split('T')[0]}`,
     userEmail,
   );
 
@@ -2255,8 +2280,8 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
   broadcastSSE('order_updated', { id });
   return reply.send({
     ok: true,
-    message: `Production reminders recalculated for ${body.estimated_production_days} days`,
-    midpoint_date: midpointDate.toISOString(),
+    message: `Production reminders recalculated for ${effectiveDays} days`,
+    midpoint_date: body.estimated_production_days ? midpointDate.toISOString() : null,
     finish_date: finishDate.toISOString(),
   });
 });
