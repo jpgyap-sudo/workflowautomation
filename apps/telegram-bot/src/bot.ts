@@ -2333,6 +2333,178 @@ bot.on(message('text'), async (ctx) => {
 
 // ── Inline Callback Handlers ───────────────────────────────────────────
 
+// ── Production Board — tap-based GUI ─────────────────────────────────────
+//
+// Flow:
+//   /prod  →  list of orders (prd:o:{8})
+//   tap order  →  item list (prd:i:{itemId8}:{orderId8}:f|p|s per item)
+//   tap item status  →  update & refresh item view
+//   [↩ Back]  →  prd:list  →  back to order list
+//
+// Callback data max is 64 bytes. Using 8-char ID prefixes keeps us well under.
+
+interface BoardOrder {
+  id: string;
+  quotation_number: string | null;
+  client_name: string | null;
+  current_stage: string;
+  production_started: boolean | null;
+  items: { id: string; name: string; quantity: number; production_status: string }[];
+}
+
+interface BoardResponse {
+  ok: boolean;
+  orders: BoardOrder[];
+}
+
+async function fetchBoard(): Promise<BoardOrder[]> {
+  const res = await fetch(`${apiBaseUrl}/production/board`);
+  if (!res.ok) return [];
+  const data = (await res.json()) as BoardResponse;
+  return data.orders ?? [];
+}
+
+function boardOrderList(orders: BoardOrder[]): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
+  if (orders.length === 0) {
+    return {
+      text: '🏭 Production Board\n\nNo active production orders.',
+      keyboard: Markup.inlineKeyboard([]),
+    };
+  }
+
+  const lines = orders.map((o) => {
+    const total = o.items.length;
+    const done = o.items.filter((i) => i.production_status === 'finished').length;
+    const allDone = total > 0 && done === total;
+    const icon = allDone ? '✅' : done > 0 ? '🔄' : '⏳';
+    const progress = total > 0 ? ` ${done}/${total}` : ' no items';
+    return `${icon} ${o.quotation_number ?? o.id.slice(0, 8)} — ${o.client_name ?? 'Unknown'}${progress}`;
+  });
+
+  const buttons = orders.map((o) => [
+    Markup.button.callback(
+      `${o.quotation_number ?? o.id.slice(0, 8)} · ${o.client_name ?? '—'}`,
+      `prd:o:${o.id.slice(0, 8)}`,
+    ),
+  ]);
+
+  return {
+    text: `🏭 *Production Board* — ${orders.length} order(s)\n\n${lines.join('\n')}\n\nTap an order to see items:`,
+    keyboard: Markup.inlineKeyboard(buttons),
+  };
+}
+
+function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
+  const qn = order.quotation_number ?? order.id.slice(0, 8);
+  const total = order.items.length;
+  const done = order.items.filter((i) => i.production_status === 'finished').length;
+
+  let text = `📦 *${qn}* — ${order.client_name ?? 'Unknown'}\n`;
+  if (total === 0) {
+    text += '\n_No items on record._';
+  } else {
+    text += `Progress: ${done}/${total} produced\n\n`;
+    for (const item of order.items) {
+      const icon = item.production_status === 'finished' ? '✅' : item.production_status === 'in_progress' ? '🔄' : '⬜';
+      text += `${icon} ${item.name} (×${item.quantity})\n`;
+    }
+  }
+
+  const rows: ReturnType<typeof Markup.button.callback>[][] = [];
+
+  // One row per pending/in-progress item
+  for (const item of order.items) {
+    if (item.production_status === 'finished') continue;
+    const iid = item.id.slice(0, 8);
+    const oid = order.id.slice(0, 8);
+    rows.push([
+      Markup.button.callback(
+        item.production_status === 'in_progress' ? `⬜ ${item.name}` : `🔄 ${item.name} — start`,
+        `prd:i:${iid}:${oid}:s`,
+      ),
+      Markup.button.callback(`✅ ${item.name} — done`, `prd:i:${iid}:${oid}:f`),
+    ]);
+  }
+
+  rows.push([Markup.button.callback('↩ Back to orders', 'prd:list')]);
+
+  return { text, keyboard: Markup.inlineKeyboard(rows) };
+}
+
+// /prod command — show production board
+bot.command('prod', async (ctx) => {
+  const orders = await fetchBoard();
+  const { text, keyboard } = boardOrderList(orders);
+  await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+});
+
+// Also allow /production as alias
+bot.command('production', async (ctx) => {
+  const orders = await fetchBoard();
+  const { text, keyboard } = boardOrderList(orders);
+  await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+});
+
+// prd:list — refresh/back to order list
+bot.action('prd:list', async (ctx) => {
+  const orders = await fetchBoard();
+  const { text, keyboard } = boardOrderList(orders);
+  await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
+});
+
+// prd:o:{orderId8} — show items for a specific order
+bot.action(/^prd:o:(.{8})$/, async (ctx) => {
+  const prefix = ctx.match[1];
+  const orders = await fetchBoard();
+  const order = orders.find((o) => o.id.startsWith(prefix));
+  if (!order) {
+    await ctx.editMessageText('⚠️ Order not found. It may have moved to the next stage.').catch(() => {});
+    return;
+  }
+  const { text, keyboard } = boardItemView(order);
+  await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
+});
+
+// prd:i:{itemId8}:{orderId8}:{status} — update item status
+// status: f=finished, s=in_progress, p=pending
+bot.action(/^prd:i:(.{8}):(.{8}):(f|s|p)$/, async (ctx) => {
+  const itemPrefix = ctx.match[1];
+  const orderPrefix = ctx.match[2];
+  const statusCode = ctx.match[3];
+  const statusMap: Record<string, string> = { f: 'finished', s: 'in_progress', p: 'pending' };
+  const status = statusMap[statusCode];
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/production/board/item`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ order_id_prefix: orderPrefix, item_id_prefix: itemPrefix, status }),
+    });
+
+    if (!res.ok) {
+      await ctx.answerCbQuery('❌ Update failed').catch(() => {});
+      return;
+    }
+
+    const data = await res.json() as { ok: boolean; item: string; all_done: boolean };
+    const label = status === 'finished' ? `✅ ${data.item} marked as produced` : `🔄 ${data.item} marked as in progress`;
+    await ctx.answerCbQuery(label).catch(() => {});
+
+    // Refresh the item view
+    const orders = await fetchBoard();
+    const order = orders.find((o) => o.id.startsWith(orderPrefix));
+    if (!order) {
+      await ctx.editMessageText('✅ All done! Order has moved to the next stage.').catch(() => {});
+      return;
+    }
+    const { text, keyboard } = boardItemView(order);
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
+  } catch (err) {
+    console.error('[bot] Board item update error:', err);
+    await ctx.answerCbQuery('❌ Request failed').catch(() => {});
+  }
+});
+
 // ── Production Assistant confirmation callbacks ────────────────────────
 
 bot.action('assistant:cancel', async (ctx) => {

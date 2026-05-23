@@ -1306,6 +1306,95 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   return reply.send({ ok: true, order: rows[0] });
 });
 
+// ── Production Board (GUI for bot) ───────────────────────────────────────
+// Returns all active production orders with their items in one call.
+// Used by the bot's tap-based production board — no typing needed.
+
+app.get('/production/board', async (_request, reply) => {
+  const orders = await query<{
+    id: string; quotation_number: string | null; client_name: string | null;
+    current_stage: string; production_started: boolean | null; production_finished: boolean | null;
+    estimated_production_days: number | null; production_started_at: string | null;
+  }>(
+    `SELECT id, quotation_number, client_name, current_stage,
+            production_started, production_finished, estimated_production_days, production_started_at
+     FROM orders
+     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending')
+       AND status = 'active'
+     ORDER BY updated_at DESC
+     LIMIT 30`,
+  );
+
+  const items = orders.length > 0
+    ? await query<{
+        id: string; order_id: string; name: string; quantity: number;
+        production_status: string;
+      }>(
+        `SELECT id, order_id, name, quantity, production_status
+         FROM order_items
+         WHERE order_id = ANY($1::uuid[])
+         ORDER BY created_at ASC`,
+        [orders.map((o) => o.id)],
+      )
+    : [];
+
+  const itemsByOrder = new Map<string, typeof items>();
+  for (const item of items) {
+    const list = itemsByOrder.get(item.order_id) ?? [];
+    list.push(item);
+    itemsByOrder.set(item.order_id, list);
+  }
+
+  return reply.send({
+    ok: true,
+    orders: orders.map((o) => ({
+      ...o,
+      items: itemsByOrder.get(o.id) ?? [],
+    })),
+  });
+});
+
+// Update item status by 8-char ID prefix (for bot callback data < 64 bytes)
+const boardItemUpdateSchema = z.object({
+  order_id_prefix: z.string().min(8),
+  item_id_prefix: z.string().min(8),
+  status: z.enum(['pending', 'in_progress', 'finished']),
+});
+
+app.post('/production/board/item', async (request, reply) => {
+  const body = boardItemUpdateSchema.parse(request.body);
+
+  const orderRow = await query<{ id: string }>(
+    `SELECT id FROM orders WHERE id::text LIKE $1 LIMIT 1`,
+    [`${body.order_id_prefix}%`],
+  );
+  if (!orderRow[0]) return reply.status(404).send({ error: 'Order not found' });
+  const orderId = orderRow[0].id;
+
+  const itemRow = await query<{ id: string; name: string; production_status: string }>(
+    `SELECT id, name, production_status FROM order_items WHERE id::text LIKE $1 AND order_id = $2 LIMIT 1`,
+    [`${body.item_id_prefix}%`, orderId],
+  );
+  if (!itemRow[0]) return reply.status(404).send({ error: 'Item not found' });
+
+  await query(
+    `UPDATE order_items SET production_status = $1, updated_at = NOW() WHERE id = $2`,
+    [body.status, itemRow[0].id],
+  );
+
+  // Recompute completion and maybe advance stage
+  const allItems = await query<{ production_status: string }>(
+    `SELECT production_status FROM order_items WHERE order_id = $1`,
+    [orderId],
+  );
+  const allDone = allItems.length > 0 && allItems.every((i) => i.production_status === 'finished');
+
+  await invalidateCache(['orders:*', `orders:stage:*`, 'dashboard:*']);
+  broadcastSSE('order_updated', { id: orderId });
+
+  return reply.send({ ok: true, item: itemRow[0].name, status: body.status, all_done: allDone, order_id: orderId });
+});
+
 // ── Production Assistant (NLU chat endpoint) ─────────────────────────────
 // Called by the bot when a free-text message arrives in the production chat.
 
