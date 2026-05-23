@@ -5505,3 +5505,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: resolve BUTTONDATAINVALID — use inv_v:comp/inv_v:rev with full UUID; fix handlers to resolve full UUID from quotati
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e00f57e33b683db25e42ed84250e114f49257e69
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e00f57e33b683db25e42ed84250e114f49257e69
+**Files:** apps/api/src/agents/collectionAgent.ts,apps/api/src/agents/deliveryAgent.ts,apps/api/src/agents/escalationAgent.ts,apps/api/src/agents/inventoryAgent.ts,apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:** Resolved `BUTTONDATAINVALID` errors by ensuring all API calls use the full UUID for `inv_v:comp` and `inv_v:rev` fields, and by fixing handlers to resolve the full UUID from a quotation number before making API requests.
+
+**Why it broke:** Handlers were passing incomplete or non-UUID identifiers (e.g., quotation numbers) for entity references, causing the system to reject the data as invalid.
+
+**Reusable takeaway:** When an API requires UUIDs for entity references, always resolve human-readable identifiers (like quotation numbers) to full UUIDs before constructing API payloads. Never pass partial identifiers or non-UUID values where the schema expects a UUID. This prevents `BUTTONDATAINVALID` errors and ensures data integrity across service boundaries.
+
+---
+*Original commit message: fix: resolve BUTTONDATAINVALID — use inv_v:comp/inv_v:rev with full UUID; fix handlers to resolve full UUID from quotation number for API calls*
+
+#### Lesson Learned
+
+**What was fixed:** Resolved `BUTTONDATAINVALID` errors by ensuring all API calls use the full UUID for `inv_v:comp` and `inv_v:rev` fields, and by fixing handlers to resolve the full UUID from a quotation number before making API requests.
+
+**Why it broke:** Handlers were passing incomplete or non-UUID identifiers (e.g., quotation numbers) for entity references, causing the system to reject the data as invalid.
+
+**Reusable takeaway:** When an API requires UUIDs for entity references, always resolve human-readable identifiers (like quotation numbers) to full UUIDs before constructing API payloads. Never pass partial identifiers or non-UUID values where the schema expects a UUID. This prevents `BUTTONDATAINVALID` errors and ensures data integrity across service boundaries.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

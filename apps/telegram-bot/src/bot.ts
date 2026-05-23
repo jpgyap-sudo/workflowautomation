@@ -442,7 +442,7 @@ type UserStep =
   // Collection group deposit slip photo upload
   | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string }
   // Inventory verification — enter partial qty
-  | { action: 'awaiting_inv_verify_qty'; data: { itemId: string; orderId: string } }
+  | { action: 'awaiting_inv_verify_qty'; data: { itemId: string; orderId: string; quotationNumber: string } }
   // Bug report interactive flow
   | { action: 'awaiting_bug_title' }
   | { action: 'awaiting_bug_description'; title: string }
@@ -1953,7 +1953,7 @@ Midpoint and due reminders are now scheduled.`,
 
     // ── Inventory Verification — enter partial qty ────────────────────
     case 'awaiting_inv_verify_qty': {
-      const { itemId, orderId } = session.step.data;
+      const { itemId, orderId, quotationNumber } = session.step.data;
       const qty = parseInt(text, 10);
       if (isNaN(qty) || qty < 0) {
         await ctx.reply('❌ Please enter a valid number (e.g., `5`).', { parse_mode: 'Markdown', ...cancelButton() });
@@ -2008,9 +2008,9 @@ Midpoint and due reminders are now scheduled.`,
           await ctx.reply(msg, {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
-              [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
-              [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
+              [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id.slice(0, 8)}:${orderId.slice(0, 8)}:${quotationNumber}`)],
+              [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id.slice(0, 8)}:${orderId.slice(0, 8)}:${quotationNumber}`)],
+              [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id.slice(0, 8)}:${orderId.slice(0, 8)}:${quotationNumber}`)],
             ]),
           });
         }
@@ -3255,28 +3255,39 @@ bot.action(/^inventory:waiting:(.+):(.+)$/, async (ctx) => {
  *
  * Callback format: inv_verify:{action}:{itemId}:{orderId}
  */
-bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):(.+)$/, async (ctx) => {
+bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const action = ctx.match[1];
   const itemId = ctx.match[2];
-  const orderId = ctx.match[3];
+  const orderIdPrefix = ctx.match[3];
+  const quotationNumber = ctx.match[4];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `inv_verify:${action}:${itemId}:${orderId}`,
+    content: `inv_verify:${action}:${itemId}:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve full UUID from quotation number
+    let orderId: string;
+    try {
+      const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+      orderId = orderData.id;
+    } catch (_) {
+      await ctx.editMessageText(`❌ Error: Could not resolve order. Please try again from the inventory verification menu.`, { parse_mode: 'Markdown', ...cancelButton() });
+      return;
+    }
+
     if (action === 'partial') {
       // For partial, we need to ask the user to enter the quantity
       const session = getSession(chatId);
       session.step = {
         action: 'awaiting_inv_verify_qty',
-        data: { itemId, orderId },
+        data: { itemId, orderId, quotationNumber },
       };
       await ctx.editMessageText(
         `📦 *Enter Verified Quantity*\n\nPlease enter the number of units you can confirm for this item:`,
@@ -3331,9 +3342,9 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
-          [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
-          [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
+          [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id.slice(0, 8)}:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id.slice(0, 8)}:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id.slice(0, 8)}:${orderId.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
     }
