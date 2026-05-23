@@ -211,9 +211,9 @@ bot.use(async (ctx, next) => {
   const callbackData: string = cq.data;
   const chatId = String(ctx.chat?.id ?? '');
 
-  // Skip non-consequential actions (navigation, cancel, etc.)
-  const isConsequential = CONSEQUENTIAL_PREFIXES.some((prefix) => callbackData.startsWith(prefix));
-  if (!isConsequential) return next();
+  // Skip safe callbacks (navigation, cancel, view-only, input-prompting steps)
+  const isSafe = SAFE_PREFIXES.some((prefix) => callbackData.startsWith(prefix));
+  if (isSafe) return next();
 
   // Skip if this is a re-dispatch from the confirmation handler
   // (the key was added to confirmedCallbacks before handleUpdate was called)
@@ -520,19 +520,42 @@ function formatClientInfo(client: any): string {
 
 // ── State Machine ──────────────────────────────────────────────────────
 
-// ── Confirmation Passcode Guard ──────────────────────────────────────────
-// Before executing any consequential action (stage update, production, payment, etc.),
-// the bot asks the user to type this code to confirm. This prevents accidental clicks.
-const CONFIRMATION_CODE = '888';
+// ── Confirmation Guard ────────────────────────────────────────────────────
+// Every inline button tap goes through inline Confirm/Cancel buttons before
+// executing — keeps group chat clean (no "type 888" messages).
+// Only explicitly safe callbacks (navigation, cancel, view-only, input-prompts)
+// are skipped. Everything else requires confirmation.
+const CONFIRMATION_CODE = '888'; // kept for backward-compat text fallback
 
-// Callback data prefixes that require confirmation before executing.
-// These are actions that trigger API calls with real consequences.
-const CONSEQUENTIAL_PREFIXES = [
-  'produce:', 'payment:', 'production:', 'deposit:', 'balance:', 'delivery:',
-  'en_route:', 'inv_arr:', 'inv_ready:', 'inv_wait:', 'inventory:',
-  'item_prod:', 'item_en_route:', 'item_arr:', 'item_inventory:',
-  'verify:', 'assistant:mark_produced', 'assistant:en_route',
-  'reminder:', 'deposit:start_production',
+// Callbacks that are safe to run immediately — no confirmation needed.
+// Rule: navigation, explicit cancel, view-only, or "just asks for more input".
+const SAFE_PREFIXES = [
+  // Meta — the confirmation buttons themselves
+  'confirm_action:',
+  // Explicit cancel/dismiss
+  'action:cancel',
+  'assistant:cancel',
+  'deposit:confirm_no',
+  // Navigation / view-only
+  'noop',
+  'menu:',
+  'prd:list',
+  'prd:o:',          // view order items in production board
+  'clients:list',
+  // Order picker — just selects an order and moves to the next step
+  'pick:',
+  // Input-prompting steps — ask for more info, no API call yet
+  'produce:custom:',
+  'prod_remaining:custom:',
+  'date:custom:',
+  'production:delivery_custom:',
+  'en_route:arrival_custom:',
+  // Vision flow navigation (no state changes)
+  'vision:type_',
+  'vision:ignore',
+  'vision:retry_extract',
+  'vision:upload',
+  'upload:retry',
 ];
 
 // Set of recently-confirmed callback keys (format: "callbackData:chatId").
