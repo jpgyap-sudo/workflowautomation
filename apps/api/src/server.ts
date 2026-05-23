@@ -581,23 +581,6 @@ app.post('/orders', async (request, reply) => {
     userEmail,
   );
 
-  // Notify production group directly about the new order
-  if (PRODUCTION_CHAT_ID) {
-    const ref = newOrder.quotation_number ?? `Order #${newOrder.id.slice(0, 8)}`;
-    const client = newOrder.client_name ?? 'Unknown';
-    setImmediate(() => {
-      notifyGroupChat(
-        PRODUCTION_CHAT_ID,
-        `📋 <b>New Order Created (Dashboard)</b>\n\n` +
-        `Quotation: <b>${ref}</b>\n` +
-        `Client: ${client}\n` +
-        `Sales Agent: ${newOrder.sales_agent ?? '—'}\n` +
-        `Amount: ${newOrder.total_amount != null ? `PHP ${Number(newOrder.total_amount).toLocaleString()}` : '—'}\n\n` +
-        `A new order has been created via dashboard. Please review and proceed.`
-      );
-    });
-  }
-
   return reply.send(newOrder);
 });
 
@@ -1103,7 +1086,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
            escalation_level=0,
            updated_at=NOW()`,
         [id, groupChatId,
-         `*Production Due* - ${ref} (${client})\nEstimated production of ${body.estimated_production_days} days should be complete now.\nIs production finished?`,
+         `*Production Due* - ${ref} (${client})\nThe ${body.estimated_production_days}-day production window is now complete.\nIs production finished?`,
          finishDate.toISOString()]
       );
     }
@@ -2252,7 +2235,7 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
        escalation_level=0,
        updated_at=NOW()`,
     [id, groupChatId,
-     `*Production Due* - ${ref} (${client})\nEstimated production of ${body.estimated_production_days} days should be complete now.\nIs production finished?`,
+     `*Production Due* - ${ref} (${client})\nThe ${body.estimated_production_days}-day production window is now complete.\nIs production finished?`,
      finishDate.toISOString()]
   );
 
@@ -2540,12 +2523,14 @@ app.post('/deposits', async (request, reply) => {
       userEmail = tokenPayload.email ?? null;
     }
 
-    const orders = await query(`SELECT id, current_stage, quotation_number, client_name FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
+    const orders = await query(`SELECT id, current_stage, quotation_number, client_name, sales_agent, total_amount FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
     if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
     const orderId = orders[0].id;
     const quotationNumber = orders[0].quotation_number;
     const clientName = orders[0].client_name;
+    const salesAgent = orders[0].sales_agent;
+    const totalAmount = orders[0].total_amount;
 
     // Update deposit fields.
     // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
@@ -2616,6 +2601,22 @@ app.post('/deposits', async (request, reply) => {
         `Please verify the deposit on the dashboard.`
       );
     });
+
+    // Notify production group directly — downpayment has been paid, production may proceed
+    if (PRODUCTION_CHAT_ID) {
+      setImmediate(() => {
+        notifyGroupChat(
+          PRODUCTION_CHAT_ID,
+          `📋 <b>New Order Created (Dashboard)</b>\n\n` +
+          `Quotation: <b>${quotationNumber ?? body.quotation_number}</b>\n` +
+          `Client: ${clientName ?? 'N/A'}\n` +
+          `Sales Agent: ${salesAgent ?? '—'}\n` +
+          `Amount: ${totalAmount != null ? `PHP ${Number(totalAmount).toLocaleString()}` : '—'}\n\n` +
+          `Status: <b>Downpayment Paid</b>\n` +
+          `Production may proceed.`
+        );
+      });
+    }
 
     // Invalidate caches
     try {
@@ -3266,7 +3267,7 @@ app.post('/pay-balance', async (request, reply) => {
  * Called by the team (via dashboard or API) to verify that a deposit payment
  * has gone through. Sets deposit_verified=TRUE and advances the stage:
  *   deposit_pending → production_pending (or purchasing_pending)
- * Completes the deposit_verification reminder and creates a production reminder.
+ * Production remains blocked until this verification is complete, unless a production exception is granted.
  */
 const verifyDepositSchema = z.object({
   verified_by: z.string().optional(),
