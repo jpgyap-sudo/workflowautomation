@@ -685,6 +685,64 @@ function ItemTrackingSection({
     }
   }
 
+  function renderOtpModals() {
+    return (
+      <>
+        {showOtp === 'complete_verification' && (
+          <OtpModal
+            open={true}
+            title="Complete Inventory Verification"
+            description="Verify your identity to mark inventory verification as complete and advance the order to Inventory Arrived."
+            onVerified={handleCompleteVerification}
+            onClose={() => setShowOtp(null)}
+          />
+        )}
+        {showOtp === 'confirm_arrival' && (
+          <OtpModal
+            open={true}
+            title="Confirm All Inventory Arrived"
+            description="Verify your identity to confirm all inventory has arrived and advance the order to Balance Due. The inventory group chat will be notified."
+            onVerified={handleConfirmAllArrived}
+            onClose={() => setShowOtp(null)}
+          />
+        )}
+        {showOtp === 'extract_items' && (
+          <OtpModal
+            open={true}
+            title="Extract Items from Quotation"
+            description="Verify your identity to extract line items from this order's quotation using AI vision."
+            onVerified={doExtractItems}
+            onClose={() => setShowOtp(null)}
+          />
+        )}
+        {showOtp === 'upload_extract' && (
+          <OtpModal
+            open={true}
+            title="Upload Quotation & Extract Items"
+            description="Verify your identity to upload the quotation file and extract line items using AI vision."
+            onVerified={doUploadAndExtract}
+            onClose={() => { setShowOtp(null); setPendingUploadFile(null); }}
+          />
+        )}
+
+        <OtpModal
+          open={otpModal.open}
+          title={otpModal.title}
+          description={otpModal.description}
+          onVerified={(token) => {
+            if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
+            else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
+          }}
+          onClose={() => {
+            setOtpModal((prev) => ({ ...prev, open: false }));
+            setPendingVerifyItem(null);
+            setPendingMarkArrived(null);
+          }}
+        />
+      </>
+    );
+  }
+
   if (!stagesWithItems.includes(currentStage)) return null;
 
   if (loading) {
@@ -700,55 +758,58 @@ function ItemTrackingSection({
   // If no items yet, show an "Extract Items" prompt
   if (items.length === 0 && logs.length === 0) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6">
-        <div className="flex items-center gap-2">
-          <List className="h-4 w-4 text-gray-500" />
-          <h2 className="text-base font-semibold text-gray-800">Item-Level Tracking</h2>
+      <>
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
+          <div className="flex items-center gap-2">
+            <List className="h-4 w-4 text-gray-500" />
+            <h2 className="text-base font-semibold text-gray-800">Item-Level Tracking</h2>
+          </div>
+          <p className="mt-3 text-sm text-gray-500">
+            No items have been extracted for this order yet. You can extract items from the quotation image using AI vision.
+          </p>
+          {extractError && (
+            <p className="mt-2 text-xs text-red-500">{extractError}</p>
+          )}
+          {uploadMessage && !extractError && (
+            <p className="mt-2 text-xs text-green-600">{uploadMessage}</p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={handleExtractItems}
+              disabled={extracting}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 text-xs font-medium text-white shadow-sm hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
+            >
+              {extracting && !uploadingQuotation ? (
+                <>
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Extracting...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Extract Items from Quotation
+                </>
+              )}
+            </button>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-4 py-2 text-xs font-medium text-purple-700 shadow-sm hover:bg-purple-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+              {uploadingQuotation ? (
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-300 border-t-purple-700" />
+              ) : (
+                <FileText className="h-3.5 w-3.5" />
+              )}
+              {uploadingQuotation ? 'Uploading...' : 'Upload Quotation & Extract'}
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={handleQuotationUpload}
+                disabled={extracting || uploadingQuotation}
+                className="sr-only"
+              />
+            </label>
+          </div>
         </div>
-        <p className="mt-3 text-sm text-gray-500">
-          No items have been extracted for this order yet. You can extract items from the quotation image using AI vision.
-        </p>
-        {extractError && (
-          <p className="mt-2 text-xs text-red-500">{extractError}</p>
-        )}
-        {uploadMessage && !extractError && (
-          <p className="mt-2 text-xs text-green-600">{uploadMessage}</p>
-        )}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            onClick={handleExtractItems}
-            disabled={extracting}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 text-xs font-medium text-white shadow-sm hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
-          >
-            {extracting && !uploadingQuotation ? (
-              <>
-                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Extracting...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3.5 w-3.5" />
-                Extract Items from Quotation
-              </>
-            )}
-          </button>
-          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-4 py-2 text-xs font-medium text-purple-700 shadow-sm hover:bg-purple-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
-            {uploadingQuotation ? (
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-300 border-t-purple-700" />
-            ) : (
-              <FileText className="h-3.5 w-3.5" />
-            )}
-            {uploadingQuotation ? 'Uploading...' : 'Upload Quotation & Extract'}
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={handleQuotationUpload}
-              disabled={extracting || uploadingQuotation}
-              className="sr-only"
-            />
-          </label>
-        </div>
-      </div>
+        {renderOtpModals()}
+      </>
     );
   }
 
@@ -960,59 +1021,7 @@ function ItemTrackingSection({
         </div>
       )}
 
-      {/* OTP Modal */}
-      {showOtp === 'complete_verification' && (
-        <OtpModal
-          open={true}
-          title="Complete Inventory Verification"
-          description="Verify your identity to mark inventory verification as complete and advance the order to Inventory Arrived."
-          onVerified={handleCompleteVerification}
-          onClose={() => setShowOtp(null)}
-        />
-      )}
-      {showOtp === 'confirm_arrival' && (
-        <OtpModal
-          open={true}
-          title="Confirm All Inventory Arrived"
-          description="Verify your identity to confirm all inventory has arrived and advance the order to Balance Due. The inventory group chat will be notified."
-          onVerified={handleConfirmAllArrived}
-          onClose={() => setShowOtp(null)}
-        />
-      )}
-      {showOtp === 'extract_items' && (
-        <OtpModal
-          open={true}
-          title="Extract Items from Quotation"
-          description="Verify your identity to extract line items from this order's quotation using AI vision."
-          onVerified={doExtractItems}
-          onClose={() => setShowOtp(null)}
-        />
-      )}
-      {showOtp === 'upload_extract' && (
-        <OtpModal
-          open={true}
-          title="Upload Quotation & Extract Items"
-          description="Verify your identity to upload the quotation file and extract line items using AI vision."
-          onVerified={doUploadAndExtract}
-          onClose={() => { setShowOtp(null); setPendingUploadFile(null); }}
-        />
-      )}
-
-      {/* OTP Modal for verify item / mark arrived */}
-      <OtpModal
-        open={otpModal.open}
-        title={otpModal.title}
-        description={otpModal.description}
-        onVerified={(token) => {
-          if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
-          else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
-        }}
-        onClose={() => {
-          setOtpModal((prev) => ({ ...prev, open: false }));
-          setPendingVerifyItem(null);
-          setPendingMarkArrived(null);
-        }}
-      />
+      {renderOtpModals()}
 
       {/* Production update logs */}
       {logs.length > 0 && (

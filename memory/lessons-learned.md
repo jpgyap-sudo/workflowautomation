@@ -5185,3 +5185,74 @@ Automate the capture and versioning of engineering lessons directly within the w
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: commit all pending changes including lesson memory updates
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3fa023cc2b88718f1bf4b33db1d4d05687906e33
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3fa023cc2b88718f1bf4b33db1d4d05687906e33
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Pending changes in lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) were not being committed, causing the system to lose track of previously learned lessons.
+
+**Why it broke:**  
+The workflow automation only committed code changes, but ignored updates to memory/lesson files. These files were treated as transient artifacts rather than versioned state, so lessons were silently discarded between runs.
+
+**Reusable takeaway:**  
+Treat lesson memory and learning artifacts as first-class versioned assets, not ephemeral logs. Always include them in commit/push automation to preserve accumulated knowledge across workflow iterations.
+
+---
+*Original commit message: chore: commit all pending changes including lesson memory updates*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Pending changes in lesson memory files (`lesson-index.jsonl` and `lessons-learned.md`) were not being committed, causing the system to lose track of previously learned lessons.
+
+**Why it broke:**  
+The workflow automation only committed code changes, but ignored updates to memory/lesson files. These files were treated as transient artifacts rather than versioned state, so lessons were silently discarded between runs.
+
+**Reusable takeaway:**  
+Treat lesson memory and learning artifacts as first-class versioned assets, not ephemeral logs. Always include them in commit/push automation to preserve accumulated knowledge across workflow iterations.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Fix upload extract OTP modal in empty item state
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+In the order detail ItemTrackingSection, empty item/log state returned before OTP modals were rendered, so Extract Items and Upload Quotation & Extract appeared to do nothing after selecting a file. Render shared OTP modals in both the empty-state branch and normal branch.
+
+#### Lesson Learned
+
+In the order detail ItemTrackingSection, empty item/log state returned before OTP modals were rendered, so Extract Items and Upload Quotation & Extract appeared to do nothing after selecting a file. Render shared OTP modals in both the empty-state branch and normal branch.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
