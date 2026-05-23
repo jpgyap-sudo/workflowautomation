@@ -540,7 +540,9 @@ const SAFE_PREFIXES = [
   'noop',
   'menu:',
   'prd:list',
+  'prd:cat:',
   'prd:o:',          // view order items in production board
+  'prd:i:',
   'clients:list',
   // Order picker — just selects an order and moves to the next step
   'pick:',
@@ -3503,42 +3505,44 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     }
     const itemId = targetItem.id;
 
-    // Check if the item's status is actually changing
-    // If user clicks "Not Yet" on an item already pending, it's a no-op —
-    // just acknowledge and stop, don't show the next item (avoids infinite loop)
+    // Track items the user has already said "Not Yet" to in this session
+    // so we can skip them and avoid bouncing between the same items
+    const skipSet: Set<string> = (ctx as any).__prodSkipSet ?? new Set();
+    (ctx as any).__prodSkipSet = skipSet;
+
+    // If user clicks "Not Yet" on an item already pending, add it to skip set
+    // so we move to the next item instead of bouncing back
     if (newStatus === 'pending' && targetItem.production_status === 'pending') {
-      await ctx.editMessageText(
-        `⏳ Noted — *${targetItem.name}* has not started production yet.\n\nI'll check again when the agent runs next.`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
-      return;
+      skipSet.add(itemId);
     }
 
-    // Update the item's production status via API
-    await patchJson(`/orders/${orderId}/items/${itemId}`, {
-      production_status: newStatus,
-    });
+    // Update the item's production status via API (only if status actually changed)
+    if (newStatus !== 'pending' || targetItem.production_status !== 'pending') {
+      await patchJson(`/orders/${orderId}/items/${itemId}`, {
+        production_status: newStatus,
+      });
 
-    // Add a production update log
-    const statusLabels: Record<string, string> = {
-      finished: '✅ Finished',
-      in_progress: '🔄 In Progress',
-      pending: '⏳ Not Yet Started',
-    };
-    await postJson(`/orders/${orderId}/production-logs`, {
-      order_item_id: itemId,
-      note: `Item production status updated to: ${statusLabels[newStatus]}`,
-      log_type: 'user',
-      created_by: username ?? `user_${userId}`,
-    });
+      // Add a production update log
+      const statusLabels: Record<string, string> = {
+        finished: '✅ Finished',
+        in_progress: '🔄 In Progress',
+        pending: '⏳ Not Yet Started',
+      };
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: itemId,
+        note: `Item production status updated to: ${statusLabels[newStatus]}`,
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+    }
 
     // Fetch updated completion
     const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
     const completion = await completionRes.json();
 
-    // Find the next unfinished item (process of elimination)
+    // Find the next unfinished item, skipping items the user already said "Not Yet" to
     const unfinishedItem = items.find(
-      (item: any) => item.production_status !== 'finished'
+      (item: any) => item.production_status !== 'finished' && !skipSet.has(item.id)
     );
 
     if (!unfinishedItem) {
@@ -3690,32 +3694,35 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     };
     const enRouteStatus = statusMap[newStatus];
 
-    // Check if the item's status is actually changing
-    // If user clicks "Not Yet" on an item already not_yet, it's a no-op —
-    // just acknowledge and stop, don't show the next item (avoids infinite loop)
+    // Track items the user has already said "Not Yet" to in this session
+    // so we can skip them and avoid bouncing between the same items
+    const skipKey = `en_route_skip:${chatId}:${orderId}`;
+    const skipSet: Set<string> = (ctx as any).__enRouteSkipSet ?? new Set();
+    (ctx as any).__enRouteSkipSet = skipSet;
+
+    // If user clicks "Not Yet" on an item already not_yet, add it to skip set
+    // so we move to the next item instead of bouncing back
     if (newStatus === 'no' && targetItem.en_route_status === 'not_yet') {
-      await ctx.editMessageText(
-        `⏳ Noted — *${targetItem.name}* is not yet en route.\n\nI'll check again when the agent runs next.`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
-      return;
+      skipSet.add(itemId);
     }
 
-    // Update the item's en_route status via API
-    await patchJson(`/orders/${orderId}/items/${itemId}`, {
-      en_route_status: enRouteStatus,
-    });
+    // Update the item's en_route status via API (only if status actually changed)
+    if (newStatus !== 'no' || targetItem.en_route_status !== 'not_yet') {
+      await patchJson(`/orders/${orderId}/items/${itemId}`, {
+        en_route_status: enRouteStatus,
+      });
 
-    const statusLabels: Record<string, string> = {
-      no: '⏳ Not Yet En Route',
-      arrived: '📦 Arrived at Inventory',
-    };
-    await postJson(`/orders/${orderId}/production-logs`, {
-      order_item_id: itemId,
-      note: `Item en-route status updated to: ${statusLabels[newStatus]}`,
-      log_type: 'user',
-      created_by: username ?? `user_${userId}`,
-    });
+      const statusLabels: Record<string, string> = {
+        no: '⏳ Not Yet En Route',
+        arrived: '📦 Arrived at Inventory',
+      };
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: itemId,
+        note: `Item en-route status updated to: ${statusLabels[newStatus]}`,
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+    }
 
     // Fetch updated items (re-fetch to get fresh statuses after patch)
     const updatedItemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
@@ -3730,9 +3737,9 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
     const thresholdMet = enRoutePct > 50;
 
-    // Find the next item not yet en route (process of elimination)
+    // Find the next item not yet en route, skipping items the user already said "Not Yet" to
     const notEnRouteItem = updatedItems.find(
-      (item: any) => item.en_route_status === 'not_yet'
+      (item: any) => item.en_route_status === 'not_yet' && !skipSet.has(item.id)
     );
 
     if (!notEnRouteItem) {
