@@ -4873,3 +4873,45 @@ Always implement a fallback channel for critical verification steps (e.g., email
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: trigger collection agent immediately on new order creation
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2dbaae8e18790be8da8f916778a9b1fb92a5bb23
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 2dbaae8e18790be8da8f916778a9b1fb92a5bb23
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** The collection agent was not being triggered immediately after a new order was created, causing delays in order processing.
+
+**Why it broke:** The event listener for new order creation was registered after the server startup sequence, missing the initial order creation events. The collection agent only ran on a scheduled timer, not on-demand.
+
+**Reusable takeaway:** When designing event-driven systems, register critical event listeners *before* the service starts processing events. For time-sensitive workflows, trigger agents immediately on event creation rather than relying solely on scheduled polling. This ensures zero-miss event handling and reduces latency.
+
+---
+*Original commit message: fix: trigger collection agent immediately on new order creation*
+
+#### Lesson Learned
+
+**What was fixed:** The collection agent was not being triggered immediately after a new order was created, causing delays in order processing.
+
+**Why it broke:** The event listener for new order creation was registered after the server startup sequence, missing the initial order creation events. The collection agent only ran on a scheduled timer, not on-demand.
+
+**Reusable takeaway:** When designing event-driven systems, register critical event listeners *before* the service starts processing events. For time-sensitive workflows, trigger agents immediately on event creation rather than relying solely on scheduled polling. This ensures zero-miss event handling and reduces latency.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
