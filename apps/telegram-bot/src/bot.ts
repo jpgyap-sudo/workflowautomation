@@ -2215,9 +2215,9 @@ bot.action(/^produce:partial:(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${order.id}`)],
-          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${order.id}`)],
-          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${order.id}`)],
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
     } else {
