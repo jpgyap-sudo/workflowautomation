@@ -8,8 +8,11 @@ import Header from '@/components/Header';
 
 const PUBLIC_ROUTES = ['/login'];
 
+// Routes accessible to all authenticated roles (admin, editor, viewer)
+const SHARED_ROUTES = ['/orders', '/actions', '/clients', '/purchasing', '/inventory', '/delivery', '/collection'];
+
 export function AuthGuard({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
@@ -29,10 +32,22 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
     if (!isAuthenticated && !isPublic) {
       router.replace('/login');
-    } else if (isAuthenticated && isPublic) {
-      router.replace('/');
+      return;
     }
-  }, [isAuthenticated, pathname, ready, router]);
+
+    if (isAuthenticated && isPublic) {
+      router.replace(user?.role === 'admin' ? '/' : '/orders');
+      return;
+    }
+
+    // Redirect non-admin users away from admin-only routes
+    if (isAuthenticated && user?.role !== 'admin') {
+      const isShared = SHARED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
+      if (!isShared) {
+        router.replace('/orders');
+      }
+    }
+  }, [isAuthenticated, user, pathname, ready, router]);
 
   // Show nothing while hydrating
   if (!ready) {
