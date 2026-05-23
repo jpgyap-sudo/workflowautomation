@@ -4,11 +4,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, visionExtract, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, visionExtract, verifyDeposit, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2 } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
@@ -24,6 +24,31 @@ export default function OrderDetailPage() {
   const quotationNumber = params.quotationNumber as string;
   const { data: order, error, isLoading } = useOrder(quotationNumber);
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
+  const [showVerifyDepositOtp, setShowVerifyDepositOtp] = useState(false);
+  const [verifyingDeposit, setVerifyingDeposit] = useState(false);
+  const [verifyDepositResult, setVerifyDepositResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function handleVerifyDepositVerified(actionToken: string) {
+    if (!order) return;
+    setVerifyingDeposit(true);
+    setVerifyDepositResult(null);
+    try {
+      const res = await verifyDeposit(order.id, {
+        verified_by: 'dashboard',
+        action_token: actionToken,
+      });
+      if (res.ok) {
+        setVerifyDepositResult({ ok: true, message: `✅ Deposit verified! Advancing to ${res.next_stage?.replace(/_/g, ' ') ?? 'next stage'}.` });
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setVerifyDepositResult({ ok: false, message: 'Failed to verify deposit.' });
+      }
+    } catch (err: any) {
+      setVerifyDepositResult({ ok: false, message: err.message ?? 'Failed to verify deposit.' });
+    } finally {
+      setVerifyingDeposit(false);
+    }
+  }
 
   if (isLoading && !order) {
     return (
@@ -277,6 +302,35 @@ export default function OrderDetailPage() {
             />
           </div>
         )}
+        {order.deposit_paid && !order.deposit_verified && (
+          <div className="mt-3 space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-4">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-rose-600" />
+              <p className="text-xs font-semibold text-rose-800">Deposit Verification Required</p>
+            </div>
+            <p className="text-xs text-rose-700">
+              The downpayment has been recorded but not yet verified. Verify it to advance to purchasing.
+            </p>
+            {verifyDepositResult ? (
+              <p className={`text-xs font-medium ${verifyDepositResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+                {verifyDepositResult.message}
+              </p>
+            ) : (
+              <button
+                onClick={() => setShowVerifyDepositOtp(true)}
+                disabled={verifyingDeposit}
+                className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {verifyingDeposit ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-3 w-3" />
+                )}
+                {verifyingDeposit ? 'Verifying...' : 'Verify Deposit'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Balance status */}
@@ -448,6 +502,17 @@ export default function OrderDetailPage() {
           onUploadComplete={refreshFiles}
         />
       )}
+
+      <OtpModal
+        open={showVerifyDepositOtp}
+        title="Verify Deposit"
+        description="Please confirm to verify the downpayment for this order. This will advance the order to Purchasing Pending."
+        onVerified={handleVerifyDepositVerified}
+        onClose={() => {
+          setShowVerifyDepositOtp(false);
+          setVerifyDepositResult(null);
+        }}
+      />
     </div>
   );
 }
