@@ -3938,3 +3938,45 @@ When building data-heavy dashboards, always validate that every UI element (badg
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: file upload sync, action tokens, and binary storage
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 65d70a737fe1c819b99cffdf4253a63912d2fd1d
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 65d70a737fe1c819b99cffdf4253a63912d2fd1d
+**Files:** 
+
+**Summary:**
+**What was fixed:** File upload synchronization, action token handling, and binary storage logic.
+
+**Why it broke:** The system had race conditions between file upload completion and downstream action execution, missing token validation for action authorization, and improper handling of binary data (likely stored as text or without proper encoding).
+
+**Reusable takeaway:** Always decouple file upload from action execution using explicit state tracking (e.g., upload-complete flag). Validate action tokens before processing any payload. Store binary data using dedicated binary-safe storage (e.g., BLOB fields or file system with base64 encoding only for transport). Use atomic operations or transactions when updating upload status and token state to prevent partial updates.
+
+---
+*Original commit message: fix: file upload sync, action tokens, and binary storage*
+
+#### Lesson Learned
+
+**What was fixed:** File upload synchronization, action token handling, and binary storage logic.
+
+**Why it broke:** The system had race conditions between file upload completion and downstream action execution, missing token validation for action authorization, and improper handling of binary data (likely stored as text or without proper encoding).
+
+**Reusable takeaway:** Always decouple file upload from action execution using explicit state tracking (e.g., upload-complete flag). Validate action tokens before processing any payload. Store binary data using dedicated binary-safe storage (e.g., BLOB fields or file system with base64 encoding only for transport). Use atomic operations or transactions when updating upload status and token state to prevent partial updates.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -4455,10 +4455,25 @@ const createNoteSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().max(2000).default(''),
   color: z.string().default('#2490ef'),
+  action_token: z.string(),
 });
 
 app.post('/calendar/notes', async (request, reply) => {
   const body = createNoteSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
+
   const rows = await query(
     `INSERT INTO calendar_notes (note_date, title, content, color)
      VALUES ($1::date, $2, $3, $4)
@@ -4466,6 +4481,11 @@ app.post('/calendar/notes', async (request, reply) => {
     [body.note_date, body.title, body.content, body.color]
   );
   await invalidateCache(['calendar:*']);
+  await notifyManualChange(
+    '📝 Calendar note created',
+    `Date: *${body.note_date}*\nTitle: ${body.title}`,
+    userEmail,
+  );
   return reply.send(rows[0]);
 });
 
@@ -4473,11 +4493,25 @@ const updateNoteSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().max(2000).optional(),
   color: z.string().optional(),
+  action_token: z.string(),
 });
 
 app.patch('/calendar/notes/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = updateNoteSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const sets: string[] = [];
   const values: any[] = [];
@@ -4496,14 +4530,42 @@ app.patch('/calendar/notes/:id', async (request, reply) => {
   );
   if (!rows[0]) return reply.code(404).send({ error: 'Note not found' });
   await invalidateCache(['calendar:*']);
+  await notifyManualChange(
+    '✏️ Calendar note edited',
+    `Note ID: *${params.id.slice(0, 8)}...*${body.title ? `\nTitle: ${body.title}` : ''}`,
+    userEmail,
+  );
   return reply.send(rows[0]);
 });
 
 app.delete('/calendar/notes/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
-  const rows = await query(`DELETE FROM calendar_notes WHERE id = $1 RETURNING id`, [params.id]);
+  const body = (request.body ?? {}) as any;
+
+  // Verify action token and extract email
+  if (!body.action_token) {
+    return reply.status(400).send({ error: 'action_token is required' });
+  }
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
+
+  const rows = await query(`DELETE FROM calendar_notes WHERE id = $1 RETURNING id, title`, [params.id]);
   if (!rows[0]) return reply.code(404).send({ error: 'Note not found' });
   await invalidateCache(['calendar:*']);
+  await notifyManualChange(
+    '🗑️ Calendar note deleted',
+    `Note ID: *${params.id.slice(0, 8)}...*\nTitle: ${rows[0].title ?? 'N/A'}`,
+    userEmail,
+  );
   return reply.send({ ok: true });
 });
 
@@ -4813,11 +4875,15 @@ app.patch('/clients/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = clientUpdateSchema.parse(request.body);
 
+  // Verify action token and extract email
+  let userEmail: string | null = null;
   if (body.action_token) {
     if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
     const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
 
   const fields: string[] = [];
@@ -4871,6 +4937,7 @@ app.patch('/clients/:id', async (request, reply) => {
   await notifyManualChange(
     `✏️ Client edited via dashboard`,
     `Client: *${updated.client_name}*`,
+    userEmail,
   );
   return reply.send(updated);
 });
@@ -4881,11 +4948,15 @@ app.delete('/clients/:id', async (request, reply) => {
   const body = (request.body ?? {}) as any;
   const force = queryParams.force === 'true' || queryParams.force === '1' || body.force === true;
 
+  // Verify action token and extract email
+  let userEmail: string | null = null;
   if (body.action_token) {
     if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
     const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
 
   const clientRows = await query(`SELECT * FROM clients WHERE id=$1`, [params.id]);
@@ -4915,6 +4986,7 @@ app.delete('/clients/:id', async (request, reply) => {
   await notifyManualChange(
     `🗑️ Client deleted via dashboard`,
     `Client: *${rows[0]?.client_name ?? params.id}*${force ? ' (forced — active orders unlinked)' : ''}`,
+    userEmail,
   );
   return reply.send({ ok: true, deleted: rows[0], active_order_count: activeOrderCount, forced: force });
 });
@@ -4994,7 +5066,21 @@ app.post('/inventory', async (request, reply) => {
     quantity: z.number().int().min(0).default(0),
     image_url: z.string().optional(),
     category: z.string().optional(),
+    action_token: z.string(),
   }).parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.email ?? null;
 
   const rows = await query(
     `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url, category)
@@ -5005,6 +5091,7 @@ app.post('/inventory', async (request, reply) => {
   await notifyManualChange(
     'Inventory item created',
     `Product: *${body.product_name}*\nQuantity: ${body.quantity}\n${body.category ? `Category: ${body.category}` : ''}`,
+    userEmail,
   );
 
   await invalidateCache(['inventory:*', '/inventory']);
@@ -5024,11 +5111,15 @@ app.patch('/inventory/:id', async (request, reply) => {
     action_token: z.string().optional(),
   }).parse(request.body);
 
+  // Verify action token and extract email
+  let userEmail: string | null = null;
   if (body.action_token) {
     if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
     const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
 
   const fields: string[] = [];
@@ -5055,6 +5146,7 @@ app.patch('/inventory/:id', async (request, reply) => {
   await notifyManualChange(
     `✏️ Inventory item edited via dashboard`,
     `Item: *${rows[0].product_name}*`,
+    userEmail,
   );
   return rows[0];
 });
@@ -5063,11 +5155,15 @@ app.delete('/inventory/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = (request.body ?? {}) as any;
 
+  // Verify action token and extract email
+  let userEmail: string | null = null;
   if (body.action_token) {
     if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
     const tokenData = await cacheClient.get(`action_token:${body.action_token}`);
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
   }
 
   const rows = await query(`DELETE FROM inventory_items WHERE id=$1 RETURNING *`, [params.id]);
@@ -5077,6 +5173,7 @@ app.delete('/inventory/:id', async (request, reply) => {
   await notifyManualChange(
     `🗑️ Inventory item deleted via dashboard`,
     `Item: *${rows[0].product_name}*`,
+    userEmail,
   );
   return { ok: true };
 });

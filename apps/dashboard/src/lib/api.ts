@@ -634,6 +634,7 @@ export async function createCalendarNote(note: {
   title: string;
   content?: string;
   color?: string;
+  action_token?: string;
 }): Promise<CalendarNote> {
   return fetchJson<CalendarNote>('/calendar/notes', {
     method: 'POST',
@@ -729,6 +730,7 @@ export async function createClient(data: {
   authorized_receiver_contact?: string | null;
   notes?: string | null;
   propagate_to_orders?: boolean;
+  action_token?: string;
 }): Promise<Client> {
   return fetchJson<Client>('/clients', {
     method: 'POST',
@@ -835,6 +837,7 @@ export async function createInventoryItem(data: {
   category?: string | null;
   quantity?: number;
   image_url?: string | null;
+  action_token?: string;
 }): Promise<InventoryItem> {
   return fetchJson<InventoryItem>('/inventory', {
     method: 'POST',

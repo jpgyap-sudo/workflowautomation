@@ -99,7 +99,7 @@ export default function InventoryPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
+    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Initialize draft edits when drafts load
@@ -172,21 +172,33 @@ export default function InventoryPage() {
     }
   }
 
-  async function handleCreateItem() {
+  function handleCreateItem() {
     if (!addForm.product_name.trim()) {
       setAddError('Product name is required');
       return;
     }
+    (window as any).__pendingInventoryAdd = {
+      product_name: addForm.product_name.trim(),
+      description: addForm.description.trim() || null,
+      dimension: addForm.dimension.trim() || null,
+      category: addForm.category.trim() || null,
+      quantity: Number(addForm.quantity) || 0,
+      image_url: addForm.image_url || null,
+    };
+    setOtpModal({
+      open: true,
+      title: 'Add Inventory Item',
+      description: `You are about to add "${addForm.product_name.trim()}" to inventory. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'add',
+    });
+  }
+
+  async function handleAddVerified(actionToken: string) {
+    const pending = (window as any).__pendingInventoryAdd;
+    if (!pending) return;
     setSaving(true);
     try {
-      await createInventoryItem({
-        product_name: addForm.product_name.trim(),
-        description: addForm.description.trim() || null,
-        dimension: addForm.dimension.trim() || null,
-        category: addForm.category.trim() || null,
-        quantity: Number(addForm.quantity) || 0,
-        image_url: addForm.image_url || null,
-      });
+      await createInventoryItem({ ...pending, action_token: actionToken });
       mutateItems();
       setModal('none');
       setAddForm({ product_name: '', description: '', dimension: '', category: '', quantity: '0', image_url: '' });
@@ -196,6 +208,7 @@ export default function InventoryPage() {
       setAddError(err instanceof Error ? err.message : 'Failed to create item');
     } finally {
       setSaving(false);
+      (window as any).__pendingInventoryAdd = null;
     }
   }
 
@@ -394,7 +407,8 @@ export default function InventoryPage() {
   }
 
   function handleOtpVerified(actionToken: string) {
-    if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
+    if (otpModal.pendingAction === 'add') handleAddVerified(actionToken);
+    else if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else handleDeleteVerified(actionToken);
   }
 

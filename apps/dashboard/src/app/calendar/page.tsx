@@ -203,7 +203,7 @@ export default function CalendarPage() {
         });
       } else {
         await createCalendarNote({
-          note_date: formatDateKey(selectedDate), title: noteTitle.trim(), content: noteContent, color: noteColor,
+          note_date: formatDateKey(selectedDate), title: noteTitle.trim(), content: noteContent, color: noteColor, action_token: actionToken,
         });
       }
       await mutate('/calendar/notes');

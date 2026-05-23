@@ -147,8 +147,8 @@ export default function ClientsPage() {
   const [clientOrders, setClientOrders] = useState<Record<string, any[]>>({});
   const [loadingOrders, setLoadingOrders] = useState<Record<string, boolean>>({});
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
-  }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete';
+  }>({ open: false, title: '', description: '', pendingAction: 'add' });
 
   useEffect(() => {
     const q = search.trim();
@@ -191,7 +191,7 @@ export default function ClientsPage() {
     }
   }
 
-  async function handleAdd(data: {
+  function handleAdd(data: {
     client_name: string;
     delivery_address?: string | null;
     contact_number?: string | null;
@@ -200,9 +200,18 @@ export default function ClientsPage() {
     notes?: string | null;
     propagate_to_orders?: boolean;
   }) {
+    (window as any).__pendingClientAdd = data;
+    setOtpModal({ open: true, title: 'Add Client',
+      description: `You are about to add a new client "${data.client_name}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'add' });
+  }
+
+  async function handleAddVerified(actionToken: string) {
+    const pending = (window as any).__pendingClientAdd;
+    if (!pending) return;
     setSaving(true);
     try {
-      await createClient(data);
+      await createClient({ ...pending, action_token: actionToken });
       setShowForm(false);
       mutate();
       setSearchResults(null);
@@ -211,6 +220,7 @@ export default function ClientsPage() {
       alert('Failed to add client: ' + (err.message ?? 'Unknown error'));
     } finally {
       setSaving(false);
+      (window as any).__pendingClientAdd = null;
     }
   }
 
@@ -272,7 +282,8 @@ export default function ClientsPage() {
   }
 
   function handleOtpVerified(actionToken: string) {
-    if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
+    if (otpModal.pendingAction === 'add') handleAddVerified(actionToken);
+    else if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else handleDeleteVerified(actionToken);
   }
 
@@ -530,7 +541,7 @@ export default function ClientsPage() {
         title={otpModal.title}
         description={otpModal.description}
         onVerified={handleOtpVerified}
-        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingClientEdit = null; }}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingClientEdit = null; (window as any).__pendingClientAdd = null; }}
       />
     </div>
   );
