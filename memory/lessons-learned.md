@@ -4503,3 +4503,51 @@ Telegram vision/share sends extracted quotation items, but dashboard /vision?tok
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] Fix dashboard extraction item sync and protected actions
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7be7b190b98748d9bd2f8f865dfe047620724ea9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 7be7b190b98748d9bd2f8f865dfe047620724ea9
+**Files:** apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Dashboard extraction items were not syncing correctly, and protected actions (e.g., delete, edit) were failing silently or causing UI inconsistencies.
+
+**Why it broke:**  
+The API client in `lib/api.ts` was not properly handling authentication tokens or response statuses for protected endpoints. Additionally, the extraction item sync logic in `page.tsx` files relied on stale local state instead of re-fetching from the server after mutations, leading to desynchronized UI.
+
+**Reusable takeaway:**  
+Always invalidate or refetch server data after mutating protected resources (e.g., delete, update). Ensure API clients explicitly handle auth failures (e.g., 401) and propagate errors to the UI. Use a consistent data-fetching pattern (e.g., SWR, React Query) to avoid stale state.
+
+---
+*Original commit message: Fix dashboard extraction item sync and protected actions*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Dashboard extraction items were not syncing correctly, and protected actions (e.g., delete, edit) were failing silently or causing UI inconsistencies.
+
+**Why it broke:**  
+The API client in `lib/api.ts` was not properly handling authentication tokens or response statuses for protected endpoints. Additionally, the extraction item sync logic in `page.tsx` files relied on stale local state instead of re-fetching from the server after mutations, leading to desynchronized UI.
+
+**Reusable takeaway:**  
+Always invalidate or refetch server data after mutating protected resources (e.g., delete, update). Ensure API clients explicitly handle auth failures (e.g., 401) and propagate errors to the UI. Use a consistent data-fetching pattern (e.g., SWR, React Query) to avoid stale state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
