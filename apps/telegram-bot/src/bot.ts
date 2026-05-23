@@ -2448,22 +2448,47 @@ bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
 // Callback format: item_prod:{status}:{itemId}:{orderId}
 //   status = finished | in_progress | pending
 
+// NOTE: callback_data format uses first 8 chars of item UUID + quotation_number
+// to stay within Telegram's 64-byte limit. The handler resolves the quotation_number
+// to the full order UUID before making API calls.
 bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
-  const itemId = ctx.match[2];
-  const orderId = ctx.match[3];
+  const itemIdPrefix = ctx.match[2];
+  const quotationNumber = ctx.match[3];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `item_prod:${newStatus}:${itemId}:${orderId}`,
+    content: `item_prod:${newStatus}:${itemIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve quotation_number to full order UUID
+    const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!orderRes.ok) {
+      await ctx.editMessageText(`❌ Order #${quotationNumber} not found.`, { parse_mode: 'Markdown' });
+      return;
+    }
+    const orderData = await orderRes.json();
+    const orderId = orderData.id;
+
+    // Fetch items for this order
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    const items = itemsData?.items ?? [];
+
+    // Find the item matching the prefix
+    const targetItem = items.find((item: any) => item.id?.startsWith(itemIdPrefix));
+    if (!targetItem) {
+      await ctx.editMessageText('❌ Item not found. It may have been removed.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const itemId = targetItem.id;
+
     // Update the item's production status via API
     await postJson(`/orders/${orderId}/items/${itemId}`, {
       production_status: newStatus,
@@ -2482,15 +2507,12 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       created_by: username ?? `user_${userId}`,
     });
 
-    // Fetch updated completion and items to show next question
+    // Fetch updated completion
     const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
     const completion = await completionRes.json();
 
-    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
-    const items = await itemsRes.json();
-
     // Find the next unfinished item (process of elimination)
-    const unfinishedItem = items?.items?.find(
+    const unfinishedItem = items.find(
       (item: any) => item.production_status !== 'finished'
     );
 
@@ -2507,28 +2529,22 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await postJson(`/orders/${orderId}/finish-production`, {
         delivery_estimated_days: 28,
       });
-      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${orderId.slice(0, 8)} auto-advanced to en_route` });
+      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber} auto-advanced to en_route` });
 
       await ctx.editMessageText(
-        `✅ *All Items Production Finished!*\n\nOrder #${orderId.slice(0, 8)}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
+        `✅ *All Items Production Finished!*\n\nOrder #${quotationNumber}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
       // ── Advance order to partial_production if any item is pending ──
-      // When a user marks an item as "Not Yet" (pending), the order should
-      // move from production_pending to partial_production stage so it
-      // appears in the correct dashboard section and gets partial_production reminders.
-      const hasPendingItem = items.items?.some(
+      const hasPendingItem = items.some(
         (item: any) => item.production_status === 'pending'
       );
 
       if (hasPendingItem) {
-        // Get the order's current stage to check if it's still in production_pending
-        const orderRes = await fetch(`${apiBaseUrl}/orders/${orderId}`);
-        const orderData = await orderRes.json();
-        if (orderData?.current_stage === 'production_pending') {
+        if (orderData.current_stage === 'production_pending') {
           // Collect names of pending items
-          const pendingItems = items.items
+          const pendingItems = items
             .filter((item: any) => item.production_status === 'pending')
             .map((item: any) => item.name);
 
@@ -2547,8 +2563,8 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       }
 
       // Ask about the next unfinished item (process of elimination)
-      const finishedCount = items.items.filter((i: any) => i.production_status === 'finished').length;
-      const totalCount = items.items.length;
+      const finishedCount = items.filter((i: any) => i.production_status === 'finished').length;
+      const totalCount = items.length;
       const prodPct = completion?.production_pct ?? 0;
 
       const progressBar = '█'.repeat(Math.round(prodPct / 10)) + '░'.repeat(10 - Math.round(prodPct / 10));
@@ -2563,9 +2579,9 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id}:${orderId}`)],
-          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id}:${orderId}`)],
-          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id}:${orderId}`)],
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
     }
@@ -2579,22 +2595,45 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
 // Callback format: item_en_route:{status}:{itemId}:{orderId}
 //   status = yes | no | arrived
 
+// NOTE: callback_data format uses first 8 chars of item UUID + quotation_number
+// to stay within Telegram's 64-byte limit.
 bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
-  const itemId = ctx.match[2];
-  const orderId = ctx.match[3];
+  const itemIdPrefix = ctx.match[2];
+  const quotationNumber = ctx.match[3];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `item_en_route:${newStatus}:${itemId}:${orderId}`,
+    content: `item_en_route:${newStatus}:${itemIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve quotation_number to full order UUID
+    const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!orderRes.ok) {
+      await ctx.editMessageText(`❌ Order #${quotationNumber} not found.`, { parse_mode: 'Markdown' });
+      return;
+    }
+    const orderData = await orderRes.json();
+    const orderId = orderData.id;
+
+    // Fetch items for this order
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    const items = itemsData?.items ?? [];
+
+    const targetItem = items.find((item: any) => item.id?.startsWith(itemIdPrefix));
+    if (!targetItem) {
+      await ctx.editMessageText('❌ Item not found. It may have been removed.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const itemId = targetItem.id;
+
     // Map callback status to en_route_status value
     const statusMap: Record<string, string> = {
       yes: 'en_route',
@@ -2621,23 +2660,20 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       created_by: username ?? `user_${userId}`,
     });
 
-    // Fetch updated completion and items to show next question
+    // Fetch updated completion
     const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
     const completion = await completionRes.json();
 
-    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
-    const items = await itemsRes.json();
-
     // Calculate en-route % based on quantity
-    const totalQty = items.items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-    const enRouteQty = items.items
+    const totalQty = items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRouteQty = items
       .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
       .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
     const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
     const thresholdMet = enRoutePct > 50;
 
     // Find the next item not yet en route (process of elimination)
-    const notEnRouteItem = items.items?.find(
+    const notEnRouteItem = items.find(
       (item: any) => item.en_route_status === 'not_yet'
     );
 
@@ -2654,16 +2690,16 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       await postJson(`/orders/${orderId}/confirm-en-route`, {
         estimated_arrival_days: 28,
       });
-      await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${orderId.slice(0, 8)} auto-advanced to inventory_verification` });
+      await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${quotationNumber} auto-advanced to inventory_verification` });
 
       await ctx.editMessageText(
-        `✅ *All Items En Route!*\n\nOrder #${orderId.slice(0, 8)}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+        `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
       // Ask about the next not-en-route item (process of elimination)
-      const enRouteCount = items.items.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
-      const totalCount = items.items.length;
+      const enRouteCount = items.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+      const totalCount = items.length;
 
       const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
 
@@ -2680,9 +2716,9 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id}:${orderId}`)],
-          [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id}:${orderId}`)],
-          [Markup.button.callback(`📦 ${notEnRouteItem.name} — Arrived`, `item_en_route:arrived:${notEnRouteItem.id}:${orderId}`)],
+          [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`📦 ${notEnRouteItem.name} — Arrived`, `item_en_route:arrived:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
     }
@@ -3134,22 +3170,45 @@ bot.action(/^inv_verify:pending:(.+):(.+)$/, async (ctx) => {
   );
 });
 
+// NOTE: callback_data format uses first 8 chars of item UUID + quotation_number
+// to stay within Telegram's 64-byte limit.
 bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
-  const itemId = ctx.match[2];
-  const orderId = ctx.match[3];
+  const itemIdPrefix = ctx.match[2];
+  const quotationNumber = ctx.match[3];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `item_inventory:${newStatus}:${itemId}:${orderId}`,
+    content: `item_inventory:${newStatus}:${itemIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve quotation_number to full order UUID
+    const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!orderRes.ok) {
+      await ctx.editMessageText(`❌ Order #${quotationNumber} not found.`, { parse_mode: 'Markdown' });
+      return;
+    }
+    const orderData = await orderRes.json();
+    const orderId = orderData.id;
+
+    // Fetch items for this order
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    const items = itemsData?.items ?? [];
+
+    const targetItem = items.find((item: any) => item.id?.startsWith(itemIdPrefix));
+    if (!targetItem) {
+      await ctx.editMessageText('❌ Item not found. It may have been removed.', { parse_mode: 'Markdown' });
+      return;
+    }
+    const itemId = targetItem.id;
+
     // Update the item's en_route_status via API
     await postJson(`/orders/${orderId}/items/${itemId}`, {
       en_route_status: newStatus,
@@ -3168,27 +3227,19 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       created_by: username ?? `user_${userId}`,
     });
 
-    // Fetch updated completion and items to show next question
+    // Fetch updated completion
     const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
     const completion = await completionRes.json();
 
-    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
-    const items = await itemsRes.json();
-
-    // Fetch order to get the real quotation_number
-    const orderRes = await fetch(`${apiBaseUrl}/orders/${orderId}`);
-    const orderData = await orderRes.json();
-    const quotationNumber = orderData.quotation_number ?? orderId.slice(0, 8);
-
     // Calculate inventory % based on quantity
-    const totalQty = items.items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-    const arrivedQty = items.items
+    const totalQty = items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const arrivedQty = items
       .filter((i: any) => i.en_route_status === 'arrived')
       .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
     const inventoryPct = totalQty > 0 ? Math.round((arrivedQty / totalQty) * 100) : 0;
 
     // Find the next item not yet arrived (process of elimination)
-    const notArrivedItem = items.items?.find(
+    const notArrivedItem = items.find(
       (item: any) => item.en_route_status !== 'arrived'
     );
 
@@ -3214,8 +3265,8 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       );
     } else {
       // Ask about the next not-arrived item (process of elimination)
-      const arrivedCount = items.items.filter((i: any) => i.en_route_status === 'arrived').length;
-      const totalCount = items.items.length;
+      const arrivedCount = items.filter((i: any) => i.en_route_status === 'arrived').length;
+      const totalCount = items.length;
 
       const progressBar = '█'.repeat(Math.round(inventoryPct / 10)) + '░'.repeat(10 - Math.round(inventoryPct / 10));
 
@@ -3239,9 +3290,9 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`📦 ${notArrivedItem.name} — Arrived`, `item_inventory:arrived:${notArrivedItem.id}:${orderId}`)],
-          [Markup.button.callback(`🚚 ${notArrivedItem.name} — En Route`, `item_inventory:en_route:${notArrivedItem.id}:${orderId}`)],
-          [Markup.button.callback(`⏳ ${notArrivedItem.name} — Not Yet`, `item_inventory:not_yet:${notArrivedItem.id}:${orderId}`)],
+          [Markup.button.callback(`📦 ${notArrivedItem.name} — Arrived`, `item_inventory:arrived:${notArrivedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🚚 ${notArrivedItem.name} — En Route`, `item_inventory:en_route:${notArrivedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`⏳ ${notArrivedItem.name} — Not Yet`, `item_inventory:not_yet:${notArrivedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
     }

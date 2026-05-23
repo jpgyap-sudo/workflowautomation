@@ -5256,3 +5256,51 @@ In the order detail ItemTrackingSection, empty item/log state returned before OT
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: render item extraction OTP in empty state
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit edf134f43ee3dee6af2cbf5ac1bf3f3b20a38f3c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** edf134f43ee3dee6af2cbf5ac1bf3f3b20a38f3c
+**Files:** apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The "Render Item Extraction OTP" field was not appearing in the empty state of the order detail page. The fix ensures the OTP is displayed even when no items have been extracted yet.
+
+**Why it broke:**  
+The OTP rendering was conditionally tied to the presence of extracted items. When the items array was empty, the OTP component was skipped, leaving the field invisible.
+
+**Reusable takeaway:**  
+When rendering UI elements that depend on data arrays, always check if the element should be shown in the empty state separately. Use explicit empty-state logic (e.g., `if (isEmpty) { showOTP }`) rather than relying on the array length to gate visibility. This prevents silent omissions of critical fields like OTPs, which are needed for user actions even before data exists.
+
+---
+*Original commit message: fix: render item extraction OTP in empty state*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The "Render Item Extraction OTP" field was not appearing in the empty state of the order detail page. The fix ensures the OTP is displayed even when no items have been extracted yet.
+
+**Why it broke:**  
+The OTP rendering was conditionally tied to the presence of extracted items. When the items array was empty, the OTP component was skipped, leaving the field invisible.
+
+**Reusable takeaway:**  
+When rendering UI elements that depend on data arrays, always check if the element should be shown in the empty state separately. Use explicit empty-state logic (e.g., `if (isEmpty) { showOTP }`) rather than relying on the array length to gate visibility. This prevents silent omissions of critical fields like OTPs, which are needed for user actions even before data exists.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

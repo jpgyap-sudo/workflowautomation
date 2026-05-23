@@ -538,15 +538,17 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
     message += `Has <b>${notArrivedItem.name}</b> arrived at inventory?`;
 
     // Build inline keyboard for this specific item
+    // NOTE: callback_data uses first 8 chars of item UUID + quotation_number (short)
+    // to stay within Telegram's 64-byte limit for callback_data.
     const keyboard = inlineKeyboard([
       [
-        { text: `📦 ${notArrivedItem.name} — Arrived`, callback_data: `item_inventory:arrived:${notArrivedItem.id}:${order.id}` },
+        { text: `📦 ${notArrivedItem.name} — Arrived`, callback_data: `item_inventory:arrived:${notArrivedItem.id.slice(0, 8)}:${qn}` },
       ],
       [
-        { text: `🚚 ${notArrivedItem.name} — En Route`, callback_data: `item_inventory:en_route:${notArrivedItem.id}:${order.id}` },
+        { text: `🚚 ${notArrivedItem.name} — En Route`, callback_data: `item_inventory:en_route:${notArrivedItem.id.slice(0, 8)}:${qn}` },
       ],
       [
-        { text: `⏳ ${notArrivedItem.name} — Not Yet`, callback_data: `item_inventory:not_yet:${notArrivedItem.id}:${order.id}` },
+        { text: `⏳ ${notArrivedItem.name} — Not Yet`, callback_data: `item_inventory:not_yet:${notArrivedItem.id.slice(0, 8)}:${qn}` },
       ],
     ]);
 

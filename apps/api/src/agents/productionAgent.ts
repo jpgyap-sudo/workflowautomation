@@ -545,15 +545,17 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
     message += `Has <b>${unfinishedItem.name}</b> started or finished production?`;
 
     // Build inline keyboard for this specific item
+    // NOTE: callback_data uses first 8 chars of item UUID + quotation_number (short)
+    // to stay within Telegram's 64-byte limit for callback_data.
     const keyboard = inlineKeyboard([
       [
-        { text: `✅ ${unfinishedItem.name} — Finished`, callback_data: `item_prod:finished:${unfinishedItem.id}:${order.id}` },
+        { text: `✅ ${unfinishedItem.name} — Finished`, callback_data: `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${qn}` },
       ],
       [
-        { text: `🔄 ${unfinishedItem.name} — In Progress`, callback_data: `item_prod:in_progress:${unfinishedItem.id}:${order.id}` },
+        { text: `🔄 ${unfinishedItem.name} — In Progress`, callback_data: `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${qn}` },
       ],
       [
-        { text: `⏳ ${unfinishedItem.name} — Not Yet`, callback_data: `item_prod:pending:${unfinishedItem.id}:${order.id}` },
+        { text: `⏳ ${unfinishedItem.name} — Not Yet`, callback_data: `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${qn}` },
       ],
     ]);
 
@@ -697,15 +699,17 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     message += `Is <b>${notEnRouteItem.name}</b> en route yet?`;
 
     // Build inline keyboard for this specific item
+    // NOTE: callback_data uses first 8 chars of item UUID + quotation_number (short)
+    // to stay within Telegram's 64-byte limit for callback_data.
     const keyboard = inlineKeyboard([
       [
-        { text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id}:${order.id}` },
+        { text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
       ],
       [
-        { text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id}:${order.id}` },
+        { text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
       ],
       [
-        { text: `📦 ${notEnRouteItem.name} — Arrived`, callback_data: `item_en_route:arrived:${notEnRouteItem.id}:${order.id}` },
+        { text: `📦 ${notEnRouteItem.name} — Arrived`, callback_data: `item_en_route:arrived:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
       ],
     ]);
 

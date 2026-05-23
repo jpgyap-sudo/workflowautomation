@@ -1033,7 +1033,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   }
 
   if (body.production_started && body.estimated_production_days) {
-    const groupChatId = process.env.PURCHASING_GROUP_ID;
+    const groupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
     if (groupChatId) {
       const ref = updatedOrder.quotation_number ?? `Order #${id.slice(0, 8)}`;
       const client = updatedOrder.client_name ?? 'Unknown';
@@ -2179,9 +2179,9 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
     return reply.status(400).send({ error: 'Production has not started yet. No reminders to recalculate.' });
   }
 
-  const groupChatId = process.env.PURCHASING_GROUP_ID;
+  const groupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
   if (!groupChatId) {
-    return reply.status(500).send({ error: 'PURCHASING_GROUP_ID not configured' });
+    return reply.status(500).send({ error: 'PRODUCTION_GROUP_CHAT_ID not configured' });
   }
 
   const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
@@ -3209,18 +3209,14 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id],
   );
 
-  // Create a production_pending reminder — production agent will remind the production group to start production
-  // Uses the production group chat ID from the completed deposit_verification reminder
+  // Create a production_pending reminder — goes to the PRODUCTION group, not the deposit/quotation group
   await query(
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-     SELECT $1, 'production_pending', r.group_chat_id,
-            'Deposit has been verified. Production should start now. Has production started for this order?',
-            'daily', NOW() + INTERVAL '5 minutes', 'active'
-     FROM reminders r
-     WHERE r.order_id = $1 AND r.stage = 'deposit_verification' AND r.status = 'completed'
-     LIMIT 1
+     VALUES ($1, 'production_pending', $2,
+             'Deposit has been verified. Production should start now. Has production started for this order?',
+             'daily', NOW() + INTERVAL '5 minutes', 'active')
      ON CONFLICT DO NOTHING`,
-    [id],
+    [id, PRODUCTION_CHAT_ID],
   );
 
   // Notify purchasing agent immediately that deposit is verified and order needs production
