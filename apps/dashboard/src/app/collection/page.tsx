@@ -141,7 +141,7 @@ export default function CollectionPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Special case (delivery exception) state
@@ -365,23 +365,31 @@ export default function CollectionPage() {
     reader.readAsDataURL(file);
   }
 
-  async function handleConfirmPayment() {
+  function handleConfirmPayment() {
     const order = paymentModal.order;
     if (!order || !depositSlipFile) return;
+    (window as any).__pendingConfirmPaymentData = { order };
+    setOtpModal({
+      open: true,
+      title: 'Confirm Payment',
+      description: `Confirm payment for "${order.quotation_number ?? '—'}".`,
+      pendingAction: 'confirmPayment',
+    });
+  }
 
+  async function executeConfirmPayment(actionToken: string) {
+    const pending = (window as any).__pendingConfirmPaymentData as { order: Order } | undefined;
+    if (!pending) return;
+    const { order } = pending;
     setPaymentModal((prev) => ({ ...prev, uploading: true, error: null }));
     try {
-      // Record stage update — payment confirmed
-      // Deposit slips are not stored on VPS (privacy policy)
       await recordStageUpdate({
         quotation_number: order.quotation_number ?? '',
         stage: 'payment_confirmed',
         status: 'confirmed',
         remarks: `Payment confirmed via dashboard.`,
-        updated_by: 'dashboard',
+        action_token: actionToken,
       });
-
-      // Close modal and refresh
       setPaymentModal({ open: false, order: null, uploading: false, error: null });
       setDepositSlipFile(null);
       mutateArrived();
@@ -397,6 +405,8 @@ export default function CollectionPage() {
         uploading: false,
         error: err.message ?? 'Failed to confirm payment. Please try again.',
       }));
+    } finally {
+      (window as any).__pendingConfirmPaymentData = null;
     }
   }
 

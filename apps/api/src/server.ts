@@ -141,8 +141,8 @@ async function verifyActionTokenOrReply(actionToken: string | undefined, reply: 
   return true;
 }
 
-function isDashboardQuickAction(updatedBy?: string | null): boolean {
-  return updatedBy === 'dashboard_quick_action';
+function isDashboardOrigin(updatedBy?: string | null): boolean {
+  return updatedBy === 'dashboard_quick_action' || updatedBy === 'dashboard';
 }
 
 // ── Instant Agent Triggers ─────────────────────────────────────────────
@@ -1704,9 +1704,10 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
     return reply.code(400).send({ error: 'Order is not in inventory arrival stage' });
   }
 
-  // Advance to balance_due
+  // Advance to balance_due — set completion pct and verified_at timestamp
   await query(
-    `UPDATE orders SET current_stage = 'balance_due', updated_at = NOW()
+    `UPDATE orders SET current_stage = 'balance_due', inventory_verified_at = NOW(),
+     inventory_verification_pct = 100, updated_at = NOW()
      WHERE id = $1`,
     [id]
   );
@@ -1778,6 +1779,7 @@ const updateItemSchema = z.object({
   production_status: z.enum(['pending', 'in_progress', 'finished']).optional(),
   en_route_status: z.enum(['not_yet', 'en_route', 'arrived']).optional(),
   estimated_arrival_days: z.number().int().positive().nullable().optional(),
+  action_token: z.string().optional(),
 });
 
 const addProductionLogSchema = z.object({
@@ -1854,6 +1856,22 @@ app.post('/orders/:id/items', async (request, reply) => {
 app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
   const { order_id, item_id } = request.params as { order_id: string; item_id: string };
   const body = updateItemSchema.parse(request.body);
+
+  // If action_token is provided, verify it (optional — Telegram bot calls without token)
+  let userEmail: string | null = null;
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.email ?? null;
+  }
 
   // Build dynamic SET clause
   const setClauses: string[] = [];
@@ -2226,11 +2244,11 @@ const stageUpdateSchema = z.object({
 app.post('/stage-updates', async (request, reply) => {
   const body = stageUpdateSchema.parse(request.body);
 
-  // Verify action token and extract email for dashboard quick actions
+  // Verify action token and extract email for dashboard-originated requests
   let userEmail: string | null = null;
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     if (!body.action_token) {
-      return reply.status(401).send({ error: 'Action token required for dashboard quick actions' });
+      return reply.status(401).send({ error: 'Action token required for dashboard actions' });
     }
     if (!cacheClient?.isOpen) {
       return reply.status(503).send({ error: 'Action verification unavailable' });
@@ -2369,7 +2387,7 @@ app.post('/stage-updates', async (request, reply) => {
   // Invalidate caches after stage update
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     await notifyManualChange(
       'Quick Action: Stage updated',
       `Quotation: *${body.quotation_number}*\nStage: ${body.stage}\nStatus: ${body.status}\nRemarks: ${body.remarks ?? '-'}`,
@@ -2383,7 +2401,7 @@ app.post('/stage-updates', async (request, reply) => {
   // Also notify the specific functional group directly based on the target stage
   // This ensures the group that needs to act gets an immediate notification,
   // not just the general progress group (STAGE_TRANSITION_GROUP_CHAT_ID)
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     const stageToGroup: Record<string, string | null> = {
       production_pending: PRODUCTION_CHAT_ID,
       production_confirmed: PRODUCTION_CHAT_ID,
@@ -2442,7 +2460,7 @@ app.post('/deposits', async (request, reply) => {
 
   // Verify action token and extract email
   let userEmail: string | null = null;
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     if (!cacheClient?.isOpen) {
       return reply.status(503).send({ error: 'Action verification unavailable' });
     }
@@ -2527,7 +2545,7 @@ app.post('/deposits', async (request, reply) => {
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     await notifyManualChange(
       'Quick Action: Downpayment recorded',
       `Quotation: *${quotationNumber ?? body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nDate: ${body.deposit_paid_at ?? 'now'}`,
@@ -2957,7 +2975,7 @@ app.post('/pay-balance', async (request, reply) => {
 
   // Verify action token and extract email
   let userEmail: string | null = null;
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     if (!cacheClient?.isOpen) {
       return reply.status(503).send({ error: 'Action verification unavailable' });
     }
@@ -3072,7 +3090,7 @@ app.post('/pay-balance', async (request, reply) => {
   // Invalidate caches
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
-  if (isDashboardQuickAction(body.updated_by)) {
+  if (isDashboardOrigin(body.updated_by)) {
     await notifyManualChange(
       'Quick Action: Balance payment recorded',
       `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nExpected balance: PHP ${expectedBalance.toLocaleString()}\nOverpayment: PHP ${overpayment.toLocaleString()}`,

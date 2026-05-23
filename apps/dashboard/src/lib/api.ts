@@ -478,6 +478,7 @@ export async function extractOrderItems(
     `/orders/${encodeURIComponent(orderId)}/extract-items`,
     {
       method: 'POST',
+      body: JSON.stringify({}),
     }
   );
 }

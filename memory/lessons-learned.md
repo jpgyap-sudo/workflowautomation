@@ -4313,3 +4313,122 @@ High-impact or irreversible actions (e.g., finishing a task, confirming a critic
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: inventory verification OTP flow, mark items arrived, confirm all arrived with group chat notification
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c699f1a2979beb36cb461602ab1d057e8b1a7d40
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c699f1a2979beb36cb461602ab1d057e8b1a7d40
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The inventory verification OTP flow was broken: marking items as "arrived" and confirming "all arrived" failed to trigger the expected group chat notification.
+
+**Why it broke:**  
+The OTP verification endpoint was not properly integrated with the inventory status update logic. The API route in `server.ts` lacked the necessary handler to update item status and send the group notification after OTP validation. The frontend (`page.tsx`) and API client (`api.ts`) were calling the endpoint, but the backend response was incomplete.
+
+**Reusable takeaway:**  
+When adding OTP or multi-step verification to a workflow, ensure the verification success path explicitly triggers all downstream side effects (status updates, notifications). Test the full flow end-to-end, not just the OTP validation in isolation. A common failure mode is decoupling verification from the business logic it’s meant to authorize.
+
+---
+*Original commit message: fix: inventory verification OTP flow, mark items arrived, confirm all arrived with group chat notification*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The inventory verification OTP flow was broken: marking items as "arrived" and confirming "all arrived" failed to trigger the expected group chat notification.
+
+**Why it broke:**  
+The OTP verification endpoint was not properly integrated with the inventory status update logic. The API route in `server.ts` lacked the necessary handler to update item status and send the group notification after OTP validation. The frontend (`page.tsx`) and API client (`api.ts`) were calling the endpoint, but the backend response was incomplete.
+
+**Reusable takeaway:**  
+When adding OTP or multi-step verification to a workflow, ensure the verification success path explicitly triggers all downstream side effects (status updates, notifications). Test the full flow end-to-end, not just the OTP validation in isolation. A common failure mode is decoupling verification from the business logic it’s meant to authorize.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add OTP verification to all critical dashboard actions
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8691c5191a8fc96ed34df41e98ef7b0b3689acd2
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 8691c5191a8fc96ed34df41e98ef7b0b3689acd2
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Added OTP (one-time password) verification to all critical dashboard actions (e.g., deleting workflows, modifying triggers, changing permissions). Previously, these actions required only a valid session token.
+
+**Why it broke:**  
+The system assumed that a logged-in session was sufficient proof of identity for destructive or sensitive operations. This left a vulnerability: if an attacker obtained a user's session token (via XSS, session fixation, or token leakage), they could perform irreversible actions without any secondary authentication.
+
+**Reusable takeaway:**  
+**Never trust a single authentication factor for high-risk operations.** Even within an authenticated session, require step-up authentication (e.g., OTP, re-password, or biometric) for actions that can cause data loss, privilege escalation, or irreversible changes. This principle—defense in depth at the action level—protects against session hijacking and token theft.
+
+---
+*Original commit message: fix: add OTP verification to all critical dashboard actions*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added OTP (one-time password) verification to all critical dashboard actions (e.g., deleting workflows, modifying triggers, changing permissions). Previously, these actions required only a valid session token.
+
+**Why it broke:**  
+The system assumed that a logged-in session was sufficient proof of identity for destructive or sensitive operations. This left a vulnerability: if an attacker obtained a user's session token (via XSS, session fixation, or token leakage), they could perform irreversible actions without any secondary authentication.
+
+**Reusable takeaway:**  
+**Never trust a single authentication factor for high-risk operations.** Even within an authenticated session, require step-up authentication (e.g., OTP, re-password, or biometric) for actions that can cause data loss, privilege escalation, or irreversible changes. This principle—defense in depth at the action level—protects against session hijacking and token theft.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Manual quotation upload fallback for item extraction
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Fix Fastify FST_ERR_CTP_EMPTY_JSON_BODY on dashboard POST helpers by sending JSON.stringify({}) for bodyless POST endpoints that still use fetchJson's application/json header. For ItemTrackingSection fallback, upload image/PDF quotations via uploadOrderFile(file_type='quotation', order_id, quotation_number, file_data base64), then call extractOrderItems and refresh getOrderItems/getItemCompletion/getProductionLogs.
+
+#### Lesson Learned
+
+Fix Fastify FST_ERR_CTP_EMPTY_JSON_BODY on dashboard POST helpers by sending JSON.stringify({}) for bodyless POST endpoints that still use fetchJson's application/json header. For ItemTrackingSection fallback, upload image/PDF quotations via uploadOrderFile(file_type='quotation', order_id, quotation_number, file_data base64), then call extractOrderItems and refresh getOrderItems/getItemCompletion/getProductionLogs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

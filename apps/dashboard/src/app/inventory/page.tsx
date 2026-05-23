@@ -18,6 +18,9 @@ import {
   getInventoryImageUrl,
   getItemCompletion,
   getOrderItems,
+  completeInventoryVerification,
+  confirmInventoryArrived,
+  updateOrderItem,
 } from '@/lib/api';
 import {
   Package,
@@ -1054,7 +1057,27 @@ export default function InventoryPage() {
 // ── Orders Awaiting Inventory Arrival Section ─────────────────────────────
 
 function InventoryVerificationSection() {
-  const { data: orders = [], isLoading } = useOrdersByStage('inventory_verification');
+  const { data: orders = [], isLoading, mutate } = useOrdersByStage('inventory_verification');
+
+  // OTP modal state for "Complete Verification" action
+  const [verifyOtp, setVerifyOtp] = useState<{ open: boolean; orderId: string; quotationNumber: string }>({
+    open: false, orderId: '', quotationNumber: '',
+  });
+  const [verifying, setVerifying] = useState(false);
+
+  async function handleCompleteVerification(actionToken: string) {
+    if (!verifyOtp.orderId) return;
+    setVerifying(true);
+    try {
+      await completeInventoryVerification(verifyOtp.orderId, actionToken);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to complete verification');
+    } finally {
+      setVerifying(false);
+      setVerifyOtp({ open: false, orderId: '', quotationNumber: '' });
+    }
+  }
 
   if (isLoading) {
     return (
@@ -1123,6 +1146,21 @@ function InventoryVerificationSection() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Gap 2: Quick-action "Complete Verification" button */}
+              <button
+                onClick={() =>
+                  setVerifyOtp({
+                    open: true,
+                    orderId: order.id,
+                    quotationNumber: order.quotation_number ?? 'N/A',
+                  })
+                }
+                disabled={verifying}
+                className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-teal-700 disabled:opacity-50"
+              >
+                {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                Complete Verification
+              </button>
               <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-medium text-teal-700">
                 Inventory Agent Active
               </span>
@@ -1136,16 +1174,31 @@ function InventoryVerificationSection() {
           </div>
         ))}
       </div>
+
+      {/* OTP Modal for Complete Verification */}
+      <OtpModal
+        open={verifyOtp.open}
+        title="Complete Inventory Verification"
+        description={`You are about to complete inventory verification for order #${verifyOtp.quotationNumber}. Enter the OTP sent to your email to confirm.`}
+        onVerified={handleCompleteVerification}
+        onClose={() => setVerifyOtp({ open: false, orderId: '', quotationNumber: '' })}
+      />
     </div>
   );
 }
 
 function InventoryArrivalSection() {
-  const { data: orders = [], isLoading } = useOrdersByStage('inventory_arrived');
+  const { data: orders = [], isLoading, mutate } = useOrdersByStage('inventory_arrived');
 
   // Fetch completion data for each order to get inventory_completion_pct
   const [completionMap, setCompletionMap] = useState<Record<string, number>>({});
   const [itemCountMap, setItemCountMap] = useState<Record<string, { arrived: number; total: number }>>({});
+
+  // OTP modal state for "Confirm All Arrived" action
+  const [arrivalOtp, setArrivalOtp] = useState<{ open: boolean; orderId: string; quotationNumber: string }>({
+    open: false, orderId: '', quotationNumber: '',
+  });
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (orders.length === 0) return;
@@ -1183,6 +1236,20 @@ function InventoryArrivalSection() {
     fetchData();
     return () => { cancelled = true; };
   }, [orders]);
+
+  async function handleConfirmAllArrived(actionToken: string) {
+    if (!arrivalOtp.orderId) return;
+    setConfirming(true);
+    try {
+      await confirmInventoryArrived(arrivalOtp.orderId, actionToken);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to confirm arrival');
+    } finally {
+      setConfirming(false);
+      setArrivalOtp({ open: false, orderId: '', quotationNumber: '' });
+    }
+  }
 
   if (isLoading) {
     return (
@@ -1262,6 +1329,23 @@ function InventoryArrivalSection() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Gap 3: Quick-action "Confirm All Arrived" button */}
+                {isComplete && (
+                  <button
+                    onClick={() =>
+                      setArrivalOtp({
+                        open: true,
+                        orderId: order.id,
+                        quotationNumber: order.quotation_number ?? 'N/A',
+                      })
+                    }
+                    disabled={confirming}
+                    className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {confirming ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                    Confirm All Arrived
+                  </button>
+                )}
                 {/* Gap 4: Agent status distinction */}
                 {isProcessing && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700">
@@ -1301,6 +1385,15 @@ function InventoryArrivalSection() {
           );
         })}
       </div>
+
+      {/* OTP Modal for Confirm All Arrived */}
+      <OtpModal
+        open={arrivalOtp.open}
+        title="Confirm Inventory Arrival"
+        description={`You are about to confirm all inventory has arrived for order #${arrivalOtp.quotationNumber}. Enter the OTP sent to your email to confirm.`}
+        onVerified={handleConfirmAllArrived}
+        onClose={() => setArrivalOtp({ open: false, orderId: '', quotationNumber: '' })}
+      />
     </div>
   );
 }

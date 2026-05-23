@@ -2860,6 +2860,22 @@ bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
       updated_by: 'delivery-agent',
     });
     await logAction({ chatId, userId, username, label: 'Inventory Ready — Balance Due', quotationNumber });
+
+    // Notify inventory group chat about the arrival confirmation
+    const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+    if (INVENTORY_GROUP_CHAT_ID && String(INVENTORY_GROUP_CHAT_ID) !== chatId) {
+      try {
+        await ctx.telegram.sendMessage(
+          INVENTORY_GROUP_CHAT_ID,
+          `✅ <b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\n` +
+          `Quotation: <b>${quotationNumber}</b>\n` +
+          `All inventory has been confirmed as arrived via Telegram bot.\n` +
+          `Order is now in Balance Due stage.`,
+          { parse_mode: 'HTML' }
+        );
+      } catch { /* non-fatal — group notification is best-effort */ }
+    }
+
     await ctx.editMessageText(
       `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
       `Stage advanced to ⚖️ *Balance Due*.\n\n` +

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
@@ -376,7 +376,11 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Item-Level Tracking */}
-      <ItemTrackingSection orderId={order.id} currentStage={order.current_stage} />
+      <ItemTrackingSection
+        orderId={order.id}
+        quotationNumber={order.quotation_number}
+        currentStage={order.current_stage}
+      />
 
       {/* Agent Notes */}
       <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} />
@@ -426,13 +430,23 @@ export default function OrderDetailPage() {
 
 // ── Item-Level Tracking Section ────────────────────────────────────────
 
-function ItemTrackingSection({ orderId, currentStage }: { orderId: string; currentStage: string }) {
+function ItemTrackingSection({
+  orderId,
+  quotationNumber,
+  currentStage,
+}: {
+  orderId: string;
+  quotationNumber: string | null;
+  currentStage: string;
+}) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [logs, setLogs] = useState<ProductionUpdateLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState('');
+  const [uploadingQuotation, setUploadingQuotation] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
   const [verifyingItemId, setVerifyingItemId] = useState<string | null>(null);
   const [completingVerification, setCompletingVerification] = useState(false);
   const [arrivingItemId, setArrivingItemId] = useState<string | null>(null);
@@ -440,6 +454,17 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
   const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | null>(null);
 
   const stagesWithItems = ['production_confirmed', 'en_route', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'production_pending', 'purchasing_pending'];
+
+  async function refreshItemTracking() {
+    const [itemsRes, compRes, logsRes] = await Promise.all([
+      getOrderItems(orderId),
+      getItemCompletion(orderId),
+      getProductionLogs(orderId),
+    ]);
+    if (itemsRes.ok) setItems(itemsRes.items);
+    if (compRes.ok) setCompletion(compRes);
+    if (logsRes.ok) setLogs(logsRes.logs);
+  }
 
   useEffect(() => {
     if (!stagesWithItems.includes(currentStage)) {
@@ -477,6 +502,66 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : 'Extraction failed');
     } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        const commaIndex = result.indexOf(',');
+        resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read quotation file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleQuotationUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const isSupported = file.type.startsWith('image/') || file.type === 'application/pdf';
+    if (!isSupported) {
+      setExtractError('Please upload a quotation image or PDF.');
+      return;
+    }
+    if (!quotationNumber) {
+      setExtractError('This order has no quotation number, so the uploaded quotation cannot be linked for extraction.');
+      return;
+    }
+
+    setUploadingQuotation(true);
+    setExtracting(true);
+    setExtractError('');
+    setUploadMessage('Uploading quotation file...');
+    try {
+      const file_data = await fileToBase64(file);
+      await uploadOrderFile({
+        order_id: orderId,
+        quotation_number: quotationNumber,
+        file_type: 'quotation',
+        original_filename: file.name,
+        mime_type: file.type,
+        file_data,
+      });
+
+      setUploadMessage('Quotation uploaded. Extracting items...');
+      const res = await extractOrderItems(orderId);
+      await refreshItemTracking();
+
+      if (!res.ok || res.items.length === 0) {
+        setExtractError(res.ok ? 'Quotation uploaded, but no items could be extracted.' : 'Quotation uploaded, but extraction failed.');
+      } else {
+        setUploadMessage(`Extracted ${res.items.length} item${res.items.length === 1 ? '' : 's'} from uploaded quotation.`);
+      }
+    } catch (err) {
+      setExtractError(err instanceof Error ? err.message : 'Failed to upload quotation and extract items');
+    } finally {
+      setUploadingQuotation(false);
       setExtracting(false);
     }
   }
@@ -565,23 +650,43 @@ function ItemTrackingSection({ orderId, currentStage }: { orderId: string; curre
         {extractError && (
           <p className="mt-2 text-xs text-red-500">{extractError}</p>
         )}
-        <button
-          onClick={handleExtractItems}
-          disabled={extracting}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 text-xs font-medium text-white shadow-sm hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
-        >
-          {extracting ? (
-            <>
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Extracting...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-3.5 w-3.5" />
-              Extract Items from Quotation
-            </>
-          )}
-        </button>
+        {uploadMessage && !extractError && (
+          <p className="mt-2 text-xs text-green-600">{uploadMessage}</p>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={handleExtractItems}
+            disabled={extracting}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 text-xs font-medium text-white shadow-sm hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
+          >
+            {extracting && !uploadingQuotation ? (
+              <>
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Extracting...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5" />
+                Extract Items from Quotation
+              </>
+            )}
+          </button>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-4 py-2 text-xs font-medium text-purple-700 shadow-sm hover:bg-purple-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+            {uploadingQuotation ? (
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-300 border-t-purple-700" />
+            ) : (
+              <FileText className="h-3.5 w-3.5" />
+            )}
+            {uploadingQuotation ? 'Uploading...' : 'Upload Quotation & Extract'}
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={handleQuotationUpload}
+              disabled={extracting || uploadingQuotation}
+              className="sr-only"
+            />
+          </label>
+        </div>
       </div>
     );
   }

@@ -191,7 +191,7 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'record_payment' | 'complete_directly';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function mutateAll() {
@@ -200,18 +200,33 @@ export default function DeliveryPage() {
 
   // ── Payment ────────────────────────────────────────────────────────────
 
-  async function handleRecordPayment(order: Order) {
+  function handleRecordPayment(order: Order) {
     const amount = Number(payAmount.replace(/,/g, ''));
     if (!amount || amount <= 0) { alert('Please enter a valid payment amount'); return; }
+    (window as any).__pendingPaymentData = { order, amount };
+    setOtpModal({
+      open: true,
+      title: 'Record Balance Payment',
+      description: `Confirm balance payment of ₱${amount.toLocaleString()} for "${order.quotation_number ?? '—'}".`,
+      pendingAction: 'record_payment',
+    });
+  }
+
+  async function executeRecordPayment(actionToken: string) {
+    const pending = (window as any).__pendingPaymentData as
+      | { order: Order; amount: number }
+      | undefined;
+    if (!pending) return;
+    const { order, amount } = pending;
     setActionLoading(order.id);
     try {
-      await payBalance({ quotation_number: order.quotation_number ?? '', amount });
+      await payBalance({ quotation_number: order.quotation_number ?? '', amount, action_token: actionToken });
       await recordStageUpdate({
         quotation_number: order.quotation_number ?? '',
         stage: 'delivery_scheduled',
         status: 'auto_advanced',
         remarks: 'Balance paid — ready for delivery scheduling',
-        updated_by: 'dashboard',
+        action_token: actionToken,
       });
       setPayingOrder(null);
       setPayAmount('');
@@ -221,6 +236,7 @@ export default function DeliveryPage() {
       alert('Failed to record payment: ' + (err.message ?? 'Unknown error'));
     } finally {
       setActionLoading(null);
+      (window as any).__pendingPaymentData = null;
     }
   }
 
@@ -236,7 +252,7 @@ export default function DeliveryPage() {
     });
   }
 
-  async function executeAdvanceBalanceDue(order: Order) {
+  async function executeAdvanceBalanceDue(order: Order, actionToken: string) {
     setActionLoading(order.id);
     try {
       await recordStageUpdate({
@@ -244,7 +260,7 @@ export default function DeliveryPage() {
         stage: 'balance_due',
         status: 'auto_advanced',
         remarks: 'Inventory confirmed — advancing to balance due',
-        updated_by: 'dashboard',
+        action_token: actionToken,
       });
       mutateInventory();
       mutateBalanceDue();
@@ -307,7 +323,7 @@ export default function DeliveryPage() {
         status,
         remarks: auditRemarks,
         delivery_date,
-        updated_by: 'dashboard',
+        action_token: actionToken,
       });
       setSchedulingOrder(null);
       setScheduleDate('');
@@ -331,7 +347,7 @@ export default function DeliveryPage() {
     });
   }
 
-  async function executeMarkDelivered(order: Order) {
+  async function executeMarkDelivered(order: Order, actionToken: string) {
     setActionLoading(order.id);
     try {
       await recordStageUpdate({
@@ -339,7 +355,7 @@ export default function DeliveryPage() {
         stage: 'delivered',
         status: 'auto_advanced',
         remarks: 'Marked as delivered via dashboard',
-        updated_by: 'dashboard',
+        action_token: actionToken,
       });
       mutateScheduled();
       mutateDelivered();
@@ -362,7 +378,7 @@ export default function DeliveryPage() {
     });
   }
 
-  async function executeMarkCountered(order: Order) {
+  async function executeMarkCountered(order: Order, actionToken: string) {
     setActionLoading(order.id);
     try {
       await recordStageUpdate({
@@ -370,7 +386,7 @@ export default function DeliveryPage() {
         stage: 'countered',
         status: 'auto_advanced',
         remarks: 'Delivered — awaiting payment (marked via dashboard)',
-        updated_by: 'dashboard',
+        action_token: actionToken,
       });
       mutateDelivered();
     } catch (err: any) {
@@ -433,15 +449,39 @@ export default function DeliveryPage() {
     }
   }
 
+  async function executeCompleteDirectly(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'completed',
+        status: 'auto_completed',
+        remarks: 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)',
+        action_token: actionToken,
+      });
+      mutateDelivered();
+    } catch (err: any) {
+      alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   function handleOtpVerified(actionToken: string) {
     const order = (window as any).__pendingActionOrder as Order | undefined;
     if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
     if (otpModal.pendingAction === 'delete') { handleDeleteVerified(actionToken); return; }
     if (otpModal.pendingAction === 'schedule_delivery') { handleScheduleVerified(actionToken); return; }
+    if (otpModal.pendingAction === 'record_payment') { executeRecordPayment(actionToken); return; }
+    if (otpModal.pendingAction === 'complete_directly') {
+      const pending = (window as any).__pendingCompleteData as { order: Order } | undefined;
+      if (pending) executeCompleteDirectly(pending.order, actionToken);
+      return;
+    }
     if (!order) return;
-    if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order);
-    else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order);
-    else if (otpModal.pendingAction === 'advance_balance_due') executeAdvanceBalanceDue(order);
+    if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order, actionToken);
+    else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order, actionToken);
+    else if (otpModal.pendingAction === 'advance_balance_due') executeAdvanceBalanceDue(order, actionToken);
     (window as any).__pendingActionOrder = null;
   }
 
@@ -850,23 +890,15 @@ export default function DeliveryPage() {
                       <StageBadge stage={order.current_stage} />
                       {order.balance_paid ? (
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (!confirm(`Balance already paid. Mark "${order.quotation_number ?? '—'}" as Completed?`)) return;
-                            setActionLoading(order.id);
-                            try {
-                              await recordStageUpdate({
-                                quotation_number: order.quotation_number ?? '',
-                                stage: 'completed',
-                                status: 'auto_completed',
-                                remarks: 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)',
-                                updated_by: 'dashboard',
-                              });
-                              mutateDelivered();
-                            } catch (err: any) {
-                              alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
-                            } finally {
-                              setActionLoading(null);
-                            }
+                            (window as any).__pendingCompleteData = { order };
+                            setOtpModal({
+                              open: true,
+                              title: 'Complete Order',
+                              description: `Confirm completion of "${order.quotation_number ?? '—'}" (balance already paid).`,
+                              pendingAction: 'complete_directly',
+                            });
                           }}
                           disabled={actionLoading === order.id}
                           className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 disabled:opacity-40"
@@ -908,6 +940,8 @@ export default function DeliveryPage() {
           (window as any).__pendingEditData = null;
           (window as any).__pendingActionOrder = null;
           (window as any).__pendingScheduleData = null;
+          (window as any).__pendingPaymentData = null;
+          (window as any).__pendingCompleteData = null;
         }}
       />
 
