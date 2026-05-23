@@ -3842,3 +3842,51 @@ When designing user-facing workflows that require referencing existing data (e.g
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: inventory verification flow gaps, escalation callbacks, cache invalidation, and docs
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 55ece7f3346d907987b75f57cbff66a4415171aa
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 55ece7f3346d907987b75f57cbff66a4415171aa
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Inventory verification flow gaps, missing escalation callbacks, cache invalidation bugs, and documentation errors.
+
+**Why it broke:**  
+The original implementation had incomplete state transitions in the inventory verification workflow (e.g., missing failure paths), no callbacks to trigger escalation when verification timed out or failed, and stale cache entries that caused incorrect inventory status reads.
+
+**Reusable takeaway:**  
+When designing workflow automation, explicitly model all failure and timeout paths, not just the happy path. Ensure every state transition that can lead to a deadlock or missed action has a callback or escalation handler. Cache invalidation must be tied to workflow state changes, not just data writes, to prevent stale reads from corrupting downstream decisions. Finally, keep documentation in sync with code changes—especially for state machines and callback contracts—to avoid silent logic drift.
+
+---
+*Original commit message: fix: inventory verification flow gaps, escalation callbacks, cache invalidation, and docs*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Inventory verification flow gaps, missing escalation callbacks, cache invalidation bugs, and documentation errors.
+
+**Why it broke:**  
+The original implementation had incomplete state transitions in the inventory verification workflow (e.g., missing failure paths), no callbacks to trigger escalation when verification timed out or failed, and stale cache entries that caused incorrect inventory status reads.
+
+**Reusable takeaway:**  
+When designing workflow automation, explicitly model all failure and timeout paths, not just the happy path. Ensure every state transition that can lead to a deadlock or missed action has a callback or escalation handler. Cache invalidation must be tied to workflow state changes, not just data writes, to prevent stale reads from corrupting downstream decisions. Finally, keep documentation in sync with code changes—especially for state machines and callback contracts—to avoid silent logic drift.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

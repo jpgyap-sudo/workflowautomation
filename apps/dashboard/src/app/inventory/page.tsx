@@ -16,6 +16,8 @@ import {
   rejectInventoryDraft,
   clearProcessedDrafts,
   getInventoryImageUrl,
+  getItemCompletion,
+  getOrderItems,
 } from '@/lib/api';
 import {
   Package,
@@ -39,6 +41,7 @@ import {
   ArrowRight,
   Clock,
   ExternalLink,
+  Eye,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -1087,6 +1090,47 @@ function InventoryVerificationSection() {
 function InventoryArrivalSection() {
   const { data: orders = [], isLoading } = useOrdersByStage('inventory_arrived');
 
+  // Fetch completion data for each order to get inventory_completion_pct
+  const [completionMap, setCompletionMap] = useState<Record<string, number>>({});
+  const [itemCountMap, setItemCountMap] = useState<Record<string, { arrived: number; total: number }>>({});
+
+  useEffect(() => {
+    if (orders.length === 0) return;
+    let cancelled = false;
+
+    async function fetchData() {
+      const compMap: Record<string, number> = {};
+      const itemMap: Record<string, { arrived: number; total: number }> = {};
+
+      await Promise.all(
+        orders.map(async (order) => {
+          try {
+            const [compRes, itemsRes] = await Promise.all([
+              getItemCompletion(order.id),
+              getOrderItems(order.id),
+            ]);
+            if (!cancelled) {
+              compMap[order.id] = compRes.inventory_completion_pct ?? 0;
+              const items = itemsRes.items ?? [];
+              const arrived = items.filter((i) => i.en_route_status === 'arrived').length;
+              itemMap[order.id] = { arrived, total: items.length };
+            }
+          } catch {
+            // Silently fail — progress bars just won't show
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setCompletionMap(compMap);
+        setItemCountMap(itemMap);
+      }
+    }
+
+    fetchData();
+    return () => { cancelled = true; };
+  }, [orders]);
+
   if (isLoading) {
     return (
       <div className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
@@ -1119,33 +1163,90 @@ function InventoryArrivalSection() {
         </Link>
       </div>
       <div className="divide-y divide-cyan-100 px-5 py-2">
-        {orders.map((order) => (
-          <div key={order.id} className="flex items-center justify-between py-2">
-            <div className="flex items-center gap-3">
-              <Package className="h-4 w-4 text-cyan-500" />
-              <div>
+        {orders.map((order) => {
+          const arrivalPct = completionMap[order.id] ?? 0;
+          const itemCount = itemCountMap[order.id];
+          const hasArrivalData = arrivalPct > 0 || (itemCount && itemCount.total > 0);
+
+          // Determine agent status: actively processing vs awaiting response
+          const isProcessing = arrivalPct > 0 && arrivalPct < 100;
+          const isComplete = arrivalPct >= 100;
+          const isAwaiting = arrivalPct === 0;
+
+          return (
+            <div key={order.id} className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-3">
+                <Package className="h-4 w-4 text-cyan-500" />
+                <div>
+                  <Link
+                    href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
+                    className="text-sm font-medium text-gray-900 hover:text-cyan-700 hover:underline"
+                  >
+                    #{order.quotation_number ?? 'N/A'}
+                  </Link>
+                  <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown'}</p>
+                  {/* Gap 3: Progress bar for arrival % */}
+                  {hasArrivalData && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isComplete ? 'bg-green-500' : 'bg-cyan-500'
+                          }`}
+                          style={{ width: `${arrivalPct}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-medium text-cyan-600">
+                        {arrivalPct}% arrived
+                      </span>
+                      {itemCount && itemCount.total > 0 && (
+                        <span className="text-[10px] text-gray-400">
+                          ({itemCount.arrived}/{itemCount.total} items)
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Gap 4: Agent status distinction */}
+                {isProcessing && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500" />
+                    Agent Processing
+                  </span>
+                )}
+                {isAwaiting && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Awaiting Response
+                  </span>
+                )}
+                {isComplete && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                    <CheckCircle className="h-3 w-3" />
+                    All Arrived
+                  </span>
+                )}
+                {/* Gap 7: View Items quick link */}
                 <Link
                   href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
-                  className="text-sm font-medium text-gray-900 hover:text-cyan-700 hover:underline"
+                  className="inline-flex items-center gap-1 rounded-md bg-white/80 px-2 py-1 text-[10px] font-medium text-cyan-700 shadow-sm transition-colors hover:bg-white"
+                  title="View Items"
                 >
-                  #{order.quotation_number ?? 'N/A'}
+                  <Eye className="h-3 w-3" />
+                  Items
                 </Link>
-                <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown'}</p>
+                <Link
+                  href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
+                  className="rounded p-1 text-gray-400 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700">
-                Inventory Agent Active
-              </span>
-              <Link
-                href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`}
-                className="rounded p-1 text-gray-400 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-              >
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
