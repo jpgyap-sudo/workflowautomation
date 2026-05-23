@@ -389,7 +389,7 @@ type UserStep =
   // Bug report interactive flow
   | { action: 'awaiting_bug_title' }
   | { action: 'awaiting_bug_description'; title: string }
-  | { action: 'awaiting_bug_order_ref'; title: string; description: string };
+  | { action: 'awaiting_bug_order_pick'; title: string; description: string };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -990,6 +990,59 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
       } catch {
         resetStep(chatId);
         await ctx.editMessageText(`❌ Order *${quotationNumber}* not found.`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    case 'bug_order': {
+      const session = getSession(chatId);
+      if (session.step.action !== 'awaiting_bug_order_pick') {
+        await ctx.answerCbQuery('Session expired. Please start again with /bug');
+        resetStep(chatId);
+        return;
+      }
+      const { title, description } = session.step;
+
+      if (quotationNumber === 'skip') {
+        // Submit without order reference
+        try {
+          await postJson('/bug-reports', {
+            title,
+            description,
+            source: 'telegram',
+            reporter_name: username ?? null,
+            reporter_contact: userId,
+            order_reference: null,
+          });
+          resetStep(chatId);
+          await ctx.editMessageText(
+            `✅ *Bug Report Submitted*\n\nTitle: ${title}\n\nThank you! The development team has been notified.`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch (err: any) {
+          console.error('[bot] Failed to submit bug report:', err);
+          await ctx.editMessageText('❌ Failed to submit bug report. Please try again later.', { ...cancelButton() });
+        }
+      } else {
+        // Submit with order reference
+        try {
+          await postJson('/bug-reports', {
+            title,
+            description,
+            source: 'telegram',
+            reporter_name: username ?? null,
+            reporter_contact: userId,
+            order_reference: quotationNumber,
+          });
+          resetStep(chatId);
+          await ctx.editMessageText(
+            `✅ *Bug Report Submitted*\n\nTitle: ${title}\nOrder: ${quotationNumber}\n\nThank you! The development team has been notified.`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch (err: any) {
+          console.error('[bot] Failed to submit bug report:', err);
+          await ctx.editMessageText('❌ Failed to submit bug report. Please try again later.', { ...cancelButton() });
+        }
       }
       break;
     }
@@ -1626,9 +1679,10 @@ Midpoint and due reminders are now scheduled.`,
           chatId, userId, username: ctx.from?.username,
           messageType: 'deposit',
           content: `deposit_recorded: ${data.quotation_number} ₱${depositAmount} (by name: ${clientName})`,
-          metadata: { quotationNumber: data.quotation_number, amount: depositAmount, clientName, driveLink: depositImageUrl },
+          metadata: { quotationNumber: data.quotation_number, amount: depositAmount, clientName },
           status: 'success',
         });
+        await logAction({ chatId, userId, username: ctx.from?.username, label: 'Record Downpayment (by client name)', quotationNumber: data.quotation_number, details: `₱${depositAmount.toLocaleString()} — ${clientName}` });
 
         const successMsg =
           `✅ *Downpayment Recorded Successfully!*\n\n` +
@@ -1638,7 +1692,6 @@ Midpoint and due reminders are now scheduled.`,
           (data.expected_deposit
             ? `💵 Expected Downpayment (50%): ₱${Number(data.expected_deposit).toLocaleString()}\n`
             : '') +
-          (depositImageUrl ? `🔗 [View Deposit Slip](${depositImageUrl})\n` : '') +
           `\nProduction can now proceed.`;
 
         await ctx.reply(successMsg, {
@@ -1718,6 +1771,7 @@ Midpoint and due reminders are now scheduled.`,
           on_time: false,
           delay_days: days,
         });
+        await logAction({ chatId, userId, username, label: 'Production Delay Recorded', quotationNumber, details: `Delay: ${days} day(s)` });
         resetStep(chatId);
         await ctx.reply(
           `⚠️ *Delay Recorded* — ${quotationNumber}\n\nDelay of ${days} day(s) has been recorded. The dashboard has been updated.\n\nA reminder will be sent at the estimated completion date.`,
@@ -1740,6 +1794,7 @@ Midpoint and due reminders are now scheduled.`,
         await postJson(`/orders/${cOrderId}/finish-production`, {
           delivery_estimated_days: deliveryDays,
         });
+        await logAction({ chatId, userId, username, label: 'Production Finished', quotationNumber: cQuotationNumber, details: `Delivery in: ${deliveryDays} day(s)` });
         // Ask: Is the order en route?
         setStep(chatId, { action: 'awaiting_en_route', orderId: cOrderId, quotationNumber: cQuotationNumber });
         await ctx.reply(
@@ -1769,7 +1824,7 @@ Midpoint and due reminders are now scheduled.`,
         await postJson(`/orders/${eOrderId}/confirm-en-route`, {
           estimated_arrival_days: arrivalDays,
         });
-
+        await logAction({ chatId, userId, username, label: 'En Route Confirmed', quotationNumber: eQuotationNumber, details: `Arrival in: ${arrivalDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
           `✅ *En Route Confirmed* — ${eQuotationNumber}\n\nEstimated inventory arrival: *${arrivalDays} days*.\n\nThe order has moved to the next stage.`,
@@ -1947,15 +2002,40 @@ Midpoint and due reminders are now scheduled.`,
         await ctx.reply('❌ Please enter a description (max 5000 characters).', { parse_mode: 'Markdown', ...cancelButton() });
         break;
       }
-      setStep(chatId, { action: 'awaiting_bug_order_ref', title, description });
-      await ctx.reply(
-        `📝 *Bug Report — Optional*\n\nTitle: *${title}*\nDescription: ${description.slice(0, 100)}${description.length > 100 ? '...' : ''}\n\nDo you have an *order reference* (quotation number)? If yes, type it now. Otherwise type *skip* to submit.`,
-        { parse_mode: 'Markdown', reply_markup: { force_reply: true } }
-      );
+      // Fetch active orders to show as a picker
+      setStep(chatId, { action: 'awaiting_bug_order_pick', title, description });
+      try {
+        const ordersRes = await fetch(`${apiBaseUrl}/orders`);
+        const ordersData = await ordersRes.json();
+        const orders: { quotation_number: string; client_name: string | null }[] = Array.isArray(ordersData) ? ordersData : (ordersData.orders ?? []);
+
+        const buttons: any[][] = [];
+        const shown = orders.slice(0, 10);
+        for (const o of shown) {
+          const label = `${o.quotation_number}${o.client_name ? ` — ${o.client_name}` : ''}`.substring(0, 60);
+          buttons.push([Markup.button.callback(label, `pick:bug_order:${o.quotation_number}`)]);
+        }
+        if (orders.length > 10) {
+          buttons.push([Markup.button.callback(`+${orders.length - 10} more — type number below`, 'noop')]);
+        }
+        buttons.push([Markup.button.callback('⏭️ Skip (no order)', 'pick:bug_order:skip')]);
+        buttons.push([Markup.button.callback('❌ Cancel', 'action:cancel')]);
+
+        await ctx.reply(
+          `📝 *Link to Order (Optional)*\n\nTitle: *${title}*\nDescription: ${description.slice(0, 100)}${description.length > 100 ? '...' : ''}\n\nSelect the related order or tap *Skip* to submit without one:`,
+          { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }
+        );
+      } catch {
+        // Fallback: allow typing the order number or skip
+        await ctx.reply(
+          `📝 *Bug Report — Optional*\n\nTitle: *${title}*\nDescription: ${description.slice(0, 100)}${description.length > 100 ? '...' : ''}\n\nType the *quotation number* to link, or type *skip* to submit without one.`,
+          { parse_mode: 'Markdown', reply_markup: { force_reply: true } }
+        );
+      }
       break;
     }
 
-    case 'awaiting_bug_order_ref': {
+    case 'awaiting_bug_order_pick': {
       const { title, description } = session.step;
       const orderReference = text.trim().toLowerCase() === 'skip' ? null : text.trim();
 
@@ -2021,6 +2101,7 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
       remarks: 'Not yet started',
       updated_by: ctx.from?.username ?? String(ctx.from?.id),
     });
+    await logAction({ chatId, userId, username, label: 'Production Not Yet Started', quotationNumber });
     resetStep(chatId);
     await ctx.editMessageText(
       `✅ Noted. Production for *${quotationNumber}* has not started yet. Reminders will continue.`,
@@ -2183,6 +2264,7 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
       remarks: status === 'confirmed' ? 'Payment confirmed' : 'Payment received, pending confirmation',
       updated_by: ctx.from?.username ?? String(ctx.from?.id),
     });
+    await logAction({ chatId, userId, username, label: status === 'confirmed' ? 'Payment Confirmed' : 'Payment Received', quotationNumber });
     resetStep(chatId);
     const msg = status === 'confirmed'
       ? `✅ *Payment Confirmed*\n\nOrder: *${quotationNumber}*\n\nOrder is now complete! 🏁`
@@ -2224,7 +2306,7 @@ bot.action(/^production:ontime:(.+):(.+)$/, async (ctx) => {
       on_time: true,
       delay_days: 0,
     });
-
+    await logAction({ chatId, userId, username, label: 'Production On Time', quotationNumber });
     resetStep(chatId);
     await ctx.editMessageText(
       `✅ *On Time* — ${quotationNumber}\n\nProduction is on schedule. A reminder will be sent at the estimated completion date.`,
@@ -2597,7 +2679,7 @@ bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
     await postJson(`/orders/${orderId}/finish-production`, {
       delivery_estimated_days: 28,
     });
-
+    await logAction({ chatId, userId, username, label: 'Production Finished', quotationNumber, details: 'Delivery in: 28 days (standard)' });
     // Now ask: Is the order en route?
     setStep(chatId, { action: 'awaiting_en_route', orderId, quotationNumber });
     await ctx.editMessageText(
@@ -2713,7 +2795,7 @@ bot.action(/^en_route:arrival_standard:(.+):(.+)$/, async (ctx) => {
     await postJson(`/orders/${orderId}/confirm-en-route`, {
       estimated_arrival_days: 28,
     });
-
+    await logAction({ chatId, userId, username, label: 'En Route Confirmed', quotationNumber, details: 'Arrival in: 28 days (standard)' });
     resetStep(chatId);
     await ctx.editMessageText(
       `✅ *En Route Confirmed* — ${quotationNumber}\n\nEstimated inventory arrival: *28 days*.\n\nThe order has moved to the next stage.`,
@@ -2772,7 +2854,7 @@ bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
       remarks: 'Inventory arrived — ready for delivery, balance payment required',
       updated_by: 'delivery-agent',
     });
-
+    await logAction({ chatId, userId, username, label: 'Inventory Ready — Balance Due', quotationNumber });
     await ctx.editMessageText(
       `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
       `Stage advanced to ⚖️ *Balance Due*.\n\n` +
@@ -2931,7 +3013,7 @@ bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
 
   try {
     const result = await postJson(`/orders/${orderId}/complete-inventory-verification`, {});
-
+    await logAction({ chatId, userId, username, label: 'Inventory Verification Complete', details: `Order #${orderId.slice(0, 8)}` });
     await ctx.editMessageText(
       `✅ *Inventory Verification Complete!*\n\nOrder #${orderId.slice(0, 8)}\nAll items verified. Proceeding to inventory arrival check.\n\nThe bot will now ask about each item's arrival status.`,
       { parse_mode: 'Markdown' }
@@ -3305,7 +3387,7 @@ bot.action(/^delivery:yes:(.+):(.+)$/, async (ctx) => {
       remarks: 'Delivery confirmed via bot callback',
       updated_by: 'delivery-agent',
     });
-
+    await logAction({ chatId, userId, username, label: 'Delivery Confirmed', quotationNumber });
     await ctx.editMessageText(
       `✅ *Delivery Confirmed* — ${quotationNumber}\n\nStage advanced to 📦 *Delivered*.\n\nPlease record the payment status.`,
       {
@@ -3939,6 +4021,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
       metadata: { quotationNumber, amount: depositAmount },
       status: 'success',
     });
+    await logAction({ chatId, userId, username, label: 'Deposit Slip Confirmed', quotationNumber, details: `₱${depositAmount.toLocaleString()}` });
 
     const successMsg =
       `✅ *Deposit Recorded Successfully!*\n\n` +
@@ -4015,6 +4098,7 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
       metadata: { quotationNumber, amount: depositAmount },
       status: 'success',
     });
+    await logAction({ chatId, userId, username, label: 'Balance Payment Confirmed (via slip)', quotationNumber, details: `₱${depositAmount.toLocaleString()}` });
 
     const successMsg =
       `✅ *Balance Payment Recorded Successfully!*\n\n` +
@@ -5287,3 +5371,4 @@ launchWithRetry().catch((err) => {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+

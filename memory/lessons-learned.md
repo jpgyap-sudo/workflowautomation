@@ -3738,3 +3738,59 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: Grant Exception button logic in production tab + add Telegram action audit logging
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c4bd352a51536420e3d013f078183afa5c40f505
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** c4bd352a51536420e3d013f078183afa5c40f505
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+- The "Grant Exception" button in the production tab was not working correctly (likely not triggering the expected action or state change).  
+- Added audit logging for Telegram actions (e.g., sending messages or notifications) to improve traceability.
+
+**Why it broke:**  
+- The button logic likely had a missing or incorrect condition (e.g., not checking user permissions, state, or event handler binding) that prevented the exception grant from executing properly.  
+- Telegram actions lacked audit logging, meaning they were invisible in logs, making debugging and compliance difficult.
+
+**Reusable takeaway:**  
+- Always pair critical user actions (like granting exceptions) with explicit state validation and event handler wiring—especially in production-facing UIs.  
+- Add audit logging for any external service actions (e.g., Telegram, email, API calls) to ensure traceability and simplify future debugging.  
+- Test button logic in isolation and with production-like permissions to catch silent failures early.
+
+---
+*Original commit message: fix: Grant Exception button logic in production tab + add Telegram action audit logging*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- The "Grant Exception" button in the production tab was not working correctly (likely not triggering the expected action or state change).  
+- Added audit logging for Telegram actions (e.g., sending messages or notifications) to improve traceability.
+
+**Why it broke:**  
+- The button logic likely had a missing or incorrect condition (e.g., not checking user permissions, state, or event handler binding) that prevented the exception grant from executing properly.  
+- Telegram actions lacked audit logging, meaning they were invisible in logs, making debugging and compliance difficult.
+
+**Reusable takeaway:**  
+- Always pair critical user actions (like granting exceptions) with explicit state validation and event handler wiring—especially in production-facing UIs.  
+- Add audit logging for any external service actions (e.g., Telegram, email, API calls) to ensure traceability and simplify future debugging.  
+- Test button logic in isolation and with production-like permissions to catch silent failures early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
