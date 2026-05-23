@@ -3794,3 +3794,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: improve /bug interactive flow with order picker GUI
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d9111d6d6e969103a39d4a66fa00d5fb13f26991
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d9111d6d6e969103a39d4a66fa00d5fb13f26991
+**Files:** apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The `/bug` interactive flow was improved by adding an order picker GUI, making it easier for users to select and report issues tied to specific orders.
+
+**Why it broke:**  
+The previous flow lacked a structured selection interface, causing ambiguity and incomplete bug reports when users had to manually type order references.
+
+**Reusable takeaway:**  
+When designing user-facing workflows that require referencing existing data (e.g., orders, tickets), always provide a picker or selection UI to reduce input errors and ensure data integrity. This improves UX and downstream automation reliability.
+
+---
+*Original commit message: feat: improve /bug interactive flow with order picker GUI*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `/bug` interactive flow was improved by adding an order picker GUI, making it easier for users to select and report issues tied to specific orders.
+
+**Why it broke:**  
+The previous flow lacked a structured selection interface, causing ambiguity and incomplete bug reports when users had to manually type order references.
+
+**Reusable takeaway:**  
+When designing user-facing workflows that require referencing existing data (e.g., orders, tickets), always provide a picker or selection UI to reduce input errors and ensure data integrity. This improves UX and downstream automation reliability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

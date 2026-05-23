@@ -12,6 +12,7 @@ import {
   inlineKeyboard,
 } from '../services/agentRunner.js';
 import { query } from '../db.js';
+import { cacheDeletePattern } from '../cache.js';
 import {
   analyzeProductionOrder,
   type HermesProductionContext,
@@ -259,6 +260,11 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
          WHERE order_id = $1 AND status = 'active' AND stage = 'inventory_verification'`,
         [order.id]
       );
+
+      // Invalidate caches so dashboard reflects the stage change immediately
+      await cacheDeletePattern('dashboard:*');
+      await cacheDeletePattern('orders:*');
+      await cacheDeletePattern(`order:detail:${qn}`);
 
       // Notify inventory group
       const groupChatId = getGroupChatId(AGENT_NAME);

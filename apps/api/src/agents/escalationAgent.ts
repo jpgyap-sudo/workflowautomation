@@ -176,11 +176,10 @@ export async function notifyEscalation(
       case 'inventory_verification':
         keyboard = inlineKeyboard([
           [
-            { text: '🔍 Verify All', callback_data: `inv_verify:all:${id}:${qn}` },
-            { text: '⚠️ Partial', callback_data: `inv_verify:partial:${id}:${qn}` },
+            { text: '✅ Complete Verification', callback_data: `inv_verify:complete:${id}:${qn}` },
           ],
           [
-            { text: '⏳ Not Yet', callback_data: `inv_verify:not_yet:${id}:${qn}` },
+            { text: '⏳ Not Yet', callback_data: `inv_verify:pending:${id}:${qn}` },
           ],
         ]);
         break;

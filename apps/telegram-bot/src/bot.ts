@@ -1849,6 +1849,7 @@ Midpoint and due reminders are now scheduled.`,
       }
       try {
         await postJson(`/orders/${orderId}/partial-production`, { missing_items: items });
+        await logAction({ chatId, userId, username, label: 'Partial Production Noted', quotationNumber, details: `Pending items: ${items.join(', ')}` });
         resetStep(chatId);
         const list = items.map(i => `• ${i}`).join('\n');
         await ctx.reply(
@@ -1894,11 +1895,13 @@ Midpoint and due reminders are now scheduled.`,
         resetStep(chatId);
         const doneList = nowDone.map(i => `✅ ${i}`).join('\n');
         if (newRemaining.length === 0) {
+          await logAction({ chatId, userId, username, label: 'All Partial Items Produced', quotationNumber, details: `Done: ${nowDone.join(', ')}` });
           await ctx.reply(
             `🎉 *All Items Produced — ${quotationNumber}*\n\n${doneList}\n\nAll pending items have been confirmed produced! Daily reminders have been stopped.`,
             { parse_mode: 'Markdown', ...mainMenuKeyboard() }
           );
         } else {
+          await logAction({ chatId, userId, username, label: 'Partial Items Updated', quotationNumber, details: `Done: ${nowDone.join(', ')} | Still pending: ${newRemaining.join(', ')}` });
           const remainList = newRemaining.map(i => `• ${i}`).join('\n');
           await ctx.reply(
             `✅ *Updated — ${quotationNumber}*\n\nMarked as produced:\n${doneList}\n\nStill pending:\n${remainList}\n\nThe daily reminder will continue tracking these items.`,
@@ -2477,6 +2480,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await postJson(`/orders/${orderId}/finish-production`, {
         delivery_estimated_days: 28,
       });
+      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${orderId.slice(0, 8)} auto-advanced to en_route` });
 
       await ctx.editMessageText(
         `✅ *All Items Production Finished!*\n\nOrder #${orderId.slice(0, 8)}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
@@ -2614,7 +2618,7 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       // All items en route! Advance the order immediately
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
-        note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_arrived.`,
+        note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`,
         log_type: 'user',
         created_by: username ?? `user_${userId}`,
       });
@@ -2623,9 +2627,10 @@ bot.action(/^item_en_route:(yes|no|arrived):([^:]+):(.+)$/, async (ctx) => {
       await postJson(`/orders/${orderId}/confirm-en-route`, {
         estimated_arrival_days: 28,
       });
+      await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${orderId.slice(0, 8)} auto-advanced to inventory_verification` });
 
       await ctx.editMessageText(
-        `✅ *All Items En Route!*\n\nOrder #${orderId.slice(0, 8)}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 📦 Inventory Arrived.`,
+        `✅ *All Items En Route!*\n\nOrder #${orderId.slice(0, 8)}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
@@ -3013,10 +3018,22 @@ bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
 
   try {
     const result = await postJson(`/orders/${orderId}/complete-inventory-verification`, {});
-    await logAction({ chatId, userId, username, label: 'Inventory Verification Complete', details: `Order #${orderId.slice(0, 8)}` });
+
+    // Fetch order to get the real quotation_number
+    const orderRes = await fetch(`${apiBaseUrl}/orders/${orderId}`);
+    const orderData = await orderRes.json();
+    const quotationNumber = orderData.quotation_number ?? orderId.slice(0, 8);
+
+    await logAction({ chatId, userId, username, label: 'Inventory Verification Complete', details: `Order #${quotationNumber}` });
     await ctx.editMessageText(
-      `✅ *Inventory Verification Complete!*\n\nOrder #${orderId.slice(0, 8)}\nAll items verified. Proceeding to inventory arrival check.\n\nThe bot will now ask about each item's arrival status.`,
-      { parse_mode: 'Markdown' }
+      `✅ *Inventory Verification Complete!*\n\nOrder #${quotationNumber}\nAll items verified. Proceeding to inventory arrival check.\n\nClick below to start checking item arrival status:`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📦 Start Arrival Check', `inv_verify:review:${orderId}:${quotationNumber}`)],
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
     );
   } catch (err: any) {
     await ctx.reply(`❌ Error completing inventory verification: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
@@ -3027,6 +3044,7 @@ bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
 bot.action(/^inv_verify:review:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2] ?? orderId.slice(0, 8);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
 
@@ -3042,12 +3060,35 @@ bot.action(/^inv_verify:review:(.+):(.+)$/, async (ctx) => {
     await postJson(`/agents/inventory`, { order_id: orderId });
 
     await ctx.editMessageText(
-      `🔄 *Reviewing Inventory Verification...*\n\nOrder #${orderId.slice(0, 8)}\nThe inventory agent will re-check all items and quantities. Please wait for the updated status.`,
+      `🔄 *Reviewing Inventory Verification...*\n\nOrder #${quotationNumber}\nThe inventory agent will re-check all items and quantities. Please wait for the updated status.`,
       { parse_mode: 'Markdown' }
     );
   } catch (err: any) {
     await ctx.reply(`❌ Error re-triggering inventory agent: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
   }
+});
+
+// Handle "Not Yet" from escalation reminders — acknowledge and keep reminding
+bot.action(/^inv_verify:pending:(.+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const orderId = ctx.match[1];
+  const quotationNumber = ctx.match[2] ?? orderId.slice(0, 8);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `inv_verify:pending:${orderId}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await logAction({ chatId, userId, username, label: 'Inventory Verification Pending', quotationNumber, details: 'Acknowledged via escalation reminder' });
+
+  await ctx.editMessageText(
+    `⏳ *Inventory Verification Remains Pending*\n\nOrder #${quotationNumber}\nNoted. The bot will continue daily reminders until verification is completed.`,
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
 });
 
 bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ctx) => {
@@ -3091,6 +3132,11 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
     const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
     const items = await itemsRes.json();
 
+    // Fetch order to get the real quotation_number
+    const orderRes = await fetch(`${apiBaseUrl}/orders/${orderId}`);
+    const orderData = await orderRes.json();
+    const quotationNumber = orderData.quotation_number ?? orderId.slice(0, 8);
+
     // Calculate inventory % based on quantity
     const totalQty = items.items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
     const arrivedQty = items.items
@@ -3104,7 +3150,7 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
     );
 
     if (!notArrivedItem) {
-      // All items arrived! Notify ready for delivery
+      // All items arrived! Notify ready for delivery — include photo upload prompt
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
         note: `✅ All items arrived at inventory (${inventoryPct}% of qty). Ready for delivery confirmation.`,
@@ -3113,12 +3159,13 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       });
 
       await ctx.editMessageText(
-        `✅ *All Items Arrived at Inventory!*\n\nOrder #${orderId.slice(0, 8)}\nAll items arrived (${inventoryPct}% of qty).\n\nReady for delivery! Please confirm below:`,
+        `✅ *All Items Arrived at Inventory!*\n\nOrder #${quotationNumber}\nAll items arrived (${inventoryPct}% of qty).\n\n📸 *Upload photos* of the inventory using the button below, then confirm delivery readiness:`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Ready for Delivery', `inventory:ready:${orderId}:${orderId.slice(0, 8)}`)],
-            [Markup.button.callback('⏳ Still Waiting', `inventory:waiting:${orderId}:${orderId.slice(0, 8)}`)],
+            [Markup.button.callback('📸 Upload Photos', `menu:upload`)],
+            [Markup.button.callback('✅ Ready for Delivery', `inventory:ready:${orderId}:${quotationNumber}`)],
+            [Markup.button.callback('⏳ Still Waiting', `inventory:waiting:${orderId}:${quotationNumber}`)],
           ]),
         }
       );
@@ -3130,6 +3177,7 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
       const progressBar = '█'.repeat(Math.round(inventoryPct / 10)) + '░'.repeat(10 - Math.round(inventoryPct / 10));
 
       let msg = `📦 *Item-Level Inventory Check*\n\n`;
+      msg += `Order: #${quotationNumber}\n`;
       msg += `Inventory: ${inventoryPct}% arrived ${progressBar}\n`;
       msg += `Items: ${arrivedCount}/${totalCount} arrived\n\n`;
       msg += `*Process of Elimination:*\n`;
@@ -3211,6 +3259,7 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):(.+)$/, a
 
     if (newStatus === 'finished') {
       // Item finished — complete the reminder (handled by PATCH endpoint)
+      await logAction({ chatId, userId, username, label: 'Item Production Finished (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${itemId}` });
       await ctx.editMessageText(
         `✅ *Item Production Updated via Reminder*\n\nItem marked as *Finished*.\nThe reminder for this item has been completed.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -3275,6 +3324,7 @@ bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):(.+)$/, a
 
     if (newStatus === 'arrived') {
       // Item arrived — complete the reminder (handled by PATCH endpoint)
+      await logAction({ chatId, userId, username, label: 'Item Arrived at Inventory (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${itemId}` });
       await ctx.editMessageText(
         `📦 *Item En Route Updated via Reminder*\n\nItem marked as *Arrived*.\nThe reminder for this item has been completed.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }

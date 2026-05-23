@@ -73,7 +73,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     monitors: ['production_confirmed', 'en_route', 'partial_production'],
     triggers: [
       { from: 'production_confirmed', to: 'en_route', condition: 'Production finished via /finish-production' },
-      { from: 'en_route', to: 'inventory_arrived', condition: 'En route confirmed with arrival days' },
+      { from: 'en_route', to: 'inventory_verification', condition: 'En route confirmed with arrival days' },
     ],
     notificationGroup: 'Production',
   },

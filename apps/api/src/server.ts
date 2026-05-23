@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { z } from 'zod';
 import { query } from './db.js';
-import { createClient } from 'redis';
+import { cacheClient, cacheGet, cacheSet, cacheDeletePattern } from './cache.js';
 import { randomUUID, randomInt } from 'crypto';
 import * as http from 'http';
 import nodemailer from 'nodemailer';
@@ -59,35 +59,6 @@ const ORDER_LIST_SELECT = `
 const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
 await app.register(cors, { origin: true });
 
-// ── Redis Cache ──────────────────────────────────────────────────────
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://redis:6379';
-const CACHE_TTL_SECONDS = Number(process.env.CACHE_TTL_SECONDS ?? 15); // Reduced from 30 to 15
-
-let cacheClient: Awaited<ReturnType<typeof createClient>> | null = null;
-try {
-  cacheClient = createClient({ url: REDIS_URL });
-  cacheClient.on('error', (err) => console.warn('[cache] Redis error (non-fatal):', err.message));
-  await cacheClient.connect();
-  console.log('[cache] Redis connected');
-} catch (err) {
-  console.warn('[cache] Redis unavailable — running without cache');
-}
-
-async function cacheGet<T>(key: string): Promise<T | null> {
-  if (!cacheClient?.isOpen) return null;
-  try {
-    const raw = await cacheClient.get(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-async function cacheSet(key: string, data: unknown, ttl = CACHE_TTL_SECONDS): Promise<void> {
-  if (!cacheClient?.isOpen) return;
-  try {
-    await cacheClient.setEx(key, ttl, JSON.stringify(data));
-  } catch { /* ignore */ }
-}
-
 // ── SSE (Server-Sent Events) ────────────────────────────────────────
 // Connected dashboard clients get real-time invalidation events
 const sseClients = new Set<{ id: string; write: (data: string) => void }>();
@@ -105,13 +76,9 @@ function broadcastSSE(event: string, data: unknown): void {
 
 // ── Cache Invalidation Helper ───────────────────────────────────────
 async function invalidateCache(patterns: string[]): Promise<void> {
-  if (!cacheClient?.isOpen) return;
-  try {
-    for (const pattern of patterns) {
-      const keys = await cacheClient.keys(pattern);
-      if (keys.length > 0) await cacheClient.del(keys);
-    }
-  } catch { /* ignore */ }
+  for (const pattern of patterns) {
+    await cacheDeletePattern(pattern);
+  }
 
   // Also notify SSE clients so they can revalidate SWR caches
   broadcastSSE('invalidate', { keys: patterns });
