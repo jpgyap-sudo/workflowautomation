@@ -15,6 +15,7 @@ import {
 import {
   processDueReminders,
   createStageReminder,
+  upsertStageReminder,
   completeOrderReminders,
   startReminderScheduler,
   stopReminderScheduler,
@@ -773,6 +774,8 @@ const updateOrderSchema = z.object({
   contact_number: z.string().nullable().optional(),
   authorized_receiver_name: z.string().nullable().optional(),
   authorized_receiver_contact: z.string().nullable().optional(),
+  deposit_paid_at: z.string().nullable().optional(),
+  balance_paid_at: z.string().nullable().optional(),
   action_token: z.string(),
 });
 
@@ -808,6 +811,8 @@ app.patch('/orders/:id', async (request, reply) => {
   if (body.contact_number !== undefined) { fields.push(`contact_number=$${idx++}`); values.push(nullableText(body.contact_number)); }
   if (body.authorized_receiver_name !== undefined) { fields.push(`authorized_receiver_name=$${idx++}`); values.push(nullableText(body.authorized_receiver_name)); }
   if (body.authorized_receiver_contact !== undefined) { fields.push(`authorized_receiver_contact=$${idx++}`); values.push(nullableText(body.authorized_receiver_contact)); }
+  if (body.deposit_paid_at !== undefined) { fields.push(`deposit_paid_at=$${idx++}`); values.push(body.deposit_paid_at); }
+  if (body.balance_paid_at !== undefined) { fields.push(`balance_paid_at=$${idx++}`); values.push(body.balance_paid_at); }
 
   if (fields.length === 0) {
     return reply.status(400).send({ error: 'No fields to update' });
@@ -3525,6 +3530,25 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
       userEmail,
     );
   }
+
+  // Create/update the purchasing_pending reminder to point to the production group.
+  // The production team needs daily reminders to start the workflow — not just the one-time notification above.
+  // Uses upsertStageReminder so existing reminders created with the wrong group are corrected.
+  setImmediate(async () => {
+    try {
+      const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+      if (prodGroupChatId) {
+        await upsertStageReminder(
+          id,
+          'purchasing_pending',
+          prodGroupChatId,
+          `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Please start the production workflow.`,
+        );
+      }
+    } catch (err) {
+      console.warn('[verify-deposit] Failed to upsert purchasing_pending reminder:', err);
+    }
+  });
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 

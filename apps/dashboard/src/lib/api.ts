@@ -364,6 +364,8 @@ export async function updateOrder(id: string, data: {
   contact_number?: string | null;
   authorized_receiver_name?: string | null;
   authorized_receiver_contact?: string | null;
+  deposit_paid_at?: string | null;
+  balance_paid_at?: string | null;
   action_token: string;
 }): Promise<Order> {
   return fetchJson<Order>(`/orders/${encodeURIComponent(id)}`, {

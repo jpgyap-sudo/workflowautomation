@@ -100,6 +100,148 @@ function OrderPaymentInfo({ order }: { order: Order }) {
   );
 }
 
+function formatCollectionDate(value: string | null | undefined): string {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function PaymentStatusBadge({
+  paidAt,
+  verified,
+  verifiedAt,
+}: {
+  paidAt: string | null | undefined;
+  verified: boolean | null | undefined;
+  verifiedAt: string | null | undefined;
+}) {
+  if (!paidAt) {
+    return (
+      <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+        Not paid
+      </span>
+    );
+  }
+
+  if (verified) {
+    return (
+      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+        Verified{verifiedAt ? ` · ${formatCollectionDate(verifiedAt)}` : ''}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+      Pending verification
+    </span>
+  );
+}
+
+function CollectionSummary({
+  orders,
+  onDateEdit,
+  savingKey,
+}: {
+  orders: Order[];
+  onDateEdit: (order: Order, field: 'deposit_paid_at' | 'balance_paid_at', value: string) => void;
+  savingKey: string | null;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+        <DollarSign className="h-4 w-4 text-emerald-500" />
+        <div>
+          <h2 className="text-base font-semibold text-gray-800">Collection Summary</h2>
+          <p className="text-xs text-gray-500">
+            Client, quotation/order number, downpayment, and balance verification status.
+          </p>
+        </div>
+        <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+          {orders.length}
+        </span>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="py-10 text-center text-sm text-gray-400">No collection orders to summarize</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-100 text-left text-xs">
+            <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
+              <tr>
+                <th className="px-6 py-3 font-semibold">Client</th>
+                <th className="px-6 py-3 font-semibold">Quotation / Order #</th>
+                <th className="px-6 py-3 font-semibold">Downpayment Date</th>
+                <th className="px-6 py-3 font-semibold">Downpayment Verification</th>
+                <th className="px-6 py-3 font-semibold">Balance Payment Date</th>
+                <th className="px-6 py-3 font-semibold">Balance Verification</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {orders.map((order) => (
+                <tr key={order.id} className="hover:bg-gray-50/70">
+                  <td className="whitespace-nowrap px-6 py-3 font-medium text-gray-800">
+                    {order.client_name ?? 'Unknown client'}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3 text-[#2490ef]">
+                    {order.quotation_number ?? order.id.slice(0, 8)}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3 text-gray-600">
+                    <input
+                      type="date"
+                      defaultValue={toDateInputValue(order.deposit_paid_at)}
+                      disabled={savingKey === `${order.id}:deposit_paid_at`}
+                      onChange={(e) => onDateEdit(order, 'deposit_paid_at', e.target.value)}
+                      className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50"
+                      title="Edit downpayment date"
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3">
+                    <PaymentStatusBadge
+                      paidAt={order.deposit_paid_at}
+                      verified={order.deposit_verified}
+                      verifiedAt={order.deposit_verified_at}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3 text-gray-600">
+                    <input
+                      type="date"
+                      defaultValue={toDateInputValue(order.balance_paid_at)}
+                      disabled={savingKey === `${order.id}:balance_paid_at`}
+                      onChange={(e) => onDateEdit(order, 'balance_paid_at', e.target.value)}
+                      className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50"
+                      title="Edit balance payment date"
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3">
+                    <PaymentStatusBadge
+                      paidAt={order.balance_paid_at}
+                      verified={order.balance_verified}
+                      verifiedAt={order.balance_verified_at}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CollectionPage() {
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
@@ -141,8 +283,9 @@ export default function CollectionPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  const [paymentDateSavingKey, setPaymentDateSavingKey] = useState<string | null>(null);
 
   // Special case (delivery exception) state
   const [exceptionModal, setExceptionModal] = useState<{
@@ -262,6 +405,58 @@ export default function CollectionPage() {
     } else if (otpModal.pendingAction === 'syncPaymentReceived') {
       const pending = (window as any).__pendingSyncData as { order: Order } | undefined;
       if (pending) executeSyncPaymentReceived(pending.order, actionToken);
+    } else if (otpModal.pendingAction === 'editPaymentDate') {
+      const pending = (window as any).__pendingPaymentDateData as {
+        order: Order;
+        field: 'deposit_paid_at' | 'balance_paid_at';
+        value: string;
+      } | undefined;
+      if (pending) executePaymentDateUpdate(pending.order, pending.field, pending.value, actionToken);
+    }
+  }
+
+  function handlePaymentDateEdit(order: Order, field: 'deposit_paid_at' | 'balance_paid_at', value: string) {
+    const label = field === 'deposit_paid_at' ? 'downpayment date' : 'balance payment date';
+    (window as any).__pendingPaymentDateData = { order, field, value };
+    setOtpModal({
+      open: true,
+      title: `Edit ${label}`,
+      description: `Change ${label} for "${order.quotation_number ?? order.id.slice(0, 8)}" to ${value || 'blank'}? This corrects dates read incorrectly from payment slips.`,
+      pendingAction: 'editPaymentDate',
+    });
+  }
+
+  async function executePaymentDateUpdate(
+    order: Order,
+    field: 'deposit_paid_at' | 'balance_paid_at',
+    value: string,
+    actionToken: string,
+  ) {
+    const key = `${order.id}:${field}`;
+    setPaymentDateSavingKey(key);
+    try {
+      await updateOrder(order.id, {
+        [field]: value || null,
+        action_token: actionToken,
+      });
+      mutateDepositVerification();
+      mutateArrived();
+      mutateBalanceDue();
+      mutateBalanceVerification();
+      mutateDelivered();
+      mutateCountered();
+      mutateReceived();
+      mutateConfirmed();
+      mutateCompleted();
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+      const res = await fetch(`${API_BASE}/orders/unsynced-payments`);
+      setUnsyncedOrders(res.ok ? await res.json() : []);
+    } catch (err: any) {
+      alert('Failed to update payment date: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setPaymentDateSavingKey(null);
+      (window as any).__pendingPaymentDateData = null;
+      setOtpModal((prev) => ({ ...prev, open: false }));
     }
   }
 
@@ -493,6 +688,27 @@ export default function CollectionPage() {
     setDepositSlipFile(null);
   }
 
+  const collectionSummaryOrders = Array.from(
+    new Map(
+      [
+        ...depositVerificationOrders,
+        ...inventoryArrivedOrders,
+        ...balanceDueOrders,
+        ...balanceVerificationOrders,
+        ...deliveredOrders,
+        ...counteredOrders,
+        ...paymentReceivedOrders,
+        ...unsyncedOrders,
+        ...paymentConfirmedOrders,
+        ...completedOrders,
+      ].map((order) => [order.id, order] as const),
+    ).values(),
+  ).sort((a, b) => {
+    const aTime = new Date(a.balance_paid_at ?? a.deposit_paid_at ?? a.updated_at ?? a.created_at).getTime();
+    const bTime = new Date(b.balance_paid_at ?? b.deposit_paid_at ?? b.updated_at ?? b.created_at).getTime();
+    return bTime - aTime;
+  });
+
   if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && deliveredOrders.length === 0 && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0 && unsyncedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -654,6 +870,12 @@ export default function CollectionPage() {
           </div>
         </div>
       </div>
+
+      <CollectionSummary
+        orders={collectionSummaryOrders}
+        onDateEdit={handlePaymentDateEdit}
+        savingKey={paymentDateSavingKey}
+      />
 
       {/* For Payment Before Delivery (Inventory Arrived + Balance Due) */}
       <div className="rounded-xl border border-amber-200 bg-white">
@@ -1120,6 +1342,7 @@ export default function CollectionPage() {
           (window as any).__pendingMarkCounteredData = null;
           (window as any).__pendingMarkCompletedData = null;
           (window as any).__pendingSyncData = null;
+          (window as any).__pendingPaymentDateData = null;
         }}
       />
 

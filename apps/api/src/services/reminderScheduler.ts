@@ -189,14 +189,25 @@ export async function processDueReminders(): Promise<number> {
     let ok = false;
 
     if (reminder.stage === 'purchasing_pending') {
-      // Has production started?
-      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
-        [
-          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
-          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId.slice(0, 8)}:${quotationNumber}` },
-        ],
-        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
-      ]);
+      if (reminder.deposit_verified) {
+        // Deposit verified — route to production group and ask them to start the workflow
+        const prodChatId = process.env.PRODUCTION_GROUP_CHAT_ID ?? reminder.group_chat_id;
+        ok = await sendTelegramInlineKeyboard(prodChatId, text, [
+          [
+            { text: '✅ Proceed to Production Workflow', callback_data: `advance:production_pending:${quotationNumber}` },
+            { text: '⏳ Not yet', callback_data: `produce:no:${quotationNumber}` },
+          ],
+        ]);
+      } else {
+        // Deposit not yet verified — ask purchasing group if production has started
+        ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+          [
+            { text: '✅ Yes, started', callback_data: `produce:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+            { text: '⚠️ Partial', callback_data: `produce:partial:${orderId.slice(0, 8)}:${quotationNumber}` },
+          ],
+          [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
+        ]);
+      }
     } else if (reminder.stage === 'production_midpoint') {
       // Midpoint check: ask if on time or delayed
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
@@ -446,6 +457,7 @@ export async function processDueReminders(): Promise<number> {
 
 /**
  * Create a reminder for an order when it enters a new stage.
+ * Uses ON CONFLICT DO NOTHING — will not overwrite an existing reminder.
  */
 export async function createStageReminder(
   orderId: string,
@@ -460,6 +472,35 @@ export async function createStageReminder(
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
      VALUES ($1, $2, $3, $4, $5, $6, 'active')
      ON CONFLICT DO NOTHING`,
+    [orderId, stage, groupChatId, message, frequency, firstRun.toISOString()]
+  );
+}
+
+/**
+ * Upsert a stage reminder — creates if missing, updates group_chat_id and message if existing.
+ * Use when a stage change should ALWAYS route the reminder to a specific group
+ * (e.g. deposit verified → reminder must go to production group, not purchasing group).
+ */
+export async function upsertStageReminder(
+  orderId: string,
+  stage: string,
+  groupChatId: string,
+  message: string,
+  frequency: string = 'daily'
+): Promise<void> {
+  const firstRun = nextPhtReminderTime();
+
+  await query(
+    `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'active')
+     ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
+       group_chat_id = EXCLUDED.group_chat_id,
+       message       = EXCLUDED.message,
+       next_run_at   = CASE
+                         WHEN reminders.next_run_at <= NOW() THEN EXCLUDED.next_run_at
+                         ELSE LEAST(reminders.next_run_at, EXCLUDED.next_run_at)
+                       END,
+       updated_at    = NOW()`,
     [orderId, stage, groupChatId, message, frequency, firstRun.toISOString()]
   );
 }

@@ -6789,3 +6789,97 @@ When dashboard order file modals upload base64 files through /files/upload, alwa
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: escape Markdown special chars in reminder:item_en_route error handler
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d591e9ee31bfc42bcca12ed35addfcfad05a5381
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d591e9ee31bfc42bcca12ed35addfcfad05a5381
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/components/OrderFileViewer.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Markdown special characters (e.g., `*`, `_`, `[`, `]`) in error messages from the `reminder:item_en_route` handler were not escaped, causing broken rendering in Telegram and dashboard views.
+
+**Why it broke:**  
+The error handler directly interpolated user-generated or system-generated strings containing Markdown syntax into message templates without sanitization. This caused unintended formatting (e.g., italic, bold, links) or malformed output.
+
+**Reusable takeaway:**  
+Always escape Markdown/HTML special characters when embedding dynamic content into formatted messages, especially in error handlers or user-facing notifications. Use a dedicated escaping function (e.g., `escapeMarkdown()`) before string interpolation to prevent rendering corruption and injection-like issues.
+
+---
+*Original commit message: fix: escape Markdown special chars in reminder:item_en_route error handler*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Markdown special characters (e.g., `*`, `_`, `[`, `]`) in error messages from the `reminder:item_en_route` handler were not escaped, causing broken rendering in Telegram and dashboard views.
+
+**Why it broke:**  
+The error handler directly interpolated user-generated or system-generated strings containing Markdown syntax into message templates without sanitization. This caused unintended formatting (e.g., italic, bold, links) or malformed output.
+
+**Reusable takeaway:**  
+Always escape Markdown/HTML special characters when embedding dynamic content into formatted messages, especially in error handlers or user-facing notifications. Use a dedicated escaping function (e.g., `escapeMarkdown()`) before string interpolation to prevent rendering corruption and injection-like issues.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [quotation-automation-system] add collection payment summary table
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Collection tab summaries can be built from the existing stage-specific order arrays without adding a new API route. Deduplicate orders by id across deposit_verification, balance_due, balance_verification, payment_received, completed, and related collection stages, then display existing Order fields: client_name, quotation_number/id, deposit_paid_at, deposit_verified/deposit_verified_at, balance_paid_at, and balance_verified/balance_verified_at. Keep the summary above detailed stage queues so collection staff can quickly see downpayment and balance verification state.
+
+#### Lesson Learned
+
+Collection tab summaries can be built from the existing stage-specific order arrays without adding a new API route. Deduplicate orders by id across deposit_verification, balance_due, balance_verification, payment_received, completed, and related collection stages, then display existing Order fields: client_name, quotation_number/id, deposit_paid_at, deposit_verified/deposit_verified_at, balance_paid_at, and balance_verified/balance_verified_at. Keep the summary above detailed stage queues so collection staff can quickly see downpayment and balance verification state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [quotation-automation-system] editable collection payment dates
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When AI reads blurry deposit or balance slips, payment dates can be wrong (for example 2022 instead of 2026). Make deposit_paid_at and balance_paid_at editable from the Collection Summary by allowing those fields in the existing OTP-protected PATCH /orders/:id path and exposing them in the dashboard updateOrder client. Keep edits behind the existing action_token flow and refresh all collection stage SWR lists after correction.
+
+#### Lesson Learned
+
+When AI reads blurry deposit or balance slips, payment dates can be wrong (for example 2022 instead of 2026). Make deposit_paid_at and balance_paid_at editable from the Collection Summary by allowing those fields in the existing OTP-protected PATCH /orders/:id path and exposing them in the dashboard updateOrder client. Keep edits behind the existing action_token flow and refresh all collection stage SWR lists after correction.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

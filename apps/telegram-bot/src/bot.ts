@@ -3667,6 +3667,7 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
       return;
     }
 
+
     // Map remaining statuses (no, arrived) to en_route_status value
     const statusMap: Record<string, string> = {
       no: 'not_yet',
@@ -3704,8 +3705,10 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     const thresholdMet = enRoutePct > 50;
 
     // Find the next item not yet en route (process of elimination)
+    // Skip the current item if it's still not_yet (user confirmed "Not Yet"
+    // for an item that was already not_yet — avoid infinite loop)
     const notEnRouteItem = updatedItems.find(
-      (item: any) => item.en_route_status === 'not_yet'
+      (item: any) => item.en_route_status === 'not_yet' && item.id !== itemId
     );
 
     if (!notEnRouteItem) {
