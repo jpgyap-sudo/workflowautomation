@@ -366,6 +366,81 @@ app.post('/auth/verify-otp-for-action', async (request, reply) => {
   return reply.send({ ok: true, actionToken });
 });
 
+// ── Telegram 4-digit action verification ────────────────────────────
+// When a dashboard user clicks a guarded button, we generate a 4-digit code,
+// push it to Telegram, and require the user to type it back in the GUI.
+const ACTION_CODE_TTL = 300; // 5 minutes
+const ACTION_CODE_MAX_ATTEMPTS = 5;
+const ACTION_VERIFY_CHAT_ID = process.env.ACTION_VERIFY_TELEGRAM_CHAT_ID ?? ESCALATION_CHAT_ID;
+
+app.post('/auth/send-action-code', async (request, reply) => {
+  const { email } = z.object({ email: z.string().email() }).parse(request.body);
+
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Verification service unavailable' });
+  }
+
+  const code = String(randomInt(1000, 10000)); // 4-digit: 1000–9999
+  const key = `action_code:${email.toLowerCase()}`;
+  await cacheClient.setEx(key, ACTION_CODE_TTL, JSON.stringify({ code, attempts: 0 }));
+
+  if (!_TELEGRAM_BOT_TOKEN || !ACTION_VERIFY_CHAT_ID) {
+    console.warn(`[action-code] Telegram not configured. Code for ${email}: ${code}`);
+    return reply.status(503).send({ error: 'Telegram not configured. Contact admin.' });
+  }
+
+  const msg = `🔐 <b>Dashboard Action Verification</b>\n\nA dashboard action requires confirmation.\n\nYour 4-digit code:\n\n<code>${code}</code>\n\n<i>Expires in 5 minutes. Do not share this code.</i>`;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: ACTION_VERIFY_CHAT_ID, text: msg, parse_mode: 'HTML' }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('[action-code] Telegram send failed:', body);
+      return reply.status(500).send({ error: 'Failed to send Telegram code' });
+    }
+  } catch (err) {
+    console.error('[action-code] Telegram send error:', err);
+    return reply.status(500).send({ error: 'Failed to send Telegram code' });
+  }
+
+  return reply.send({ ok: true });
+});
+
+app.post('/auth/verify-action-code', async (request, reply) => {
+  const { email, code } = z.object({ email: z.string().email(), code: z.string() }).parse(request.body);
+  const key = `action_code:${email.toLowerCase()}`;
+
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Verification service unavailable' });
+  }
+
+  const raw = await cacheClient.get(key);
+  if (!raw) {
+    return reply.status(400).send({ error: 'Code expired or not found. Request a new one.' });
+  }
+
+  const stored = JSON.parse(raw) as { code: string; attempts: number };
+  if (stored.attempts >= ACTION_CODE_MAX_ATTEMPTS) {
+    await cacheClient.del(key);
+    return reply.status(400).send({ error: 'Too many attempts. Request a new code.' });
+  }
+
+  if (stored.code !== code.trim()) {
+    stored.attempts += 1;
+    const ttl = await cacheClient.ttl(key);
+    await cacheClient.setEx(key, ttl > 0 ? ttl : 1, JSON.stringify(stored));
+    return reply.status(400).send({ error: `Invalid code (${ACTION_CODE_MAX_ATTEMPTS - stored.attempts} attempts left)` });
+  }
+
+  await cacheClient.del(key);
+  const actionToken = randomUUID();
+  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), verified: true }));
+  return reply.send({ ok: true, actionToken });
+});
+
 // ── Health ──────────────────────────────────────────────────────────
 app.get('/health', async () => {
   const agentHealth = getAgentHealth();
@@ -1397,6 +1472,20 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
     return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
   }
 
+  // Safety check: verify all items are verified before advancing
+  const itemCheck = await query(
+    `SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE verified_qty >= quantity)::int AS verified
+     FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+  if (itemCheck[0] && itemCheck[0].total > 0 && itemCheck[0].verified < itemCheck[0].total) {
+    return reply.code(400).send({
+      error: `Cannot complete verification: only ${itemCheck[0].verified}/${itemCheck[0].total} items are fully verified. Verify all items first.`,
+      total_items: itemCheck[0].total,
+      verified_items: itemCheck[0].verified,
+    });
+  }
+
   // Advance to inventory_arrived
   await query(
     `UPDATE orders SET inventory_verified_at = NOW(), inventory_verification_pct = 100,
@@ -1918,7 +2007,8 @@ app.post('/stage-updates', async (request, reply) => {
     production_pending:        ['production_confirmed'],
     production_confirmed:      ['en_route', 'partial_production'],
     partial_production:        ['en_route'],
-    en_route:                  ['inventory_arrived'],
+    en_route:                  ['inventory_verification'],
+    inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due'],
     balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
     balance_verification:      ['delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],

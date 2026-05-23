@@ -479,6 +479,21 @@ export async function verifyOtpForAction(email: string, otp: string): Promise<{ 
   });
 }
 
+// ── Telegram 4-digit action verification ──────────────────────────────
+export async function sendTelegramActionCode(email: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/auth/send-action-code', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyTelegramActionCode(email: string, code: string): Promise<{ ok: boolean; actionToken: string }> {
+  return fetchJson<{ ok: boolean; actionToken: string }>('/auth/verify-action-code', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  });
+}
+
 export async function getStageUpdates(orderId: string): Promise<StageUpdate[]> {
   return fetchJson<StageUpdate[]>(`/orders/${orderId}/stage-updates`);
 }

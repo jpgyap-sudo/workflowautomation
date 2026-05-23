@@ -3600,3 +3600,51 @@ When adding new endpoints that modify core entities, audit all existing side eff
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: conditional notifyManualChange for shared bot/dashboard endpoints
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 63079fe10a0653ce72f262fc0b43d5c0a8890535
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 63079fe10a0653ce72f262fc0b43d5c0a8890535
+**Files:** apps/api/src/server.ts,apps/dashboard/src/lib/api.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A bug where `notifyManualChange` was called unconditionally for shared bot/dashboard endpoints, causing duplicate or unnecessary notifications.
+
+**Why it broke:**  
+The notification logic was placed outside a conditional check, so it fired on every request to shared endpoints instead of only when a manual change actually occurred.
+
+**Reusable takeaway:**  
+Guard side effects (like notifications, logging, or state updates) with explicit conditionals tied to the triggering event. For shared endpoints, distinguish between read and write operations to avoid unintended cascading actions.
+
+---
+*Original commit message: fix: conditional notifyManualChange for shared bot/dashboard endpoints*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where `notifyManualChange` was called unconditionally for shared bot/dashboard endpoints, causing duplicate or unnecessary notifications.
+
+**Why it broke:**  
+The notification logic was placed outside a conditional check, so it fired on every request to shared endpoints instead of only when a manual change actually occurred.
+
+**Reusable takeaway:**  
+Guard side effects (like notifications, logging, or state updates) with explicit conditionals tied to the triggering event. For shared endpoints, distinguish between read and write operations to avoid unintended cascading actions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

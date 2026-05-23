@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { sendOtpForAction, verifyOtpForAction } from '@/lib/api';
-import { X, ShieldAlert, RefreshCw } from 'lucide-react';
+import { sendTelegramActionCode, verifyTelegramActionCode } from '@/lib/api';
+import { X, ShieldAlert, RefreshCw, Send } from 'lucide-react';
 
 interface OtpModalProps {
   open: boolean;
@@ -15,46 +15,46 @@ interface OtpModalProps {
 
 export default function OtpModal({ open, title, description, onVerified, onClose }: OtpModalProps) {
   const { user } = useAuth();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [digits, setDigits] = useState(['', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [step, setStep] = useState<'otp' | 'confirm'>('otp');
-  const [otpSent, setOtpSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [step, setStep] = useState<'code' | 'confirm'>('code');
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Send OTP when modal opens
+  // Send code automatically when modal opens
   useEffect(() => {
     if (open && user?.email) {
-      setOtp(['', '', '', '', '', '']);
+      setDigits(['', '', '', '']);
       setError('');
       setLoading(false);
-      setStep('otp');
-      setOtpSent(false);
+      setStep('code');
+      setCodeSent(false);
       setResendCooldown(0);
-      sendOtp();
+      sendCode();
     }
   }, [open]);
 
-  async function sendOtp() {
+  async function sendCode() {
     if (!user?.email) return;
-    setSendingOtp(true);
+    setSending(true);
     setError('');
     try {
-      const result = await sendOtpForAction(user.email);
+      const result = await sendTelegramActionCode(user.email);
       if (result.ok) {
-        setOtpSent(true);
+        setCodeSent(true);
         setResendCooldown(60);
         startCooldown();
-        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        setTimeout(() => inputRefs.current[0]?.focus(), 100);
       } else {
-        setError('Failed to send OTP. Please try again.');
+        setError('Failed to send code. Please try again.');
       }
     } catch (err: any) {
-      setError(err.message ?? 'Failed to send OTP');
+      setError(err.message ?? 'Failed to send code');
     } finally {
-      setSendingOtp(false);
+      setSending(false);
     }
   }
 
@@ -71,53 +71,59 @@ export default function OtpModal({ open, title, description, onVerified, onClose
 
   async function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
-    const code = otp.join('');
-    if (code.length < 6) { setError('Enter all 6 digits'); return; }
-    if (!user?.email) { setError('User email not found'); return; }
+    const code = digits.join('');
+    if (code.length < 4) { setError('Enter all 4 digits'); return; }
+    if (!user?.email) { setError('User not found'); return; }
 
     setLoading(true);
     setError('');
 
     try {
-      const result = await verifyOtpForAction(user.email, code);
+      const result = await verifyTelegramActionCode(user.email, code);
       if (result.ok && result.actionToken) {
         setStep('confirm');
-        // Store token temporarily
         (window as any).__actionToken = result.actionToken;
       } else {
         setError('Verification failed');
-        setOtp(['', '', '', '', '', '']);
+        setDigits(['', '', '', '']);
+        inputRefs.current[0]?.focus();
       }
     } catch (err: any) {
-      setError(err.message ?? 'Invalid OTP');
-      setOtp(['', '', '', '', '', '']);
+      setError(err.message ?? 'Invalid code');
+      setDigits(['', '', '', '']);
+      inputRefs.current[0]?.focus();
     } finally {
       setLoading(false);
     }
   }
 
-  function handleOtpChange(index: number, value: string) {
+  function handleDigitChange(index: number, value: string) {
     const digit = value.replace(/\D/g, '').slice(-1);
-    const next = [...otp];
+    const next = [...digits];
     next[index] = digit;
-    setOtp(next);
-    if (digit && index < 5) otpRefs.current[index + 1]?.focus();
+    setDigits(next);
+    if (digit && index < 3) inputRefs.current[index + 1]?.focus();
   }
 
-  function handleOtpKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
+  function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+    // Auto-submit when all 4 digits are filled
+    if (e.key === 'Enter') {
+      const code = digits.join('');
+      if (code.length === 4) handleSubmit({ preventDefault: () => {} });
     }
   }
 
-  function handleOtpPaste(e: React.ClipboardEvent) {
-    const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (!digits) return;
+  function handlePaste(e: React.ClipboardEvent) {
+    const d = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (!d) return;
     e.preventDefault();
-    const next = [...otp];
-    digits.split('').forEach((d, i) => { next[i] = d; });
-    setOtp(next);
-    otpRefs.current[Math.min(digits.length, 5)]?.focus();
+    const next = [...digits];
+    d.split('').forEach((ch, i) => { next[i] = ch; });
+    setDigits(next);
+    inputRefs.current[Math.min(d.length, 3)]?.focus();
   }
 
   function handleConfirm() {
@@ -132,6 +138,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+        {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-amber-500" />
@@ -142,37 +149,41 @@ export default function OtpModal({ open, title, description, onVerified, onClose
           </button>
         </div>
 
-        {step === 'otp' ? (
+        {step === 'code' ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm text-gray-600">{description}</p>
 
-            {sendingOtp ? (
+            {sending ? (
               <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#2490ef]" />
-                Sending OTP to your email...
+                Sending code to Telegram…
               </div>
             ) : (
               <>
-                <p className="text-xs text-gray-400">
-                  {otpSent
-                    ? `A 6-digit code was sent to `
-                    : `Click "Send OTP" to receive a code at `}
-                  <span className="font-medium text-gray-600">{user?.email}</span>
-                </p>
+                {/* Telegram indicator */}
+                <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                  <Send className="h-4 w-4 shrink-0 text-[#2490ef]" />
+                  <p className="text-xs text-gray-600">
+                    {codeSent
+                      ? 'A 4-digit code was sent to your Telegram.'
+                      : 'Sending a 4-digit code to Telegram…'}
+                  </p>
+                </div>
 
-                <div className="flex justify-center gap-2">
-                  {otp.map((digit, i) => (
+                {/* 4-digit inputs */}
+                <div className="flex justify-center gap-3">
+                  {digits.map((digit, i) => (
                     <input
                       key={i}
-                      ref={(el) => { otpRefs.current[i] = el; }}
+                      ref={(el) => { inputRefs.current[i] = el; }}
                       type="text"
                       inputMode="numeric"
                       maxLength={1}
                       value={digit}
-                      onChange={(e) => handleOtpChange(i, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      onPaste={i === 0 ? handleOtpPaste : undefined}
-                      className="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold text-gray-900 outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                      onChange={(e) => handleDigitChange(i, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(i, e)}
+                      onPaste={i === 0 ? handlePaste : undefined}
+                      className="h-14 w-12 rounded-xl border-2 border-gray-200 text-center text-xl font-bold text-gray-900 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
                     />
                   ))}
                 </div>
@@ -184,19 +195,19 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                 <div className="flex items-center gap-2">
                   <button
                     type="submit"
-                    disabled={loading || !otpSent}
+                    disabled={loading || !codeSent || digits.join('').length < 4}
                     className="flex-1 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
                   >
-                    {loading ? 'Verifying...' : 'Verify OTP'}
+                    {loading ? 'Verifying…' : 'Verify Code'}
                   </button>
                   <button
                     type="button"
-                    onClick={sendOtp}
-                    disabled={sendingOtp || resendCooldown > 0}
+                    onClick={sendCode}
+                    disabled={sending || resendCooldown > 0}
                     className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                    title="Resend OTP"
+                    title="Resend code"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${sendingOtp ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 ${sending ? 'animate-spin' : ''}`} />
                     {resendCooldown > 0 ? `${resendCooldown}s` : 'Resend'}
                   </button>
                 </div>
@@ -205,9 +216,10 @@ export default function OtpModal({ open, title, description, onVerified, onClose
           </form>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              ✅ OTP verified. Tap <strong>Confirm</strong> to proceed with this action.
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+              ✅ Code verified. Tap <strong>Confirm</strong> to proceed with this action.
             </div>
+            <p className="text-xs text-gray-500 text-center">{description}</p>
             <button
               onClick={handleConfirm}
               className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-600"
