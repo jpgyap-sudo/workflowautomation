@@ -6186,3 +6186,485 @@ Always validate `'use client'` / `'use server'` directives for exact syntax—no
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: merge subUsers field from defaults into stored accounts
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a5bb651e735546130393dc0d3b1c03b8f4386db9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a5bb651e735546130393dc0d3b1c03b8f4386db9
+**Files:** apps/dashboard/src/lib/auth.tsx
+
+**Summary:**
+**What was fixed:** The `subUsers` field was not being merged from default account settings into stored user accounts, causing missing or incomplete sub-user data.
+
+**Why it broke:** The merge logic only applied top-level defaults but omitted nested fields like `subUsers`. When accounts were stored without explicit `subUsers`, the defaults were ignored, leading to data loss or undefined behavior.
+
+**Reusable takeaway:** When merging default configuration into stored data, ensure deep (recursive) merging for nested fields. Shallow merges silently drop nested defaults. Use a utility like `lodash.merge` or implement recursive object assignment to preserve all default sub-structures.
+
+---
+*Original commit message: fix: merge subUsers field from defaults into stored accounts*
+
+#### Lesson Learned
+
+**What was fixed:** The `subUsers` field was not being merged from default account settings into stored user accounts, causing missing or incomplete sub-user data.
+
+**Why it broke:** The merge logic only applied top-level defaults but omitted nested fields like `subUsers`. When accounts were stored without explicit `subUsers`, the defaults were ignored, leading to data loss or undefined behavior.
+
+**Reusable takeaway:** When merging default configuration into stored data, ensure deep (recursive) merging for nested fields. Shallow merges silently drop nested defaults. Use a utility like `lodash.merge` or implement recursive object assignment to preserve all default sub-structures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: bump SW cache name to v3 to force cache clear for sales.homeu login
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e9daa2dcd9e789e1941129dee4c672e80bdfc30c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e9daa2dcd9e789e1941129dee4c672e80bdfc30c
+**Files:** apps/dashboard/public/sw.js
+
+**Summary:**
+**What was fixed:**  
+A stale service worker cache was preventing the `sales.homeu` login page from loading correctly after a deployment. The cache name was bumped from `v2` to `v3` to force a full cache clear.
+
+**Why it broke:**  
+The service worker’s cache (named `v2`) held outdated assets from a previous build. When the app updated, the old cached files conflicted with new login logic, causing the login page to fail or behave incorrectly. Browsers do not automatically clear old caches unless the cache name changes.
+
+**Reusable takeaway:**  
+When deploying updates that affect critical user flows (like login), always version your service worker cache name (e.g., `v1`, `v2`, `v3`) to force a clean cache refresh. This prevents stale assets from breaking new functionality. A simple cache name bump is a low-risk, high-impact fix for cache-related regressions.
+
+---
+*Original commit message: fix: bump SW cache name to v3 to force cache clear for sales.homeu login*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A stale service worker cache was preventing the `sales.homeu` login page from loading correctly after a deployment. The cache name was bumped from `v2` to `v3` to force a full cache clear.
+
+**Why it broke:**  
+The service worker’s cache (named `v2`) held outdated assets from a previous build. When the app updated, the old cached files conflicted with new login logic, causing the login page to fail or behave incorrectly. Browsers do not automatically clear old caches unless the cache name changes.
+
+**Reusable takeaway:**  
+When deploying updates that affect critical user flows (like login), always version your service worker cache name (e.g., `v1`, `v2`, `v3`) to force a clean cache refresh. This prevents stale assets from breaking new functionality. A simple cache name bump is a low-risk, high-impact fix for cache-related regressions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] optimize Dockerfiles: multi-stage builds, .dockerignore, npm ci, cache cleanup
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 901f28d9fed3cf1e781fc9b912d90a07b25b9ff4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 901f28d9fed3cf1e781fc9b912d90a07b25b9ff4
+**Files:** apps/api/.dockerignore,apps/api/Dockerfile,apps/backup-agent/.dockerignore,apps/backup-agent/Dockerfile,apps/dashboard/.dockerignore,apps/dashboard/Dockerfile,apps/file-store/.dockerignore,apps/file-store/Dockerfile,apps/telegram-bot/.dockerignore,apps/telegram-bot/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+Docker image bloat and slow builds across multiple services.
+
+**Why it broke:**  
+Previous Dockerfiles used single-stage builds, lacked `.dockerignore`, ran `npm install` (not `npm ci`), and didn't clean up caches. This caused unnecessarily large images, slow rebuilds, and inconsistent dependency installations.
+
+**Reusable takeaway:**  
+Always use **multi-stage builds** to separate build and runtime dependencies, add a **`.dockerignore`** to exclude unnecessary files (e.g., `node_modules`, `.git`), prefer **`npm ci`** over `npm install` for deterministic, faster installs, and **clean up package manager caches** (e.g., `npm cache clean --force`) in the same layer to reduce image size.
+
+---
+*Original commit message: optimize Dockerfiles: multi-stage builds, .dockerignore, npm ci, cache cleanup*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Docker image bloat and slow builds across multiple services.
+
+**Why it broke:**  
+Previous Dockerfiles used single-stage builds, lacked `.dockerignore`, ran `npm install` (not `npm ci`), and didn't clean up caches. This caused unnecessarily large images, slow rebuilds, and inconsistent dependency installations.
+
+**Reusable takeaway:**  
+Always use **multi-stage builds** to separate build and runtime dependencies, add a **`.dockerignore`** to exclude unnecessary files (e.g., `node_modules`, `.git`), prefer **`npm ci`** over `npm install` for deterministic, faster installs, and **clean up package manager caches** (e.g., `npm cache clean --force`) in the same layer to reduce image size.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix .dockerignore: keep tsconfig.json in build context
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a44ba3106cde5f2633a93d20fe62736a6360c642
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a44ba3106cde5f2633a93d20fe62736a6360c642
+**Files:** apps/api/.dockerignore,apps/backup-agent/.dockerignore,apps/telegram-bot/.dockerignore
+
+**Summary:**
+**What was fixed:**  
+`.dockerignore` files were too aggressive, excluding `tsconfig.json` from the Docker build context, causing TypeScript builds to fail inside containers.
+
+**Why it broke:**  
+The `.dockerignore` patterns (e.g., `**/*.json`) matched `tsconfig.json`, which is required for TypeScript compilation. Docker’s build context ignored it, so `tsc` couldn’t find the configuration.
+
+**Reusable takeaway:**  
+When using `.dockerignore`, explicitly allow essential build configuration files (like `tsconfig.json`, `package.json`, or `.env` templates) by negating them with `!` patterns. A safer approach: exclude only known unnecessary files (e.g., `node_modules`, `.git`, logs) rather than using broad wildcards that may strip required config files. Always test the Docker build locally after modifying `.dockerignore`.
+
+---
+*Original commit message: fix .dockerignore: keep tsconfig.json in build context*
+
+#### Lesson Learned
+
+**What was fixed:**  
+`.dockerignore` files were too aggressive, excluding `tsconfig.json` from the Docker build context, causing TypeScript builds to fail inside containers.
+
+**Why it broke:**  
+The `.dockerignore` patterns (e.g., `**/*.json`) matched `tsconfig.json`, which is required for TypeScript compilation. Docker’s build context ignored it, so `tsc` couldn’t find the configuration.
+
+**Reusable takeaway:**  
+When using `.dockerignore`, explicitly allow essential build configuration files (like `tsconfig.json`, `package.json`, or `.env` templates) by negating them with `!` patterns. A safer approach: exclude only known unnecessary files (e.g., `node_modules`, `.git`, logs) rather than using broad wildcards that may strip required config files. Always test the Docker build locally after modifying `.dockerignore`.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: use npm install for backup-agent (no lockfile), fix file-store npm ci flag
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e77edaa58203837c7d53ff923f9737d245914e70
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e77edaa58203837c7d53ff923f9737d245914e70
+**Files:** apps/backup-agent/Dockerfile,apps/file-store/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+Two Docker builds were failing: `backup-agent` (npm install) and `file-store` (npm ci flag).
+
+**Why it broke:**  
+- `backup-agent` had no lockfile, but the Dockerfile used `npm ci` (which requires a lockfile).  
+- `file-store` had a lockfile, but the Dockerfile used `npm install` (which ignores lockfile integrity).  
+
+**Reusable takeaway:**  
+Always match the npm command to lockfile presence:  
+- Use `npm ci` when a lockfile exists (faster, deterministic).  
+- Use `npm install` when no lockfile exists (flexible, but slower).  
+- Never mix the two—it breaks builds silently.
+
+---
+*Original commit message: fix: use npm install for backup-agent (no lockfile), fix file-store npm ci flag*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Two Docker builds were failing: `backup-agent` (npm install) and `file-store` (npm ci flag).
+
+**Why it broke:**  
+- `backup-agent` had no lockfile, but the Dockerfile used `npm ci` (which requires a lockfile).  
+- `file-store` had a lockfile, but the Dockerfile used `npm install` (which ignores lockfile integrity).  
+
+**Reusable takeaway:**  
+Always match the npm command to lockfile presence:  
+- Use `npm ci` when a lockfile exists (faster, deterministic).  
+- Use `npm install` when no lockfile exists (flexible, but slower).  
+- Never mix the two—it breaks builds silently.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: use npm install for file-store (lockfile not tracked in git)
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 50bf114ac0800b772134c889e93563f0a57e9e71
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 50bf114ac0800b772134c889e93563f0a57e9e71
+**Files:** apps/file-store/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+The `file-store` Docker build was changed from `npm ci` to `npm install`.
+
+**Why it broke:**  
+The project does not track `package-lock.json` in git for the `file-store` app. `npm ci` requires a lockfile to install dependencies deterministically; without it, the command fails.
+
+**Reusable takeaway:**  
+Use `npm ci` only when the lockfile is committed and version-controlled. If the lockfile is intentionally excluded (e.g., for monorepo sub-packages or legacy setups), fall back to `npm install` in Docker builds. Always verify lockfile presence before adopting `npm ci` in CI/CD pipelines.
+
+---
+*Original commit message: fix: use npm install for file-store (lockfile not tracked in git)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `file-store` Docker build was changed from `npm ci` to `npm install`.
+
+**Why it broke:**  
+The project does not track `package-lock.json` in git for the `file-store` app. `npm ci` requires a lockfile to install dependencies deterministically; without it, the command fails.
+
+**Reusable takeaway:**  
+Use `npm ci` only when the lockfile is committed and version-controlled. If the lockfile is intentionally excluded (e.g., for monorepo sub-packages or legacy setups), fall back to `npm install` in Docker builds. Always verify lockfile presence before adopting `npm ci` in CI/CD pipelines.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix dashboard .dockerignore: keep tsconfig.json and next.config.ts for build
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4c2edc6c5f321760c389062404382dfbf7c37cf2
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4c2edc6c5f321760c389062404382dfbf7c37cf2
+**Files:** apps/dashboard/.dockerignore
+
+**Summary:**
+**What was fixed:**  
+The `.dockerignore` file for the dashboard was too aggressive, excluding `tsconfig.json` and `next.config.ts`. This caused the Docker build to fail because these files are required by the Next.js build process.
+
+**Why it broke:**  
+The `.dockerignore` pattern was overly broad (e.g., `**/*.json` or `**/*.ts`), which unintentionally removed essential configuration files needed during the build stage. The Docker build context lacked these files, leading to compilation errors.
+
+**Reusable takeaway:**  
+When writing `.dockerignore` for Node/TypeScript projects, explicitly allow critical build config files (e.g., `tsconfig.json`, `next.config.ts`, `package.json`) before broad exclusion patterns. Use negation patterns like `!tsconfig.json` to ensure the build context retains necessary files. Always test the Docker build locally after modifying `.dockerignore`.
+
+---
+*Original commit message: fix dashboard .dockerignore: keep tsconfig.json and next.config.ts for build*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `.dockerignore` file for the dashboard was too aggressive, excluding `tsconfig.json` and `next.config.ts`. This caused the Docker build to fail because these files are required by the Next.js build process.
+
+**Why it broke:**  
+The `.dockerignore` pattern was overly broad (e.g., `**/*.json` or `**/*.ts`), which unintentionally removed essential configuration files needed during the build stage. The Docker build context lacked these files, leading to compilation errors.
+
+**Reusable takeaway:**  
+When writing `.dockerignore` for Node/TypeScript projects, explicitly allow critical build config files (e.g., `tsconfig.json`, `next.config.ts`, `package.json`) before broad exclusion patterns. Use negation patterns like `!tsconfig.json` to ensure the build context retains necessary files. Always test the Docker build locally after modifying `.dockerignore`.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: copy package.json to runner stage for ESM module resolution
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f41b81644c8b67e3d8a58b10ffca3c3c7fe84cf8
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f41b81644c8b67e3d8a58b10ffca3c3c7fe84cf8
+**Files:** apps/api/Dockerfile,apps/backup-agent/Dockerfile,apps/telegram-bot/Dockerfile
+
+**Summary:**
+**What was fixed:**  
+`package.json` was missing from the Docker runner stage, causing ESM module resolution failures in three services (API, backup-agent, telegram-bot).
+
+**Why it broke:**  
+Node.js ESM modules require `package.json` (with `"type": "module"`) to resolve imports correctly. The multi-stage Docker build copied only compiled output, omitting `package.json` from the final runner image.
+
+**Reusable takeaway:**  
+When using ESM in Node.js, always ensure `package.json` (or the `type` field) is present in the runtime container. For multi-stage Docker builds, explicitly copy `package.json` into the final stage—even if the build stage already has it—since each stage is isolated. A simple `COPY --from=builder /app/package.json .` prevents cryptic import resolution errors.
+
+---
+*Original commit message: fix: copy package.json to runner stage for ESM module resolution*
+
+#### Lesson Learned
+
+**What was fixed:**  
+`package.json` was missing from the Docker runner stage, causing ESM module resolution failures in three services (API, backup-agent, telegram-bot).
+
+**Why it broke:**  
+Node.js ESM modules require `package.json` (with `"type": "module"`) to resolve imports correctly. The multi-stage Docker build copied only compiled output, omitting `package.json` from the final runner image.
+
+**Reusable takeaway:**  
+When using ESM in Node.js, always ensure `package.json` (or the `type` field) is present in the runtime container. For multi-stage Docker builds, explicitly copy `package.json` into the final stage—even if the build stage already has it—since each stage is isolated. A simple `COPY --from=builder /app/package.json .` prevents cryptic import resolution errors.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: advance to production_pending stage instead of marking production started
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a50e7c7c76cf067a3790934346927b0a6197e24a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a50e7c7c76cf067a3790934346927b0a6197e24a
+**Files:** apps/api/src/agents/purchasingAgent.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+The system was incorrectly marking production as "started" immediately upon agent approval, skipping a necessary intermediate stage (`production_pending`). The fix advances the workflow to `production_pending` instead.
+
+**Why it broke:**  
+The purchasing agent's approval logic directly transitioned the order to a "production started" state, bypassing the intended staging step. This caused downstream systems (e.g., Telegram bot notifications) to trigger prematurely, before production resources were actually allocated.
+
+**Reusable takeaway:**  
+Never skip intermediate workflow states when they represent real-world handoffs or resource allocations. Each stage should correspond to a distinct, verifiable action (e.g., approval → pending → started). Premature state transitions can cause cascading failures in dependent services (notifications, scheduling, billing). Always validate that the state machine's transitions match the actual process flow.
+
+---
+*Original commit message: fix: advance to production_pending stage instead of marking production started*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The system was incorrectly marking production as "started" immediately upon agent approval, skipping a necessary intermediate stage (`production_pending`). The fix advances the workflow to `production_pending` instead.
+
+**Why it broke:**  
+The purchasing agent's approval logic directly transitioned the order to a "production started" state, bypassing the intended staging step. This caused downstream systems (e.g., Telegram bot notifications) to trigger prematurely, before production resources were actually allocated.
+
+**Reusable takeaway:**  
+Never skip intermediate workflow states when they represent real-world handoffs or resource allocations. Each stage should correspond to a distinct, verifiable action (e.g., approval → pending → started). Premature state transitions can cause cascading failures in dependent services (notifications, scheduling, billing). Always validate that the state machine's transitions match the actual process flow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: restore process of elimination GUI buttons, add dashboard link as alternative
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 911cbb2e0a55c12aac3af4049d231f13ccfae18f
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 911cbb2e0a55c12aac3af4049d231f13ccfae18f
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Restored missing "process of elimination" GUI buttons and added a dashboard link as an alternative navigation path.
+
+**Why it broke:**  
+The buttons were likely removed or hidden during a UI refactor or feature toggle, breaking the user’s ability to access the process of elimination workflow directly from the GUI.
+
+**Reusable takeaway:**  
+When redesigning UI navigation, always verify that all critical user paths remain functional—especially for core workflows. If removing a direct button, provide an equivalent alternative (e.g., a dashboard link) to avoid breaking user flow. Test both primary and secondary access points after any UI change.
+
+---
+*Original commit message: fix: restore process of elimination GUI buttons, add dashboard link as alternative*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Restored missing "process of elimination" GUI buttons and added a dashboard link as an alternative navigation path.
+
+**Why it broke:**  
+The buttons were likely removed or hidden during a UI refactor or feature toggle, breaking the user’s ability to access the process of elimination workflow directly from the GUI.
+
+**Reusable takeaway:**  
+When redesigning UI navigation, always verify that all critical user paths remain functional—especially for core workflows. If removing a direct button, provide an equivalent alternative (e.g., a dashboard link) to avoid breaking user flow. Test both primary and secondary access points after any UI change.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

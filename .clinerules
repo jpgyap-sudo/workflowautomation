@@ -5,6 +5,15 @@
 This project (Quotation Automation System) deploys to **ONE** VPS.
 Infrastructure details (IP, SSH key path, repo path, dashboard URL) are stored in the local `.env` file and are **not committed** to this repository.
 
+## 🔒 Credential Safety
+
+- `.env` — gitignored (root env file with secrets)
+- `credentials/` — gitignored (Google service account, OAuth tokens)
+- `apps/**/.env` — gitignored (per-app env files)
+- `docs/production-server.md` — gitignored (contains SSH key path and VPS IP)
+- **Never commit** `.env`, `credentials/`, or any file containing passwords, tokens, or API keys
+- The `.clinerules` file is tracked in git — only store Tailscale IP and SSH key *paths* here (no secrets)
+
 ## ✅ MANDATORY CHECK BEFORE ANY SSH COMMAND
 
 Before running ANY SSH command, you MUST verify:
@@ -17,3 +26,42 @@ Before running ANY SSH command, you MUST verify:
 ```bash
 ssh -i ~/.ssh/<your-key> root@<your-vps-ip> "<command>"
 ```
+
+## 🚀 Deployment via deployer-agent (MANDATORY)
+
+**Always use the deployer-agent skill for deployment.** Do NOT run ad-hoc SSH commands for deployment.
+
+### Correct SSH credentials for this project
+
+| Field | Value |
+|-------|-------|
+| **Tailscale IP** | `100.86.182.7` |
+| **SSH User** | `root` |
+| **SSH Key** | `C:\Users\User\.ssh\id_ed25519_roo` |
+| **VPS Path** | `/opt/quotation-automation` |
+| **Git Branch** | `master` |
+
+### Deployment methods (in order of preference)
+
+1. **deploy-agent.mjs** — Set env vars and run:
+   ```powershell
+   set QAS_VPS_HOST=100.86.182.7
+   set QAS_SSH_USER=root
+   set QAS_DEPLOY_KEY=C:\Users\User\.ssh\id_ed25519_roo
+   node deploy-agent.mjs
+   ```
+
+2. **qas-vps MCP server** — Use MCP tools (`git_pull` + `deploy`) when Tailscale is not usable.
+
+3. **Direct SSH** — Only as last resort, using the correct key:
+   ```powershell
+   # Sync files
+   git archive --format=tar HEAD | ssh -i "C:\Users\User\.ssh\id_ed25519_roo" -o StrictHostKeyChecking=accept-new root@100.86.182.7 "mkdir -p /opt/quotation-automation && tar -xf - -C /opt/quotation-automation"
+
+   # Rebuild specific services
+   ssh -i "C:\Users\User\.ssh\id_ed25519_roo" root@100.86.182.7 "cd /opt/quotation-automation && docker compose build --no-cache <service-name> && docker compose up -d <service-name>"
+   ```
+
+### ❌ WRONG key (DO NOT use)
+- `~/.ssh/id_rsa_qas` — does not exist, will cause SSH to hang indefinitely
+- `C:\Users\User\.ssh\id_rsa_qas` — does not exist, will cause SSH to hang indefinitely

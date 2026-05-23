@@ -8,6 +8,5 @@ node_modules
 .env.*.local
 .eslintrc*
 .eslint.config.mjs
-postcss.config.mjs
 AGENTS.md
 CLAUDE.md
