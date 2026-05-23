@@ -92,10 +92,11 @@ const COLLECTION_CHAT_ID = process.env.COLLECTION_GROUP_CHAT_ID ?? null;
 const DELIVERY_CHAT_ID = process.env.DELIVERY_GROUP_CHAT_ID ?? null;
 const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? null;
 
-async function notifyManualChange(action: string, details: string, email?: string | null): Promise<void> {
+async function notifyManualChange(action: string, details: string, actor?: string | null): Promise<void> {
   if (!_TELEGRAM_BOT_TOKEN || !ESCALATION_CHAT_ID) return;
-  const byLine = email ? `\n👤 By: <b>${email}</b>` : '';
-  const msg = `🔔 <b>Dashboard Manual Change</b>\n\n${action}\n\n${details}${byLine}`;
+  const ts = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' });
+  const byLine = actor ? `\n👤 By: <b>${actor}</b>` : '';
+  const msg = `🔔 <b>Dashboard Activity</b>\n\n${action}\n\n${details}${byLine}\n🕐 ${ts}`;
   try {
     await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -328,7 +329,7 @@ app.post('/auth/verify-otp', async (request, reply) => {
 // ── OTP for destructive actions (edit/delete) ───────────────────────
 // Verifies OTP and returns a short-lived action token
 app.post('/auth/verify-otp-for-action', async (request, reply) => {
-  const { email, otp } = z.object({ email: z.string().email(), otp: z.string() }).parse(request.body);
+  const { email, otp, name } = z.object({ email: z.string().email(), otp: z.string(), name: z.string().optional() }).parse(request.body);
   const key = `otp:${email.toLowerCase()}`;
   if (!cacheClient?.isOpen) {
     return reply.status(503).send({ error: 'OTP service unavailable' });
@@ -351,7 +352,7 @@ app.post('/auth/verify-otp-for-action', async (request, reply) => {
   await cacheClient.del(key);
   // Generate a short-lived action token (valid for 2 minutes)
   const actionToken = randomUUID();
-  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), verified: true }));
+  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), name: name ?? null, verified: true }));
   return reply.send({ ok: true, actionToken });
 });
 
@@ -405,7 +406,7 @@ app.post('/auth/send-action-code', async (request, reply) => {
 });
 
 app.post('/auth/verify-action-code', async (request, reply) => {
-  const { email, code } = z.object({ email: z.string().email(), code: z.string() }).parse(request.body);
+  const { email, code, name } = z.object({ email: z.string().email(), code: z.string(), name: z.string().optional() }).parse(request.body);
   const key = `action_code:${email.toLowerCase()}`;
 
   if (!cacheClient?.isOpen) {
@@ -432,7 +433,7 @@ app.post('/auth/verify-action-code', async (request, reply) => {
 
   await cacheClient.del(key);
   const actionToken = randomUUID();
-  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), verified: true }));
+  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), name: name ?? null, verified: true }));
   return reply.send({ ok: true, actionToken });
 });
 
@@ -533,7 +534,7 @@ app.post('/orders', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   const rows = await query(
@@ -790,7 +791,7 @@ app.patch('/orders/:id', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   // Build SET clause dynamically
   const fields: string[] = [];
@@ -883,7 +884,7 @@ app.delete('/orders/:id', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   // Delete related records first
@@ -926,7 +927,7 @@ app.post('/orders/bulk-delete', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   const ids = body.ids;
@@ -985,7 +986,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
     }
     await cacheClient.del(tokenKey);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const existingRows = await query(
@@ -1152,7 +1153,7 @@ app.post('/orders/:id/partial-production', async (request, reply) => {
     }
     await cacheClient.del(tokenKey);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const existingRows = await query(
@@ -1223,7 +1224,7 @@ app.post('/orders/:id/partial-production-items', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET partial_production_items = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
@@ -1274,7 +1275,7 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET production_delayed = $1, production_delay_days = $2, updated_at = NOW()
@@ -1430,7 +1431,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
@@ -1560,7 +1561,7 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
@@ -1725,7 +1726,7 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -1819,7 +1820,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -1993,7 +1994,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     }
     await cacheClient.del(tokenKey);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   // Build dynamic SET clause
@@ -2280,7 +2281,7 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
     await cacheClient.del(tokenKey);
     try {
       const tokenPayload = JSON.parse(tokenData);
-      userEmail = tokenPayload.email ?? null;
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
     } catch { /* non-fatal */ }
   }
 
@@ -2421,7 +2422,7 @@ app.post('/stage-updates', async (request, reply) => {
     await cacheClient.del(tokenKey);
     try {
       const tokenPayload = JSON.parse(tokenData);
-      userEmail = tokenPayload.email ?? null;
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
     } catch { /* non-fatal */ }
   }
   const orders = await query(
@@ -2649,7 +2650,7 @@ app.post('/deposits', async (request, reply) => {
       }
       await cacheClient.del(tokenKey);
       const tokenPayload = JSON.parse(tokenData);
-      userEmail = tokenPayload.email ?? null;
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
     }
 
     const orders = await query(`SELECT id, current_stage, quotation_number, client_name, sales_agent, total_amount FROM orders WHERE quotation_number=$1`, [body.quotation_number]);
@@ -3251,7 +3252,7 @@ app.post('/pay-balance', async (request, reply) => {
       }
       await cacheClient.del(tokenKey);
       const tokenPayload = JSON.parse(tokenData);
-      userEmail = tokenPayload.email ?? null;
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
     }
 
     const orders = await query(
@@ -3420,7 +3421,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     }
     await cacheClient.del(tokenKey);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const orders = await query(
@@ -3562,7 +3563,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     }
     await cacheClient.del(tokenKey);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const orders = await query(
@@ -3687,7 +3688,7 @@ app.post('/orders/delivery-exception', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3757,7 +3758,7 @@ app.post('/orders/revoke-delivery-exception', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3825,7 +3826,7 @@ app.post('/orders/production-exception', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -3894,7 +3895,7 @@ app.post('/orders/revoke-production-exception', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `UPDATE orders SET
@@ -4983,7 +4984,7 @@ app.post('/calendar/notes', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `INSERT INTO calendar_notes (note_date, title, content, color)
@@ -5022,7 +5023,7 @@ app.patch('/calendar/notes/:id', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const sets: string[] = [];
   const values: any[] = [];
@@ -5067,7 +5068,7 @@ app.delete('/calendar/notes/:id', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(`DELETE FROM calendar_notes WHERE id = $1 RETURNING id, title`, [params.id]);
   if (!rows[0]) return reply.code(404).send({ error: 'Note not found' });
@@ -5294,7 +5295,7 @@ app.post('/clients', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   // Check for existing client with same normalized name
   const normalized = normalizeClientName(body.client_name);
@@ -5430,7 +5431,7 @@ app.patch('/clients/:id', async (request, reply) => {
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const fields: string[] = [];
@@ -5503,7 +5504,7 @@ app.delete('/clients/:id', async (request, reply) => {
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const clientRows = await query(`SELECT * FROM clients WHERE id=$1`, [params.id]);
@@ -5627,7 +5628,7 @@ app.post('/inventory', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
   const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.email ?? null;
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   const rows = await query(
     `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url, category)
@@ -5666,7 +5667,7 @@ app.patch('/inventory/:id', async (request, reply) => {
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const fields: string[] = [];
@@ -5710,7 +5711,7 @@ app.delete('/inventory/:id', async (request, reply) => {
     if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
     await cacheClient.del(`action_token:${body.action_token}`);
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   }
 
   const rows = await query(`DELETE FROM inventory_items WHERE id=$1 RETURNING *`, [params.id]);
@@ -5785,7 +5786,7 @@ app.post('/inventory/bulk-upload', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   const mimeType = body.mime_type.toLowerCase();
@@ -5913,7 +5914,7 @@ app.post('/inventory/drafts/:id/approve', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   const draftRows = await query(`SELECT * FROM inventory_drafts WHERE id=$1 AND status='pending'`, [params.id]);
@@ -5954,7 +5955,7 @@ app.post('/inventory/drafts/approve-all', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   const draftRows = await query(`SELECT * FROM inventory_drafts WHERE status='pending' ORDER BY created_at`);
@@ -6047,7 +6048,7 @@ app.post('/bug-reports', async (request, reply) => {
   await cacheClient.del(tokenKey);
   try {
     const tokenPayload = JSON.parse(tokenData);
-    userEmail = tokenPayload.email ?? null;
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
   const rows = await query(

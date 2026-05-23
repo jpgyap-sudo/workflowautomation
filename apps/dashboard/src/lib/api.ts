@@ -598,10 +598,10 @@ export async function sendOtpForAction(email: string): Promise<{ ok: boolean }> 
   });
 }
 
-export async function verifyOtpForAction(email: string, otp: string): Promise<{ ok: boolean; actionToken: string }> {
+export async function verifyOtpForAction(email: string, otp: string, name?: string): Promise<{ ok: boolean; actionToken: string }> {
   return fetchJson<{ ok: boolean; actionToken: string }>('/auth/verify-otp-for-action', {
     method: 'POST',
-    body: JSON.stringify({ email, otp }),
+    body: JSON.stringify({ email, otp, name }),
   });
 }
 
@@ -613,10 +613,10 @@ export async function sendTelegramActionCode(email: string): Promise<{ ok: boole
   });
 }
 
-export async function verifyTelegramActionCode(email: string, code: string): Promise<{ ok: boolean; actionToken: string }> {
+export async function verifyTelegramActionCode(email: string, code: string, name?: string): Promise<{ ok: boolean; actionToken: string }> {
   return fetchJson<{ ok: boolean; actionToken: string }>('/auth/verify-action-code', {
     method: 'POST',
-    body: JSON.stringify({ email, code }),
+    body: JSON.stringify({ email, code, name }),
   });
 }
 

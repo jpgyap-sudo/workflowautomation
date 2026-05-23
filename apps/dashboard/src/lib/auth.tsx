@@ -4,12 +4,18 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
+export interface SubUser {
+  code: string;
+  name: string;
+}
+
 export interface Account {
   email: string;
   password: string;
   name: string;
   role: 'admin' | 'editor' | 'viewer';
   createdAt: string;
+  subUsers?: SubUser[];
 }
 
 interface AuthContextType {
@@ -17,7 +23,8 @@ interface AuthContextType {
   user: { email: string; name: string; role: string } | null;
   accounts: Account[];
   sendOtp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  verifyOtp: (email: string, otp: string) => Promise<{ success: boolean; error?: string }>;
+  verifyOtp: (email: string, otp: string) => Promise<{ success: boolean; needsUserCode?: boolean; error?: string }>;
+  selectSubUser: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   createAccount: (account: Omit<Account, 'createdAt'>) => Promise<{ success: boolean; error?: string }>;
   updateAccount: (email: string, updates: Partial<Account>) => Promise<{ success: boolean; error?: string }>;
@@ -44,6 +51,17 @@ const DEFAULT_ACCOUNTS: Account[] = [
     name: 'Quynh Mai',
     role: 'editor',
     createdAt: new Date('2026-05-20').toISOString(),
+  },
+  {
+    email: 'sales.homeu@gmail.com',
+    password: 'Sales888',
+    name: 'Sales Team',
+    role: 'editor',
+    createdAt: new Date('2026-05-23').toISOString(),
+    subUsers: [
+      { code: '777', name: 'Mariella Ignaco' },
+      { code: '888', name: 'Cathlyn Roma' },
+    ],
   },
 ];
 
@@ -192,7 +210,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const match = accts.find((a) => a.email.toLowerCase().trim() === email.toLowerCase().trim());
       if (!match) return { success: false, error: 'Account not found' };
 
+      // If the account has sub-users, don't finalise the session yet —
+      // the login page will show a user-code step first.
+      if (match.subUsers && match.subUsers.length > 0) {
+        return { success: true, needsUserCode: true };
+      }
+
       const userData = { email: match.email, name: match.name, role: match.role };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+      setIsAuthenticated(true);
+      setUser(userData);
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Failed to save login state. Please try again.' };
+    }
+  }, []);
+
+  // Step 3 (sub-user accounts only): resolve the personal code to a real name
+  const selectSubUser = useCallback(async (email: string, code: string) => {
+    const accts = getStoredAccounts();
+    const match = accts.find((a) => a.email.toLowerCase().trim() === email.toLowerCase().trim());
+    if (!match) return { success: false, error: 'Account not found' };
+
+    const subUser = match.subUsers?.find((s) => s.code === code);
+    if (!subUser) return { success: false, error: 'Invalid code. Please try again.' };
+
+    try {
+      const userData = { email: match.email, name: subUser.name, role: match.role };
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
       setIsAuthenticated(true);
       setUser(userData);
@@ -316,6 +360,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accounts,
         sendOtp,
         verifyOtp,
+        selectSubUser,
         logout,
         createAccount,
         updateAccount,

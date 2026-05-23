@@ -3,12 +3,12 @@
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { Eye, EyeOff, LogIn, Mail, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, LogIn, Mail, RotateCcw, UserCheck } from 'lucide-react';
 
-type Step = 'credentials' | 'otp';
+type Step = 'credentials' | 'otp' | 'usercode';
 
 export default function LoginPage() {
-  const { sendOtp, verifyOtp } = useAuth();
+  const { sendOtp, verifyOtp, selectSubUser, user } = useAuth();
   const router = useRouter();
 
   const [step, setStep] = useState<Step>('credentials');
@@ -16,11 +16,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [userCode, setUserCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const userCodeRef = useRef<HTMLInputElement | null>(null);
 
   async function handleCredentials(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -72,11 +74,37 @@ export default function LoginPage() {
     try {
       const result = await verifyOtp(email, code);
       if (result.success) {
-        router.replace('/');
+        if (result.needsUserCode) {
+          setStep('usercode');
+          setTimeout(() => userCodeRef.current?.focus(), 100);
+        } else {
+          router.replace(user?.role === 'admin' ? '/' : '/orders');
+        }
       } else {
         setError(result.error ?? 'Invalid OTP');
         setOtp(['', '', '', '', '', '']);
         setTimeout(() => otpRefs.current[0]?.focus(), 50);
+      }
+    } catch {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUserCodeSubmit(e: { preventDefault(): void }) {
+    e.preventDefault();
+    setError('');
+    if (!userCode.trim()) { setError('Please enter your user code'); return; }
+    setLoading(true);
+    try {
+      const result = await selectSubUser(email, userCode.trim());
+      if (result.success) {
+        router.replace('/orders');
+      } else {
+        setError(result.error ?? 'Invalid code');
+        setUserCode('');
+        setTimeout(() => userCodeRef.current?.focus(), 50);
       }
     } catch {
       setError('An unexpected error occurred. Please try again.');
@@ -123,7 +151,7 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-          {step === 'credentials' ? (
+          {step === 'credentials' && (
             <form onSubmit={handleCredentials} className="space-y-5">
               <div>
                 <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -185,7 +213,9 @@ export default function LoginPage() {
                 {loading ? 'Sending OTP…' : 'Continue'}
               </button>
             </form>
-          ) : (
+          )}
+
+          {step === 'otp' && (
             <form onSubmit={handleOtpSubmit} className="space-y-5">
               <div className="text-center">
                 <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
@@ -248,6 +278,63 @@ export default function LoginPage() {
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
                 </button>
               </div>
+            </form>
+          )}
+
+          {step === 'usercode' && (
+            <form onSubmit={handleUserCodeSubmit} className="space-y-5">
+              <div className="text-center">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-green-50">
+                  <UserCheck className="h-5 w-5 text-green-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">Who are you?</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Enter your personal user code to identify yourself.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="usercode" className="mb-1.5 block text-sm font-medium text-gray-700">
+                  User code
+                </label>
+                <input
+                  id="usercode"
+                  ref={userCodeRef}
+                  type="text"
+                  inputMode="numeric"
+                  value={userCode}
+                  onChange={(e) => setUserCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="e.g. 777"
+                  required
+                  autoComplete="off"
+                  className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-center text-2xl font-bold tracking-widest text-gray-900 placeholder-gray-300 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-600">{error}</div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <UserCheck className="h-4 w-4" />
+                )}
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setStep('otp'); setError(''); setUserCode(''); }}
+                className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
+              >
+                ← Back
+              </button>
             </form>
           )}
         </div>

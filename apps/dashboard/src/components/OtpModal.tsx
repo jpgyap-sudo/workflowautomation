@@ -135,9 +135,9 @@ export default function OtpModal({ open, title, description, onVerified, onClose
     try {
       let result: { ok: boolean; actionToken: string };
       if (channel === 'telegram') {
-        result = await verifyTelegramActionCode(user.email, code);
+        result = await verifyTelegramActionCode(user.email, code, user.name);
       } else {
-        result = await verifyOtpForAction(user.email, code);
+        result = await verifyOtpForAction(user.email, code, user.name);
       }
 
       if (result.ok && result.actionToken) {

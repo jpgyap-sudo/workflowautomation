@@ -23,7 +23,8 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const router = useRouter();
   const { user, logout } = useAuth();
   const title = PAGE_TITLES[pathname] ?? 'Dashboard';
-  const initials = user?.email?.charAt(0).toUpperCase() ?? 'A';
+  const displayName = user?.name ?? user?.email ?? 'User';
+  const initials = displayName.charAt(0).toUpperCase();
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,7 +184,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2490ef] text-xs font-medium text-white">
             {initials}
           </div>
-          <span className="hidden max-w-[10rem] truncate text-sm text-gray-600 sm:inline">{user?.email ?? 'Admin'}</span>
+          <span className="hidden max-w-[10rem] truncate text-sm text-gray-600 sm:inline">{displayName}</span>
         </div>
         <button
           onClick={handleLogout}
