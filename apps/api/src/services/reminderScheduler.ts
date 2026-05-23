@@ -192,10 +192,10 @@ export async function processDueReminders(): Promise<number> {
       // Has production started?
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId}:${quotationNumber}` },
-          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId}:${quotationNumber}` },
+          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
-        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId}:${quotationNumber}` }],
+        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'production_midpoint') {
       // Midpoint check: ask if on time or delayed
@@ -217,8 +217,8 @@ export async function processDueReminders(): Promise<number> {
       // En route check: ask if order is en route
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes', callback_data: `en_route:yes:${orderId}:${quotationNumber}` },
-          { text: '❌ No', callback_data: `en_route:no:${orderId}:${quotationNumber}` },
+          { text: '✅ Yes', callback_data: `en_route:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '❌ No', callback_data: `en_route:no:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'partial_production') {
@@ -238,24 +238,24 @@ export async function processDueReminders(): Promise<number> {
       // Production pending: ask if production has started
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId}:${quotationNumber}` },
-          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId}:${quotationNumber}` },
+          { text: '✅ Yes, started', callback_data: `produce:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⚠️ Partial', callback_data: `produce:partial:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
-        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId}:${quotationNumber}` }],
+        [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'deposit_pending') {
       // Deposit pending: ask if deposit has been collected
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes, Upload Deposit Slip', callback_data: `deposit:yes:${orderId}:${quotationNumber}` },
-          { text: '❌ Not Yet', callback_data: `deposit:no:${orderId}:${quotationNumber}` },
+          { text: '✅ Yes, Upload Deposit Slip', callback_data: `deposit:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `deposit:no:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'deposit_verification') {
       // Deposit verification: ask team to verify the deposit
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${orderId}:${quotationNumber}` },
+          { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'inventory_arrived') {
@@ -273,15 +273,15 @@ export async function processDueReminders(): Promise<number> {
       // Balance due: ask if client has paid
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes, Client Paid', callback_data: `balance:paid:${orderId}:${quotationNumber}` },
-          { text: '❌ Not Yet', callback_data: `balance:not_paid:${orderId}:${quotationNumber}` },
+          { text: '✅ Yes, Client Paid', callback_data: `balance:paid:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '❌ Not Yet', callback_data: `balance:not_paid:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'balance_verification') {
       // Balance verification: ask team to verify the balance payment
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '🔍 Verify Balance', callback_data: `verify:balance:${orderId}:${quotationNumber}` },
+          { text: '🔍 Verify Balance', callback_data: `verify:balance:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'delivery_scheduled') {
@@ -296,16 +296,16 @@ export async function processDueReminders(): Promise<number> {
       // Countered: ask if payment has been received
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '💰 Payment Received', callback_data: `payment:confirmed:${orderId}:${quotationNumber}` },
-          { text: '⏳ Still Waiting', callback_data: `payment:pending:${orderId}:${quotationNumber}` },
+          { text: '💰 Payment Received', callback_data: `payment:confirmed:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⏳ Still Waiting', callback_data: `payment:pending:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'payment_received') {
       // Payment received: ask if payment is confirmed
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Confirm Payment', callback_data: `payment:confirmed:${orderId}:${quotationNumber}` },
-          { text: '⏳ Still Pending', callback_data: `payment:pending:${orderId}:${quotationNumber}` },
+          { text: '✅ Confirm Payment', callback_data: `payment:confirmed:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⏳ Still Pending', callback_data: `payment:pending:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'delivered') {
@@ -329,13 +329,14 @@ export async function processDueReminders(): Promise<number> {
       }
       text += `*Item:* ${itemName} x${itemQty}\n\n`;
       text += `Has *${itemName}* started or finished production?`;
+      const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${reminder.item_id ?? ''}:${orderId}` },
-          { text: `🔄 ${itemName} — In Progress`, callback_data: `reminder:item_prod:in_progress:${reminder.item_id ?? ''}:${orderId}` },
+          { text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${itemIdShort}:${orderId}` },
+          { text: `🔄 ${itemName} — In Progress`, callback_data: `reminder:item_prod:in_progress:${itemIdShort}:${orderId}` },
         ],
         [
-          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${reminder.item_id ?? ''}:${orderId}` },
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${itemIdShort}:${orderId}` },
         ],
       ]);
     } else if (reminder.stage === 'item_level_en_route') {
@@ -354,13 +355,14 @@ export async function processDueReminders(): Promise<number> {
       }
       text += `*Item:* ${itemName} x${itemQty}\n\n`;
       text += `Is *${itemName}* en route or has it arrived?`;
+      const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: `🚚 ${itemName} — En Route`, callback_data: `reminder:item_en_route:en_route:${reminder.item_id ?? ''}:${orderId}` },
-          { text: `📦 ${itemName} — Arrived`, callback_data: `reminder:item_en_route:arrived:${reminder.item_id ?? ''}:${orderId}` },
+          { text: `🚚 ${itemName} — En Route`, callback_data: `reminder:item_en_route:en_route:${itemIdShort}:${orderId}` },
+          { text: `📦 ${itemName} — Arrived`, callback_data: `reminder:item_en_route:arrived:${itemIdShort}:${orderId}` },
         ],
         [
-          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${reminder.item_id ?? ''}:${orderId}` },
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${itemIdShort}:${orderId}` },
         ],
       ]);
     } else {

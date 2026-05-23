@@ -271,17 +271,18 @@ export async function notifyDelivery(
   if (qn && result.status === 'needs_review') {
     if (order.current_stage === 'delivery_pending') {
       // Delivery pending — ask to schedule delivery
+      // Use short id (first 8 chars) to keep callback_data under Telegram's 64-byte limit
       keyboard = inlineKeyboard([
         [
-          { text: '📅 Schedule Delivery', callback_data: `delivery:schedule:${id}:${qn}` },
+          { text: '📅 Schedule Delivery', callback_data: `delivery:schedule:${id.slice(0, 8)}:${qn}` },
         ],
       ]);
     } else if (order.current_stage === 'delivery_scheduled') {
       // Check if it's delivery day or past due
       keyboard = inlineKeyboard([
         [
-          { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id}:${qn}` },
-          { text: '❌ Not Yet', callback_data: `delivery:no:${id}:${qn}` },
+          { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id.slice(0, 8)}:${qn}` },
+          { text: '❌ Not Yet', callback_data: `delivery:no:${id.slice(0, 8)}:${qn}` },
         ],
       ]);
     }

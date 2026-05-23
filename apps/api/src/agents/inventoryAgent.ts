@@ -359,15 +359,17 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
     message += `Has <b>${notVerifiedItem.name}</b> arrived? How many units can you confirm?`;
 
     // Build inline keyboard for this specific item
+    // NOTE: Use first 8 chars of item UUID to stay within Telegram's 64-byte callback_data limit
+    const itemIdShort = notVerifiedItem.id.slice(0, 8);
     const keyboard = inlineKeyboard([
       [
-        { text: `✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, callback_data: `inv_verify:all:${notVerifiedItem.id}:${order.id}` },
+        { text: `✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, callback_data: `inv_verify:all:${itemIdShort}:${order.id}` },
       ],
       [
-        { text: `📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, callback_data: `inv_verify:partial:${notVerifiedItem.id}:${order.id}` },
+        { text: `📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, callback_data: `inv_verify:partial:${itemIdShort}:${order.id}` },
       ],
       [
-        { text: `⏳ ${notVerifiedItem.name} — Not Yet`, callback_data: `inv_verify:not_yet:${notVerifiedItem.id}:${order.id}` },
+        { text: `⏳ ${notVerifiedItem.name} — Not Yet`, callback_data: `inv_verify:not_yet:${itemIdShort}:${order.id}` },
       ],
     ]);
 

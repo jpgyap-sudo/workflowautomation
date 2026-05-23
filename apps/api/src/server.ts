@@ -1424,8 +1424,8 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '✅ Yes, it\'s en route', callback_data: `en_route:yes:${id}:${ref}` },
-                { text: '❌ Not yet', callback_data: `en_route:no:${id}:${ref}` },
+                { text: '✅ Yes, it\'s en route', callback_data: `en_route:yes:${id.slice(0, 8)}:${ref}` },
+                { text: '❌ Not yet', callback_data: `en_route:no:${id.slice(0, 8)}:${ref}` },
               ],
             ],
           },

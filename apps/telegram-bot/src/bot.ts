@@ -348,9 +348,9 @@ async function buildProductionPromptPayload(quotationNumber: string) {
       `Items extracted from the quotation:\n${itemLines}\n\n` +
       `Production can proceed item-by-item. If only some items started, update the items instead of marking the whole order started.`,
     keyboard: Markup.inlineKeyboard([
-      [Markup.button.callback('Update item-by-item', `produce:partial:${order.id}:${quotationNumber}`)],
-      [Markup.button.callback('Whole order started', `produce:yes:${order.id}:${quotationNumber}`)],
-      [Markup.button.callback('None started yet', `produce:no:${order.id}:${quotationNumber}`)],
+      [Markup.button.callback('Update item-by-item', `produce:partial:${order.id.slice(0, 8)}:${quotationNumber}`)],
+      [Markup.button.callback('Whole order started', `produce:yes:${order.id.slice(0, 8)}:${quotationNumber}`)],
+      [Markup.button.callback('None started yet', `produce:no:${order.id.slice(0, 8)}:${quotationNumber}`)],
       [Markup.button.callback('Cancel', 'action:cancel')],
     ]),
   };
@@ -1839,8 +1839,8 @@ Midpoint and due reminders are now scheduled.`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${cOrderId}:${cQuotationNumber}`)],
-              [Markup.button.callback('❌ Not yet', `en_route:no:${cOrderId}:${cQuotationNumber}`)],
+              [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
+              [Markup.button.callback('❌ Not yet', `en_route:no:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
             ]),
           }
         );
@@ -1984,8 +1984,8 @@ Midpoint and due reminders are now scheduled.`,
             {
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
-                [Markup.button.callback('✅ Complete Verification', `inv_verify:complete:${orderId}:${orderId.slice(0, 8)}`)],
-                [Markup.button.callback('⏳ Review Again', `inv_verify:review:${orderId}:${orderId.slice(0, 8)}`)],
+                [Markup.button.callback('✅ Complete Verification', `inv_v:comp:${orderId}:${orderId.slice(0, 8)}`)],
+                [Markup.button.callback('⏳ Review Again', `inv_v:rev:${orderId}:${orderId.slice(0, 8)}`)],
               ]),
             }
           );
@@ -2008,9 +2008,9 @@ Midpoint and due reminders are now scheduled.`,
           await ctx.reply(msg, {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id}:${orderId}`)],
-              [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id}:${orderId}`)],
-              [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id}:${orderId}`)],
+              [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
+              [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
+              [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
             ]),
           });
         }
@@ -2215,9 +2215,9 @@ bot.action(/^produce:partial:(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id}:${order.id}`)],
-          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id}:${order.id}`)],
-          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id}:${order.id}`)],
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${order.id}`)],
+          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${order.id}`)],
+          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${order.id}`)],
         ]),
       });
     } else {
@@ -2818,8 +2818,8 @@ bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${orderId}:${quotationNumber}`)],
-          [Markup.button.callback('❌ Not yet', `en_route:no:${orderId}:${quotationNumber}`)],
+          [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('❌ Not yet', `en_route:no:${orderId.slice(0, 8)}:${quotationNumber}`)],
         ]),
       }
     );
@@ -2866,7 +2866,7 @@ bot.action(/^production:delivery_custom:(.+):(.+)$/, async (ctx) => {
 // En Route: Yes — ask for estimated arrival days
 bot.action(/^en_route:yes:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2874,22 +2874,30 @@ bot.action(/^en_route:yes:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `en_route:yes:${orderId}:${quotationNumber}`,
+    content: `en_route:yes:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
-  setStep(chatId, { action: 'awaiting_en_route_arrival_days', orderId, quotationNumber });
-  await ctx.editMessageText(
-    `🚚 *En Route Confirmed* — ${quotationNumber}\n\nHow many days estimated for inventory to arrive?`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('📦 28 days (Standard)', `en_route:arrival_standard:${orderId}:${quotationNumber}`)],
-        [Markup.button.callback('📦 Custom days', `en_route:arrival_custom:${orderId}:${quotationNumber}`)],
-        [Markup.button.callback('❌ Cancel', 'action:cancel')],
-      ]),
-    }
-  );
+  try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+
+    setStep(chatId, { action: 'awaiting_en_route_arrival_days', orderId, quotationNumber });
+    await ctx.editMessageText(
+      `🚚 *En Route Confirmed* — ${quotationNumber}\n\nHow many days estimated for inventory to arrive?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📦 28 days (Standard)', `en_route:arrival_standard:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('📦 Custom days', `en_route:arrival_custom:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback('❌ Cancel', 'action:cancel')],
+        ]),
+      }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Order #${quotationNumber} not found.`, { parse_mode: 'Markdown' });
+  }
 });
 
 // En Route: No — remind daily (the en_route_reminder will handle this)
@@ -2917,7 +2925,7 @@ bot.action(/^en_route:no:(.+):(.+)$/, async (ctx) => {
 // En Route: Standard arrival (28 days)
 bot.action(/^en_route:arrival_standard:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2925,11 +2933,15 @@ bot.action(/^en_route:arrival_standard:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `en_route:arrival_standard:${orderId}:${quotationNumber}`,
+    content: `en_route:arrival_standard:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
   try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+
     await postJson(`/orders/${orderId}/confirm-en-route`, {
       estimated_arrival_days: 28,
     });
@@ -2947,7 +2959,7 @@ bot.action(/^en_route:arrival_standard:(.+):(.+)$/, async (ctx) => {
 // En Route: Custom arrival days
 bot.action(/^en_route:arrival_custom:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const orderIdPrefix = ctx.match[1];
   const quotationNumber = ctx.match[2];
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
@@ -2955,15 +2967,23 @@ bot.action(/^en_route:arrival_custom:(.+):(.+)$/, async (ctx) => {
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `en_route:arrival_custom:${orderId}:${quotationNumber}`,
+    content: `en_route:arrival_custom:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
-  setStep(chatId, { action: 'awaiting_en_route_arrival_days', orderId, quotationNumber });
-  await ctx.editMessageText(
-    `📦 *Custom Arrival Days* — ${quotationNumber}\n\nEnter the number of days estimated for inventory to arrive:`,
-    { parse_mode: 'Markdown', ...cancelButton() }
-  );
+  try {
+    // Resolve full orderId from quotationNumber (callback uses 8-char prefix)
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+
+    setStep(chatId, { action: 'awaiting_en_route_arrival_days', orderId, quotationNumber });
+    await ctx.editMessageText(
+      `📦 *Custom Arrival Days* — ${quotationNumber}\n\nEnter the number of days estimated for inventory to arrive:`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Order #${quotationNumber} not found.`, { parse_mode: 'Markdown' });
+  }
 });
 
 // ── Inventory Arrived Callback Handlers ──────────────────────────────
@@ -3287,8 +3307,8 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):(.+)$/, async (ctx) => {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Complete Verification', `inv_verify:complete:${orderId}:${orderId.slice(0, 8)}`)],
-            [Markup.button.callback('⏳ Review Again', `inv_verify:review:${orderId}:${orderId.slice(0, 8)}`)],
+            [Markup.button.callback('✅ Complete Verification', `inv_v:comp:${orderId}:${orderId.slice(0, 8)}`)],
+            [Markup.button.callback('⏳ Review Again', `inv_v:rev:${orderId}:${orderId.slice(0, 8)}`)],
           ]),
         }
       );
@@ -3311,9 +3331,9 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id}:${orderId}`)],
-          [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id}:${orderId}`)],
-          [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id}:${orderId}`)],
+          [Markup.button.callback(`✅ ${notVerifiedItem.name} — All ${notVerifiedItem.quantity} Verified`, `inv_verify:all:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
+          [Markup.button.callback(`📦 ${notVerifiedItem.name} — Partial (Enter Qty)`, `inv_verify:partial:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
+          [Markup.button.callback(`⏳ ${notVerifiedItem.name} — Not Yet`, `inv_verify:not_yet:${notVerifiedItem.id.slice(0, 8)}:${orderId}`)],
         ]),
       });
     }
@@ -3323,34 +3343,60 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):(.+)$/, async (ctx) => {
 });
 
 // Handle "Complete Verification" button
-bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
+// Supports two callback_data formats:
+//   inv_v:comp:{fullUUID}:{8charPrefix} (55 bytes — from bot.ts inline buttons)
+//   inv_verify:complete:{8charPrefix}:{quotationNumber} (from escalationAgent.ts)
+bot.action(/^(?:inv_v:comp|inv_verify:complete):(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
+  const rawOrderId = ctx.match[1]; // Full UUID (new format) or 8-char prefix (old format)
+  const secondSegment = ctx.match[2]; // 8-char prefix or quotation number
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+
+  // Determine if this is the new format (full UUID) or old format (8-char prefix)
+  const isFullUuid = rawOrderId.includes('-');
+  let orderId: string;
+  let displayRef: string;
+
+  if (isFullUuid) {
+    // New format: inv_v:comp:{fullUUID}:{8charPrefix}
+    orderId = rawOrderId;
+    displayRef = secondSegment;
+  } else {
+    // Old format: inv_verify:complete:{8charPrefix}:{quotationNumber}
+    // Need to look up the full UUID by quotation number
+    displayRef = rawOrderId;
+    try {
+      const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(secondSegment)}`);
+      if (orderRes.ok) {
+        const orderData = await orderRes.json();
+        orderId = orderData.id;
+      } else {
+        throw new Error('Order not found');
+      }
+    } catch (_) {
+      await ctx.reply(`❌ Error: Could not resolve order. Please try again from the inventory verification menu.`, { parse_mode: 'Markdown', ...cancelButton() });
+      return;
+    }
+  }
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `inv_verify:complete:${orderId}`,
+    content: `inv_verify:complete:${displayRef}`,
     direction: 'incoming',
   });
 
   try {
-    const result = await postJson(`/orders/${orderId}/complete-inventory-verification`, {});
+    await postJson(`/orders/${orderId}/complete-inventory-verification`, {});
 
-    // Fetch order to get the real quotation_number
-    const orderRes = await fetch(`${apiBaseUrl}/orders/${orderId}`);
-    const orderData = await orderRes.json();
-    const quotationNumber = orderData.quotation_number ?? orderId.slice(0, 8);
-
-    await logAction({ chatId, userId, username, label: 'Inventory Verification Complete', details: `Order #${quotationNumber}` });
+    await logAction({ chatId, userId, username, label: 'Inventory Verification Complete', details: `Order #${displayRef}` });
     await ctx.editMessageText(
-      `✅ *Inventory Verification Complete!*\n\nOrder #${quotationNumber}\nAll items verified. Proceeding to inventory arrival check.\n\nClick below to start checking item arrival status:`,
+      `✅ *Inventory Verification Complete!*\n\nOrder #${displayRef}\nAll items verified. Proceeding to inventory arrival check.\n\nClick below to start checking item arrival status:`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('📦 Start Arrival Check', `inv_verify:review:${orderId}:${quotationNumber}`)],
+          [Markup.button.callback('📦 Start Arrival Check', `inv_v:rev:${orderId}:${displayRef}`)],
           [Markup.button.callback('🏠 Main Menu', 'menu:main')],
         ]),
       }
@@ -3361,17 +3407,46 @@ bot.action(/^inv_verify:complete:(.+):(.+)$/, async (ctx) => {
 });
 
 // Handle "Review Again" button — re-triggers the inventory agent
-bot.action(/^inv_verify:review:(.+):(.+)$/, async (ctx) => {
+// Supports two callback_data formats:
+//   inv_v:rev:{fullUUID}:{8charPrefix} (54 bytes — from bot.ts inline buttons)
+//   inv_verify:review:{8charPrefix}:{quotationNumber} (from bot.ts inline buttons)
+bot.action(/^(?:inv_v:rev|inv_verify:review):(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
-  const orderId = ctx.match[1];
-  const quotationNumber = ctx.match[2] ?? orderId.slice(0, 8);
+  const rawOrderId = ctx.match[1]; // Full UUID (new format) or 8-char prefix (old format)
+  const secondSegment = ctx.match[2]; // 8-char prefix or quotation number
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+
+  // Determine if this is the new format (full UUID) or old format (8-char prefix)
+  const isFullUuid = rawOrderId.includes('-');
+  let orderId: string;
+  let displayRef: string;
+
+  if (isFullUuid) {
+    // New format: inv_v:rev:{fullUUID}:{8charPrefix}
+    orderId = rawOrderId;
+    displayRef = secondSegment;
+  } else {
+    // Old format: inv_verify:review:{8charPrefix}:{quotationNumber}
+    displayRef = rawOrderId;
+    try {
+      const orderRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(secondSegment)}`);
+      if (orderRes.ok) {
+        const orderData = await orderRes.json();
+        orderId = orderData.id;
+      } else {
+        throw new Error('Order not found');
+      }
+    } catch (_) {
+      await ctx.reply(`❌ Error: Could not resolve order. Please try again from the inventory verification menu.`, { parse_mode: 'Markdown', ...cancelButton() });
+      return;
+    }
+  }
 
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `inv_verify:review:${orderId}`,
+    content: `inv_verify:review:${displayRef}`,
     direction: 'incoming',
   });
 
@@ -3380,7 +3455,7 @@ bot.action(/^inv_verify:review:(.+):(.+)$/, async (ctx) => {
     await postJson(`/agents/inventory`, { order_id: orderId });
 
     await ctx.editMessageText(
-      `🔄 *Reviewing Inventory Verification...*\n\nOrder #${quotationNumber}\nThe inventory agent will re-check all items and quantities. Please wait for the updated status.`,
+      `🔄 *Reviewing Inventory Verification...*\n\nOrder #${displayRef}\nThe inventory agent will re-check all items and quantities. Please wait for the updated status.`,
       { parse_mode: 'Markdown' }
     );
   } catch (err: any) {
@@ -3498,8 +3573,8 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('📸 Upload Photos', `menu:upload`)],
-            [Markup.button.callback('✅ Ready for Delivery', `inventory:ready:${orderId}:${quotationNumber}`)],
-            [Markup.button.callback('⏳ Still Waiting', `inventory:waiting:${orderId}:${quotationNumber}`)],
+            [Markup.button.callback('✅ Ready for Delivery', `inventory:ready:${orderId.slice(0, 8)}:${quotationNumber}`)],
+            [Markup.button.callback('⏳ Still Waiting', `inventory:waiting:${orderId.slice(0, 8)}:${quotationNumber}`)],
           ]),
         }
       );

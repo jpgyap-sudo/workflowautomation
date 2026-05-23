@@ -371,8 +371,8 @@ export async function notifyCollection(
       // Use short id (first 8 chars) to keep callback_data under Telegram's 64-byte limit
       keyboard = inlineKeyboard([
         [
-          { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${order.id}:${qn}` },
-          { text: '⏳ Not Yet', callback_data: `deposit:no:${order.id}:${qn}` },
+          { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${order.id.slice(0, 8)}:${qn}` },
+          { text: '⏳ Not Yet', callback_data: `deposit:no:${order.id.slice(0, 8)}:${qn}` },
         ],
       ]);
     } else if (order.deposit_paid && !order.deposit_verified) {

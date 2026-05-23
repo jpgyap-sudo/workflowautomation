@@ -161,56 +161,56 @@ export async function notifyEscalation(
       case 'deposit_pending':
         keyboard = inlineKeyboard([
           [
-            { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${id}:${qn}` },
-            { text: '⏳ Not Yet', callback_data: `deposit:no:${id}:${qn}` },
+            { text: '✅ Upload Deposit Slip', callback_data: `deposit:yes:${id.slice(0, 8)}:${qn}` },
+            { text: '⏳ Not Yet', callback_data: `deposit:no:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
       case 'deposit_verification':
         keyboard = inlineKeyboard([
           [
-            { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${id}:${qn}` },
+            { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
       case 'inventory_verification':
         keyboard = inlineKeyboard([
           [
-            { text: '✅ Complete Verification', callback_data: `inv_verify:complete:${id}:${qn}` },
+            { text: '✅ Complete Verification', callback_data: `inv_verify:complete:${id.slice(0, 8)}:${qn}` },
           ],
           [
-            { text: '⏳ Not Yet', callback_data: `inv_verify:pending:${id}:${qn}` },
+            { text: '⏳ Not Yet', callback_data: `inv_verify:pending:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
       case 'inventory_arrived':
         keyboard = inlineKeyboard([
           [
-            { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${id}:${qn}` },
-            { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${id}:${qn}` },
+            { text: '✅ Ready for Delivery', callback_data: `inventory:ready:${id.slice(0, 8)}:${qn}` },
+            { text: '⏳ Still Waiting', callback_data: `inventory:waiting:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
       case 'balance_due':
         keyboard = inlineKeyboard([
           [
-            { text: '✅ Client Paid Balance', callback_data: `balance:paid:${id}:${qn}` },
-            { text: '❌ Not Yet', callback_data: `balance:not_paid:${id}:${qn}` },
+            { text: '✅ Client Paid Balance', callback_data: `balance:paid:${id.slice(0, 8)}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `balance:not_paid:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
       case 'balance_verification':
         keyboard = inlineKeyboard([
           [
-            { text: '🔍 Verify Balance', callback_data: `verify:balance:${id}:${qn}` },
+            { text: '🔍 Verify Balance', callback_data: `verify:balance:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
       case 'delivery_scheduled':
         keyboard = inlineKeyboard([
           [
-            { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id}:${qn}` },
-            { text: '❌ Not Yet', callback_data: `delivery:no:${id}:${qn}` },
+            { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id.slice(0, 8)}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `delivery:no:${id.slice(0, 8)}:${qn}` },
           ],
         ]);
         break;
