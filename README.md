@@ -103,6 +103,14 @@ node scripts/single-builder-deploy.mjs --pending-only
 node scripts/single-builder-deploy.mjs --sha <commit-sha> --pending-only
 ```
 
+If there are local uncommitted/untracked files and you want the deployer to include them, use the explicit auto-commit mode:
+
+```powershell
+node scripts/single-builder-deploy.mjs --auto-commit --commit-message "fix: describe change"
+```
+
+In this mode the deployer prints the dirty files, runs `git add -A`, commits them, pushes the current branch, then deploys the new `HEAD`. It refuses `--auto-commit` together with an explicit `--sha` because the new commit changes the target SHA.
+
 Only sync `.env` and credentials when those secrets actually changed:
 
 ```powershell
@@ -112,7 +120,7 @@ node scripts/single-builder-deploy.mjs --sync-secrets
 Before every deploy, the builder reads `/opt/quotation-automation/.deployed-sha`, prints the commits between that SHA and the target SHA, and confirms that deploying the target SHA will release all listed commits together. After a successful deploy it updates `.deployed-sha` and appends an audit entry to `/opt/quotation-automation/.deployments/deploy-log.jsonl`.
 
 The builder agent enforces:
-- clean local git worktree
+- clean local git worktree, unless explicit `--auto-commit` is used
 - commit exists on a remote branch
 - committed-but-not-deployed commit review before deploy
 - remote deployment lock at `/opt/quotation-automation/.deploy.lock`

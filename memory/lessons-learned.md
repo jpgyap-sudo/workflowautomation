@@ -5352,3 +5352,26 @@ When constructing Telegram inline keyboard callback data, always enforce a stric
 cross-project, local-fallback
 
 ---
+
+### Lesson: Deployer auto-commit option
+
+Date: 2026-05-23
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Add an explicit --auto-commit mode to the single-builder deployer: it prints local dirty files, stages with git add -A, commits with --commit-message, pushes the current branch, and deploys the new HEAD. Keep explicit --sha deployments clean and exact by refusing --auto-commit with --sha.
+
+#### Lesson Learned
+
+Add an explicit --auto-commit mode to the single-builder deployer: it prints local dirty files, stages with git add -A, commits with --commit-message, pushes the current branch, and deploys the new HEAD. Keep explicit --sha deployments clean and exact by refusing --auto-commit with --sha.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

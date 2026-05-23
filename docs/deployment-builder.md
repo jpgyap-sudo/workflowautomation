@@ -50,6 +50,16 @@ node scripts/single-builder-deploy.mjs --pending-only
 node scripts/single-builder-deploy.mjs --sha a379e1d4343b8c051edd008a658a1d9e112814bd --pending-only
 ```
 
+To ask the deployer agent to include local uncommitted/untracked files in the release:
+
+```powershell
+node scripts/single-builder-deploy.mjs --auto-commit --commit-message "fix: describe change"
+```
+
+The deployer always checks and prints local uncommitted/untracked files before deploying. By default it refuses to deploy a dirty worktree. With `--auto-commit`, it runs `git add -A`, creates a commit with the supplied message, pushes the current branch to its upstream, then deploys the new `HEAD`.
+
+`--auto-commit` is intentionally incompatible with an explicit `--sha`: deploying a specific SHA must stay exact and reproducible, while auto-commit creates a new SHA.
+
 ## Pending Commit Review and Deploy Log
 
 Before any deployment, the builder agent reads the last deployed SHA from:
@@ -83,7 +93,8 @@ Each log entry includes:
 
 The deploy agent refuses to deploy if:
 
-- There are local uncommitted or untracked files.
+- There are local uncommitted or untracked files, unless `--auto-commit` is explicitly used.
+- `--auto-commit` is used together with `--sha`.
 - The target commit is not present on a remote branch.
 - Another deployment is already running on the VPS.
 - API health or dashboard checks fail after deployment.
@@ -167,6 +178,7 @@ Optional extra checks after major releases:
 5. If an agent changes code, it must commit and push first.
 6. The builder deploys only by commit SHA.
 7. Ask the builder to review pending commits first with `--pending-only` when coordinating several commits.
+8. Use `--auto-commit` only when you intentionally want all local dirty files staged, committed, pushed, and deployed together.
 
 ## Current Production Target
 

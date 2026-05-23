@@ -15,6 +15,7 @@
  *   node scripts/single-builder-deploy.mjs --skip-local-checks
  *   node scripts/single-builder-deploy.mjs --sync-secrets
  *   node scripts/single-builder-deploy.mjs --pending-only
+ *   node scripts/single-builder-deploy.mjs --auto-commit --commit-message "fix: ..."
  */
 
 import { execFileSync, execSync } from 'node:child_process';
@@ -49,6 +50,8 @@ Single Builder Deploy Agent
 Options:
   --sha <sha>            Commit SHA to deploy (default: HEAD)
   --pending-only         Print commits since the last deployed SHA and exit
+  --auto-commit          Stage, commit, and push local dirty files before deploying HEAD
+  --commit-message <msg> Commit message for --auto-commit (default: "chore: auto-commit before deploy")
   --skip-local-checks    Skip npm build/lint checks before deploy
   --sync-secrets         Copy local .env and credentials/* to VPS before deploy
   --help                 Show this help
@@ -60,9 +63,12 @@ Environment overrides:
 }
 
 const requestedSha = argValue('--sha') ?? 'HEAD';
+const explicitSha = argValue('--sha') !== undefined;
 const skipLocalChecks = args.has('--skip-local-checks');
 const syncSecrets = args.has('--sync-secrets');
 const pendingOnly = args.has('--pending-only');
+const autoCommit = args.has('--auto-commit');
+const autoCommitMessage = argValue('--commit-message') ?? 'chore: auto-commit before deploy';
 
 function run(label, command, options = {}) {
   console.log(`\n==> ${label}`);
@@ -84,6 +90,58 @@ function capture(label, command, options = {}) {
     timeout: options.timeout ?? 120_000,
     shell: true,
   }).trim();
+}
+
+function captureOptional(label, command, options = {}) {
+  try {
+    return capture(label, command, options);
+  } catch {
+    return null;
+  }
+}
+
+function getLocalStatus() {
+  return capture('Checking local working tree', 'git status --porcelain --untracked-files=all');
+}
+
+function printLocalStatus(status) {
+  console.log('\n==> Local uncommitted file check');
+  if (!status) {
+    console.log('No local uncommitted or untracked files.');
+    return;
+  }
+  console.log('Local uncommitted or untracked files detected:');
+  console.log(status);
+}
+
+function autoCommitAndPushIfNeeded() {
+  const status = getLocalStatus();
+  printLocalStatus(status);
+
+  if (!status) return;
+
+  if (explicitSha) {
+    throw new Error('Refusing --auto-commit with explicit --sha. Auto-commit deploys the new HEAD; remove --sha or commit manually.');
+  }
+  if (!autoCommit) {
+    throw new Error(`Refusing to deploy with uncommitted/untracked files:\n${status}\n\nUse --auto-commit to stage, commit, push, and deploy the new HEAD.`);
+  }
+
+  console.log('\n==> Auto-committing local changes before deploy');
+  execFileSync('git', ['add', '-A'], { cwd: projectRoot, stdio: 'inherit', timeout: 120_000 });
+  execFileSync('git', ['commit', '-m', autoCommitMessage], { cwd: projectRoot, stdio: 'inherit', timeout: 120_000 });
+
+  const branch = capture('Detecting current branch', 'git branch --show-current');
+  if (!branch) {
+    throw new Error('Cannot auto-push from detached HEAD. Commit/push manually, then deploy by --sha.');
+  }
+
+  const upstream = captureOptional('Detecting upstream branch', 'git rev-parse --abbrev-ref --symbolic-full-name @{u}');
+  if (upstream) {
+    run(`Pushing auto-commit to ${upstream}`, 'git push', { timeout: 180_000 });
+  } else {
+    run(`Pushing auto-commit and setting upstream origin/${branch}`, `git push -u origin ${branch}`, { timeout: 180_000 });
+  }
 }
 
 function sshBaseArgs() {
@@ -224,7 +282,7 @@ function printPendingDeploymentInfo(info) {
 }
 
 function assertCleanAndPushed(sha) {
-  const status = capture('Checking local working tree', 'git status --porcelain --untracked-files=all');
+  const status = getLocalStatus();
   if (status) {
     throw new Error(`Refusing to deploy with uncommitted/untracked files:\n${status}`);
   }
@@ -427,6 +485,15 @@ echo "Single-builder deployment completed for $SHA"
 }
 
 function main() {
+  if (pendingOnly) {
+    printLocalStatus(getLocalStatus());
+    if (autoCommit) {
+      console.log('\nNOTE: --auto-commit is ignored in --pending-only mode.');
+    }
+  } else {
+    autoCommitAndPushIfNeeded();
+  }
+
   const sha = capture('Resolving deployment SHA', `git rev-parse --verify ${requestedSha}`);
   const pendingInfo = getPendingDeploymentInfo(sha);
   printPendingDeploymentInfo(pendingInfo);
