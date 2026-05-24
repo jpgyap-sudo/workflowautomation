@@ -957,6 +957,42 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     console.log('[ProductionAgent] Hermes Claw AI unavailable — using rule-based fallback');
   }
 
+  // -1. Purchasing pending — ask if we should start the production workflow.
+  //     Only handles orders WITHOUT JSONB partial_production_items (those are section 3b).
+  //     Upserts reminder with next_run_at = now so the scheduler fires it within 1 minute.
+  const purchasingPendingOrders = await query<OrderRow>(
+    `SELECT * FROM orders
+     WHERE current_stage = 'purchasing_pending'
+       AND status = 'active'
+       AND (partial_production_items IS NULL OR partial_production_items = '[]'::jsonb)
+     ORDER BY created_at ASC`,
+  );
+  for (const order of purchasingPendingOrders) {
+    const groupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+    if (!groupChatId) continue;
+
+    const qn = order.quotation_number ?? 'unknown';
+    const client = order.client_name ?? 'Unknown';
+    const daysWaiting = daysSince(order.created_at);
+
+    const message =
+      `💰 Order <b>#${qn}</b> (${client}) is in Purchasing Pending — deposit verified.\n\n` +
+      `Waiting ${daysWaiting} day${daysWaiting === 1 ? '' : 's'}. Do we proceed to start the production workflow?`;
+
+    // next_run_at = now (nextRunMs = 0) so the scheduler fires this reminder immediately
+    await upsertProductionReminder(order.id, 'purchasing_pending', groupChatId, message, 0);
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message,
+      next_stage: 'production_pending',
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+    await logAgentAction(AGENT_NAME, { quotation_number: order.quotation_number, current_stage: order.current_stage }, result, 'needs_review', order.id);
+    results.push(result);
+  }
+
   // 0. Production pending — ask if production has started (moved from purchasing agent)
   const pendingOrders = await getActiveOrdersByStage('production_pending');
   for (const order of pendingOrders) {
