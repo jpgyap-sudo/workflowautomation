@@ -8398,3 +8398,26 @@ Decouple distinct workflow stages (e.g., start vs. handoff) into separate action
 cross-project, local-fallback
 
 ---
+
+### Lesson: Production workflow handoff separation
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Purchasing dashboard must not call /set-production when the team only acknowledges the production workflow. Move purchasing_pending to production_pending via /stage-updates, keep production_started=false, create a production_pending reminder to the production group asking whether actual production has started, and keep produce:yes/partial/no callbacks only for actual production start.
+
+#### Lesson Learned
+
+Purchasing dashboard must not call /set-production when the team only acknowledges the production workflow. Move purchasing_pending to production_pending via /stage-updates, keep production_started=false, create a production_pending reminder to the production group asking whether actual production has started, and keep produce:yes/partial/no callbacks only for actual production start.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
