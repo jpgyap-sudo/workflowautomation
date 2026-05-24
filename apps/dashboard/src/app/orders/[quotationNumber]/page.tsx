@@ -561,7 +561,7 @@ function ItemTrackingSection({
 
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
-  const stageShowsArrivalCols = currentStage === 'inventory_arrived';
+  const stageShowsArrivalCols = currentStage === 'en_route' || currentStage === 'inventory_arrived' || currentStage === 'inventory_verification';
 
   async function refreshItemTracking() {
     const [itemsRes, compRes, logsRes] = await Promise.all([

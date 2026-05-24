@@ -37,6 +37,7 @@ import {
 } from './services/agentScheduler.js';
 import { STAGE_LABELS } from './services/agentRunner.js';
 import { handleProductionChat } from './services/productionAssistant.js';
+import { addSSEClient, broadcastSSE } from './sse.js';
 
 const ORDER_LIST_SELECT = `
   o.id, o.quotation_number, o.client_name, o.sales_agent,
@@ -60,21 +61,6 @@ const ORDER_LIST_SELECT = `
 
 const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
 await app.register(cors, { origin: true });
-
-// ── SSE (Server-Sent Events) ────────────────────────────────────────
-// Connected dashboard clients get real-time invalidation events
-const sseClients = new Set<{ id: string; write: (data: string) => void }>();
-
-function broadcastSSE(event: string, data: unknown): void {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const client of sseClients) {
-    try {
-      client.write(message);
-    } catch {
-      sseClients.delete(client);
-    }
-  }
-}
 
 // ── Cache Invalidation Helper ───────────────────────────────────────
 async function invalidateCache(patterns: string[]): Promise<void> {
@@ -6371,8 +6357,8 @@ app.get('/events', (request, reply) => {
     write: (data: string) => reply.raw.write(data),
   };
 
-  sseClients.add(client);
-  console.log(`[sse] Client connected: ${clientId} (total: ${sseClients.size})`);
+  const remove = addSSEClient(client);
+  console.log(`[sse] Client connected: ${clientId}`);
 
   // Send initial connected event
   reply.raw.write(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`);
@@ -6389,8 +6375,8 @@ app.get('/events', (request, reply) => {
   // Cleanup on disconnect
   request.raw.on('close', () => {
     clearInterval(keepAlive);
-    sseClients.delete(client);
-    console.log(`[sse] Client disconnected: ${clientId} (total: ${sseClients.size})`);
+    remove();
+    console.log(`[sse] Client disconnected: ${clientId}`);
   });
 });
 

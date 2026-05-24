@@ -1,6 +1,7 @@
 import { query } from '../db.js';
 import { cacheDeletePattern } from '../cache.js';
 import { completeOrderReminders } from './reminderScheduler.js';
+import { broadcastSSE } from '../sse.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -307,11 +308,14 @@ export async function advanceStage(
   await completeOrderReminders(orderId);
 
   // Invalidate caches so dashboard reflects the stage change immediately
-  await cacheDeletePattern('dashboard:*');
-  await cacheDeletePattern('orders:*');
-  await cacheDeletePattern(`order:detail:${quotationNumber}`);
-  await cacheDeletePattern('calendar:*');
-  await cacheDeletePattern('sales:*');
+  const cachePatterns = ['dashboard:*', 'orders:*', `order:detail:${quotationNumber}`, 'calendar:*', 'sales:*'];
+  for (const pattern of cachePatterns) {
+    await cacheDeletePattern(pattern);
+  }
+
+  // Notify connected dashboard clients so they refresh without manual reload
+  broadcastSSE('order_updated', { id: orderId });
+  broadcastSSE('invalidate', { keys: cachePatterns });
 
   // Notify the stage transition group about this auto-advance
   if (TELEGRAM_BOT_TOKEN && quotationNumber) {

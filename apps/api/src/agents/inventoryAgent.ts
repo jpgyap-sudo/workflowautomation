@@ -13,6 +13,7 @@ import {
 } from '../services/agentRunner.js';
 import { query } from '../db.js';
 import { cacheDeletePattern } from '../cache.js';
+import { broadcastSSE } from '../sse.js';
 import {
   analyzeProductionOrder,
   type HermesProductionContext,
@@ -279,9 +280,13 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
         [order.id]
       );
 
-      // Invalidate caches so dashboard reflects the stage change immediately
-      await cacheDeletePattern('dashboard:*');
-      await cacheDeletePattern('orders:*');
+      // Invalidate caches and broadcast SSE so dashboard reflects the stage change immediately
+      const cachePatterns = ['dashboard:*', 'orders:*', `order:detail:${qn}`, 'calendar:*', 'sales:*'];
+      for (const pattern of cachePatterns) {
+        await cacheDeletePattern(pattern);
+      }
+      broadcastSSE('order_updated', { id: order.id });
+      broadcastSSE('invalidate', { keys: cachePatterns });
       await cacheDeletePattern(`order:detail:${qn}`);
 
       // Notify inventory group
