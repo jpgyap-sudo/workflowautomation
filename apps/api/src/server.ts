@@ -169,7 +169,9 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   production_confirmed:  ['production-agent'],
   // Production → En Route
   en_route:              ['production-agent', 'inventory-agent'],
-  // En Route → Inventory Verification
+  // En Route → En Route Verification (item-level dispatch confirmation)
+  en_route_verification: ['production-agent', 'inventory-agent'],
+  // En Route Verification → Inventory Verification
   inventory_verification: ['inventory-agent'],
   // Inventory Verification → Inventory Arrived
   inventory_arrived:     ['inventory-agent'],
