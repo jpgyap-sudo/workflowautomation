@@ -25,6 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
+| 2026-05-24 12:45 | Codex | Fix: restore En Route Verification in stage pipeline tab after `ada6e80` regression | Done |
 | 2026-05-24 12:18 | Codex | Fix: restore VPS API container to resolve dashboard OTP 502 Bad Gateway | ? Done |
 | 2026-05-24 12:01 | Codex | Audit/fix: inventory/delivery workflow tabs and Telegram reminder item sync gaps | ? Done |
 | 2026-05-24 11:37 | Codex | Test: validate cross-extension logging files and `.clinerules` references | ? Done |
