@@ -2986,7 +2986,7 @@ app.post('/stage-updates', async (request, reply) => {
     production_pending:        ['production_confirmed', 'partial_production'],
     production_confirmed:      ['en_route', 'partial_production'],
     partial_production:        ['production_confirmed', 'en_route'],
-    en_route:                  ['inventory_verification', 'inventory_arrived'],
+    en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due'],
     balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
@@ -3167,6 +3167,113 @@ app.post('/stage-updates', async (request, reply) => {
     });
   }
 
+  // When advancing to en_route_verification, create a persistent reminder
+  // asking the team to confirm whether all items have arrived.
+  if (body.stage === 'en_route_verification' && PRODUCTION_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Items are en route for #${ref} (${client}). Have all items arrived?`;
+
+    await upsertStageReminder(orderId, 'en_route_verification', PRODUCTION_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChatWithButtons(
+        PRODUCTION_CHAT_ID,
+        `🚚 <b>En Route Verification (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `The order has been marked as en route. Have all items arrived?`,
+        [
+          [
+            { text: '✅ All arrived', callback_data: `en_route_verif:yes:${ref}` },
+            { text: '⏳ Not yet', callback_data: `en_route_verif:no:${ref}` },
+          ],
+          [{ text: '📋 Check items', callback_data: `en_route_verif:check:${ref}` }],
+        ]
+      );
+    });
+  }
+
+  // When advancing to inventory_verification, create a persistent reminder
+  // asking the team to verify inventory items.
+  if (body.stage === 'inventory_verification' && DELIVERY_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Items have arrived for #${ref} (${client}). Please verify inventory.`;
+
+    await upsertStageReminder(orderId, 'inventory_verification', DELIVERY_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `📦 <b>Inventory Verification (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `Items have arrived and need inventory verification. Please check and verify.`
+      );
+    });
+  }
+
+  // When advancing to inventory_arrived, create a persistent reminder
+  // asking the team to confirm inventory arrival.
+  if (body.stage === 'inventory_arrived' && DELIVERY_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Inventory has arrived for #${ref} (${client}). Please confirm.`;
+
+    await upsertStageReminder(orderId, 'inventory_arrived', DELIVERY_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `📦 <b>Inventory Arrived (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `Inventory has been marked as arrived. Please confirm and proceed.`
+      );
+    });
+  }
+
+  // When advancing to balance_due, create a persistent reminder
+  // asking the collection team to collect the balance.
+  if (body.stage === 'balance_due' && COLLECTION_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Balance is now due for #${ref} (${client}). Please collect payment.`;
+
+    await upsertStageReminder(orderId, 'balance_due', COLLECTION_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `⚖️ <b>Balance Due (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `The order has reached the balance due stage. Please collect the remaining payment.`
+      );
+    });
+  }
+
+  // When advancing to delivery_scheduled, create a persistent reminder
+  // asking the delivery team to prepare for delivery.
+  if (body.stage === 'delivery_scheduled' && DELIVERY_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Delivery has been scheduled for #${ref} (${client}). Please prepare.`;
+
+    await upsertStageReminder(orderId, 'delivery_scheduled', DELIVERY_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `🚚 <b>Delivery Scheduled (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `Delivery has been scheduled. Please prepare for dispatch.`
+      );
+    });
+  }
+
   // Invalidate caches after stage update
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
 
@@ -3188,7 +3295,9 @@ app.post('/stage-updates', async (request, reply) => {
     const stageToGroup: Record<string, string | null> = {
       production_pending: PRODUCTION_CHAT_ID,
       production_confirmed: PRODUCTION_CHAT_ID,
+      partial_production: PRODUCTION_CHAT_ID,
       en_route: PRODUCTION_CHAT_ID,
+      en_route_verification: PRODUCTION_CHAT_ID,
       inventory_verification: DELIVERY_CHAT_ID,
       inventory_arrived: DELIVERY_CHAT_ID,
       balance_due: COLLECTION_CHAT_ID,

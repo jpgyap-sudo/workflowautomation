@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `dd9a274` | Roo (Code) | fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production status on purchasing page + stage advancement on order detail page — Telegram-independent dashboard progression | ❌ Pending |
 | `3b6a178` | Codex | fix: sync payment verification fields in orders list API | ? VPS `e9c72b5` |
 | `f24d0ad` | Codex | feat: show balance payment date and payment verification columns in orders table | ? VPS `3a3cf11` |
 | `3b7767e` | Codex | fix: split production workflow handoff from actual production start | ? VPS `bb32b09` |

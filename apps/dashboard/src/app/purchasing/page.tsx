@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useOrdersByStage } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -30,6 +30,7 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,14 +41,27 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
     if (order.current_stage === 'purchasing_pending') {
       setLoadingItems(true);
       getOrderItems(order.id).then((res) => {
-        if (!cancelled && res.ok) {
-          setItems(res.items);
-          setLoadingItems(false);
-        }
-      }).catch(() => { if (!cancelled) setLoadingItems(false); });
+        if (!cancelled && res.ok) setItems(res.items);
+        setLoadingItems(false);
+      }).catch(() => setLoadingItems(false));
     }
     return () => { cancelled = true; };
   }, [order.id, order.current_stage]);
+
+  async function handleItemProductionStatus(itemId: string, status: 'pending' | 'in_progress' | 'finished') {
+    setUpdatingItemId(itemId);
+    try {
+      await updateOrderItem(order.id, itemId, { production_status: status });
+      const res = await getOrderItems(order.id);
+      if (res.ok) setItems(res.items);
+      const compRes = await getItemCompletion(order.id);
+      if (compRes.ok) setCompletion(compRes);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to update production status');
+    } finally {
+      setUpdatingItemId(null);
+    }
+  }
 
   // Order stays in this tab until all items are marked produced in the Production tab
   const allItemsProduced = items.length === 0 || (completion !== null && completion.production_completion_pct >= 100);
@@ -167,15 +181,39 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
                             <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
                             <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
                             <td className="px-3 py-2">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                item.production_status === 'finished'
-                                  ? 'bg-green-100 text-green-700'
-                                  : item.production_status === 'in_progress'
-                                    ? 'bg-blue-100 text-blue-700'
-                                    : 'bg-amber-100 text-amber-700'
-                              }`}>
-                                {item.production_status === 'finished' ? '✓ Produced' : item.production_status === 'in_progress' ? '⟳ In Progress' : '○ Pending'}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  item.production_status === 'finished'
+                                    ? 'bg-green-100 text-green-700'
+                                    : item.production_status === 'in_progress'
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {item.production_status === 'finished' ? '✓ Produced' : item.production_status === 'in_progress' ? '⟳ In Progress' : '○ Pending'}
+                                </span>
+                                {/* Manual production status buttons — independent of Telegram */}
+                                <div className="flex gap-0.5">
+                                  {(['pending', 'in_progress', 'finished'] as const).map((s) => (
+                                    <button
+                                      key={s}
+                                      disabled={updatingItemId === item.id || item.production_status === s}
+                                      onClick={() => handleItemProductionStatus(item.id, s)}
+                                      className={`rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors disabled:opacity-30 ${
+                                        item.production_status === s
+                                          ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                          : s === 'finished'
+                                            ? 'bg-green-50 text-green-600 hover:bg-green-100'
+                                            : s === 'in_progress'
+                                              ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                              : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                                      }`}
+                                      title={`Mark as ${s.replace('_', ' ')}`}
+                                    >
+                                      {updatingItemId === item.id ? '...' : s === 'finished' ? '✓' : s === 'in_progress' ? '⟳' : '○'}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                             </td>
                           </tr>
                         ))}

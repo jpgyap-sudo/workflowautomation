@@ -8543,3 +8543,51 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: purchasing_pending orders never got Telegram notification to start production workflow
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9a68b0004d5f2178f869895098e9e1fd4e3a0acf
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 9a68b0004d5f2178f869895098e9e1fd4e3a0acf
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Telegram notifications for starting production workflow were never sent for orders with status `purchasing_pending`.
+
+**Why it broke:**  
+The notification trigger logic only checked for status `purchasing` (the next status after `purchasing_pending`), missing the initial pending state. The workflow expected a notification at the `purchasing_pending` stage, but the condition was too narrow.
+
+**Reusable takeaway:**  
+When designing state-driven notifications, ensure triggers cover all transitional states that require action, not just the final or most common state. Use explicit state mapping or a state machine to avoid silent gaps in workflow automation.
+
+---
+*Original commit message: fix: purchasing_pending orders never got Telegram notification to start production workflow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Telegram notifications for starting production workflow were never sent for orders with status `purchasing_pending`.
+
+**Why it broke:**  
+The notification trigger logic only checked for status `purchasing` (the next status after `purchasing_pending`), missing the initial pending state. The workflow expected a notification at the `purchasing_pending` stage, but the condition was too narrow.
+
+**Reusable takeaway:**  
+When designing state-driven notifications, ensure triggers cover all transitional states that require action, not just the final or most common state. Use explicit state mapping or a state machine to avoid silent gaps in workflow automation.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

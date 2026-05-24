@@ -37,6 +37,8 @@ When you **finish**:
 | 2026-05-24 14:19 | Roo (Code) | Fix: deposit sync failure — removed mandatory action_token requirement from POST /deposits, added OTP modals to all deposit flows, fixed recordDepositWithFile() to pass action_token | ✅ Done |
 | 2026-05-24 14:39 | Roo (Code) | Fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required | ✅ Done |
 | 2026-05-24 14:44 | Roo (Code) | Fix: add client_name and actor_name to stage_updates table for traceability | ✅ Done |
+| 2026-05-24 15:31 | Roo (Code) | Fix: add manual stage advancement buttons on order detail page + manual production status editing on purchasing page — Telegram-independent dashboard progression | ✅ Done |
+| 2026-05-24 15:39 | Roo (Code) | Deploy: gap fixes — en_route_verification/inventory/balance/delivery reminder creation, stageToGroup map, manual production status on purchasing page, stage advancement on order detail page | 🔴 Active |
 
 ---
 

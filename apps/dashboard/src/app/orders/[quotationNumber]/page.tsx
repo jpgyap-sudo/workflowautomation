@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, visionExtract, verifyDeposit, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
@@ -29,6 +29,10 @@ export default function OrderDetailPage() {
   const [showVerifyDepositOtp, setShowVerifyDepositOtp] = useState(false);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [verifyDepositResult, setVerifyDepositResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [showStageAdvanceOtp, setShowStageAdvanceOtp] = useState(false);
+  const [targetAdvanceStage, setTargetAdvanceStage] = useState<string | null>(null);
+  const [advancingStage, setAdvancingStage] = useState(false);
+  const [advanceResult, setAdvanceResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   async function handleVerifyDepositVerified(actionToken: string) {
     if (!order) return;
@@ -49,6 +53,31 @@ export default function OrderDetailPage() {
       setVerifyDepositResult({ ok: false, message: err.message ?? 'Failed to verify deposit.' });
     } finally {
       setVerifyingDeposit(false);
+    }
+  }
+
+  async function handleStageAdvanceVerified(actionToken: string) {
+    if (!order || !targetAdvanceStage) return;
+    setAdvancingStage(true);
+    setAdvanceResult(null);
+    try {
+      const res = await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: targetAdvanceStage,
+        status: 'pending',
+        remarks: `Advanced from ${order.current_stage} via dashboard`,
+        action_token: actionToken,
+      });
+      if (res.ok) {
+        setAdvanceResult({ ok: true, message: `✅ Advanced to ${targetAdvanceStage.replace(/_/g, ' ')}!` });
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setAdvanceResult({ ok: false, message: 'Failed to advance stage.' });
+      }
+    } catch (err: any) {
+      setAdvanceResult({ ok: false, message: err.message ?? 'Failed to advance stage.' });
+    } finally {
+      setAdvancingStage(false);
     }
   }
 
@@ -439,6 +468,68 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
+      {/* Stage Advancement (admin only) — manual advancement when Telegram is down */}
+      {user?.role === 'admin' && (() => {
+        const VALID_TRANSITIONS: Record<string, string[]> = {
+          quotation_received:        ['order_confirmation_received', 'math_verified', 'deposit_pending'],
+          order_confirmation_received: ['math_verified', 'deposit_pending'],
+          math_verified:             ['deposit_pending'],
+          deposit_pending:           ['deposit_verification'],
+          deposit_verification:      ['purchasing_pending'],
+          purchasing_pending:        ['production_pending'],
+          production_pending:        ['production_confirmed', 'partial_production'],
+          production_confirmed:      ['en_route', 'partial_production'],
+          partial_production:        ['production_confirmed', 'en_route'],
+          en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
+          inventory_verification:    ['inventory_arrived'],
+          inventory_arrived:         ['balance_due'],
+          balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
+          balance_verification:      ['delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],
+          delivery_pending:          ['delivery_scheduled', 'delivered', 'countered'],
+          delivery_scheduled:        ['delivered', 'countered'],
+          delivered:                 ['payment_received', 'payment_confirmed', 'completed'],
+          countered:                 ['payment_received', 'payment_confirmed', 'completed'],
+          payment_received:          ['payment_confirmed', 'completed'],
+          payment_confirmed:         ['completed'],
+        };
+        const allowedStages = VALID_TRANSITIONS[order.current_stage] ?? [];
+        if (allowedStages.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-2 border-dashed border-amber-300 bg-amber-50 p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+              <ArrowLeft className="h-4 w-4 rotate-90" />
+              Manual Stage Advancement
+            </div>
+            <p className="mt-1 text-xs text-amber-700">
+              Use this when Telegram is unavailable. Each advancement triggers notifications and reminders automatically.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {allowedStages.map((stage) => {
+                const config = STAGE_CONFIG[stage];
+                return (
+                  <button
+                    key={stage}
+                    onClick={() => {
+                      setTargetAdvanceStage(stage);
+                      setShowStageAdvanceOtp(true);
+                    }}
+                    disabled={advancingStage}
+                    className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-amber-700 shadow-sm ring-1 ring-amber-300 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {config?.icon} {config?.label ?? stage}
+                  </button>
+                );
+              })}
+            </div>
+            {advanceResult && (
+              <p className={`mt-2 text-xs font-medium ${advanceResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+                {advanceResult.message}
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Item-Level Tracking (admin only) */}
       {user?.role === 'admin' && (
         <ItemTrackingSection
@@ -515,6 +606,22 @@ export default function OrderDetailPage() {
         onClose={() => {
           setShowVerifyDepositOtp(false);
           setVerifyDepositResult(null);
+        }}
+      />
+
+      <OtpModal
+        open={showStageAdvanceOtp}
+        title="Advance Stage"
+        description={
+          targetAdvanceStage
+            ? `Advance this order from "${order.current_stage.replace(/_/g, ' ')}" to "${targetAdvanceStage.replace(/_/g, ' ')}"? This will trigger notifications and reminders.`
+            : 'Advance this order to the next stage?'
+        }
+        onVerified={handleStageAdvanceVerified}
+        onClose={() => {
+          setShowStageAdvanceOtp(false);
+          setTargetAdvanceStage(null);
+          setAdvanceResult(null);
         }}
       />
     </div>
