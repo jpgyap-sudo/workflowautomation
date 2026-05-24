@@ -8189,3 +8189,51 @@ If dashboard OTP modal shows nginx 502 HTML and /api/health is also 502, inspect
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG — deployed reminder scheduler fix at 1749ed9
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit fca246821884d6c7958e0f1ce8489d737f2297bf
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** fca246821884d6c7958e0f1ce8489d737f2297bf
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A bug in the reminder scheduler deployment was corrected.
+
+**Why it broke:**  
+The scheduler logic had an edge case where reminders were not being triggered correctly under certain conditions (likely timing or state mismanagement).
+
+**Reusable takeaway:**  
+Always validate scheduler logic against edge cases (e.g., time boundaries, state transitions) before deployment. Document fixes in both changelog and update logs, and update the lesson index to capture the root cause for future reference.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG — deployed reminder scheduler fix at 1749ed9*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug in the reminder scheduler deployment was corrected.
+
+**Why it broke:**  
+The scheduler logic had an edge case where reminders were not being triggered correctly under certain conditions (likely timing or state mismanagement).
+
+**Reusable takeaway:**  
+Always validate scheduler logic against edge cases (e.g., time boundaries, state transitions) before deployment. Document fixes in both changelog and update logs, and update the lesson index to capture the root cause for future reference.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
