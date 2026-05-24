@@ -3847,49 +3847,59 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     const completionRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items/completion`);
     const completion = await completionRes.json();
 
-    // Find the next unfinished item, skipping items the user already said "Not Yet" to
-    const unfinishedItem = items.find(
-      (item: any) => item.production_status !== 'finished' && !skipSet.has(item.id)
+    // Refetch items to get fresh statuses after patch
+    const updatedItemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const updatedItemsData = await updatedItemsRes.json();
+    const updatedItems = updatedItemsData?.items ?? items;
+
+    // Determine state: finished, pending (unasked), or in-progress
+    const allFinished = updatedItems.every((item: any) => item.production_status === 'finished');
+    const nextPendingItem = updatedItems.find(
+      (item: any) => item.production_status === 'pending' && !skipSet.has(item.id)
     );
 
-    if (!unfinishedItem) {
-      // Check if user said "Not Yet" to all remaining items (skip set has items)
-      // If so, don't auto-advance — just acknowledge
+    if (allFinished) {
+      // All items finished! Advance the order immediately
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: null,
+        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+
+      // Use standard 28-day delivery estimate (same default used by the production agent)
+      await postJson(`/orders/${orderId}/finish-production`, {
+        delivery_estimated_days: 28,
+      });
+      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber} auto-advanced to en_route` });
+
+      await ctx.editMessageText(
+        `✅ *All Items Production Finished!*\n\nOrder #${quotationNumber}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else if (!nextPendingItem) {
+      // No more pending items to ask about
       if (skipSet.size > 0) {
         await ctx.editMessageText(
-          `⏳ *All remaining items marked as not yet started.*\n\nOrder #${quotationNumber}\n${completion?.production_pct ?? 0}% complete.\n\nThe order will advance once items are finished.`,
+          `⏳ *All items reviewed.*\n\nOrder #${quotationNumber}\n${completion?.production_pct ?? 0}% complete.\n\nItems marked "Not Yet" will be tracked. Use the dashboard to update individual items.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } else {
-        // All items finished! Advance the order immediately
-        await postJson(`/orders/${orderId}/production-logs`, {
-          order_item_id: null,
-          note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
-          log_type: 'user',
-          created_by: username ?? `user_${userId}`,
-        });
-
-        // Use standard 28-day delivery estimate (same default used by the production agent)
-        await postJson(`/orders/${orderId}/finish-production`, {
-          delivery_estimated_days: 28,
-        });
-        await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber} auto-advanced to en_route` });
-
         await ctx.editMessageText(
-          `✅ *All Items Production Finished!*\n\nOrder #${quotationNumber}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
+          `🔄 *All items have started production.*\n\nOrder #${quotationNumber}\n${completion?.production_pct ?? 0}% complete.\n\nUse the production dashboard to mark items as finished when ready.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       }
     } else {
       // ── Advance order to partial_production if any item is pending ──
-      const hasPendingItem = items.some(
+      const hasPendingItem = updatedItems.some(
         (item: any) => item.production_status === 'pending'
       );
 
       if (hasPendingItem) {
         if (orderData.current_stage === 'production_pending') {
           // Collect names of pending items
-          const pendingItems = items
+          const pendingItems = updatedItems
             .filter((item: any) => item.production_status === 'pending')
             .map((item: any) => item.name);
 
@@ -3908,8 +3918,9 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       }
 
       // Ask about the next unfinished item (process of elimination)
-      const finishedCount = items.filter((i: any) => i.production_status === 'finished').length;
-      const totalCount = items.length;
+      const unfinishedItem = nextPendingItem;
+      const finishedCount = updatedItems.filter((i: any) => i.production_status === 'finished').length;
+      const totalCount = updatedItems.length;
       const prodPct = completion?.production_pct ?? 0;
 
       const progressBar = '█'.repeat(Math.round(prodPct / 10)) + '░'.repeat(10 - Math.round(prodPct / 10));
