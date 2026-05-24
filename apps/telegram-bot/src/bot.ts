@@ -2108,7 +2108,7 @@ bot.on(message('text'), async (ctx) => {
       });
 
       try {
-        // Record deposit via match-and-record (no Google Drive upload — deposit slips not stored)
+        // Record deposit via match-and-record
         const res = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2124,6 +2124,18 @@ bot.on(message('text'), async (ctx) => {
 
         if (!res.ok || !data.ok) {
           throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        // Save the deposit slip image to the order's file viewer so it appears in the dashboard
+        if (imageBase64 && data.quotation_number) {
+          uploadFileAndRecord({
+            chatId,
+            imageBase64,
+            mimeType: mimeType ?? 'image/jpeg',
+            fileName: fileName ?? `deposit-${data.quotation_number}.jpg`,
+            quotationNumber: data.quotation_number,
+            fileType: 'deposit',
+          }).catch((err: any) => console.error('[deposit] File upload error (non-blocking):', err));
         }
 
         resetStep(chatId);
