@@ -8114,3 +8114,78 @@ When Telegram reminder callbacks use shortened item IDs in callback_data, resolv
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: reminder scheduler gaps for en_route_verification stage
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1749ed9d86815e203d7d42638141f4533e6d2794
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1749ed9d86815e203d7d42638141f4533e6d2794
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/telegram-bot/src/bot.ts,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Lesson: Reminder Scheduler Gaps for `en_route_verification` Stage**
+
+**What was fixed:**  
+Reminder notifications were not being scheduled for the `en_route_verification` stage, causing missing alerts for orders in that state.
+
+**Why it broke:**  
+The reminder scheduler logic had a gap: it only handled certain stages (e.g., `pending`, `in_progress`) but omitted `en_route_verification`. This was likely due to an incomplete stage mapping or a missing case in the scheduler's state machine.
+
+**Reusable takeaway:**  
+When implementing stage-based schedulers (e.g., reminders, escalations), ensure all possible states are explicitly enumerated and handled. Use a centralized stage-to-action mapping or a switch statement with a default fallback that logs unhandled stages. This prevents silent gaps when new stages are added or existing ones are renamed.
+
+---
+*Original commit message: fix: reminder scheduler gaps for en_route_verification stage*
+
+#### Lesson Learned
+
+**Lesson: Reminder Scheduler Gaps for `en_route_verification` Stage**
+
+**What was fixed:**  
+Reminder notifications were not being scheduled for the `en_route_verification` stage, causing missing alerts for orders in that state.
+
+**Why it broke:**  
+The reminder scheduler logic had a gap: it only handled certain stages (e.g., `pending`, `in_progress`) but omitted `en_route_verification`. This was likely due to an incomplete stage mapping or a missing case in the scheduler's state machine.
+
+**Reusable takeaway:**  
+When implementing stage-based schedulers (e.g., reminders, escalations), ensure all possible states are explicitly enumerated and handled. Use a centralized stage-to-action mapping or a switch statement with a default fallback that logs unhandled stages. This prevents silent gaps when new stages are added or existing ones are renamed.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: VPS API 502 OTP recovery
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+If dashboard OTP modal shows nginx 502 HTML and /api/health is also 502, inspect VPS docker compose. In this case qas_api was missing after a stale/removing API container conflict; running docker compose up -d restored postgres, redis, api, dashboard, telegram-bot, and send-otp returned 200. Verify with public /api/health and /api/auth/send-otp.
+
+#### Lesson Learned
+
+If dashboard OTP modal shows nginx 502 HTML and /api/health is also 502, inspect VPS docker compose. In this case qas_api was missing after a stale/removing API container conflict; running docker compose up -d restored postgres, redis, api, dashboard, telegram-bot, and send-otp returned 200. Verify with public /api/health and /api/auth/send-otp.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
