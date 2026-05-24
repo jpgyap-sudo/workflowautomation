@@ -9,9 +9,10 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `7c77bca` | Codex | feat: add item-level inventory verification accountability | ✅ VPS `7c77bca` |
-| `188f941` | Codex | feat: add early-arrival proceed to inventory verification action | ? VPS `188f941` |
-| `87dfc24` | Codex | feat: track and display item production finished dates | ✅ VPS `87dfc24` |
+| `7c77bca` | Codex | feat: add item-level inventory verification accountability | ✅ VPS `1083384` |
+| `188f941` | Codex | feat: add early-arrival proceed to inventory verification action | ✅ VPS `1083384` |
+| `87dfc24` | Codex | feat: track and display item production finished dates | ✅ VPS `1083384` |
+| `bb26c61` | Claude Sonnet 4.6 | fix: E2E gaps — en_route_verification stale check + dashboard section + purchasing_pending deposit guard + inventory_verification dashboard link | ✅ VPS `1083384` |
 | `57c7dba` | Roo (Code) | docs: mark production auto-finish deployed | âœ… VPS `57c7dba` |
 | `ff25dee` | Roo (Code) | fix: refine item production Telegram prompts | âœ… VPS `57c7dba` |
 | `3a2263b` | Roo (Code) | fix: auto-finish completed item production | âœ… VPS `57c7dba` |
