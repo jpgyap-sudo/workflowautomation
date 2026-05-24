@@ -36,6 +36,14 @@ function StatusPill({ children, className }: { children: ReactNode; className: s
   );
 }
 
+function VerificationPill({ verified }: { verified: boolean | null | undefined }) {
+  return (
+    <StatusPill className={verified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
+      {verified ? 'Verified' : 'Pending'}
+    </StatusPill>
+  );
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return '\u2014';
   return <Timestamp value={value} variant="compact" />;
@@ -176,6 +184,26 @@ export default function OrderTable({
                     <dd className="font-medium text-gray-700">{formatDate(order.deposit_paid_at)}</dd>
                   </div>
                 )}
+                {showDeposit && (
+                  <div>
+                    <dt className="text-gray-400">Downpayment Verified</dt>
+                    <dd className="mt-1"><VerificationPill verified={order.deposit_verified} /></dd>
+                    {order.deposit_verified_at && <dd className="mt-1 text-[11px] text-gray-400">{formatDate(order.deposit_verified_at)}</dd>}
+                  </div>
+                )}
+                {showBalance && (
+                  <div>
+                    <dt className="text-gray-400">Balance Payment Date</dt>
+                    <dd className="font-medium text-gray-700">{formatDate(order.balance_paid_at)}</dd>
+                  </div>
+                )}
+                {showBalance && (
+                  <div>
+                    <dt className="text-gray-400">Balance Verified</dt>
+                    <dd className="mt-1"><VerificationPill verified={order.balance_verified} /></dd>
+                    {order.balance_verified_at && <dd className="mt-1 text-[11px] text-gray-400">{formatDate(order.balance_verified_at)}</dd>}
+                  </div>
+                )}
                 <div>
                   <dt className="text-gray-400">Created</dt>
                   <dd className="font-medium text-gray-700"><Timestamp value={order.created_at} variant="compact" /></dd>
@@ -237,7 +265,7 @@ export default function OrderTable({
 
       {/* Desktop table */}
       <div className="hidden overflow-x-auto sm:block">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full min-w-[1180px] text-left text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-xs font-medium uppercase tracking-wider text-gray-500">
               {selectable && (
@@ -262,6 +290,9 @@ export default function OrderTable({
               {showBalance && <th className="px-4 py-3">Balance</th>}
               {showOrderDate && <th className="px-4 py-3">Order Date</th>}
               {showDepositDate && <th className="px-4 py-3">Downpayment Date</th>}
+              {showDeposit && <th className="px-4 py-3">Downpayment Verified</th>}
+              {showBalance && <th className="px-4 py-3">Balance Payment Date</th>}
+              {showBalance && <th className="px-4 py-3">Balance Verified</th>}
               <th className="px-4 py-3">Math</th>
               <th className="px-4 py-3">Created</th>
               <th className="px-4 py-3">Updated</th>
@@ -326,6 +357,21 @@ export default function OrderTable({
                   )}
                   {showDepositDate && (
                     <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.deposit_paid_at)}</td>
+                  )}
+                  {showDeposit && (
+                    <td className="px-4 py-3">
+                      <VerificationPill verified={order.deposit_verified} />
+                      {order.deposit_verified_at && <div className="mt-1 text-[11px] text-gray-400">{formatDate(order.deposit_verified_at)}</div>}
+                    </td>
+                  )}
+                  {showBalance && (
+                    <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.balance_paid_at)}</td>
+                  )}
+                  {showBalance && (
+                    <td className="px-4 py-3">
+                      <VerificationPill verified={order.balance_verified} />
+                      {order.balance_verified_at && <div className="mt-1 text-[11px] text-gray-400">{formatDate(order.balance_verified_at)}</div>}
+                    </td>
                   )}
                   <td className="px-4 py-3">
                     <StatusPill
