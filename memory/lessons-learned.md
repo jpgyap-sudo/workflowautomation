@@ -8350,3 +8350,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: split production workflow handoff from production start
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3b7767e4ab1e6e0d330628ffbc5638abb4424e64
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3b7767e4ab1e6e0d330628ffbc5638abb4424e64
+**Files:** apps/api/src/agents/purchasingAgent.ts,apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/purchasing/page.tsx,apps/telegram-bot/src/bot.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where the production workflow handoff (transitioning a job from "in production" to "completed") was incorrectly coupled with the production start action. This caused premature completion or skipped handoffs when starting production.
+
+**Why it broke:**  
+The original code assumed that starting production automatically implied a handoff. In reality, handoff is a separate, manual step that should occur only after production is fully complete. The coupling violated the actual workflow logic.
+
+**Reusable takeaway:**  
+Decouple distinct workflow stages (e.g., start vs. handoff) into separate actions or events. Never assume sequential steps are atomic unless the domain explicitly requires it. Use explicit state transitions to avoid unintended side effects and to allow independent triggering of each stage.
+
+---
+*Original commit message: fix: split production workflow handoff from production start*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the production workflow handoff (transitioning a job from "in production" to "completed") was incorrectly coupled with the production start action. This caused premature completion or skipped handoffs when starting production.
+
+**Why it broke:**  
+The original code assumed that starting production automatically implied a handoff. In reality, handoff is a separate, manual step that should occur only after production is fully complete. The coupling violated the actual workflow logic.
+
+**Reusable takeaway:**  
+Decouple distinct workflow stages (e.g., start vs. handoff) into separate actions or events. Never assume sequential steps are atomic unless the domain explicitly requires it. Use explicit state transitions to avoid unintended side effects and to allow independent triggering of each stage.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
