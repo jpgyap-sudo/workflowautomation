@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
@@ -11,6 +11,8 @@ import {
   recordStageUpdate,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
+  createStockReplenishmentOrder,
+  getOrderNotes, postProductionNote,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -18,7 +20,7 @@ import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/comp
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  RefreshCw, Package, FileText, Eye, List,
+  RefreshCw, Package, FileText, Eye, List, Loader2, MessageSquare,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -807,7 +809,6 @@ function ProductionFinishedTrackingSection({
   isLoading,
   error,
   onRetry,
-  onConfirmEnRoute,
   onViewFiles,
 }: {
   orders: Order[];
@@ -815,12 +816,15 @@ function ProductionFinishedTrackingSection({
   isLoading: boolean;
   error: any;
   onRetry: () => void;
-  onConfirmEnRoute: (o: Order) => void;
   onViewFiles?: (o: Order) => void;
 }) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
   const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
+  const [notesByOrder, setNotesByOrder] = useState<Record<string, { id: string; order_id: string; agent_name: string; note: string; created_at: string }[]>>({});
+  const [notesLoading, setNotesLoading] = useState<Record<string, boolean>>({});
+  const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
+  const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
 
   async function toggleOrderItems(order: Order) {
     if (expandedOrderId === order.id) {
@@ -838,6 +842,37 @@ function ProductionFinishedTrackingSection({
       } finally {
         setLoadingItemsForOrder(null);
       }
+    }
+  }
+
+  async function loadNotes(orderId: string) {
+    if (notesByOrder[orderId]) return;
+    setNotesLoading((prev) => ({ ...prev, [orderId]: true }));
+    try {
+      const notes = await getOrderNotes(orderId);
+      setNotesByOrder((prev) => ({ ...prev, [orderId]: notes }));
+    } catch {
+      setNotesByOrder((prev) => ({ ...prev, [orderId]: [] }));
+    } finally {
+      setNotesLoading((prev) => ({ ...prev, [orderId]: false }));
+    }
+  }
+
+  async function handleAddNote(orderId: string) {
+    const text = noteInputs[orderId]?.trim();
+    if (!text) return;
+    setSavingNote((prev) => ({ ...prev, [orderId]: true }));
+    try {
+      const newNote = await postProductionNote(orderId, text);
+      setNotesByOrder((prev) => ({
+        ...prev,
+        [orderId]: [newNote, ...(prev[orderId] ?? [])],
+      }));
+      setNoteInputs((prev) => ({ ...prev, [orderId]: '' }));
+    } catch {
+      // silently fail
+    } finally {
+      setSavingNote((prev) => ({ ...prev, [orderId]: false }));
     }
   }
 
@@ -876,7 +911,7 @@ function ProductionFinishedTrackingSection({
                 <th className="px-4 py-3">En Route Verification</th>
                 <th className="px-4 py-3">Estimated Inventory Arrival Date</th>
                 <th className="px-4 py-3">Stage</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">Notes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -886,6 +921,10 @@ function ProductionFinishedTrackingSection({
                 const enRouteVerified = getEnRouteVerificationText(order) !== 'Pending';
                 const isExpanded = expandedOrderId === order.id;
                 const orderItems = itemsByOrder[order.id] ?? [];
+                const orderNotes = notesByOrder[order.id] ?? [];
+                const isNotesLoading = notesLoading[order.id];
+                const isSaving = savingNote[order.id];
+                const noteValue = noteInputs[order.id] ?? '';
                 return (
                   <Fragment key={order.id}>
                     <tr
@@ -913,20 +952,77 @@ function ProductionFinishedTrackingSection({
                         {estimatedArrival ? formatDate(estimatedArrival) : <span className="text-gray-400">Pending en-route days</span>}
                       </td>
                       <td className="px-4 py-4"><StageBadge stage={order.current_stage} /></td>
-                      <td className="px-4 py-4 text-right">
-                        {order.current_stage === 'en_route' && !order.en_route_confirmed && (
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">
+                            {orderNotes.length > 0 ? `${orderNotes.length} note${orderNotes.length === 1 ? '' : 's'}` : 'No notes'}
+                          </span>
                           <button
-                            onClick={(e) => { e.stopPropagation(); onConfirmEnRoute(order); }}
-                            className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadNotes(order.id);
+                              if (!isExpanded) toggleOrderItems(order);
+                            }}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                            title="View notes"
                           >
-                            Confirm En Route
+                            <MessageSquare className="h-3.5 w-3.5" />
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-items`} className="bg-gray-50/70">
                         <td colSpan={7} className="px-6 py-4">
+                          {/* Notes section */}
+                          <div className="mb-4 rounded-lg border border-gray-200 bg-white p-3">
+                            <div className="mb-2 flex items-center gap-2">
+                              <MessageSquare className="h-3.5 w-3.5 text-gray-400" />
+                              <span className="text-xs font-semibold text-gray-600">Notes</span>
+                            </div>
+                            <div className="mb-2 flex gap-2">
+                              <input
+                                type="text"
+                                value={noteValue}
+                                onChange={(e) => setNoteInputs((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !isSaving) {
+                                    e.preventDefault();
+                                    handleAddNote(order.id);
+                                  }
+                                }}
+                                placeholder="Add a note about this order..."
+                                className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                                disabled={isSaving}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleAddNote(order.id); }}
+                                disabled={isSaving || !noteValue.trim()}
+                                className="rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                              >
+                                {isSaving ? 'Saving...' : 'Add'}
+                              </button>
+                            </div>
+                            {isNotesLoading ? (
+                              <div className="py-2 text-center text-xs text-gray-400">Loading notes...</div>
+                            ) : orderNotes.length === 0 ? (
+                              <div className="py-2 text-center text-xs text-gray-400">No notes yet. Add a note above.</div>
+                            ) : (
+                              <div className="max-h-40 space-y-1.5 overflow-y-auto">
+                                {orderNotes.map((n) => (
+                                  <div key={n.id} className="rounded-md bg-gray-50 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[10px] font-medium text-gray-500">{n.agent_name}</span>
+                                      <span className="text-[10px] text-gray-400">{new Date(n.created_at).toLocaleString()}</span>
+                                    </div>
+                                    <p className="mt-0.5 text-xs text-gray-700">{n.note}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Items table */}
                           {loadingItemsForOrder === order.id ? (
                             <div className="text-xs text-gray-400">Loading item list...</div>
                           ) : orderItems.length === 0 ? (
@@ -1121,8 +1217,17 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  // Stock replenishment modal state
+  const [stockReplModal, setStockReplModal] = useState(false);
+  const [stockReplFile, setStockReplFile] = useState<File | null>(null);
+  const [stockReplLabel, setStockReplLabel] = useState('');
+  const [stockReplUploading, setStockReplUploading] = useState(false);
+  const [stockReplError, setStockReplError] = useState('');
+  const [stockReplSuccess, setStockReplSuccess] = useState<{ ref: string; itemCount: number; items: Array<{ name: string; quantity: number }> } | null>(null);
+  const stockReplFileRef = useRef<HTMLInputElement>(null);
 
   function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); }
 
@@ -1166,6 +1271,7 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
     else if (otpModal.pendingAction === 'grantProductionException') handleGrantExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeExceptionVerified(actionToken);
+    else if (otpModal.pendingAction === 'stockReplenishment') handleStockReplVerified(actionToken);
   }
 
   async function handleGrantExceptionVerified(actionToken: string) {
@@ -1340,6 +1446,68 @@ export default function ProductionPage() {
     (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
 
+  function handleOpenStockRepl() {
+    setStockReplSuccess(null);
+    setStockReplError('');
+    setStockReplFile(null);
+    setStockReplLabel('');
+    if (stockReplFileRef.current) stockReplFileRef.current.value = '';
+    setStockReplModal(true);
+  }
+
+  function handleCloseStockRepl() {
+    setStockReplModal(false);
+    setStockReplSuccess(null);
+    setStockReplError('');
+    setStockReplFile(null);
+    setStockReplLabel('');
+    if (stockReplFileRef.current) stockReplFileRef.current.value = '';
+  }
+
+  function handleCreateStockReplenishment() {
+    if (!stockReplFile) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1];
+      (window as any).__pendingStockRepl = {
+        base64,
+        mime_type: stockReplFile.type || 'application/octet-stream',
+        filename: stockReplFile.name,
+        label: stockReplLabel.trim() || undefined,
+      };
+      setOtpModal({
+        open: true,
+        title: 'Create Stock Replenishment Order',
+        description: 'Enter the OTP sent to your email to confirm the stock replenishment order creation.',
+        pendingAction: 'stockReplenishment',
+      });
+    };
+    reader.readAsDataURL(stockReplFile);
+  }
+
+  async function handleStockReplVerified(actionToken: string) {
+    const pending = (window as any).__pendingStockRepl;
+    if (!pending) return;
+    setStockReplUploading(true);
+    setStockReplError('');
+    try {
+      const result = await createStockReplenishmentOrder(
+        pending.base64, pending.mime_type, pending.filename, actionToken, pending.label
+      );
+      setStockReplSuccess({ ref: result.order.quotation_number ?? 'N/A', itemCount: result.items_created, items: result.items });
+      setStockReplFile(null);
+      setStockReplLabel('');
+      if (stockReplFileRef.current) stockReplFileRef.current.value = '';
+      refresh();
+    } catch (err: any) {
+      setStockReplError(err.message ?? 'Failed to create stock replenishment order');
+    } finally {
+      setStockReplUploading(false);
+      (window as any).__pendingStockRepl = null;
+    }
+  }
+
   const totalActive = pendingOrders.length + partialOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
   const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
@@ -1347,16 +1515,25 @@ export default function ProductionPage() {
     <div className="space-y-6">
       {/* Header info */}
       <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-        <div className="flex items-start gap-3">
-          <Factory className="mt-0.5 h-5 w-5 text-indigo-600" />
-          <div>
-            <h3 className="text-sm font-semibold text-indigo-800">Production Workflow</h3>
-            <p className="mt-1 text-xs text-indigo-700">
-              Tracks all orders from partial production through full production confirmation and en-route shipping.
-              The <strong>Production Agent</strong> sends adaptive reminders — more frequent as deadlines approach.
-              {totalActive > 0 && <span className="ml-1 font-semibold">{totalActive} active order{totalActive !== 1 ? 's' : ''} in production pipeline.</span>}
-            </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Factory className="mt-0.5 h-5 w-5 text-indigo-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-indigo-800">Production Workflow</h3>
+              <p className="mt-1 text-xs text-indigo-700">
+                Tracks all orders from partial production through full production confirmation and en-route shipping.
+                The <strong>Production Agent</strong> sends adaptive reminders — more frequent as deadlines approach.
+                {totalActive > 0 && <span className="ml-1 font-semibold">{totalActive} active order{totalActive !== 1 ? 's' : ''} in production pipeline.</span>}
+              </p>
+            </div>
           </div>
+          <button
+            onClick={handleOpenStockRepl}
+            className="shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+          >
+            <Package className="h-3.5 w-3.5" />
+            Stock Replenishment
+          </button>
         </div>
       </div>
 
@@ -1434,7 +1611,6 @@ export default function ProductionPage() {
         isLoading={loadingFinished}
         error={errorFinished}
         onRetry={refresh}
-        onConfirmEnRoute={handleConfirmEnRoute}
         onViewFiles={handleViewFiles}
       />
 
@@ -1535,6 +1711,92 @@ export default function ProductionPage() {
           onClose={closeViewer}
           onUploadComplete={refreshFiles}
         />
+      )}
+
+      {/* Stock Replenishment Modal */}
+      {stockReplModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-indigo-600" />
+                <h2 className="text-base font-semibold text-gray-900">New Stock Replenishment Order</h2>
+              </div>
+              <button onClick={handleCloseStockRepl} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {stockReplSuccess ? (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-green-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <p className="text-sm font-semibold text-green-800">Order Created Successfully</p>
+                  </div>
+                  <p className="text-xs text-green-700">Ref: <strong>{stockReplSuccess.ref}</strong></p>
+                  <p className="mt-1 text-xs text-green-700">{stockReplSuccess.itemCount} item(s) added to Production Pending</p>
+                  {stockReplSuccess.items.length > 0 && (
+                    <ul className="mt-2 space-y-0.5">
+                      {stockReplSuccess.items.map((item, i) => (
+                        <li key={i} className="text-xs text-green-700">• {item.name} ×{item.quantity}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button
+                  onClick={handleCloseStockRepl}
+                  className="w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xs text-gray-500">
+                  Upload a CSV, PDF, or image containing items to restock. Items will be AI-extracted and added directly to Production Pending — no deposit or purchasing flow required.
+                </p>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Label <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={stockReplLabel}
+                    onChange={(e) => setStockReplLabel(e.target.value)}
+                    placeholder="e.g. Sofa restock May 2026"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">File <span className="font-normal text-gray-400">(CSV, PDF, or image)</span></label>
+                  <input
+                    ref={stockReplFileRef}
+                    type="file"
+                    accept=".csv,.pdf,image/*"
+                    onChange={(e) => setStockReplFile(e.target.files?.[0] ?? null)}
+                    className="block w-full text-sm text-gray-500 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white hover:file:bg-indigo-700"
+                  />
+                </div>
+
+                {stockReplError && (
+                  <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{stockReplError}</div>
+                )}
+
+                <button
+                  onClick={handleCreateStockReplenishment}
+                  disabled={!stockReplFile || stockReplUploading}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {stockReplUploading
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                    : <><Package className="h-4 w-4" /> Extract &amp; Create Order</>
+                  }
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

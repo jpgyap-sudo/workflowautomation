@@ -53,6 +53,7 @@ export interface Order {
   production_exception_granted_by: string | null;
   inventory_verified_at: string | null;
   inventory_verification_pct: number | null;
+  order_type: string | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -1038,6 +1039,19 @@ export async function bulkUploadInventory(file_data: string, mime_type: string, 
   });
 }
 
+export async function createStockReplenishmentOrder(
+  file_data: string,
+  mime_type: string,
+  original_filename: string,
+  action_token: string,
+  label?: string,
+): Promise<{ ok: boolean; order: Order; items_created: number; items: Array<{ name: string; quantity: number }> }> {
+  return fetchJson('/orders/stock-replenishment', {
+    method: 'POST',
+    body: JSON.stringify({ file_data, mime_type, original_filename, action_token, label }),
+  });
+}
+
 export async function getInventoryDrafts(): Promise<InventoryDraft[]> {
   return fetchJson<InventoryDraft[]>('/inventory/drafts');
 }
@@ -1198,6 +1212,17 @@ export async function postAgentNote(orderId: string, data: {
   return fetchJson(`/orders/${encodeURIComponent(orderId)}/notes`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+export async function getOrderNotes(orderId: string): Promise<{ id: string; order_id: string; agent_name: string; note: string; created_at: string }[]> {
+  return fetchJson(`/orders/${encodeURIComponent(orderId)}/notes`);
+}
+
+export async function postProductionNote(orderId: string, note: string, createdBy?: string): Promise<{ id: string; order_id: string; agent_name: string; note: string; created_at: string }> {
+  return fetchJson(`/orders/${encodeURIComponent(orderId)}/production-notes`, {
+    method: 'POST',
+    body: JSON.stringify({ note, created_by: createdBy ?? 'production-user' }),
   });
 }
 

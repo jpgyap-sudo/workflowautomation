@@ -61,6 +61,7 @@ const ORDER_LIST_SELECT = `
   o.production_exception, o.production_exception_notes,
   o.production_exception_granted_at, o.production_exception_granted_by,
   o.inventory_verified_at, o.inventory_verification_pct,
+  o.order_type,
   o.created_at, o.updated_at
 `;
 
@@ -637,6 +638,139 @@ app.post('/orders', async (request, reply) => {
   );
 
   return reply.send(newOrder);
+});
+
+// ── Stock Replenishment Orders ───────────────────────────────────────
+// Creates an order that skips purchasing/deposit and goes directly to production.
+// Uses the same AI extraction as inventory bulk upload.
+app.post('/orders/stock-replenishment', async (request, reply) => {
+  const body = z.object({
+    file_data: z.string(), // base64
+    mime_type: z.string(),
+    original_filename: z.string(),
+    label: z.string().optional(),
+    action_token: z.string(),
+  }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  let userEmail: string | null = null;
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
+
+  // Extract items from file
+  const mimeType = body.mime_type.toLowerCase();
+  const items: Array<{ name: string; quantity: number }> = [];
+
+  if (mimeType === 'text/csv' || mimeType === 'application/vnd.ms-excel' || body.original_filename.toLowerCase().endsWith('.csv')) {
+    const text = Buffer.from(body.file_data, 'base64').toString('utf-8');
+    const { headers, rows } = parseCSV(text);
+    if (headers.length === 0 || rows.length === 0) {
+      return reply.status(400).send({ error: 'CSV file is empty or invalid' });
+    }
+    const colMap = mapCSVHeaders(headers);
+    for (const row of rows) {
+      const productName = colMap.product_name >= 0 ? row[colMap.product_name] : '';
+      if (!productName) continue;
+      const quantityRaw = colMap.quantity >= 0 ? row[colMap.quantity] : undefined;
+      const qty = quantityRaw ? parseInt(quantityRaw.replace(/[^0-9]/g, ''), 10) : 1;
+      items.push({ name: productName, quantity: isNaN(qty) ? 1 : qty });
+    }
+  } else if (mimeType.startsWith('image/') || mimeType === 'application/pdf') {
+    try {
+      const result = await extractInventory(body.file_data, mimeType);
+      if (result.type === 'inventory' && result.inventory && result.inventory.length > 0) {
+        for (const item of result.inventory) {
+          const name = item.product_name ?? item.description ?? '';
+          if (!name) continue;
+          items.push({ name, quantity: item.quantity ?? 1 });
+        }
+      } else {
+        return reply.status(422).send({ error: 'Could not extract items from file', raw: (result as any).raw_text });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({ error: message });
+    }
+  } else {
+    return reply.status(400).send({ error: 'Unsupported file type. Please upload CSV, PDF, or image.' });
+  }
+
+  if (items.length === 0) {
+    return reply.status(422).send({ error: 'No items could be extracted from the file.' });
+  }
+
+  // Generate REPL reference number: REPL-YYYYMMDD-XXXX
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const randSuffix = Math.random().toString(36).toUpperCase().slice(2, 6);
+  const replRef = body.label
+    ? `REPL-${dateStr}-${randSuffix} — ${body.label.trim()}`
+    : `REPL-${dateStr}-${randSuffix}`;
+
+  // Create order directly at production_pending — no deposit, no purchasing needed
+  const orderRows = await query(
+    `INSERT INTO orders (quotation_number, order_type, current_stage, status, production_started, order_confirmed_at)
+     VALUES ($1, 'stock_replenishment', 'production_pending', 'active', FALSE, NOW())
+     RETURNING *`,
+    [replRef]
+  );
+  const newOrder = orderRows[0];
+
+  // Insert extracted items
+  for (const item of items) {
+    await query(
+      `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status)
+       VALUES ($1, $2, $3, 'pending', 'not_yet')`,
+      [newOrder.id, item.name, item.quantity]
+    );
+  }
+
+  // Log creation
+  await query(
+    `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+     VALUES ($1, $2, 'agent', $3)`,
+    [newOrder.id,
+      `📦 Stock replenishment order created with ${items.length} item(s): ${items.map((i) => `${i.name} ×${i.quantity}`).join(', ')}`,
+      userEmail ?? 'Dashboard']
+  );
+
+  // Trigger only production agent (no collection/deposit flow for replenishment)
+  setImmediate(() => {
+    runAgentByName('production-agent').catch(() => {});
+  });
+
+  await notifyManualChange(
+    '📦 Stock replenishment order created',
+    `Reference: *${replRef}*\nItems: ${items.length}\nFile: ${body.original_filename}`,
+    userEmail,
+  );
+
+  if (PRODUCTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `📦 <b>Stock Replenishment Order Created</b>\n\nRef: <b>${replRef}</b>\n` +
+        `Items: ${items.length}\n` +
+        items.map((i) => `• ${i.name} ×${i.quantity}`).join('\n')
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*']);
+  broadcastSSE('order_updated', { id: newOrder.id });
+
+  return reply.send({ ok: true, order: newOrder, items_created: items.length, items });
 });
 
 app.get('/orders', async () => {
@@ -2484,24 +2618,30 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   const tokenPayload = JSON.parse(tokenData);
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
-  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, order_type FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
   if (orderRows[0].current_stage !== 'inventory_arrived') {
     return reply.code(400).send({ error: 'Order is not in inventory arrival stage' });
   }
 
-  // Advance to balance_due — set completion pct and verified_at timestamp
+  // Stock replenishment orders complete at inventory_arrived — no balance/delivery needed
+  const isReplenishment = orderRows[0].order_type === 'stock_replenishment';
+  const nextStage = isReplenishment ? 'completed' : 'balance_due';
+  const stageRemark = isReplenishment
+    ? 'Inventory arrived and confirmed. Stock replenishment complete.'
+    : 'Inventory arrival confirmed. Proceeding to balance due.';
+
   await query(
-    `UPDATE orders SET current_stage = 'balance_due', inventory_verified_at = NOW(),
+    `UPDATE orders SET current_stage = $1, inventory_verified_at = NOW(),
      inventory_verification_pct = 100, updated_at = NOW()
-     WHERE id = $1`,
-    [id]
+     WHERE id = $2`,
+    [nextStage, id]
   );
 
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'balance_due', 'auto_advanced', 'Inventory arrival confirmed. Proceeding to balance due.', 'inventory-agent')`,
-    [id]
+     VALUES ($1, $2, 'auto_advanced', $3, 'inventory-agent')`,
+    [id, nextStage, stageRemark]
   );
 
   // Complete reminders for inventory_arrived
@@ -2512,12 +2652,12 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   );
 
   // Fire agents for the new stage
-  triggerAgentsForStage('balance_due', orderRows[0].quotation_number, orderRows[0].client_name);
+  triggerAgentsForStage(nextStage, orderRows[0].quotation_number, orderRows[0].client_name);
 
   // Notify escalation group
   await notifyManualChange(
     'Inventory arrival confirmed',
-    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Balance Due`,
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: ${isReplenishment ? 'Completed (stock replenishment)' : 'Balance Due'}`,
     userEmail,
   );
 
@@ -2525,14 +2665,13 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
   if (INVENTORY_GROUP_CHAT_ID) {
     const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
-    const client = orderRows[0].client_name ?? 'Unknown';
+    const client = orderRows[0].client_name ?? (isReplenishment ? 'Stock Replenishment' : 'Unknown');
     setImmediate(() => {
       notifyGroupChat(
         INVENTORY_GROUP_CHAT_ID,
-        `✅ <b>Inventory Arrival Confirmed (Dashboard)</b>\n\n` +
-        `Quotation: <b>${ref}</b>\n` +
-        `Client: ${client}\n\n` +
-        `All inventory has been confirmed as arrived via dashboard. Order is now in Balance Due stage.`
+        isReplenishment
+          ? `✅ <b>Stock Replenishment Complete</b>\n\nRef: <b>${ref}</b>\n\nAll inventory has arrived and been confirmed. Order is now Completed.`
+          : `✅ <b>Inventory Arrival Confirmed (Dashboard)</b>\n\nQuotation: <b>${ref}</b>\nClient: ${client}\n\nAll inventory has been confirmed as arrived via dashboard. Order is now in Balance Due stage.`
       );
     });
   }
@@ -2540,7 +2679,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
 
-  return reply.send({ ok: true, message: 'Inventory arrival confirmed. Advanced to balance_due.' });
+  return reply.send({ ok: true, message: isReplenishment ? 'Inventory arrived. Stock replenishment marked as completed.' : 'Inventory arrival confirmed. Advanced to balance_due.' });
 });
 
 // ── Order Items (Item-Level Production Tracking) ─────────────────────
@@ -5222,6 +5361,22 @@ app.post('/orders/:order_id/notes', async (request, reply) => {
   const rows = await query(
     `INSERT INTO agent_notes (order_id, agent_name, note) VALUES ($1, $2, $3) RETURNING *`,
     [params.order_id, body.agent_name, body.note]
+  );
+  return rows[0];
+});
+
+// ── Production Notes (no OTP required) ──────────────────────────────
+
+app.post('/orders/:order_id/production-notes', async (request, reply) => {
+  const params = z.object({ order_id: z.string() }).parse(request.params);
+  const body = z.object({
+    note: z.string().min(1),
+    created_by: z.string().optional().default('production-user'),
+  }).parse(request.body);
+
+  const rows = await query(
+    `INSERT INTO agent_notes (order_id, agent_name, note) VALUES ($1, $2, $3) RETURNING id, order_id, agent_name, note, created_at`,
+    [params.order_id, body.created_by, body.note]
   );
   return rows[0];
 });

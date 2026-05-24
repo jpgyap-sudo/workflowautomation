@@ -26,6 +26,7 @@ When you **finish**:
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
 | 2026-05-24 20:10 | Roo (Code) | Deploy: Codex features — inventory accountability, item production dates, early inventory verification, production finished tracking | ✅ Done |
+| 2026-05-24 20:32 | Roo (Code) | Feat: replace Production Finished Actions column with notes input — users can add/view notes per order | 🔴 Active |
 | 2026-05-24 19:58 | Codex | Update: item-level inventory verification with arrival dates and inventory/delivery accountability | ✅ Done |
 | 2026-05-24 19:30 | Codex | Update: add manual Proceed to Inventory Verification action for early arrivals | Done |
 | 2026-05-24 19:10 | Codex | Update: add per-item production finished date to Production Finished expandable item list | Done |
