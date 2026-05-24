@@ -503,6 +503,8 @@ export interface OrderItem {
   production_status: 'pending' | 'in_progress' | 'finished';
   en_route_status: 'not_yet' | 'en_route' | 'arrived';
   estimated_arrival_days: number | null;
+  estimated_production_days?: number | null;
+  production_finished_at: string | null;
   verified_qty: number;
   created_at: string;
   updated_at: string;

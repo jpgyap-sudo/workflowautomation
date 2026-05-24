@@ -51,6 +51,14 @@ function getEstimatedItemInventoryArrivalDate(order: Order, item: OrderItem): Da
     ?? getEstimatedInventoryArrivalDate(order);
 }
 
+function getItemProductionFinishedDate(item: OrderItem): Date | null {
+  if (item.production_status !== 'finished') return null;
+  const rawDate = item.production_finished_at ?? item.updated_at;
+  if (!rawDate) return null;
+  const date = new Date(rawDate);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function formatStatusLabel(value: string | null | undefined): string {
   if (!value) return '\u2014';
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -922,6 +930,7 @@ function ProductionFinishedTrackingSection({
                                     <th className="px-3 py-2">Item</th>
                                     <th className="px-3 py-2">Qty</th>
                                     <th className="px-3 py-2">Production</th>
+                                    <th className="px-3 py-2">Production Finished Date</th>
                                     <th className="px-3 py-2">En Route</th>
                                     <th className="px-3 py-2">Item Arrival Days</th>
                                     <th className="px-3 py-2">Estimated Inventory Arrival Date</th>
@@ -930,6 +939,7 @@ function ProductionFinishedTrackingSection({
                                 <tbody className="divide-y divide-gray-100">
                                   {orderItems.map((item) => {
                                     const itemArrival = getEstimatedItemInventoryArrivalDate(order, item);
+                                    const itemProductionFinishedDate = getItemProductionFinishedDate(item);
                                     return (
                                       <tr key={item.id}>
                                         <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
@@ -938,6 +948,9 @@ function ProductionFinishedTrackingSection({
                                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.production_status === 'finished' ? 'bg-green-100 text-green-700' : item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                                             {formatStatusLabel(item.production_status)}
                                           </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-700">
+                                          {itemProductionFinishedDate ? formatDate(itemProductionFinishedDate) : <span className="text-gray-400">Not finished</span>}
                                         </td>
                                         <td className="px-3 py-2">
                                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}>

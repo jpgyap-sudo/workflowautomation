@@ -1750,7 +1750,11 @@ app.post('/production/board/item', async (request, reply) => {
     );
   } else {
     await query(
-      `UPDATE order_items SET production_status = $1, updated_at = NOW() WHERE id = $2`,
+      `UPDATE order_items
+       SET production_status = $1,
+           production_finished_at = CASE WHEN $1 = 'finished' THEN COALESCE(production_finished_at, NOW()) ELSE NULL END,
+           updated_at = NOW()
+       WHERE id = $2`,
       [body.status, itemRow[0].id],
     );
   }
@@ -2479,7 +2483,8 @@ app.get('/orders/:id/items', async (request, reply) => {
   const rows = await query(
     `SELECT oi.id, oi.order_id, oi.name, oi.quantity,
             oi.production_status, oi.en_route_status,
-            oi.estimated_arrival_days, oi.created_at, oi.updated_at
+            oi.estimated_arrival_days, oi.estimated_production_days,
+            oi.production_finished_at, oi.created_at, oi.updated_at
      FROM order_items oi
      WHERE oi.order_id = $1
      ORDER BY oi.created_at ASC`,
@@ -2632,8 +2637,8 @@ app.post('/orders/:id/items', async (request, reply) => {
 
   for (const item of body.items) {
     await query(
-      `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status, estimated_arrival_days)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status, estimated_arrival_days, production_finished_at)
+       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'finished' THEN NOW() ELSE NULL END)`,
       [id, item.name, item.quantity,
        item.production_status ?? 'pending',
        item.en_route_status ?? 'not_yet',
@@ -2651,7 +2656,7 @@ app.post('/orders/:id/items', async (request, reply) => {
   // Fetch and return the new items
   const items = await query(
     `SELECT id, order_id, name, quantity, production_status, en_route_status,
-            estimated_arrival_days, created_at, updated_at
+            estimated_arrival_days, estimated_production_days, production_finished_at, created_at, updated_at
      FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
     [id]
   );
@@ -2698,6 +2703,11 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
   if (body.production_status !== undefined) {
     setClauses.push(`production_status = $${idx++}`);
     values.push(body.production_status);
+    if (body.production_status === 'finished') {
+      setClauses.push(`production_finished_at = COALESCE(production_finished_at, NOW())`);
+    } else {
+      setClauses.push(`production_finished_at = NULL`);
+    }
   }
   if (body.en_route_status !== undefined) {
     setClauses.push(`en_route_status = $${idx++}`);
@@ -2724,7 +2734,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     `UPDATE order_items SET ${setClauses.join(', ')}
      WHERE id = $${idx++} AND order_id = $${idx}
      RETURNING id, order_id, name, quantity, production_status, en_route_status,
-               estimated_arrival_days, estimated_production_days, created_at, updated_at`,
+               estimated_arrival_days, estimated_production_days, production_finished_at, created_at, updated_at`,
     values
   );
 
@@ -3069,7 +3079,7 @@ app.post('/orders/:id/extract-items', async (request, reply) => {
   // Fetch the saved items
   const items = await query(
     `SELECT id, order_id, name, quantity, production_status, en_route_status,
-            estimated_arrival_days, created_at, updated_at
+            estimated_arrival_days, estimated_production_days, production_finished_at, created_at, updated_at
      FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
     [id]
   );

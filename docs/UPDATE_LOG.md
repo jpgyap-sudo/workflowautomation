@@ -25,6 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
+| 2026-05-24 19:10 | Codex | Update: add per-item production finished date to Production Finished expandable item list | Done |
 | 2026-05-24 19:04 | Codex | Update: Production Finished orders are expandable and show per-item estimated inventory arrival dates | Done |
 | 2026-05-24 18:44 | Codex | Update: Production Finished section tracks any order with at least one finished item until inventory arrival verification, with estimated inventory arrival date | Done |
 | 2026-05-24 18:00 | Codex | Update: make item production Telegram reminders context-aware with Started vs Finished/On Time/Delayed flow | Done |
