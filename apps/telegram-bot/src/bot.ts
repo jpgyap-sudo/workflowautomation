@@ -1492,7 +1492,7 @@ bot.on(message('text'), async (ctx) => {
     const isProductionChat = PRODUCTION_CHAT_ID && chatId === PRODUCTION_CHAT_ID;
 
     if (isProductionChat) {
-      // Only engage when the message is clearly production-related.
+      // Try AI production assistant first for keyword messages
       const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
       const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
       const hasQtn = /qtn[-\s]?\w+/i.test(text);
@@ -1558,7 +1558,16 @@ bot.on(message('text'), async (ctx) => {
           // Swallow — don't spam the group on AI failures
         }
       }
-      // Non-keyword message or AI failure → stay silent in the group
+
+      // Always show the production dashboard after any message in the production chat
+      try {
+        const orders = await fetchBoard();
+        const { text: boardText, keyboard } = boardDashboard(orders);
+        await ctx.reply(boardText, { parse_mode: 'Markdown', ...keyboard });
+      } catch (err) {
+        console.error('[bot] Failed to fetch production board:', err);
+        // Silent fallback
+      }
       return;
     }
 
