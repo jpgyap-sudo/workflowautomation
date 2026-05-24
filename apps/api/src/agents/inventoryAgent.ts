@@ -123,7 +123,8 @@ export async function runInventoryAgent(): Promise<AgentResult[]> {
         const groupChatId = getGroupChatId(AGENT_NAME);
         if (groupChatId) {
           await createReminder(order.id, 'inventory_verification', groupChatId, itemResult.message);
-          await notifyInventory(groupChatId, order, itemResult);
+          // NOTE: checkInventoryVerification already sends the inline-keyboard message.
+          // notifyInventory is skipped here to avoid duplicate spam.
         }
       }
       results.push(itemResult);

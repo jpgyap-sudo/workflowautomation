@@ -571,6 +571,8 @@ const SAFE_PREFIXES = [
   'item_prod:',
   // Item-level en-route status updates — simple status toggles, not destructive
   'item_en_route:',
+  // Inventory verification status updates — simple qty confirmations, not destructive
+  'inv_verify:',
   // Dispatch ready — navigation to en-route for finished items
   'dispatch_ready:',
 ];
@@ -5302,7 +5304,7 @@ bot.action(/^inventory:waiting:(.+):(.+)$/, async (ctx) => {
 bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const action = ctx.match[1];
-  const itemId = ctx.match[2];
+  const itemIdPrefix = ctx.match[2];
   const orderIdPrefix = ctx.match[3];
   const quotationNumber = ctx.match[4];
   const userId = String(ctx.from?.id ?? '');
@@ -5311,7 +5313,7 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):([^:]+):(.+)$/, async (ctx
   botLog({
     chatId, userId, username,
     messageType: 'callback_query',
-    content: `inv_verify:${action}:${itemId}:${orderIdPrefix}:${quotationNumber}`,
+    content: `inv_verify:${action}:${itemIdPrefix}:${orderIdPrefix}:${quotationNumber}`,
     direction: 'incoming',
   });
 
@@ -5326,6 +5328,17 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):([^:]+):(.+)$/, async (ctx
       return;
     }
 
+    // Resolve short item ID prefix to full UUID
+    const resolveItemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const resolveItemsData = await resolveItemsRes.json();
+    const resolveItems = resolveItemsData?.items ?? [];
+    const targetItem = resolveItems.find((item: any) => item.id?.startsWith(itemIdPrefix));
+    if (!targetItem) {
+      await ctx.editMessageText('❌ Item not found. It may have been removed or already verified.', { parse_mode: 'Markdown', ...cancelButton() });
+      return;
+    }
+    const itemId = targetItem.id;
+
     if (action === 'partial') {
       // For partial, we need to ask the user to enter the quantity
       const session = getSession(chatId);
@@ -5334,7 +5347,7 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):([^:]+):(.+)$/, async (ctx
         data: { itemId, orderId, quotationNumber },
       };
       await ctx.editMessageText(
-        `📦 *Enter Verified Quantity*\n\nPlease enter the number of units you can confirm for this item:`,
+        `📦 *Enter Verified Quantity*\n\nItem: *${targetItem.name}*\nOrdered: ${targetItem.quantity}\nAlready verified: ${targetItem.verified_qty ?? 0}\n\nHow many units can you confirm?`,
         { parse_mode: 'Markdown', ...cancelButton() }
       );
       return;

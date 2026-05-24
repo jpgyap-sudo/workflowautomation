@@ -2454,7 +2454,7 @@ const inventoryVerifyItemSchema = z.object({
   item_id: z.string(),
   action: z.enum(['all', 'partial', 'not_yet']),
   verified_qty: z.number().int().min(0).optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
 });
 
 app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
