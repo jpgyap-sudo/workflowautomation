@@ -2546,16 +2546,25 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   if (INVENTORY_GROUP_CHAT_ID) {
     const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = orderRows[0].client_name ?? 'Unknown';
+    const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
     const actionLabel = body.action === 'all' ? 'All verified' : body.action === 'partial' ? `Partial (${newVerifiedQty}/${item.quantity})` : 'Not yet';
     setImmediate(() => {
       notifyGroupChat(
         INVENTORY_GROUP_CHAT_ID,
-        `<b>Inventory Verification Complete (Dashboard)</b>\n\n` +
-        `Order: <b>#${ref}</b>\n` +
-        `Client: ${client}\n` +
-        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>\n\n` +
-        `<b>Verified Items</b>\n${verifiedItemList}\n\n` +
-        `Order is now in Inventory Arrived stage.`
+        `<b>Inventory Verification Updated</b>
+
+` +
+        `Order: <b>#${ref}</b>
+` +
+        `Client: ${client}
+` +
+        `Item: ${item.name}
+` +
+        `Status: ${actionLabel}
+` +
+        `Verified Qty: ${newVerifiedQty}/${item.quantity}
+` +
+        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>`
       );
     });
   }
