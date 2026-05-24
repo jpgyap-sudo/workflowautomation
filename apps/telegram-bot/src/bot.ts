@@ -7470,6 +7470,220 @@ bot.on(['document', 'photo'], async (ctx) => {
     console.log(`[photo-handler] DOWNLOADED chat=${chatId} file=${fileName} size=${fileBuffer.length} session=${session.step.action}`);
 
     console.log(`[photo-handler] CHECK-FLOWS chat=${chatId} session=${session.step.action}`);
+
+    // ── Auto-detect deposit slip in collection group ─────────────────────
+    // If the photo is sent to the collection group chat and the session is
+    // idle (no active flow), automatically treat it as a deposit slip and
+    // run the AI extraction directly — no button clicks required.
+    const collectionGroupChatId = process.env.COLLECTION_GROUP_CHAT_ID || process.env.COLLECTION_GROUP_ID;
+    if (
+      collectionGroupChatId &&
+      chatId === collectionGroupChatId &&
+      (session.step.action === 'idle' || !session.step.action)
+    ) {
+      console.log(`[photo-handler] AUTO-DETECT deposit slip in collection group chat=${chatId}`);
+
+      const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
+      if (isProcessable) {
+        await ctx.reply(`🔍 Scanning deposit slip with AI Vision...`);
+
+        try {
+          // Call vision API to extract payment info
+          const visionResult: any = await postJson('/vision/extract', {
+            image_base64: imageBase64,
+            mime_type: mimeType,
+            mode: 'payment',
+          });
+
+          const depositAmount = visionResult?.payment?.amount;
+          const paymentDate = visionResult?.payment?.payment_date;
+
+          if (depositAmount && depositAmount > 0) {
+            // Try to match this deposit to an order
+            try {
+              const matchRes = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: depositAmount, deposit_paid_at: paymentDate ?? null }),
+              });
+              const matchData = await matchRes.json();
+
+              if (matchData.ok && matchData.matched && matchData.candidates && matchData.candidates.length > 0) {
+                const best = matchData.candidates[0];
+
+                // Store candidates in session for confirmation
+                setStep(chatId, {
+                  action: 'awaiting_deposit_confirmation',
+                  imageBase64,
+                  mimeType,
+                  fileName,
+                  depositAmount,
+                  candidates: matchData.candidates,
+                  paymentDate,
+                });
+
+                // Build keyboard with top candidate(s)
+                const buttons: any[][] = [];
+                for (const c of matchData.candidates) {
+                  const expectedPct = Math.round((1 - c.discrepancy / 100) * 100);
+                  buttons.push([
+                    Markup.button.callback(
+                      `✅ Yes — ${c.client_name} (${c.quotation_number}) ${expectedPct}% match`,
+                      `deposit:confirm_yes:${c.quotation_number}`
+                    ),
+                  ]);
+                }
+                buttons.push([Markup.button.callback('❌ No — different client', 'deposit:confirm_no')]);
+
+                await ctx.reply(
+                  `💳 *Deposit Detected!*\n\n` +
+                  `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+                  (paymentDate ? `📅 Date: ${paymentDate}\n` : '') +
+                  `\n🔍 *Deposit Matching*\n\n` +
+                  `I found an order that matches this deposit amount.\n\n` +
+                  `*Best Match:*\n` +
+                  `👤 Client: ${best.client_name}\n` +
+                  `📋 Order: ${best.quotation_number}\n` +
+                  `💰 Total: ₱${best.total_amount.toLocaleString()}\n` +
+                  `💵 Expected Deposit (50%): ₱${best.expected_deposit.toLocaleString()}\n` +
+                  `📊 Match: ${Math.round((1 - best.discrepancy / 100) * 100)}%\n\n` +
+                  `Is this the deposit for *${best.client_name}*?`,
+                  {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard(buttons),
+                  }
+                );
+                return;
+              }
+            } catch (matchErr: any) {
+              console.error('[photo-handler] Deposit match error:', matchErr);
+            }
+
+            // No deposit match — try balance matching
+            try {
+              const balanceRes = await fetch(`${apiBaseUrl}/deposits/match-balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: depositAmount }),
+              });
+              const balanceData = await balanceRes.json();
+
+              if (balanceData.ok && balanceData.matched && balanceData.candidates && balanceData.candidates.length > 0) {
+                const best = balanceData.candidates[0];
+
+                setStep(chatId, {
+                  action: 'awaiting_deposit_confirmation',
+                  imageBase64,
+                  mimeType,
+                  fileName,
+                  depositAmount,
+                  candidates: balanceData.candidates.map((c: any) => ({
+                    quotation_number: c.quotation_number,
+                    client_name: c.client_name,
+                    total_amount: c.total_amount,
+                    expected_deposit: c.expected_balance,
+                    discrepancy: c.discrepancy,
+                  })),
+                  paymentDate,
+                });
+
+                const buttons: any[][] = [];
+                for (const c of balanceData.candidates) {
+                  const expectedPct = Math.round((1 - c.discrepancy / 100) * 100);
+                  buttons.push([
+                    Markup.button.callback(
+                      `✅ Yes — ${c.client_name} (${c.quotation_number}) ${expectedPct}% match`,
+                      `balance:confirm_yes:${c.quotation_number}`
+                    ),
+                  ]);
+                }
+                buttons.push([Markup.button.callback('❌ No — different client', 'deposit:confirm_no')]);
+
+                await ctx.reply(
+                  `💳 *Deposit Detected!*\n\n` +
+                  `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+                  (paymentDate ? `📅 Date: ${paymentDate}\n` : '') +
+                  `\n🔍 *Balance Payment Matching*\n\n` +
+                  `This amount matches a *balance payment* for an order where deposit was already paid.\n\n` +
+                  `*Best Match:*\n` +
+                  `👤 Client: ${best.client_name}\n` +
+                  `📋 Order: ${best.quotation_number}\n` +
+                  `💰 Total: ₱${best.total_amount.toLocaleString()}\n` +
+                  `💵 Deposit Paid: ₱${best.deposit_amount.toLocaleString()}\n` +
+                  `⚖️ Expected Balance: ₱${best.expected_balance.toLocaleString()}\n` +
+                  `📊 Match: ${Math.round((1 - best.discrepancy / 100) * 100)}%\n\n` +
+                  `Is this the balance payment for *${best.client_name}*?`,
+                  {
+                    parse_mode: 'Markdown',
+                    ...Markup.inlineKeyboard(buttons),
+                  }
+                );
+                return;
+              }
+            } catch (balanceErr: any) {
+              console.error('[photo-handler] Balance match error:', balanceErr);
+            }
+
+            // No match found — ask user to enter client name
+            setStep(chatId, {
+              action: 'awaiting_deposit_client_name',
+              imageBase64,
+              mimeType,
+              fileName,
+              depositAmount,
+              paymentDate,
+            });
+
+            await ctx.reply(
+              `💳 *Deposit Detected!*\n\n` +
+              `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
+              (paymentDate ? `📅 Date: ${paymentDate}\n` : '') +
+              `\n🔍 *Payment Matching*\n\n` +
+              `This amount (₱${depositAmount.toLocaleString()}) does not closely match any order.\n\n` +
+              `Please type the *client name* this deposit is for, or type *cancel* to skip.`,
+              { parse_mode: 'Markdown', ...cancelButton() }
+            );
+          } else {
+            // Vision couldn't extract amount — ask user to enter manually
+            setStep(chatId, {
+              action: 'awaiting_deposit_client_name',
+              imageBase64,
+              mimeType,
+              fileName,
+              depositAmount: 0,
+            });
+            await ctx.reply(
+              `⚠️ Could not automatically detect the deposit amount from the image.\n\n` +
+              `💰 Please enter the deposit amount in PHP manually:\n\nExample: \`15000\``,
+              { parse_mode: 'Markdown', ...cancelButton() }
+            );
+          }
+        } catch (err: any) {
+          console.error('[photo-handler] Vision extraction error:', err);
+          // Vision API failed — fall back to manual entry
+          setStep(chatId, {
+            action: 'awaiting_deposit_client_name',
+            imageBase64,
+            mimeType,
+            fileName,
+            depositAmount: 0,
+          });
+          await ctx.reply(
+            `⚠️ Could not process the image: ${err.message}\n\n` +
+            `💰 Please enter the deposit amount in PHP manually:\n\nExample: \`15000\``,
+            { parse_mode: 'Markdown', ...cancelButton() }
+          );
+        }
+      } else {
+        // Non-image file sent to collection group
+        await ctx.reply(
+          `❌ Please send a **photo** of the deposit slip (JPEG/PNG).`,
+          { parse_mode: 'Markdown', ...cancelButton() }
+        );
+      }
+      return;
+    }
+
     // Check if user is in balance proof photo flow
     if (session.step.action === 'awaiting_balance_proof_photo') {
       const { orderId, quotationNumber } = session.step;
