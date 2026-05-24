@@ -5619,10 +5619,17 @@ bot.action('vision:type_quotation', async (ctx) => {
   const session = getSession(chatId);
 
   if (session.step.action !== 'awaiting_vision_document_type') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the file again to restart the AI extraction process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
@@ -5655,10 +5662,17 @@ bot.action('vision:type_deposit', async (ctx) => {
   const session = getSession(chatId);
 
   if (session.step.action !== 'awaiting_vision_document_type') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the file again to restart the AI extraction process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
@@ -5692,10 +5706,17 @@ bot.action('vision:process_yes', async (ctx) => {
   const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_vision_process') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the file again to restart the AI extraction process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
