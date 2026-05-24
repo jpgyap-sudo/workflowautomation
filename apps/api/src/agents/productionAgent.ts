@@ -643,35 +643,57 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
       (item) => item.en_route_status === 'not_yet',
     );
 
+    // Find the first item that has not yet arrived
+    const notArrivedItem = items.find(
+      (item) => item.en_route_status !== 'arrived',
+    );
+
     const enRouteCount = items.filter(
       (i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived',
     ).length;
     const totalCount = items.length;
 
-    // If all items are en_route or arrived — advance the order
-    if (!notEnRouteItem) {
+    // If all items are en_route or arrived (no not_yet), stop the process-of-elimination
+    // reminders and let checkEnRouteItemProgress handle arrival checks.
+    // Only advance to inventory_verification when ALL items have actually arrived.
+    if (!notEnRouteItem && !notArrivedItem) {
       const qn = order.quotation_number ?? 'unknown';
       const client = order.client_name ?? 'Unknown';
 
       // Log the completion
-      await addProductionLog(null, order.id, `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_arrived.`, 'agent', AGENT_NAME);
-      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) en route. Auto-advancing to inventory_arrived.`);
+      await addProductionLog(null, order.id, `✅ All items arrived (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) arrived. Auto-advancing to inventory_verification.`);
 
-      // Advance to inventory_arrived (attribute to last human who updated en-route status)
+      // Advance to inventory_verification (attribute to last human who updated en-route status)
       const lastHuman = await findLastHumanTrigger(order.id);
-      await advanceStage(order.id, 'inventory_arrived', qn, `All items en route (${enRoutePct}% of qty)`, lastHuman);
+      await advanceStage(order.id, 'inventory_verification', qn, `All items arrived (${enRoutePct}% of qty)`, lastHuman);
 
       // Send notification to production group
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `🚚 <b>All Items En Route</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) en route (${enRoutePct}% of qty).\nOrder auto-advanced to 📦 Inventory Arrived.`;
+        const msg = `🚚 <b>All Items Arrived</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) arrived (${enRoutePct}% of qty).\nOrder auto-advanced to 🔍 Inventory Verification.`;
         await sendTelegramMessage(groupChatId, msg);
       }
 
       const result: AgentResult = {
         status: 'complete',
-        message: `✅ All items en route for #${qn}. Auto-advanced to inventory_arrived.`,
-        next_stage: 'inventory_arrived',
+        message: `✅ All items arrived for #${qn}. Auto-advanced to inventory_verification.`,
+        next_stage: 'inventory_verification',
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
+      return result;
+    }
+
+    // If no not_yet items remain but some are still en_route, stop here.
+    // checkEnRouteItemProgress will handle arrival checks for en_route items.
+    if (!notEnRouteItem && notArrivedItem) {
+      const qn = order.quotation_number ?? 'unknown';
+      const result: AgentResult = {
+        status: 'complete',
+        message: `⏳ All items en route for #${qn}. Waiting for ${notArrivedItem.name} to arrive before advancing.`,
+        next_stage: null,
         reminder_needed: false,
         escalation_level: escalationLevel,
       };
@@ -680,6 +702,10 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     }
 
     // ── Process of elimination: ask about the next not-en-route item ──
+    // By this point notEnRouteItem is guaranteed to exist (the undefined
+    // cases are handled by the two early-return branches above).
+    if (!notEnRouteItem) return null;
+
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(enRoutePct);

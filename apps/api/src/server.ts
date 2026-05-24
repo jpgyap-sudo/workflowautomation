@@ -162,9 +162,9 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   // New Order → Quotation Checker + Collection Agent (for deposit notification)
   order_confirmation_received: ['quotation-checker', 'collection-agent'],
   // Math Verified → Purchasing + Collection Agent
-  math_verified:         ['purchasing-agent', 'collection-agent'],
+  math_verified:         ['collection-agent'],
   // Purchasing → Production + Collection Agent
-  purchasing_pending:    ['purchasing-agent', 'collection-agent'],
+  purchasing_pending:    ['production-agent', 'collection-agent'],
   production_pending:    ['production-agent', 'collection-agent'],
   production_confirmed:  ['production-agent'],
   // Production → En Route

@@ -222,6 +222,10 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
       [verificationPct, order.id]
     );
 
+    // Broadcast SSE so dashboard sees the percentage update in real time
+    broadcastSSE('order_updated', { id: order.id });
+    broadcastSSE('invalidate', { keys: ['dashboard:*', 'orders:*', `order:detail:${order.quotation_number ?? ''}`] });
+
     // Check if estimated arrival days have been met
     if (order.en_route_confirmed_at) {
       const confirmedDate = new Date(order.en_route_confirmed_at);

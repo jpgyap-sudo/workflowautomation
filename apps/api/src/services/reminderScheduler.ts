@@ -131,7 +131,8 @@ export async function processDueReminders(): Promise<number> {
     if ((reminder.stage === 'purchasing_pending') && ['production_confirmed', 'production_pending', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // Item-level tracking reminders — stale if order has moved past the relevant stage
     if (reminder.stage === 'item_level_production' && ['en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if (reminder.stage === 'item_level_en_route' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'item_level_en_route' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'item_level_inventory' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // En route timed reminders — stale once order advances past en_route (for midpoint) or inventory_arrived (for arrival)
     if (reminder.stage === 'en_route_midpoint' && reminder.current_stage !== 'en_route') stale = true;
     if (reminder.stage === 'en_route_arrival' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
@@ -163,6 +164,7 @@ export async function processDueReminders(): Promise<number> {
       en_route_reminder: '🚚 En Route',
       en_route_midpoint: '✅ En Route Midpoint Check',
       en_route_arrival: '📦 En Route Arrival Check',
+      item_level_inventory: '📦 Item-Level Inventory',
       inventory_arrived: '📦 Inventory Arrived',
       balance_due: '⚖️ Balance Due',
       balance_verification: '🔍 Balance Verification',
@@ -412,6 +414,32 @@ export async function processDueReminders(): Promise<number> {
         ],
         [
           { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'item_level_inventory') {
+      // Item-level inventory arrival reminder — fetch item name and show inline buttons
+      let itemName = 'Unknown Item';
+      let itemQty = 1;
+      if (reminder.item_id) {
+        const itemRows = await query(
+          `SELECT name, quantity FROM order_items WHERE id = $1`,
+          [reminder.item_id]
+        );
+        if (itemRows[0]) {
+          itemName = itemRows[0].name;
+          itemQty = itemRows[0].quantity;
+        }
+      }
+      text += `*Item:* ${itemName} x${itemQty}\n\n`;
+      text += `Has *${itemName}* arrived at inventory?`;
+      const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: `📦 ${itemName} — Arrived`, callback_data: `reminder:item_inventory:arrived:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: `🚚 ${itemName} — En Route`, callback_data: `reminder:item_inventory:en_route:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
+        ],
+        [
+          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_inventory:not_yet:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'en_route_midpoint') {
