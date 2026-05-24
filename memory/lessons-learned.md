@@ -8237,3 +8237,51 @@ Always validate scheduler logic against edge cases (e.g., time boundaries, state
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: restore en_route_verification stage card
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 029adcd38c14349855c2def7e3fe621a80f8923c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 029adcd38c14349855c2def7e3fe621a80f8923c
+**Files:** apps/dashboard/src/lib/api.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Restored the `en_route_verification` stage card that had gone missing from the dashboard UI.
+
+**Why it broke:**  
+A previous API refactor inadvertently removed the stage card definition for `en_route_verification` from the API layer (`api.ts`), causing the frontend to no longer render it.
+
+**Reusable takeaway:**  
+When refactoring API endpoints or data structures, always cross-reference all UI components that depend on the removed or changed data. A missing stage card is a silent failure—no error, just a missing element. Use integration tests or visual regression checks to catch such omissions.
+
+---
+*Original commit message: fix: restore en_route_verification stage card*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Restored the `en_route_verification` stage card that had gone missing from the dashboard UI.
+
+**Why it broke:**  
+A previous API refactor inadvertently removed the stage card definition for `en_route_verification` from the API layer (`api.ts`), causing the frontend to no longer render it.
+
+**Reusable takeaway:**  
+When refactoring API endpoints or data structures, always cross-reference all UI components that depend on the removed or changed data. A missing stage card is a silent failure—no error, just a missing element. Use integration tests or visual regression checks to catch such omissions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
