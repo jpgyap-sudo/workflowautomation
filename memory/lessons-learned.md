@@ -7121,3 +7121,51 @@ Production Telegram chat dashboard should separate Pending Start, In Progress, R
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: refine production telegram flow
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b5cc7976079bbbce6629d57b5bd2f34a29a6866d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b5cc7976079bbbce6629d57b5bd2f34a29a6866d
+**Files:** apps/api/src/server.ts,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+A race condition in the production Telegram bot flow where the API server and Telegram bot were out of sync during startup, causing missed or duplicate message handling.
+
+**Why it broke:**  
+The API server initialized and began accepting requests before the Telegram bot had fully registered its webhook or connected to the Telegram API. This led to inconsistent state—messages were sent to the bot before it was ready to process them.
+
+**Reusable takeaway:**  
+Ensure dependent services (e.g., webhook handlers, bots, or workers) are fully initialized and ready before allowing external traffic. Use explicit health checks, startup sequences, or a ready signal (e.g., a shared promise or event emitter) to coordinate initialization order. This prevents race conditions in distributed or event-driven systems.
+
+---
+*Original commit message: fix: refine production telegram flow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A race condition in the production Telegram bot flow where the API server and Telegram bot were out of sync during startup, causing missed or duplicate message handling.
+
+**Why it broke:**  
+The API server initialized and began accepting requests before the Telegram bot had fully registered its webhook or connected to the Telegram API. This led to inconsistent state—messages were sent to the bot before it was ready to process them.
+
+**Reusable takeaway:**  
+Ensure dependent services (e.g., webhook handlers, bots, or workers) are fully initialized and ready before allowing external traffic. Use explicit health checks, startup sequences, or a ready signal (e.g., a shared promise or event emitter) to coordinate initialization order. This prevents race conditions in distributed or event-driven systems.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
