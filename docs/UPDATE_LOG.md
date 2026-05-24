@@ -1,0 +1,58 @@
+# Update Log
+
+> Real-time log of what each coding extension is currently working on.
+> All extensions (Roo, Claude, Codex, Kimi) should update this file when starting and completing work.
+
+---
+
+## How to use
+
+When you **start** working:
+```markdown
+| YYYY-MM-DD HH:mm | Roo | Investigating: sales.homeu login cache issue | 🔴 Active |
+```
+
+When you **finish**:
+```markdown
+| YYYY-MM-DD HH:mm | Roo | Fixed: sales.homeu login cache issue — SW cache name bump + hard refresh | ✅ Done |
+```
+
+**Status**: `🔴 Active` / `✅ Done` / `⏸️ Blocked` / `🔄 In Progress`
+
+---
+
+## Current Status
+
+| Timestamp | Extension | Task | Status |
+|-----------|-----------|------|--------|
+| 2026-05-24 11:29 | Roo (Code) | Verified all services deployed at `ada6e80`, created changelog/bug/update log system | ✅ Done |
+
+---
+
+## History
+
+| Timestamp | Extension | Task | Status |
+|-----------|-----------|------|--------|
+| 2026-05-24 11:22 | Roo (Code) | Deploy: git pull + rebuild all services on VPS | ✅ Done |
+| 2026-05-24 11:20 | Roo (Code) | Fix: VPS divergent branch — reset to origin/master | ✅ Done |
+| 2026-05-24 11:15 | Roo (Code) | Check: git status clean, VPS behind by 5 commits | ✅ Done |
+| 2026-05-23 23:44 | Roo (Code) | Fix: sales.homeu "Invalid email address" — SW cache name bump to v3 | ✅ Done |
+| 2026-05-23 23:30 | Roo (Code) | Fix: sales.homeu sub-users not showing — merge subUsers in getStoredAccounts() | ✅ Done |
+| 2026-05-23 22:00 | Roo (Code) | Deploy: sub-user login flow + all pending changes | ✅ Done |
+| 2026-05-23 21:00 | Roo (Code) | Fix: Docker stale image references — down --remove-orphans then rebuild | ✅ Done |
+| 2026-05-22 | Roo (Code) | Feat: sub-user login flow for shared accounts | ✅ Done |
+| 2026-05-22 | Roo (Code) | Feat: 888 passcode guard for Telegram bot GUI actions | ✅ Done |
+| 2026-05-22 | Roo (Code) | Feat: role-based route guard in AuthGuard | ✅ Done |
+| 2026-05-21 | Roo (Code) | Feat: production tracking lifecycle (midpoint, due, delivery timeline) | ✅ Done |
+| 2026-05-21 | Roo (Code) | Feat: Hermes Claw (Gemini API) integration for production agent | ✅ Done |
+| 2026-05-21 | Roo (Code) | Feat: OTP gate for all dashboard edits/deletes | ✅ Done |
+| 2026-05-21 | Roo (Code) | Feat: agent notes system with API + dashboard UI | ✅ Done |
+| 2026-05-21 | Roo (Code) | Feat: Telegram UX overhaul — inline buttons, smart order picker, PHT reminders | ✅ Done |
+| 2026-05-21 | Roo (Code) | Security: remove all hardcoded credentials from public files | ✅ Done |
+| 2026-05-20 | Roo (Code) | Feat: clients page with address/contact propagation, order history | ✅ Done |
+| 2026-05-20 | Roo (Code) | Feat: inventory overhaul — category/type, en route tracking | ✅ Done |
+| 2026-05-20 | Roo (Code) | Feat: delivery gap fixes + delivery_date column | ✅ Done |
+| 2026-05-20 | Roo (Code) | Feat: collection tab overhaul — For Payment Before Delivery, delivery exception | ✅ Done |
+| 2026-05-20 | Roo (Code) | Feat: Google Drive upload with retry + token refresh | ✅ Done |
+| 2026-05-20 | Roo (Code) | Fix: Telegram bot 409/429 on restart — close + retry logic | ✅ Done |
+| 2026-05-20 | Roo (Code) | Fix: Dashboard Docker OOM — use npm install instead of npm ci | ✅ Done |
