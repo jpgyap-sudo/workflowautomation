@@ -34,6 +34,8 @@ export interface Order {
   en_route_confirmed: boolean | null;
   en_route_confirmed_at: string | null;
   estimated_arrival_days: number | null;
+  inventory_en_route_at: string | null;
+  estimated_inventory_arrival_days: number | null;
   client_id: string | null;
   delivery_address: string | null;
   contact_number: string | null;

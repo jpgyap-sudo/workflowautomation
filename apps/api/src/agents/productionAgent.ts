@@ -1042,10 +1042,12 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
   // -1. Purchasing pending — ask if we should start the production workflow.
   //     Only handles orders WITHOUT JSONB partial_production_items (those are section 3b).
   //     Upserts reminder with next_run_at = now so the scheduler fires it within 1 minute.
+  //     Guard: only when deposit_verified = true (otherwise deposit flow is still in progress).
   const purchasingPendingOrders = await query<OrderRow>(
     `SELECT * FROM orders
      WHERE current_stage = 'purchasing_pending'
        AND status = 'active'
+       AND deposit_verified = TRUE
        AND (partial_production_items IS NULL OR partial_production_items = '[]'::jsonb)
      ORDER BY created_at ASC`,
   );

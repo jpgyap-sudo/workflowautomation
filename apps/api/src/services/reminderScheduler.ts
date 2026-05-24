@@ -136,9 +136,28 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'item_level_en_route' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_inventory' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if ((reminder.stage === 'item_prod_midpoint' || reminder.stage === 'item_prod_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    // En route verification — stale once order advances past it
+    if (reminder.stage === 'en_route_verification' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // En route timed reminders — en_route_midpoint stays active through en_route_verification (arrival still expected)
     if (reminder.stage === 'en_route_midpoint' && !['en_route', 'en_route_verification'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route_arrival' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+
+    // ── Item-level safety-net: also check item status directly ────────
+    // If an item-level reminder's item is already finished/arrived, mark stale
+    if (!stale && reminder.item_id && (reminder.stage === 'item_level_production' || reminder.stage === 'item_prod_midpoint' || reminder.stage === 'item_prod_due')) {
+      const itemRows = await query(
+        `SELECT production_status FROM order_items WHERE id = $1`,
+        [reminder.item_id]
+      );
+      if (itemRows[0]?.production_status === 'finished') stale = true;
+    }
+    if (!stale && reminder.item_id && reminder.stage === 'item_level_en_route') {
+      const itemRows = await query(
+        `SELECT en_route_status FROM order_items WHERE id = $1`,
+        [reminder.item_id]
+      );
+      if (itemRows[0]?.en_route_status === 'arrived') stale = true;
+    }
 
     if (stale) {
       await query(
@@ -611,6 +630,10 @@ export async function processDueReminders(): Promise<number> {
           { text: '📋 Check items', callback_data: `en_route_verif:check:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'inventory_verification') {
+      // Inventory verification — include dashboard link since there are no Telegram-only action buttons
+      const dashboardUrl = `https://track.abcx124.xyz/inventory`;
+      ok = await sendTelegramMessage(reminder.group_chat_id, text + `\n📊 <a href="${dashboardUrl}">Verify items on Inventory Dashboard</a>`);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);

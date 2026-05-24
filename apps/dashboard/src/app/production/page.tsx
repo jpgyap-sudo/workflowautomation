@@ -33,6 +33,32 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function addDays(dateStr: string | null | undefined, days: number | null | undefined): Date | null {
+  if (!dateStr || !days || days <= 0) return null;
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + days);
+  return date;
+}
+
+function getEstimatedInventoryArrivalDate(order: Order): Date | null {
+  return addDays(order.en_route_confirmed_at, order.estimated_arrival_days)
+    ?? addDays(order.inventory_en_route_at, order.estimated_inventory_arrival_days);
+}
+
+function getEnRouteVerificationText(order: Order): string {
+  if (order.en_route_confirmed || order.current_stage === 'en_route_verification' || order.current_stage === 'inventory_verification' || order.current_stage === 'inventory_arrived') {
+    return order.en_route_confirmed_at ? `Verified ${formatDate(new Date(order.en_route_confirmed_at))}` : 'Verified';
+  }
+  return 'Pending';
+}
+
+function dedupeOrders(orders: Order[]): Order[] {
+  const map = new Map<string, Order>();
+  for (const order of orders) map.set(order.id, order);
+  return Array.from(map.values());
+}
+
 function computeFinishDate(order: Order): Date | null {
   if (!order.production_started || !order.estimated_production_days) return null;
   const start = order.production_started_at ? new Date(order.production_started_at) : new Date(order.created_at);
@@ -742,6 +768,110 @@ function OrderSection({
 
 // ── Page ──────────────────────────────────────────────────────────────
 
+interface ProductionFinishedSummary {
+  hasFinishedProduction: boolean;
+  finishedCount: number;
+  totalCount: number;
+}
+
+function ProductionFinishedTrackingSection({
+  orders,
+  summaries,
+  isLoading,
+  error,
+  onRetry,
+  onConfirmEnRoute,
+  onViewFiles,
+}: {
+  orders: Order[];
+  summaries: Record<string, ProductionFinishedSummary>;
+  isLoading: boolean;
+  error: any;
+  onRetry: () => void;
+  onConfirmEnRoute: (o: Order) => void;
+  onViewFiles?: (o: Order) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 text-green-500" />
+          <h2 className="font-semibold text-gray-800">Production Finished</h2>
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">{orders.length}</span>
+        </div>
+        <button onClick={onRetry} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]">
+          <RefreshCw className="h-4 w-4" />
+        </button>
+      </div>
+
+      {error ? (
+        <div className="px-6 py-8 text-center">
+          <p className="text-sm text-red-500">Failed to load orders</p>
+          <button onClick={onRetry} className="mt-2 text-xs text-[#2490ef] hover:underline">Retry</button>
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-3 p-6">
+          {[1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100" />)}
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="py-12 text-center text-sm text-gray-400">No orders with finished production items awaiting inventory arrival verification</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-6 py-3">Order #</th>
+                <th className="px-4 py-3">Client Name</th>
+                <th className="px-4 py-3">Production Finished</th>
+                <th className="px-4 py-3">En Route Verification</th>
+                <th className="px-4 py-3">Estimated Inventory Arrival Date</th>
+                <th className="px-4 py-3">Stage</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {orders.map((order) => {
+                const summary = summaries[order.id];
+                const estimatedArrival = getEstimatedInventoryArrivalDate(order);
+                const enRouteVerified = getEnRouteVerificationText(order) !== 'Pending';
+                return (
+                  <tr key={order.id} className="hover:bg-gray-50/60">
+                    <td className="px-6 py-4 font-medium text-gray-900">
+                      <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
+                    </td>
+                    <td className="px-4 py-4 text-gray-700">{order.client_name ?? 'Unknown client'}</td>
+                    <td className="px-4 py-4">
+                      <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                        {summary ? `${summary.finishedCount}/${summary.totalCount} item${summary.totalCount === 1 ? '' : 's'}` : 'At least 1 item'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enRouteVerified ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {getEnRouteVerificationText(order)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-gray-700">
+                      {estimatedArrival ? formatDate(estimatedArrival) : <span className="text-gray-400">Pending en-route days</span>}
+                    </td>
+                    <td className="px-4 py-4"><StageBadge stage={order.current_stage} /></td>
+                    <td className="px-4 py-4 text-right">
+                      {order.current_stage === 'en_route' && !order.en_route_confirmed && (
+                        <button onClick={() => onConfirmEnRoute(order)} className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700">
+                          Confirm En Route
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProductionPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -768,10 +898,15 @@ export default function ProductionPage() {
     useOrdersByStage('production_confirmed');
   const { data: enRouteOrders = [], isLoading: loadingEnRoute, error: errorEnRoute, mutate: mutateEnRoute } =
     useOrdersByStage('en_route');
+  const { data: enRouteVerificationStageOrders = [], isLoading: loadingEnRouteStage, error: errorEnRouteStage, mutate: mutateEnRouteStage } =
+    useOrdersByStage('en_route_verification');
+  const { data: inventoryVerificationOrders = [], isLoading: loadingInventoryVerification, error: errorInventoryVerification, mutate: mutateInventoryVerification } =
+    useOrdersByStage('inventory_verification');
+  const { data: inventoryArrivedOrders = [], isLoading: loadingInventoryArrived, error: errorInventoryArrived, mutate: mutateInventoryArrived } =
+    useOrdersByStage('inventory_arrived');
 
   // Split confirmed orders into in-progress vs finished
   const inProgressOrders = confirmedOrders.filter((o: Order) => !o.production_finished);
-  const finishedOrders = confirmedOrders.filter((o: Order) => o.production_finished);
 
   // Fetch item completion for en_route orders so we can split them into
   // "En Route Verification" (some items not yet en_route) vs "En Route" (all tracking)
@@ -811,6 +946,54 @@ export default function ProductionPage() {
     return comp && comp.pct >= 100 && !comp.allArrived;
   });
 
+  const productionFinishedCandidateOrders = dedupeOrders([
+    ...partialOrders,
+    ...confirmedOrders,
+    ...enRouteOrders,
+    ...enRouteVerificationStageOrders,
+    ...inventoryVerificationOrders,
+    ...inventoryArrivedOrders,
+  ]);
+  const productionFinishedCandidateKey = productionFinishedCandidateOrders.map((o) => o.id).sort().join('|');
+  const [productionFinishedSummaries, setProductionFinishedSummaries] = useState<Record<string, ProductionFinishedSummary>>({});
+
+  useEffect(() => {
+    if (productionFinishedCandidateOrders.length === 0) {
+      setProductionFinishedSummaries({});
+      return;
+    }
+    let cancelled = false;
+    async function fetchProductionFinishedSummaries() {
+      const map: Record<string, ProductionFinishedSummary> = {};
+      await Promise.all(
+        productionFinishedCandidateOrders.map(async (order: Order) => {
+          try {
+            const res = await getOrderItems(order.id);
+            const items = res.items ?? [];
+            const finishedCount = items.filter((item) => item.production_status === 'finished').length;
+            if (!cancelled) {
+              map[order.id] = {
+                hasFinishedProduction: finishedCount > 0,
+                finishedCount,
+                totalCount: items.length,
+              };
+            }
+          } catch { /* ignore per-order item errors */ }
+        })
+      );
+      if (!cancelled) setProductionFinishedSummaries(map);
+    }
+    fetchProductionFinishedSummaries();
+    return () => { cancelled = true; };
+  }, [productionFinishedCandidateKey]);
+
+  const finishedOrders = productionFinishedCandidateOrders.filter((order) => {
+    const summary = productionFinishedSummaries[order.id];
+    return summary?.hasFinishedProduction && !['balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
+  });
+  const loadingFinished = loadingPartial || loadingConfirmed || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
+  const errorFinished = errorPartial || errorConfirmed || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
+
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
@@ -822,7 +1005,7 @@ export default function ProductionPage() {
     open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'grantProductionException' | 'revokeProductionException' | 'setProduction';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
-  function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); }
+  function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -1011,7 +1194,7 @@ export default function ProductionPage() {
     (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
 
-  const totalActive = pendingOrders.length + partialOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
   const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
   return (
@@ -1099,29 +1282,15 @@ export default function ProductionPage() {
       </OrderSection>
 
       {/* Production Finished */}
-      <OrderSection
-        icon={<CheckCircle className="h-4 w-4 text-green-500" />}
-        title="Production Finished"
-        count={finishedOrders.length}
-        countBg="bg-green-100" countText="text-green-700"
-        orders={finishedOrders} isLoading={loadingConfirmed} error={errorConfirmed}
-        onRetry={() => mutateConfirmed()}
-        emptyText="No finished orders awaiting en-route confirmation"
-      >
-        {(order) => (
-          <>
-            <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
-              onFinishProduction={handleFinishProduction}
-              onGrantException={handleGrantException}
-              onRevokeException={handleRevokeException}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
+      <ProductionFinishedTrackingSection
+        orders={finishedOrders}
+        summaries={productionFinishedSummaries}
+        isLoading={loadingFinished}
+        error={errorFinished}
+        onRetry={refresh}
+        onConfirmEnRoute={handleConfirmEnRoute}
+        onViewFiles={handleViewFiles}
+      />
 
       {/* En Route Verification — some items still not confirmed en route */}
       <OrderSection
@@ -1163,6 +1332,30 @@ export default function ProductionPage() {
             <OrderRow
               order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
               onConfirmEnRoute={handleConfirmEnRoute}
+              onGrantException={handleGrantException}
+              onRevokeException={handleRevokeException}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* En Route Verification Stage — all items dispatched, waiting for inventory arrival */}
+      <OrderSection
+        icon={<Truck className="h-4 w-4 text-blue-500" />}
+        title="En Route — Awaiting Arrival"
+        count={enRouteVerificationStageOrders.length}
+        countBg="bg-blue-100" countText="text-blue-700"
+        orders={enRouteVerificationStageOrders} isLoading={loadingEnRouteStage} error={errorEnRouteStage}
+        onRetry={() => mutateEnRouteStage()}
+        emptyText="No orders awaiting inventory arrival confirmation"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
             />

@@ -127,5 +127,6 @@
 - **Deployed**: `✅` if deployed to VPS, `❌` if committed but not yet deployed
 - **VPS tag**: Add `✅ VPS <commit>` when the VPS is confirmed at a specific commit
 
+| `this commit` | Codex | update: Production Finished table tracks partially finished orders through inventory arrival verification with estimated arrival date | pending deploy |
 | `ff25dee` | Codex | update: context-aware item production Telegram reminder buttons and item production day prompts | deployed VPS `ff25dee` |
 | `3a2263b` | Codex | fix: auto-finish item-level production when all partial items are finished, then trigger en-route Telegram workflow | deployed VPS `ff25dee` |

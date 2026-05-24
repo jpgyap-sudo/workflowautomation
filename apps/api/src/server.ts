@@ -50,6 +50,8 @@ const ORDER_LIST_SELECT = `
   o.production_started, o.production_started_at, o.estimated_production_days,
   o.production_delayed, o.production_delay_days,
   o.production_finished, o.production_finished_at, o.delivery_estimated_days,
+  o.en_route_confirmed, o.en_route_confirmed_at, o.estimated_arrival_days,
+  o.inventory_en_route_at, o.estimated_inventory_arrival_days,
   o.client_id, o.delivery_address, o.contact_number,
   o.authorized_receiver_name, o.authorized_receiver_contact,
   o.partial_production_items,
