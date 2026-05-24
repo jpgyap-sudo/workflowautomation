@@ -9,6 +9,9 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `f51564b` | Roo (Code) | docs: update UPDATE_LOG — Roo deploying en_route_verification stage | ✅ VPS `f51564b` |
+| `7e17451` | jpgyap-sudo | chore: auto-commit before deploy | ✅ VPS `f51564b` |
+| `4803927` | Claude Sonnet 4.6 | fix: wire en_route_verification stage end-to-end + fix workflow gaps | ✅ VPS `f51564b` |
 | `ada6e80` | Roo (Code) | chore: auto-commit before deploy | ✅ VPS `ada6e80` |
 | `a75e793` | Roo (Code) | feat: add `reminder:item_inventory` callback handler for Telegram bot | ✅ |
 | `d2ed12f` | Roo (Code) | feat: add `en_route_verification` to AGENT_TRIGGER_MAP | ✅ |
