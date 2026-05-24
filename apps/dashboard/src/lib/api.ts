@@ -630,10 +630,10 @@ export async function verifyOtpForAction(email: string, otp: string, name?: stri
 }
 
 // ── Telegram 4-digit action verification ──────────────────────────────
-export async function sendTelegramActionCode(email: string): Promise<{ ok: boolean }> {
+export async function sendTelegramActionCode(email: string, name?: string): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/auth/send-action-code', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, name }),
   });
 }
 

@@ -49,3 +49,10 @@
 | 2026-05-20 | Hardcoded credentials and infra details in public files | Security issue — credentials committed to git. | [`b195f5e`](https://github.com/jpgyap-sudo/workflowautomation/commit/b195f5e) — remove all hardcoded credentials. | Roo (Code) | ✅ Verified |
 | 2026-05-20 | `react-hooks/purity` lint error in DaysInStage component | `Date.now()` called directly in render. | [`f457e03`](https://github.com/jpgyap-sudo/workflowautomation/commit/f457e03) — extract into DaysAgo component. | Roo (Code) | ✅ Verified |
 | 2026-05-20 | DELETE /orders/:id uses wrong table name | SQL references `order_files` instead of `files`. | [`4f4f380`](https://github.com/jpgyap-sudo/workflowautomation/commit/4f4f380) — correct table name. | Roo (Code) | ✅ Verified |
+
+## 2026-05-25 07:51 - Inventory verification permanent page showed 0 verified qty
+
+- **Found by:** Codex E2E test
+- **Symptom:** `/orders/:id/items` returned item arrival timestamps but omitted `verified_qty`, so permanent inventory verification links could render verified records as `0/qty`.
+- **Fix:** Include `COALESCE(verified_qty, 0) AS verified_qty` in the item API response.
+- **Status:** Fixed; pending deploy verification.

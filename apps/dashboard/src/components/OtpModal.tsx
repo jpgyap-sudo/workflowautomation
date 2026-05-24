@@ -57,7 +57,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
     setError('');
     try {
       if (ch === 'telegram') {
-        const result = await sendTelegramActionCode(user.email);
+        const result = await sendTelegramActionCode(user.email, user.name ?? undefined);
         if (result.ok) {
           setChannel('telegram');
           setCodeSent(true);

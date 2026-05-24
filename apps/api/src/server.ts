@@ -84,6 +84,7 @@ const ESCALATION_CHAT_ID = process.env.ESCALATION_GROUP_CHAT_ID ?? null;
 const COLLECTION_CHAT_ID = process.env.COLLECTION_GROUP_CHAT_ID ?? null;
 const DELIVERY_CHAT_ID = process.env.DELIVERY_GROUP_CHAT_ID ?? null;
 const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? null;
+const PURCHASING_CHAT_ID = process.env.PURCHASING_GROUP_CHAT_ID ?? null;
 
 async function notifyManualChange(action: string, details: string, actor?: string | null): Promise<void> {
   if (!_TELEGRAM_BOT_TOKEN || !ESCALATION_CHAT_ID) return;
@@ -467,7 +468,7 @@ const ACTION_VERIFY_CHAT_ID =
   null;
 
 app.post('/auth/send-action-code', async (request, reply) => {
-  const { email } = z.object({ email: z.string().email() }).parse(request.body);
+  const { email, name } = z.object({ email: z.string().email(), name: z.string().optional() }).parse(request.body);
 
   if (!cacheClient?.isOpen) {
     return reply.status(503).send({ error: 'Verification service unavailable' });
@@ -482,7 +483,8 @@ app.post('/auth/send-action-code', async (request, reply) => {
     return reply.status(503).send({ error: 'Telegram not configured' });
   }
 
-  const msg = `🔐 <b>Dashboard Action Verification</b>\n\nA dashboard action requires confirmation.\n\nYour 4-digit code:\n\n<code>${code}</code>\n\n<i>Expires in 5 minutes. Do not share this code.</i>`;
+  const requester = name ?? email;
+  const msg = `🔐 <b>Dashboard Action Verification</b>\n\nA dashboard action requires confirmation.\n\n👤 Requested by: <b>${requester}</b>\n\nYour 4-digit code:\n\n<code>${code}</code>\n\n<i>Expires in 5 minutes. Do not share this code.</i>`;
   try {
     const res = await fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -2835,6 +2837,7 @@ app.get('/orders/:id/items', async (request, reply) => {
 
   const rows = await query(
     `SELECT oi.id, oi.order_id, oi.name, oi.quantity,
+            COALESCE(oi.verified_qty, 0) AS verified_qty,
             oi.production_status, oi.en_route_status,
             oi.estimated_arrival_days, oi.estimated_production_days,
             oi.production_finished_at, oi.inventory_verified_at, oi.delivered_qty, oi.delivered_at, oi.created_at, oi.updated_at
@@ -3966,6 +3969,9 @@ app.post('/stage-updates', async (request, reply) => {
   // not just the general progress group (STAGE_TRANSITION_GROUP_CHAT_ID)
   if (isDashboardOrigin(body.updated_by)) {
     const stageToGroup: Record<string, string | null> = {
+      deposit_pending: COLLECTION_CHAT_ID,
+      deposit_verification: COLLECTION_CHAT_ID,
+      purchasing_pending: PURCHASING_CHAT_ID,
       production_pending: PRODUCTION_CHAT_ID,
       production_confirmed: PRODUCTION_CHAT_ID,
       partial_production: PRODUCTION_CHAT_ID,

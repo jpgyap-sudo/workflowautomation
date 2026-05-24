@@ -7,7 +7,7 @@ import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryExcepti
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -283,7 +283,7 @@ export default function CollectionPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate' | 'advancePaymentReceived' | 'advancePaymentConfirmed' | 'markPaymentReceived';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
   const [paymentDateSavingKey, setPaymentDateSavingKey] = useState<string | null>(null);
 
@@ -412,6 +412,15 @@ export default function CollectionPage() {
         value: string;
       } | undefined;
       if (pending) executePaymentDateUpdate(pending.order, pending.field, pending.value, actionToken);
+    } else if (otpModal.pendingAction === 'markPaymentReceived') {
+      const pending = (window as any).__pendingMarkPaymentReceivedData as { order: Order } | undefined;
+      if (pending) executeMarkPaymentReceived(pending.order, actionToken);
+    } else if (otpModal.pendingAction === 'advancePaymentReceived') {
+      const pending = (window as any).__pendingAdvancePaymentReceivedData as { order: Order } | undefined;
+      if (pending) executeAdvancePaymentReceived(pending.order, actionToken);
+    } else if (otpModal.pendingAction === 'advancePaymentConfirmed') {
+      const pending = (window as any).__pendingAdvancePaymentConfirmedData as { order: Order } | undefined;
+      if (pending) executeAdvancePaymentConfirmed(pending.order, actionToken);
     }
   }
 
@@ -524,6 +533,63 @@ export default function CollectionPage() {
       alert('Failed to sync: ' + (err.message ?? 'Unknown error'));
     } finally {
       (window as any).__pendingSyncData = null;
+    }
+  }
+
+  // ── Countered → Payment Received ────────────────────────────────────
+  async function executeMarkPaymentReceived(order: Order, actionToken: string) {
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'payment_received',
+        status: 'balance_paid',
+        remarks: 'Advanced from Countered to Payment Received (manual dashboard action)',
+        action_token: actionToken,
+      });
+      mutateCountered();
+      mutateReceived();
+    } catch (err: any) {
+      alert('Failed to advance to Payment Received: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingMarkPaymentReceivedData = null;
+    }
+  }
+
+  // ── Payment Received → Payment Confirmed ────────────────────────────
+  async function executeAdvancePaymentReceived(order: Order, actionToken: string) {
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'payment_confirmed',
+        status: 'payment_confirmed',
+        remarks: 'Advanced from Payment Received to Payment Confirmed (manual dashboard action)',
+        action_token: actionToken,
+      });
+      mutateReceived();
+      mutateConfirmed();
+    } catch (err: any) {
+      alert('Failed to advance to Payment Confirmed: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingAdvancePaymentReceivedData = null;
+    }
+  }
+
+  // ── Payment Confirmed → Completed ───────────────────────────────────
+  async function executeAdvancePaymentConfirmed(order: Order, actionToken: string) {
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'completed',
+        status: 'completed',
+        remarks: 'Advanced from Payment Confirmed to Completed (manual dashboard action)',
+        action_token: actionToken,
+      });
+      mutateConfirmed();
+      mutateCompleted();
+    } catch (err: any) {
+      alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingAdvancePaymentConfirmedData = null;
     }
   }
 
@@ -801,6 +867,60 @@ export default function CollectionPage() {
                   onClick={() => handlePaymentConfirmClick(order)}
                   className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
                   title="Confirm payment — upload deposit slip to Google Drive"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </button>
+              )}
+              {/* Countered → Payment Received */}
+              {order.current_stage === 'countered' && (
+                <button
+                  onClick={() => {
+                    (window as any).__pendingMarkPaymentReceivedData = { order };
+                    setOtpModal({
+                      open: true,
+                      title: 'Mark Payment Received',
+                      description: `Confirm marking "${order.quotation_number ?? '—'}" as Payment Received (from Countered).`,
+                      pendingAction: 'markPaymentReceived',
+                    });
+                  }}
+                  className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                  title="Advance to Payment Received"
+                >
+                  <CreditCard className="h-4 w-4" />
+                </button>
+              )}
+              {/* Payment Received → Payment Confirmed */}
+              {order.current_stage === 'payment_received' && (
+                <button
+                  onClick={() => {
+                    (window as any).__pendingAdvancePaymentReceivedData = { order };
+                    setOtpModal({
+                      open: true,
+                      title: 'Confirm Payment',
+                      description: `Confirm advancing "${order.quotation_number ?? '—'}" from Payment Received to Payment Confirmed.`,
+                      pendingAction: 'advancePaymentReceived',
+                    });
+                  }}
+                  className="rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700"
+                  title="Advance to Payment Confirmed"
+                >
+                  <ThumbsUp className="h-4 w-4" />
+                </button>
+              )}
+              {/* Payment Confirmed → Completed */}
+              {order.current_stage === 'payment_confirmed' && (
+                <button
+                  onClick={() => {
+                    (window as any).__pendingAdvancePaymentConfirmedData = { order };
+                    setOtpModal({
+                      open: true,
+                      title: 'Complete Order',
+                      description: `Confirm completing "${order.quotation_number ?? '—'}" (from Payment Confirmed).`,
+                      pendingAction: 'advancePaymentConfirmed',
+                    });
+                  }}
+                  className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 hover:text-green-700"
+                  title="Complete order"
                 >
                   <CheckCircle2 className="h-4 w-4" />
                 </button>
@@ -1343,6 +1463,9 @@ export default function CollectionPage() {
           (window as any).__pendingMarkCompletedData = null;
           (window as any).__pendingSyncData = null;
           (window as any).__pendingPaymentDateData = null;
+          (window as any).__pendingMarkPaymentReceivedData = null;
+          (window as any).__pendingAdvancePaymentReceivedData = null;
+          (window as any).__pendingAdvancePaymentConfirmedData = null;
         }}
       />
 

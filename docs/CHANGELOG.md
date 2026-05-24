@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `a7fd60c` | Codex | fix: close E2E workflow wiring gaps, including inventory verified_qty API exposure | Pending deploy |
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
 | `2a15dcf` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | ? VPS `2a15dcf` |
 
@@ -146,6 +147,9 @@
 | `3a2263b` | Codex | fix: auto-finish item-level production when all partial items are finished, then trigger en-route Telegram workflow | deployed VPS `ff25dee` |
 
 | `this commit` | Codex | update: make Production Finished orders expandable with item list and per-item inventory arrival dates | pending deploy |
+
+
+
 
 
 

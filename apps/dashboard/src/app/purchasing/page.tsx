@@ -23,9 +23,10 @@ interface OrderRowProps {
   onStartProductionWorkflow?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
   onVerifyDeposit?: (order: Order) => void;
+  onMarkDepositPaid?: (order: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onMarkDepositPaid }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -246,6 +247,15 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
           )}
 
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
+            {onMarkDepositPaid && !order.deposit_paid && (
+              <button
+                onClick={() => onMarkDepositPaid(order)}
+                className="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-pink-700"
+              >
+                <DollarSign className="mr-1 inline-block h-3.5 w-3.5" />
+                Mark Deposit Paid
+              </button>
+            )}
             {onVerifyDeposit && order.deposit_paid && !order.deposit_verified && (
               <button
                 onClick={() => onVerifyDeposit(order)}
@@ -396,7 +406,7 @@ export default function PurchasingPage() {
   const [verifyingDepositOrder, setVerifyingDepositOrder] = useState<Order | null>(null);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'markDepositPaid';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
@@ -443,6 +453,26 @@ export default function PurchasingPage() {
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
     else if (otpModal.pendingAction === 'startProductionWorkflow') handleStartProductionWorkflowVerified(actionToken);
     else if (otpModal.pendingAction === 'verifyDeposit') handleVerifyDepositVerified(actionToken);
+    else if (otpModal.pendingAction === 'markDepositPaid') handleMarkDepositPaidVerified(actionToken);
+  }
+
+  async function handleMarkDepositPaidVerified(actionToken: string) {
+    const pending = (window as any).__pendingMarkDepositPaidData as { order: Order } | undefined;
+    if (!pending) return;
+    try {
+      await recordStageUpdate({
+        quotation_number: pending.order.quotation_number ?? '',
+        stage: 'deposit_verification',
+        status: 'deposit_paid',
+        remarks: 'Deposit marked as paid from dashboard (manual action)',
+        action_token: actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to mark deposit as paid: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingMarkDepositPaidData = null;
+    }
   }
 
   async function handleStartProductionWorkflowVerified(actionToken: string) {
@@ -519,6 +549,13 @@ export default function PurchasingPage() {
       pendingAction: 'verifyDeposit' });
   }
 
+  function handleMarkDepositPaid(order: Order) {
+    setOtpModal({ open: true, title: 'Mark Deposit Paid',
+      description: `You are about to mark deposit as paid for order "${order.quotation_number ?? '—'}". This will advance the order to Deposit Verification. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'markDepositPaid' });
+    (window as any).__pendingMarkDepositPaidData = { order };
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -548,7 +585,7 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onMarkDepositPaid={handleMarkDepositPaid} onViewFiles={handleViewFiles} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -629,7 +666,7 @@ export default function PurchasingPage() {
       <OtpModal
         open={otpModal.open} title={otpModal.title} description={otpModal.description}
         onVerified={handleOtpVerified}
-        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingStartProductionData = null; setVerifyingDepositOrder(null); }}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingStartProductionData = null; (window as any).__pendingMarkDepositPaidData = null; setVerifyingDepositOrder(null); }}
       />
 
       {deleting && (
