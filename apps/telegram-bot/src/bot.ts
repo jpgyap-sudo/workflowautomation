@@ -7892,6 +7892,18 @@ process.on('uncaughtException', async (err) => {
   process.exit(1);
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => {
+  try {
+    bot.stop('SIGINT');
+  } catch {
+    // Bot may already be stopped — ignore
+  }
+});
+process.once('SIGTERM', () => {
+  try {
+    bot.stop('SIGTERM');
+  } catch {
+    // Bot may already be stopped — ignore
+  }
+});
 
