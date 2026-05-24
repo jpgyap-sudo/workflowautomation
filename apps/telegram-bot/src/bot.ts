@@ -3408,7 +3408,7 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
 // Used when deposit is verified and the team confirms the order should proceed
 // to the production workflow stage (not marking physical production as started).
 // Callback: advance:production_pending:{quotationNumber}
-bot.action(/^advance:production_pending:(.+)$/, async (ctx) => {
+bot.action(/^advance:production_pending:(?!no:)(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const quotationNumber = ctx.match[1];
   const userId = String(ctx.from?.id ?? '');
@@ -3434,7 +3434,7 @@ bot.action(/^advance:production_pending:(.+)$/, async (ctx) => {
     await logAction({ chatId, userId, username, label: 'Advanced to Production Workflow', quotationNumber });
     resetStep(chatId);
     await ctx.editMessageText(
-      `✅ *${quotationNumber}* has been advanced to the Production Workflow stage.\n\nThe production team will be notified to begin work.`,
+      `✅ *${quotationNumber}* has been advanced to the Production Workflow stage.\n\nThis only acknowledges the workflow handoff. A separate reminder will ask when actual production has started.`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {
@@ -3443,6 +3443,29 @@ bot.action(/^advance:production_pending:(.+)$/, async (ctx) => {
       { parse_mode: 'Markdown', ...cancelButton() }
     );
   }
+});
+
+// Production workflow handoff not yet started.
+// Callback: advance:production_pending:no:{quotationNumber}
+bot.action(/^advance:production_pending:no:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `advance:production_pending:no:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  await logAction({ chatId, userId, username, label: 'Production Workflow Not Started', quotationNumber });
+  resetStep(chatId);
+  await ctx.editMessageText(
+    `Noted. The production workflow for *${quotationNumber}* has not started yet. Reminders will continue.`,
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
 });
 
 // ── produce:days — Standard / quick production days selection ────────

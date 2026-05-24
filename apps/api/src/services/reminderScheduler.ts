@@ -204,8 +204,8 @@ export async function processDueReminders(): Promise<number> {
         const prodChatId = process.env.PRODUCTION_GROUP_CHAT_ID ?? reminder.group_chat_id;
         ok = await sendTelegramInlineKeyboard(prodChatId, text, [
           [
-            { text: '✅ Proceed to Production Workflow', callback_data: `advance:production_pending:${quotationNumber}` },
-            { text: '⏳ Not yet', callback_data: `produce:no:${quotationNumber}` },
+            { text: 'Proceed to Production Workflow', callback_data: `advance:production_pending:${quotationNumber}` },
+            { text: 'Not yet', callback_data: `advance:production_pending:no:${quotationNumber}` },
           ],
         ]);
       } else {

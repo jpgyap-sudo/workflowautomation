@@ -2702,7 +2702,7 @@ app.post('/stage-updates', async (request, reply) => {
     } catch { /* non-fatal */ }
   }
   const orders = await query(
-    `SELECT id, total_amount, deposit_amount, balance_paid, current_stage, deposit_verified, production_exception
+    `SELECT id, quotation_number, client_name, total_amount, deposit_amount, balance_paid, current_stage, deposit_verified, production_exception
      FROM orders WHERE quotation_number=$1`,
     [body.quotation_number]
   );
@@ -2836,6 +2836,38 @@ app.post('/stage-updates', async (request, reply) => {
       `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage=$2 AND status='active'`,
       [orderId, previousStage]
     );
+  }
+
+  // When the team only starts the production workflow, create the separate reminder
+  // that asks whether actual/physical production has started.
+  if (body.stage === 'production_pending' && PRODUCTION_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Production workflow has started for #${ref} (${client}). Has actual production started?`;
+
+    await upsertStageReminder(orderId, 'production_pending', PRODUCTION_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChatWithButtons(
+        PRODUCTION_CHAT_ID,
+        `<b>Production Workflow Started</b>
+
+` +
+        `Quotation: <b>${ref}</b>
+` +
+        `Client: ${client}
+
+` +
+        `This is only the workflow acknowledgement. Has <b>actual production</b> started?`,
+        [
+          [
+            { text: 'Yes, production started', callback_data: `produce:yes:${ref}` },
+            { text: 'Partial', callback_data: `produce:partial:${ref}` },
+          ],
+          [{ text: 'Not yet', callback_data: `produce:no:${ref}` }],
+        ],
+      );
+    });
   }
 
   // Invalidate caches after stage update

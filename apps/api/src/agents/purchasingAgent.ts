@@ -174,8 +174,8 @@ export async function notifyPurchasing(
       ? order.deposit_verified === true
         ? inlineKeyboard([
             [
-              { text: '✅ Proceed to Production Workflow', callback_data: `advance:production_pending:${qn}` },
-              { text: '⏳ Not yet', callback_data: `produce:no:${qn}` },
+              { text: 'Proceed to Production Workflow', callback_data: `advance:production_pending:${qn}` },
+              { text: 'Not yet', callback_data: `advance:production_pending:no:${qn}` },
             ],
           ])
         : inlineKeyboard([
@@ -183,7 +183,7 @@ export async function notifyPurchasing(
               { text: '✅ Yes, started', callback_data: `produce:yes:${qn}` },
               { text: '⚠️ Partial', callback_data: `produce:partial:${qn}` },
             ],
-            [{ text: '⏳ Not yet', callback_data: `produce:no:${qn}` }],
+            [{ text: 'Not yet', callback_data: `produce:no:${qn}` }],
           ])
       : undefined;
 

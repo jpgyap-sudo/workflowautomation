@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useOrdersByStage } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
-import { updateOrder, deleteOrder, setProduction, getItemCompletion, getOrderItems, verifyDeposit } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -20,12 +20,12 @@ interface OrderRowProps {
   order: Order;
   onEdit: (order: Order) => void;
   onDelete: (order: Order) => void;
-  onStartProduction?: (order: Order) => void;
+  onStartProductionWorkflow?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
   onVerifyDeposit?: (order: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onVerifyDeposit }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -217,21 +217,14 @@ function OrderRow({ order, onEdit, onDelete, onStartProduction, onViewFiles, onV
                 Verify Deposit
               </button>
             )}
-            {/* Only show Mark Production Started once all items are produced (or no items exist) */}
-            {onStartProduction && !order.production_started && allItemsProduced && (
+            {/* Workflow acknowledgement only: actual production start is handled later in the Production tab. */}
+            {onStartProductionWorkflow && !order.production_started && (
               <button
-                onClick={() => onStartProduction(order)}
+                onClick={() => onStartProductionWorkflow(order)}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
               >
-                Mark Production Started
+                Start Production Workflow
               </button>
-            )}
-            {/* Show a hint when items are still pending */}
-            {onStartProduction && !order.production_started && !allItemsProduced && (
-              <span className="self-center inline-flex items-center gap-1 text-xs text-amber-600">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {pendingItemCount} item{pendingItemCount !== 1 ? 's' : ''} still pending — mark all as produced to advance
-              </span>
             )}
 
             <span className="self-center text-xs text-gray-500">
@@ -365,7 +358,7 @@ export default function PurchasingPage() {
   const [verifyingDepositOrder, setVerifyingDepositOrder] = useState<Order | null>(null);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'setProduction' | 'verifyDeposit';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
@@ -410,20 +403,26 @@ export default function PurchasingPage() {
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
-    else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
+    else if (otpModal.pendingAction === 'startProductionWorkflow') handleStartProductionWorkflowVerified(actionToken);
     else if (otpModal.pendingAction === 'verifyDeposit') handleVerifyDepositVerified(actionToken);
   }
 
-  async function handleStartProductionVerified(actionToken: string) {
-    const pending = (window as any).__pendingStartProductionData;
+  async function handleStartProductionWorkflowVerified(actionToken: string) {
+    const pending = (window as any).__pendingStartProductionWorkflowData;
     if (!pending) return;
     try {
-      await setProduction(pending.orderId, { production_started: true, estimated_production_days: pending.days, action_token: actionToken });
+      await recordStageUpdate({
+        quotation_number: pending.quotationNumber,
+        stage: 'production_pending',
+        status: 'workflow_started',
+        remarks: 'Production workflow acknowledged from dashboard; actual production has not started yet.',
+        action_token: actionToken,
+      });
       refresh();
     } catch (err: any) {
-      alert('Failed to start production: ' + (err.message ?? 'Unknown error'));
+      alert('Failed to start production workflow: ' + (err.message ?? 'Unknown error'));
     } finally {
-      (window as any).__pendingStartProductionData = null;
+      (window as any).__pendingStartProductionWorkflowData = null;
     }
   }
 
@@ -467,15 +466,12 @@ export default function PurchasingPage() {
       pendingAction: 'delete' });
   }
 
-  async function handleStartProduction(order: Order) {
-    const input = window.prompt('Estimated production days?', order.estimated_production_days?.toString() ?? '');
-    if (!input) return;
-    const days = Number(input.replace(/[^0-9]/g, ''));
-    if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    setOtpModal({ open: true, title: 'Start Production',
-      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate. Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'setProduction' });
-    (window as any).__pendingStartProductionData = { orderId: order.id, days };
+  async function handleStartProductionWorkflow(order: Order) {
+    if (!order.quotation_number) { alert('Cannot start production workflow: quotation number is missing.'); return; }
+    setOtpModal({ open: true, title: 'Start Production Workflow',
+      description: `You are about to move order "${order.quotation_number}" to Production Pending. This only acknowledges the production team workflow; it does not mark actual production as started. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'startProductionWorkflow' });
+    (window as any).__pendingStartProductionWorkflowData = { orderId: order.id, quotationNumber: order.quotation_number };
   }
 
   function handleVerifyDeposit(order: Order) {
@@ -554,7 +550,7 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProduction={handleStartProduction} onViewFiles={handleViewFiles} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProductionWorkflow={handleStartProductionWorkflow} onViewFiles={handleViewFiles} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -574,7 +570,7 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProduction={handleStartProduction} onViewFiles={handleViewFiles} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProductionWorkflow={handleStartProductionWorkflow} onViewFiles={handleViewFiles} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
