@@ -7599,3 +7599,111 @@ Always wrap cleanup/shutdown operations (e.g., `stop()`, `close()`, `disconnect(
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: auto-learned lessons from SIGTERM crash fix
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 10be05e0c0e76c11a89a9cceef859717aac86c9b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 10be05e0c0e76c11a89a9cceef859717aac86c9b
+**Files:** memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A crash caused by an unhandled `SIGTERM` signal during workflow execution, which left processes in an inconsistent state.
+
+**Why it broke:**  
+The system did not register a signal handler for `SIGTERM`, so the default OS behavior (immediate termination) occurred. This bypassed cleanup logic, leaving shared resources (e.g., temp files, locks) orphaned.
+
+**Reusable takeaway:**  
+Always register a graceful shutdown handler for `SIGTERM` (and `SIGINT`) in long-running or resource-managing processes. The handler should:  
+1. Set a termination flag to stop accepting new work.  
+2. Complete or rollback in-flight operations.  
+3. Release shared resources (files, network connections, locks).  
+4. Exit with a non-zero code to signal abnormal termination.  
+
+This pattern prevents resource leaks and data corruption in containerized or supervised environments where signals are the primary shutdown mechanism.
+
+---
+*Original commit message: chore: auto-learned lessons from SIGTERM crash fix*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A crash caused by an unhandled `SIGTERM` signal during workflow execution, which left processes in an inconsistent state.
+
+**Why it broke:**  
+The system did not register a signal handler for `SIGTERM`, so the default OS behavior (immediate termination) occurred. This bypassed cleanup logic, leaving shared resources (e.g., temp files, locks) orphaned.
+
+**Reusable takeaway:**  
+Always register a graceful shutdown handler for `SIGTERM` (and `SIGINT`) in long-running or resource-managing processes. The handler should:  
+1. Set a termination flag to stop accepting new work.  
+2. Complete or rollback in-flight operations.  
+3. Release shared resources (files, network connections, locks).  
+4. Exit with a non-zero code to signal abnormal termination.  
+
+This pattern prevents resource leaks and data corruption in containerized or supervised environments where signals are the primary shutdown mechanism.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: route item-level orders through inventory_verification + close remaining gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 80b880e5f86bc5820744acf2ee5f67abe44e3cd8
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 80b880e5f86bc5820744acf2ee5f67abe44e3cd8
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Item-level orders were not routed through the `inventory_verification` step, causing gaps in order processing. The fix ensures all item-level orders pass through verification before proceeding.
+
+**Why it broke:**  
+The workflow logic had a conditional path that bypassed `inventory_verification` for item-level orders, likely due to an oversight in routing rules or an incomplete state machine transition.
+
+**Reusable takeaway:**  
+When designing workflow automation, explicitly map all order types (e.g., item-level vs. bulk) to every required step. Avoid implicit routing assumptions—use exhaustive condition checks or state machine diagrams to ensure no path skips critical verification stages.
+
+---
+*Original commit message: fix: route item-level orders through inventory_verification + close remaining gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Item-level orders were not routed through the `inventory_verification` step, causing gaps in order processing. The fix ensures all item-level orders pass through verification before proceeding.
+
+**Why it broke:**  
+The workflow logic had a conditional path that bypassed `inventory_verification` for item-level orders, likely due to an oversight in routing rules or an incomplete state machine transition.
+
+**Reusable takeaway:**  
+When designing workflow automation, explicitly map all order types (e.g., item-level vs. bulk) to every required step. Avoid implicit routing assumptions—use exhaustive condition checks or state machine diagrams to ensure no path skips critical verification stages.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
