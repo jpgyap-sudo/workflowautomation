@@ -7169,3 +7169,51 @@ Ensure dependent services (e.g., webhook handlers, bots, or workers) are fully i
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: skip-set check before auto-advance in item_prod handler — don't call finish-production when user said 'Not Yet' to 
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5ef3782a5ed6b55ca0d90908de8da81319081240
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5ef3782a5ed6b55ca0d90908de8da81319081240
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+A bug where the `item_prod` handler would auto-advance to `finish-production` even when the user selected "Not Yet" for all items, skipping the intended confirmation step.
+
+**Why it broke:**  
+The `set` check (which determines if any items were produced) was evaluated *after* the auto-advance logic. This meant the auto-advance triggered before the system could verify that no items were actually completed, causing a premature state transition.
+
+**Reusable takeaway:**  
+Always validate state-changing conditions *before* executing auto-advance or transition logic. Order matters: check user intent (e.g., "Not Yet") before proceeding to the next step. In state machines or multi-step forms, guard clauses should be evaluated in the sequence that respects user decisions, not the sequence that optimizes code flow.
+
+---
+*Original commit message: fix: skip-set check before auto-advance in item_prod handler — don't call finish-production when user said 'Not Yet' to all items*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the `item_prod` handler would auto-advance to `finish-production` even when the user selected "Not Yet" for all items, skipping the intended confirmation step.
+
+**Why it broke:**  
+The `set` check (which determines if any items were produced) was evaluated *after* the auto-advance logic. This meant the auto-advance triggered before the system could verify that no items were actually completed, causing a premature state transition.
+
+**Reusable takeaway:**  
+Always validate state-changing conditions *before* executing auto-advance or transition logic. Order matters: check user intent (e.g., "Not Yet") before proceeding to the next step. In state machines or multi-step forms, guard clauses should be evaluated in the sequence that respects user decisions, not the sequence that optimizes code flow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
