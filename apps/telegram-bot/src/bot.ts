@@ -1561,15 +1561,8 @@ bot.on(message('text'), async (ctx) => {
         }
       }
 
-      // Always show the production dashboard after any message in the production chat
-      try {
-        const orders = await fetchBoard();
-        const { text: boardText, keyboard } = boardDashboard(orders);
-        await ctx.reply(boardText, { parse_mode: 'Markdown', ...keyboard });
-      } catch (err) {
-        console.error('[bot] Failed to fetch production board:', err);
-        // Silent fallback
-      }
+      // Always show/update the persistent control panel after any message in the production chat
+      await showOrUpdatePanel(ctx, chatId);
       return;
     }
 
@@ -2783,6 +2776,33 @@ function boardCategory(order: BoardOrder): BoardCategory {
   return 'pending_start';
 }
 
+// ── Persistent control panel message ID (per chat) ──────────────────────
+const panelMessageIds = new Map<string, number>();
+
+async function showOrUpdatePanel(ctx: any, chatId: string): Promise<void> {
+  try {
+    const orders = await fetchBoard();
+    const { text, keyboard } = boardDashboard(orders);
+    const existingMsgId = panelMessageIds.get(chatId);
+
+    if (existingMsgId) {
+      await ctx.telegram.editMessageText(chatId, existingMsgId, undefined, text, {
+        parse_mode: 'Markdown',
+        ...keyboard,
+      }).catch(async () => {
+        // Message too old or deleted — send fresh
+        const msg = await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+        if (msg) panelMessageIds.set(chatId, msg.message_id);
+      });
+    } else {
+      const msg = await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+      if (msg) panelMessageIds.set(chatId, msg.message_id);
+    }
+  } catch (err) {
+    console.error('[bot] Failed to show/update panel:', err);
+  }
+}
+
 function boardDashboard(orders: BoardOrder[]): { text: string; keyboard: ReturnType<typeof Markup.inlineKeyboard> } {
   const counts = new Map<BoardCategory, number>();
   for (const c of BOARD_CATEGORIES) counts.set(c.id, 0);
@@ -2792,13 +2812,19 @@ function boardDashboard(orders: BoardOrder[]): { text: string; keyboard: ReturnT
   return {
     text: `?? *Production Dashboard*\n\n${lines.join('\n')}\n\nProduction chat monitors only production, ready-for-delivery, and en-route work. Tap a section:`,
     keyboard: Markup.inlineKeyboard([
+      // ── Quick-action row ──
+      [
+        Markup.button.callback('?? Refresh', 'prd:list'),
+        Markup.button.callback('? Mark Produced', 'prd:quick:produced'),
+        Markup.button.callback('?? Mark En Route', 'prd:quick:en_route'),
+      ],
+      // ── Category navigation ──
       [
         Markup.button.callback(`? Pending Start (${counts.get('pending_start') ?? 0})`, 'prd:cat:pending_start'),
         Markup.button.callback(`?? In Progress (${counts.get('in_progress') ?? 0})`, 'prd:cat:in_progress'),
       ],
       [Markup.button.callback(`? Ready for Delivery (${counts.get('ready_for_delivery') ?? 0})`, 'prd:cat:ready_for_delivery')],
       [Markup.button.callback(`?? En Route (${counts.get('en_route') ?? 0})`, 'prd:cat:en_route')],
-      [Markup.button.callback('?? Refresh', 'prd:list')],
     ]),
   };
 }
@@ -2900,16 +2926,14 @@ function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<
 
 // /prod command ? show production dashboard
 bot.command('prod', async (ctx) => {
-  const orders = await fetchBoard();
-  const { text, keyboard } = boardDashboard(orders);
-  await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+  const chatId = String(ctx.chat!.id);
+  await showOrUpdatePanel(ctx, chatId);
 });
 
 // Also allow /production as alias
 bot.command('production', async (ctx) => {
-  const orders = await fetchBoard();
-  const { text, keyboard } = boardDashboard(orders);
-  await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+  const chatId = String(ctx.chat!.id);
+  await showOrUpdatePanel(ctx, chatId);
 });
 
 // prd:list ? refresh/back to production dashboard
@@ -2917,6 +2941,48 @@ bot.action('prd:list', async (ctx) => {
   const orders = await fetchBoard();
   const { text, keyboard } = boardDashboard(orders);
   await ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }).catch(() => {});
+});
+
+// prd:quick:produced ? quick action — pick an order to mark as produced
+bot.action('prd:quick:produced', async (ctx) => {
+  const orders = await fetchBoard();
+  const pending = orders.filter((o) => boardCategory(o) === 'in_progress' || boardCategory(o) === 'pending_start');
+  if (pending.length === 0) {
+    await ctx.answerCbQuery('? No orders pending production').catch(() => {});
+    return;
+  }
+  const buttons = pending.slice(0, 20).map((o) => [
+    Markup.button.callback(
+      `${o.quotation_number ?? o.id.slice(0, 8)} ? ${o.client_name ?? '?'}`.slice(0, 58),
+      `prd:o:${o.id.slice(0, 8)}`,
+    ),
+  ]);
+  buttons.push([Markup.button.callback('? Back to Dashboard', 'prd:list')]);
+  await ctx.editMessageText('? *Mark Produced*\n\nSelect an order to view and mark items as produced:', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard(buttons),
+  }).catch(() => {});
+});
+
+// prd:quick:en_route ? quick action — pick an order to mark as en route
+bot.action('prd:quick:en_route', async (ctx) => {
+  const orders = await fetchBoard();
+  const ready = orders.filter((o) => boardCategory(o) === 'ready_for_delivery' || boardCategory(o) === 'en_route');
+  if (ready.length === 0) {
+    await ctx.answerCbQuery('? No orders ready for en route').catch(() => {});
+    return;
+  }
+  const buttons = ready.slice(0, 20).map((o) => [
+    Markup.button.callback(
+      `${o.quotation_number ?? o.id.slice(0, 8)} ? ${o.client_name ?? '?'}`.slice(0, 58),
+      `prd:o:${o.id.slice(0, 8)}`,
+    ),
+  ]);
+  buttons.push([Markup.button.callback('? Back to Dashboard', 'prd:list')]);
+  await ctx.editMessageText('?? *Mark En Route*\n\nSelect an order to view and mark items as en route:', {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard(buttons),
+  }).catch(() => {});
 });
 
 // prd:cat:{category} ? show a section list
