@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `ee87c55` | Roo (Code) | fix: deposit sync failure — remove mandatory action_token from POST /deposits, add OTP modals to all deposit flows | ✅ VPS `ee87c55` |
 | `1749ed9` | Claude Sonnet 4.6 | fix: production workflow — partial_production end-to-end (auto-advance, item-level tracking, Telegram + dashboard + reminders + agent) | Not deployed yet |
 | `029adcd` | Codex | fix: restore en_route_verification in dashboard stage pipeline | Not deployed yet |
 | `9af8ae5` | Codex | chore: record OTP 502 recovery lessons and logs | ✅ Not deployed (docs/memory only; VPS recovery already verified) |
