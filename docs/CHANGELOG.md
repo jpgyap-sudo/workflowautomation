@@ -10,7 +10,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
-| `693c922` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | Pending deploy |
+| `2a15dcf` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | ? VPS `2a15dcf` |
 
 ## 2026-05-24
 
@@ -146,5 +146,6 @@
 | `3a2263b` | Codex | fix: auto-finish item-level production when all partial items are finished, then trigger en-route Telegram workflow | deployed VPS `ff25dee` |
 
 | `this commit` | Codex | update: make Production Finished orders expandable with item list and per-item inventory arrival dates | pending deploy |
+
 
 
