@@ -8463,3 +8463,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: include payment verification fields in order lists
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3b6a1789b564407a38ecd87cec01bdc00501340a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3b6a1789b564407a38ecd87cec01bdc00501340a
+**Files:** apps/api/src/server.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** Payment verification fields (e.g., `paymentVerified`, `verificationTimestamp`) were missing from order list API responses, causing downstream systems to treat unverified orders as complete.
+
+**Why it broke:** The order list query used a projection that omitted these fields, likely because they were added later to the database schema but not included in the read path. The write path (order creation/update) included them, but the list endpoint was not updated.
+
+**Reusable takeaway:** When adding new fields to a database schema, always audit all read paths (list, detail, export) to ensure they include the new fields. A common pitfall is updating only the write/update logic and forgetting the read projection. Use a shared field list or DTO to enforce consistency across endpoints.
+
+---
+*Original commit message: fix: include payment verification fields in order lists*
+
+#### Lesson Learned
+
+**What was fixed:** Payment verification fields (e.g., `paymentVerified`, `verificationTimestamp`) were missing from order list API responses, causing downstream systems to treat unverified orders as complete.
+
+**Why it broke:** The order list query used a projection that omitted these fields, likely because they were added later to the database schema but not included in the read path. The write path (order creation/update) included them, but the list endpoint was not updated.
+
+**Reusable takeaway:** When adding new fields to a database schema, always audit all read paths (list, detail, export) to ensure they include the new fields. A common pitfall is updating only the write/update logic and forgetting the read projection. Use a shared field list or DTO to enforce consistency across endpoints.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
