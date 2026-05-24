@@ -2446,6 +2446,7 @@ const orderItemSchema = z.object({
   production_status: z.enum(['pending', 'in_progress', 'finished']).optional(),
   en_route_status: z.enum(['not_yet', 'en_route', 'arrived']).optional(),
   estimated_arrival_days: z.number().int().positive().nullable().optional(),
+  estimated_production_days: z.number().int().positive().nullable().optional(),
 });
 
 const bulkUpsertItemsSchema = z.object({
@@ -2458,6 +2459,7 @@ const updateItemSchema = z.object({
   production_status: z.enum(['pending', 'in_progress', 'finished']).optional(),
   en_route_status: z.enum(['not_yet', 'en_route', 'arrived']).optional(),
   estimated_arrival_days: z.number().int().positive().nullable().optional(),
+  estimated_production_days: z.number().int().positive().nullable().optional(),
   action_token: z.string().optional(),
 });
 
@@ -2703,6 +2705,10 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     setClauses.push(`estimated_arrival_days = $${idx++}`);
     values.push(body.estimated_arrival_days);
   }
+  if (body.estimated_production_days !== undefined) {
+    setClauses.push(`estimated_production_days = $${idx++}`);
+    values.push(body.estimated_production_days);
+  }
 
   if (setClauses.length === 0) {
     return reply.code(400).send({ error: 'No fields to update' });
@@ -2716,7 +2722,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     `UPDATE order_items SET ${setClauses.join(', ')}
      WHERE id = $${idx++} AND order_id = $${idx}
      RETURNING id, order_id, name, quantity, production_status, en_route_status,
-               estimated_arrival_days, created_at, updated_at`,
+               estimated_arrival_days, estimated_production_days, created_at, updated_at`,
     values
   );
 
@@ -2782,11 +2788,79 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     }
   }
 
-  // ?? Auto-advance order stage based on item production_status changes ??
-  // production_pending: any item starts ? partial_production
-  //                     all items start ? production_confirmed (skip partial)
-  // partial_production: all items start ? production_confirmed
-  // any production stage: all items finished ? production_finished/en_route
+  // ── Item-Level Production Timeline Reminders ────────────────────────
+  // When an item starts production with estimated days, create midpoint
+  // and due reminders. When finished, complete them. When days updated,
+  // recalculate the due reminder.
+  const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PURCHASING_GROUP_CHAT_ID;
+  if (PRODUCTION_CHAT_ID && (body.production_status !== undefined || body.estimated_production_days !== undefined)) {
+    const days = body.estimated_production_days ?? updatedItem.estimated_production_days ?? null;
+    const status = body.production_status ?? updatedItem.production_status ?? null;
+
+    if (status === 'in_progress' && days && days > 0) {
+      const orderRows = await query(
+        `SELECT quotation_number, client_name FROM orders WHERE id = $1`,
+        [order_id]
+      );
+      const orderRef = orderRows[0]?.quotation_number ?? `Order #${order_id.slice(0, 8)}`;
+      const client = orderRows[0]?.client_name ?? 'Unknown';
+
+      const midpointDays = Math.max(1, Math.floor(days / 2));
+      const midpointDate = new Date();
+      midpointDate.setDate(midpointDate.getDate() + midpointDays);
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + days);
+
+      // Midpoint reminder
+      await query(
+        `INSERT INTO reminders (order_id, item_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, $2, 'item_prod_midpoint', $3, $4, 'once', $5, 'active')
+         ON CONFLICT (order_id, stage, item_id) WHERE item_id IS NOT NULL
+         DO UPDATE SET
+           group_chat_id = EXCLUDED.group_chat_id,
+           message = EXCLUDED.message,
+           next_run_at = EXCLUDED.next_run_at,
+           status = 'active',
+           updated_at = NOW()`,
+        [
+          order_id, item_id, PRODUCTION_CHAT_ID,
+          `🏭 *Item Production Midpoint* — ${orderRef} (${client})\nItem: *${updatedItem.name}* x${updatedItem.quantity}\n${days}d timeline — halfway check. Is this item on track?`,
+          midpointDate.toISOString(),
+        ]
+      );
+
+      // Due reminder
+      await query(
+        `INSERT INTO reminders (order_id, item_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, $2, 'item_prod_due', $3, $4, 'once', $5, 'active')
+         ON CONFLICT (order_id, stage, item_id) WHERE item_id IS NOT NULL
+         DO UPDATE SET
+           group_chat_id = EXCLUDED.group_chat_id,
+           message = EXCLUDED.message,
+           next_run_at = EXCLUDED.next_run_at,
+           status = 'active',
+           updated_at = NOW()`,
+        [
+          order_id, item_id, PRODUCTION_CHAT_ID,
+          `🏭 *Item Production Due* — ${orderRef} (${client})\nItem: *${updatedItem.name}* x${updatedItem.quantity}\n${days}d timeline — due date reached. Is this item finished?`,
+          dueDate.toISOString(),
+        ]
+      );
+    } else if (status === 'finished') {
+      // Complete timeline reminders when item is finished
+      await query(
+        `UPDATE reminders SET status = 'completed', updated_at = NOW()
+         WHERE order_id = $1 AND item_id = $2 AND stage IN ('item_prod_midpoint', 'item_prod_due') AND status = 'active'`,
+        [order_id, item_id]
+      );
+    }
+  }
+
+  // Auto-advance order stage based on item production_status changes
+  // production_pending: any item starts -> partial_production
+  //                     all items start -> production_confirmed (skip partial)
+  // partial_production: all items start -> production_confirmed
+  // any production stage: all items finished -> production_finished/en_route
   if (body.production_status !== undefined) {
     const stageRows = await query<{ id: string; current_stage: string; quotation_number: string | null; client_name: string | null }>(
       `SELECT id, current_stage, quotation_number, client_name FROM orders WHERE id = $1`,
@@ -2810,10 +2884,10 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
           await finalizeProductionIfAllItemsFinished(
             order_id,
             'item_update',
-            `All ${allItemStatuses.length} production item(s) finished ? auto-advanced from ${currentOrder.current_stage}`,
+            `All ${allItemStatuses.length} production item(s) finished - auto-advanced from ${currentOrder.current_stage}`,
           );
         } else if (allStarted && currentOrder.current_stage !== 'production_confirmed') {
-          // All items in progress or finished ? advance to production_confirmed
+          // All items in progress or finished - advance to production_confirmed
           await query(
             `UPDATE orders SET current_stage = 'production_confirmed', production_started = TRUE,
              production_started_at = COALESCE(production_started_at, NOW()), partial_production_items = '[]'::jsonb, updated_at = NOW()
@@ -2823,11 +2897,11 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
           await query(
             `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
              VALUES ($1, 'production_confirmed', 'auto', $2, 'system')`,
-            [order_id, `All items started production ? auto-advanced from ${currentOrder.current_stage}`]
+            [order_id, `All items started production - auto-advanced from ${currentOrder.current_stage}`]
           );
           triggerAgentsForStage('production_confirmed', currentOrder.quotation_number ?? undefined, currentOrder.client_name ?? undefined);
         } else if (anyStarted && currentOrder.current_stage === 'production_pending') {
-          // Some items started ? advance to partial_production
+          // Some items started - advance to partial_production
           await query(
             `UPDATE orders
              SET current_stage = 'partial_production',

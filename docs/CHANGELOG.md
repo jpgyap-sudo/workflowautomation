@@ -120,3 +120,5 @@
 - **Extension**: Use `Roo`, `Claude`, `Codex`, `Kimi`, or `Manual`
 - **Deployed**: `✅` if deployed to VPS, `❌` if committed but not yet deployed
 - **VPS tag**: Add `✅ VPS <commit>` when the VPS is confirmed at a specific commit
+
+| `this commit` | Codex | fix: auto-finish item-level production when all partial items are finished, then trigger en-route Telegram workflow | pending deploy |

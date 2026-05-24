@@ -167,15 +167,21 @@ function ProductionInfoCards({ order }: { order: Order }) {
   if (!order.production_started && !order.partial_production_items?.length && items.length === 0) return null;
   const finishDate = computeFinishDate(order);
   const progress = getProductionProgress(order);
+  const actualItemsByName = new Map(items.map((item) => [item.name, item.production_status]));
+  const pendingPartialItems = (order.partial_production_items ?? []).filter((name) => {
+    const actualStatus = actualItemsByName.get(name);
+    return actualStatus == null || actualStatus !== 'finished';
+  });
+  const showPendingPartialItems = pendingPartialItems.length > 0 && !items.every((item) => item.production_status === 'finished');
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
       {/* Partial items list */}
-      {order.partial_production_items && order.partial_production_items.length > 0 && (
+      {showPendingPartialItems && (
         <div className="mb-3">
           <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600">Items Still Pending</p>
           <div className="flex flex-wrap gap-1.5">
-            {order.partial_production_items.map((item, i) => (
+            {pendingPartialItems.map((item, i) => (
               <span key={i} className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 {item}
               </span>

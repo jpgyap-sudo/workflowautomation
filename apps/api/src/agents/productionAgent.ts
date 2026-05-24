@@ -55,6 +55,7 @@ interface OrderItemRow {
   production_status: 'pending' | 'in_progress' | 'finished';
   en_route_status: 'not_yet' | 'en_route' | 'arrived';
   estimated_arrival_days: number | null;
+  estimated_production_days: number | null;
   updated_at: string;
 }
 
@@ -349,11 +350,38 @@ async function checkItemLevelPartialProduction(order: OrderRow): Promise<AgentRe
     const prodPct = completion?.get_production_completion_pct ?? 0;
     const escalationLevel = await getEscalationLevel(order.id, 'partial_production');
 
+    const allFinished = items.every((i) => i.production_status === 'finished');
     const pendingItem = items.find((i) => i.production_status === 'pending');
     const startedCount = items.filter((i) => i.production_status !== 'pending').length;
     const totalCount = items.length;
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
+
+    if (allFinished) {
+      await addProductionLog(null, order.id, `All partial-production items are finished (${prodPct}% complete). Auto-finishing production.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} partial-production item(s) finished. Auto-advancing to en_route.`);
+      await finalizeFinishedProductionItems(order, items, prodPct, AGENT_NAME);
+
+      const groupChatId = getGroupChatId(AGENT_NAME);
+      if (groupChatId) {
+        const msg = `<b>All Items Production Finished</b>
+
+Order #${qn} (${client})
+All ${items.length} item(s) completed (${prodPct}%).
+Order auto-advanced to En Route. Please verify dispatch item-by-item.`;
+        await sendTelegramMessage(groupChatId, msg);
+      }
+
+      const result: AgentResult = {
+        status: 'complete',
+        message: `All partial-production items finished for #${qn}. Auto-advanced to en_route.`,
+        next_stage: 'en_route',
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
+      return result;
+    }
 
     // All items started — advance to production_confirmed
     if (!pendingItem) {
@@ -528,6 +556,56 @@ async function addProductionLog(
   );
 }
 
+async function finalizeFinishedProductionItems(
+  order: OrderRow,
+  items: OrderItemRow[],
+  prodPct: number,
+  source: string,
+): Promise<void> {
+  const qn = order.quotation_number ?? 'unknown';
+  const lastHuman = await findLastHumanTrigger(order.id);
+  const remarks = `All ${items.length} item(s) production finished (${prodPct}% complete) - auto-advanced from ${order.current_stage}`;
+
+  await query(
+    `UPDATE orders
+     SET production_started = TRUE,
+         production_started_at = COALESCE(production_started_at, NOW()),
+         production_finished = TRUE,
+         production_finished_at = COALESCE(production_finished_at, NOW()),
+         partial_production_items = '[]'::jsonb,
+         current_stage = 'en_route',
+         updated_at = NOW()
+     WHERE id = $1`,
+    [order.id],
+  );
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'en_route', 'production_finished', $2, $3)`,
+    [order.id, remarks, source],
+  );
+
+  await query(
+    `UPDATE reminders
+     SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1
+       AND status = 'active'
+       AND stage IN ('partial_production', 'item_level_production', 'production_pending', 'production_midpoint', 'production_due')`,
+    [order.id],
+  );
+
+  await advanceStage(order.id, 'en_route', qn, remarks, lastHuman);
+
+  // Send/create the next item-level en-route Telegram question immediately in
+  // the same agent run, instead of waiting for the next scheduler tick.
+  await checkItemLevelEnRoute({
+    ...order,
+    current_stage: 'en_route',
+    production_started: true,
+    production_finished: true,
+  } as OrderRow);
+}
+
 /**
  * Find the most recent human who triggered a production-related update
  * for this order (from production logs or stage updates).
@@ -595,29 +673,30 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
       (item) => item.production_status !== 'finished',
     );
 
-    // If all items are finished — advance the order
+    // If all items are finished - advance the order
     if (!unfinishedItem) {
       const qn = order.quotation_number ?? 'unknown';
       const client = order.client_name ?? 'Unknown';
 
-      // Log the completion
-      await addProductionLog(null, order.id, `✅ All items production finished (${prodPct}% complete). Auto-advancing order.`, 'agent', AGENT_NAME);
+      // Log the completion and finalize the order flags/stage/reminders.
+      await addProductionLog(null, order.id, `All items production finished (${prodPct}% complete). Auto-advancing order.`, 'agent', AGENT_NAME);
       await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) production finished. Auto-advancing to en_route.`);
-
-      // Advance to en_route (attribute to last human who updated production)
-      const lastHuman = await findLastHumanTrigger(order.id);
-      await advanceStage(order.id, 'en_route', qn, `All items production finished (${prodPct}% complete)`, lastHuman);
+      await finalizeFinishedProductionItems(order, items, prodPct, AGENT_NAME);
 
       // Send notification to production group
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `✅ <b>All Items Production Finished</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) completed (${prodPct}%).\nPlease verify en route status for each item.`;
+        const msg = `<b>All Items Production Finished</b>
+
+Order #${qn} (${client})
+All ${items.length} item(s) completed (${prodPct}%).
+Order auto-advanced to En Route. Please verify en route status for each item.`;
         await sendTelegramMessage(groupChatId, msg);
       }
 
       const result: AgentResult = {
         status: 'complete',
-        message: `✅ All items production finished for #${qn}. Auto-advanced to en_route.`,
+        message: `All items production finished for #${qn}. Auto-advanced to en_route.`,
         next_stage: 'en_route',
         reminder_needed: false,
         escalation_level: escalationLevel,
@@ -626,6 +705,7 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
       return result;
     }
 
+    
     // ── Process of elimination: ask about the next unfinished item ──
     const finishedCount = items.filter((i) => i.production_status === 'finished').length;
     const totalCount = items.length;

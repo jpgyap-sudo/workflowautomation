@@ -8837,3 +8837,266 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: partial-production dashboard endpoint missing partial_production stage orders
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6ef6d10ba3c8b1cd0ca842bb6856c23bbfeef8f6
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 6ef6d10ba3c8b1cd0ca842bb6856c23bbfeef8f6
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+The production dashboard endpoint was missing orders in the `partial_production` stage, causing incomplete data display.
+
+**Why it broke:**  
+The query filter only included `production` stage orders, omitting the `partial_production` stage due to an oversight in stage enumeration logic.
+
+**Reusable takeaway:**  
+When filtering by workflow stages, always audit stage names for variants (e.g., `partial_production` vs `production`). Use a centralized stage list or enum to avoid hardcoding incomplete filters. Test endpoints with all stage transitions to catch missing cases.
+
+---
+*Original commit message: fix: partial-production dashboard endpoint missing partial_production stage orders*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The production dashboard endpoint was missing orders in the `partial_production` stage, causing incomplete data display.
+
+**Why it broke:**  
+The query filter only included `production` stage orders, omitting the `partial_production` stage due to an oversight in stage enumeration logic.
+
+**Reusable takeaway:**  
+When filtering by workflow stages, always audit stage names for variants (e.g., `partial_production` vs `production`). Use a centralized stage list or enum to avoid hardcoding incomplete filters. Test endpoints with all stage transitions to catch missing cases.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: auto-finish completed item production
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9f5590221b0b9f34c2308526b953a0c023bb2ce6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9f5590221b0b9f34c2308526b953a0c023bb2ce6
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,database/migrations/031_item_production_days.sql,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Auto-finish logic for completed item production was not triggering, leaving production items stuck in an incomplete state.
+
+**Why it broke:**  
+The production agent lacked a scheduled check or event-driven trigger to finalize items once their production days elapsed. The completion logic existed but was never invoked automatically.
+
+**Reusable takeaway:**  
+When implementing time-based state transitions (e.g., auto-finishing after N days), ensure there is a scheduled job, cron, or event listener that actively checks and transitions states. Do not rely solely on user-initiated actions or passive logic. Always pair state machines with a periodic or event-driven trigger to enforce time-dependent transitions.
+
+---
+*Original commit message: fix: auto-finish completed item production*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Auto-finish logic for completed item production was not triggering, leaving production items stuck in an incomplete state.
+
+**Why it broke:**  
+The production agent lacked a scheduled check or event-driven trigger to finalize items once their production days elapsed. The completion logic existed but was never invoked automatically.
+
+**Reusable takeaway:**  
+When implementing time-based state transitions (e.g., auto-finishing after N days), ensure there is a scheduled job, cron, or event listener that actively checks and transitions states. Do not rely solely on user-initiated actions or passive logic. Always pair state machines with a periodic or event-driven trigger to enforce time-dependent transitions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: auto-finish completed item production
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 384dac9437a989608a269a5271fe365ddf698cc5
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 384dac9437a989608a269a5271fe365ddf698cc5
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,database/migrations/031_item_production_days.sql,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Auto-finish logic for completed item production was broken. Production items that reached their finish date were not being automatically marked as complete.
+
+**Why it broke:**  
+The production agent’s scheduling logic did not correctly compare the current date against the item’s `production_days` field. A missing or incorrect date comparison prevented the auto-completion trigger from firing.
+
+**Reusable takeaway:**  
+When implementing time-based auto-completion, ensure the comparison logic uses the correct date field and format. Validate that the scheduling agent checks for completion at the right granularity (e.g., daily vs. hourly). Always test with items that span across date boundaries.
+
+---
+*Original commit message: fix: auto-finish completed item production*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Auto-finish logic for completed item production was broken. Production items that reached their finish date were not being automatically marked as complete.
+
+**Why it broke:**  
+The production agent’s scheduling logic did not correctly compare the current date against the item’s `production_days` field. A missing or incorrect date comparison prevented the auto-completion trigger from firing.
+
+**Reusable takeaway:**  
+When implementing time-based auto-completion, ensure the comparison logic uses the correct date field and format. Validate that the scheduling agent checks for completion at the right granularity (e.g., daily vs. hourly). Always test with items that span across date boundaries.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: auto-finish completed item production
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f9f37a5e99646f80001c04864e772d724f2ae18c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f9f37a5e99646f80001c04864e772d724f2ae18c
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,database/migrations/031_item_production_days.sql,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Auto-finish logic for completed item production – production items that reached their required days were not automatically marked as finished.
+
+**Why it broke:**  
+The production agent’s completion check was missing a database migration to add an `item_production_days` column, so the system had no field to track or compare production duration. The condition for auto-finishing never evaluated correctly.
+
+**Reusable takeaway:**  
+When adding a time-based or state-based automation rule, ensure the underlying data model (schema, column, or field) is migrated first. The automation logic will silently fail if the required data structure doesn’t exist. Always pair business logic changes with the corresponding database migration in the same commit.
+
+---
+*Original commit message: fix: auto-finish completed item production*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Auto-finish logic for completed item production – production items that reached their required days were not automatically marked as finished.
+
+**Why it broke:**  
+The production agent’s completion check was missing a database migration to add an `item_production_days` column, so the system had no field to track or compare production duration. The condition for auto-finishing never evaluated correctly.
+
+**Reusable takeaway:**  
+When adding a time-based or state-based automation rule, ensure the underlying data model (schema, column, or field) is migrated first. The automation logic will silently fail if the required data structure doesn’t exist. Always pair business logic changes with the corresponding database migration in the same commit.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: auto-finish completed item production
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1fba01a580a7de30420e1cf691b1aad330a06e22
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1fba01a580a7de30420e1cf691b1aad330a06e22
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,database/migrations/031_item_production_days.sql,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Auto-finish logic for completed item production was not triggering, leaving production items stuck in an incomplete state.
+
+**Why it broke:**  
+The production agent lacked a check for items whose production days had elapsed. The system only processed active items, ignoring those that should auto-complete based on elapsed time.
+
+**Reusable takeaway:**  
+When implementing time-based auto-completion, ensure the scheduler or agent explicitly checks for elapsed conditions on every cycle. A missing condition check can silently stall workflows. Always add a migration to store the production days field, and update the UI to reflect the new state. Log the fix in both bug and lesson docs to prevent recurrence.
+
+---
+*Original commit message: fix: auto-finish completed item production*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Auto-finish logic for completed item production was not triggering, leaving production items stuck in an incomplete state.
+
+**Why it broke:**  
+The production agent lacked a check for items whose production days had elapsed. The system only processed active items, ignoring those that should auto-complete based on elapsed time.
+
+**Reusable takeaway:**  
+When implementing time-based auto-completion, ensure the scheduler or agent explicitly checks for elapsed conditions on every cycle. A missing condition check can silently stall workflows. Always add a migration to store the production days field, and update the UI to reflect the new state. Log the fix in both bug and lesson docs to prevent recurrence.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] auto-finish completed item production
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When item-level production has order_items and every production_status is finished, finalize the order immediately: set production_started/production_finished flags and timestamps, clear partial_production_items, move current_stage to en_route, complete production reminders, invalidate dashboards, and trigger en-route Telegram/agent flow. Also hide legacy partial_production_items chips when actual order_items are all finished.
+
+#### Lesson Learned
+
+When item-level production has order_items and every production_status is finished, finalize the order immediately: set production_started/production_finished flags and timestamps, clear partial_production_items, move current_stage to en_route, complete production reminders, invalidate dashboards, and trigger en-route Telegram/agent flow. Also hide legacy partial_production_items chips when actual order_items are all finished.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
