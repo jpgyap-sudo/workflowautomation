@@ -505,7 +505,10 @@ export interface OrderItem {
   estimated_arrival_days: number | null;
   estimated_production_days?: number | null;
   production_finished_at: string | null;
+  inventory_verified_at: string | null;
   verified_qty: number;
+  delivered_qty: number;
+  delivered_at: string | null;
   created_at: string;
   updated_at: string;
 }

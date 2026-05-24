@@ -2185,6 +2185,88 @@ app.patch('/orders/:id/reschedule-reminder', async (request, reply) => {
  * Mark an order_item as verified (all, partial, or not yet) during inventory_verification stage.
  * Body: { item_id: string, action: 'all' | 'partial' | 'not_yet', verified_qty?: number }
  */
+
+async function adjustInventoryForOrderItem(
+  orderId: string,
+  orderItemId: string,
+  itemName: string,
+  quantityDelta: number,
+  movementType: 'inventory_verified' | 'inventory_unverified' | 'delivery_deduct',
+  note: string,
+  createdBy: string,
+) {
+  if (quantityDelta === 0) return;
+
+  const existing = await query<{ id: string; quantity: number }>(
+    `SELECT id, quantity FROM inventory_items WHERE lower(product_name) = lower($1) ORDER BY created_at ASC LIMIT 1`,
+    [itemName],
+  );
+
+  let inventoryItemId: string | null = null;
+  let quantityAfter: number | null = null;
+
+  if (existing[0]) {
+    inventoryItemId = existing[0].id;
+    const updated = await query<{ quantity: number }>(
+      `UPDATE inventory_items
+       SET quantity = GREATEST(0, quantity + $1), updated_at = NOW()
+       WHERE id = $2
+       RETURNING quantity`,
+      [quantityDelta, inventoryItemId],
+    );
+    quantityAfter = Number(updated[0]?.quantity ?? 0);
+  } else if (quantityDelta > 0) {
+    const inserted = await query<{ id: string; quantity: number }>(
+      `INSERT INTO inventory_items (product_name, quantity, category)
+       VALUES ($1, $2, 'Verified Order Item')
+       RETURNING id, quantity`,
+      [itemName, quantityDelta],
+    );
+    inventoryItemId = inserted[0]?.id ?? null;
+    quantityAfter = Number(inserted[0]?.quantity ?? quantityDelta);
+  }
+
+  await query(
+    `INSERT INTO inventory_movements
+       (inventory_item_id, order_id, order_item_id, item_name, movement_type, quantity_change, quantity_after, note, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [inventoryItemId, orderId, orderItemId, itemName, movementType, quantityDelta, quantityAfter, note, createdBy],
+  );
+}
+
+async function deductInventoryForDeliveredOrder(orderId: string, createdBy: string) {
+  const items = await query<{ id: string; name: string; quantity: number; delivered_qty: number | null }>(
+    `SELECT id, name, quantity, delivered_qty FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [orderId],
+  );
+
+  for (const item of items) {
+    const alreadyDelivered = Number(item.delivered_qty ?? 0);
+    const targetDelivered = Number(item.quantity ?? 0);
+    const deltaToDeduct = Math.max(0, targetDelivered - alreadyDelivered);
+    if (deltaToDeduct <= 0) continue;
+
+    await adjustInventoryForOrderItem(
+      orderId,
+      item.id,
+      item.name,
+      -deltaToDeduct,
+      'delivery_deduct',
+      `Delivered order item deducted from inventory (${deltaToDeduct}/${targetDelivered}).`,
+      createdBy,
+    );
+
+    await query(
+      `UPDATE order_items
+       SET delivered_qty = LEAST(quantity, COALESCE(delivered_qty, 0) + $1),
+           delivered_at = COALESCE(delivered_at, NOW()),
+           updated_at = NOW()
+       WHERE id = $2`,
+      [deltaToDeduct, item.id],
+    );
+  }
+}
+
 const inventoryVerifyItemSchema = z.object({
   item_id: z.string(),
   action: z.enum(['all', 'partial', 'not_yet']),
@@ -2204,7 +2286,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   }
 
   // Get the item
-  const itemRows = await query(`SELECT id, name, quantity, verified_qty FROM order_items WHERE id = $1 AND order_id = $2`, [body.item_id, id]);
+  const itemRows = await query(`SELECT id, name, quantity, verified_qty, inventory_verified_at FROM order_items WHERE id = $1 AND order_id = $2`, [body.item_id, id]);
   if (!itemRows[0]) return reply.code(404).send({ error: 'Item not found' });
 
   const item = itemRows[0];
@@ -2224,11 +2306,30 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
       break;
   }
 
-  // Update verified_qty on the item
+  const previousVerifiedQty = Number(item.verified_qty ?? 0);
+  const inventoryDelta = newVerifiedQty - previousVerifiedQty;
+
+  // Update verified_qty and the first arrival verification date on the item.
   await query(
-    `UPDATE order_items SET verified_qty = $1, updated_at = NOW() WHERE id = $2`,
+    `UPDATE order_items
+     SET verified_qty = $1,
+         inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
+         updated_at = NOW()
+     WHERE id = $2`,
     [newVerifiedQty, body.item_id]
   );
+
+  if (inventoryDelta !== 0) {
+    await adjustInventoryForOrderItem(
+      id,
+      body.item_id,
+      item.name,
+      inventoryDelta,
+      inventoryDelta > 0 ? 'inventory_verified' : 'inventory_unverified',
+      `Inventory verification adjusted ${item.name}: ${previousVerifiedQty} -> ${newVerifiedQty}.`,
+      'inventory-agent',
+    );
+  }
 
   // Recalculate overall verification %
   const allItems = await query(
@@ -2484,7 +2585,7 @@ app.get('/orders/:id/items', async (request, reply) => {
     `SELECT oi.id, oi.order_id, oi.name, oi.quantity,
             oi.production_status, oi.en_route_status,
             oi.estimated_arrival_days, oi.estimated_production_days,
-            oi.production_finished_at, oi.created_at, oi.updated_at
+            oi.production_finished_at, oi.inventory_verified_at, oi.delivered_qty, oi.delivered_at, oi.created_at, oi.updated_at
      FROM order_items oi
      WHERE oi.order_id = $1
      ORDER BY oi.created_at ASC`,
@@ -2656,7 +2757,7 @@ app.post('/orders/:id/items', async (request, reply) => {
   // Fetch and return the new items
   const items = await query(
     `SELECT id, order_id, name, quantity, production_status, en_route_status,
-            estimated_arrival_days, estimated_production_days, production_finished_at, created_at, updated_at
+            estimated_arrival_days, estimated_production_days, production_finished_at, inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
      FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
     [id]
   );
@@ -2734,7 +2835,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     `UPDATE order_items SET ${setClauses.join(', ')}
      WHERE id = $${idx++} AND order_id = $${idx}
      RETURNING id, order_id, name, quantity, production_status, en_route_status,
-               estimated_arrival_days, estimated_production_days, production_finished_at, created_at, updated_at`,
+               estimated_arrival_days, estimated_production_days, production_finished_at, inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at`,
     values
   );
 
@@ -3079,7 +3180,7 @@ app.post('/orders/:id/extract-items', async (request, reply) => {
   // Fetch the saved items
   const items = await query(
     `SELECT id, order_id, name, quantity, production_status, en_route_status,
-            estimated_arrival_days, estimated_production_days, production_finished_at, created_at, updated_at
+            estimated_arrival_days, estimated_production_days, production_finished_at, inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
      FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
     [id]
   );
@@ -3355,6 +3456,7 @@ app.post('/stage-updates', async (request, reply) => {
   // Track delivery completion — set delivered_at when order reaches 'delivered' stage
   if (body.stage === 'delivered') {
     await query(`UPDATE orders SET delivered_at=NOW(), updated_at=NOW() WHERE id=$1`, [orderId]);
+    await deductInventoryForDeliveredOrder(orderId, body.updated_by ?? 'delivery-agent');
 
     // Schedule file-store cleanup: delete quotation text after 3 months
     // The file-store container handles the actual deletion based on file age.

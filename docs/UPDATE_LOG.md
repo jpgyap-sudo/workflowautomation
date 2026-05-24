@@ -25,6 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
+| 2026-05-24 19:58 | Codex | Update: item-level inventory verification with arrival dates and inventory/delivery accountability | Done |
 | 2026-05-24 19:30 | Codex | Update: add manual Proceed to Inventory Verification action for early arrivals | Done |
 | 2026-05-24 19:10 | Codex | Update: add per-item production finished date to Production Finished expandable item list | Done |
 | 2026-05-24 19:04 | Codex | Update: Production Finished orders are expandable and show per-item estimated inventory arrival dates | Done |
