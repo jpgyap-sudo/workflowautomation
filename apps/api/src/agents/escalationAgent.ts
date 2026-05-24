@@ -36,6 +36,7 @@ export async function runEscalationAgent(): Promise<AgentResult[]> {
     'production_pending',
     'production_confirmed',
     'en_route',
+    'en_route_verification',
     'inventory_verification',
     'deposit_pending',
     'deposit_verification',

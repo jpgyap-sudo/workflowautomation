@@ -7755,3 +7755,279 @@ For multi-extension or modular systems, establish a minimal, standardized docume
 cross-project, local-fallback
 
 ---
+
+### Lesson: Service Worker cache invalidation — bump cache name to force browser to fetch fresh JS after code fix
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When deploying JS bundle fixes to a PWA with Service Worker, the SW cache name must be bumped (e.g. v2→v3) so the SW activate event deletes old caches. Even then, the user must do a hard refresh (Ctrl+Shift+R) to bypass both SW cache and HTTP cache. Root cause: SW stale-while-revalidate pattern served old JS even after new code was deployed. Fix: bump CACHE_NAME in sw.js + user hard refresh.
+
+#### Lesson Learned
+
+When deploying JS bundle fixes to a PWA with Service Worker, the SW cache name must be bumped (e.g. v2→v3) so the SW activate event deletes old caches. Even then, the user must do a hard refresh (Ctrl+Shift+R) to bypass both SW cache and HTTP cache. Root cause: SW stale-while-revalidate pattern served old JS even after new code was deployed. Fix: bump CACHE_NAME in sw.js + user hard refresh.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: getStoredAccounts() merge logic — must propagate all fields (password, subUsers, etc.) from DEFAULT_ACCOUNTS to localStorage
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When seeding default accounts into localStorage, the merge loop only updated password but not subUsers. This caused shared accounts (like sales.homeu@gmail.com) to lose their sub-user definitions after first login. Root cause: merge logic only checked password field. Fix: add subUsers field comparison and merge alongside password.
+
+#### Lesson Learned
+
+When seeding default accounts into localStorage, the merge loop only updated password but not subUsers. This caused shared accounts (like sales.homeu@gmail.com) to lose their sub-user definitions after first login. Root cause: merge logic only checked password field. Fix: add subUsers field comparison and merge alongside password.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Docker Compose stale image references — use down --remove-orphans before up -d --build to clear corrupted container state
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+After rebuilding containers on VPS, Docker Compose throws 'No such image: sha256:...' and 'KeyError: ContainerConfig' errors because old image hashes persist in Compose state. Root cause: Docker Compose v1 tracks container config by image hash; when images are rebuilt with new hashes, old references become stale. Fix: always run docker-compose down --remove-orphans before docker-compose up -d --build to clear all stale state.
+
+#### Lesson Learned
+
+After rebuilding containers on VPS, Docker Compose throws 'No such image: sha256:...' and 'KeyError: ContainerConfig' errors because old image hashes persist in Compose state. Root cause: Docker Compose v1 tracks container config by image hash; when images are rebuilt with new hashes, old references become stale. Fix: always run docker-compose down --remove-orphans before docker-compose up -d --build to clear all stale state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Cross-extension logging system — use .clinerules to enforce UPDATE_LOG, BUG_LOG, CHANGELOG across Roo/Claude/Codex/Kimi
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When multiple AI coding extensions work on the same project, they need a shared logging protocol. Created three log files (CHANGELOG.md, BUG_LOG.md, UPDATE_LOG.md) and added mandatory logging rules to .clinerules so every extension automatically logs their work, bugs, and commits. Root cause: no coordination mechanism between extensions. Fix: .clinerules-based logging protocol with git-pull-before-edit and git-commit-after-update workflow.
+
+#### Lesson Learned
+
+When multiple AI coding extensions work on the same project, they need a shared logging protocol. Created three log files (CHANGELOG.md, BUG_LOG.md, UPDATE_LOG.md) and added mandatory logging rules to .clinerules so every extension automatically logs their work, bugs, and commits. Root cause: no coordination mechanism between extensions. Fix: .clinerules-based logging protocol with git-pull-before-edit and git-commit-after-update workflow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Next.js Service Worker + nginx cache strategy for PWA — 365d immutable cache breaks hotfix deployment
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Next.js dashboard with PWA Service Worker uses stale-while-revalidate for _next/static/ assets. nginx sets max-age=31536000 (1 year) immutable. When deploying a hotfix, the browser serves the old JS from either the SW cache or HTTP cache even after new code is deployed. Root cause: content-hashed chunk filenames don't change if the source file didn't change between builds. Fix: bump SW CACHE_NAME (v2→v3) so activate event deletes old cache, AND user must hard refresh (Ctrl+Shift+R) to bypass both caches.
+
+#### Lesson Learned
+
+Next.js dashboard with PWA Service Worker uses stale-while-revalidate for _next/static/ assets. nginx sets max-age=31536000 (1 year) immutable. When deploying a hotfix, the browser serves the old JS from either the SW cache or HTTP cache even after new code is deployed. Root cause: content-hashed chunk filenames don't change if the source file didn't change between builds. Fix: bump SW CACHE_NAME (v2→v3) so activate event deletes old cache, AND user must hard refresh (Ctrl+Shift+R) to bypass both caches.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Docker Compose v1 on VPS — always use down --remove-orphans before up -d to avoid stale image hash errors
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+On a 1GB VPS running Docker Compose v1, rebuilding containers often fails with 'No such image: sha256:...' and 'KeyError: ContainerConfig'. This happens because Compose v1 tracks container config by image hash, and when images are rebuilt with new hashes, old references become stale. The fix is to always run 'docker-compose down --remove-orphans' first (which removes all containers and their references), then 'docker-compose up -d --build' to create fresh containers with correct image hashes. Without this, even subsequent rebuilds fail because old container records still reference stale hashes.
+
+#### Lesson Learned
+
+On a 1GB VPS running Docker Compose v1, rebuilding containers often fails with 'No such image: sha256:...' and 'KeyError: ContainerConfig'. This happens because Compose v1 tracks container config by image hash, and when images are rebuilt with new hashes, old references become stale. The fix is to always run 'docker-compose down --remove-orphans' first (which removes all containers and their references), then 'docker-compose up -d --build' to create fresh containers with correct image hashes. Without this, even subsequent rebuilds fail because old container records still reference stale hashes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: localStorage account seeding — merge loop must propagate ALL fields (password, subUsers, role) from defaults to stored data
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When seeding DEFAULT_ACCOUNTS into localStorage for client-side auth, the getStoredAccounts() merge loop only compared and updated the password field. This caused shared accounts with subUsers (like sales.homeu@gmail.com with Mariella/Cathlyn) to lose their sub-user definitions after the first login persisted the account without subUsers. Root cause: the merge loop at line 78-95 only checked parsed[idx].password !== def.password. Fix: add subUsers field comparison using JSON.stringify + merge alongside password. General lesson: any field added to Account interface later must be added to the merge loop.
+
+#### Lesson Learned
+
+When seeding DEFAULT_ACCOUNTS into localStorage for client-side auth, the getStoredAccounts() merge loop only compared and updated the password field. This caused shared accounts with subUsers (like sales.homeu@gmail.com with Mariella/Cathlyn) to lose their sub-user definitions after the first login persisted the account without subUsers. Root cause: the merge loop at line 78-95 only checked parsed[idx].password !== def.password. Fix: add subUsers field comparison using JSON.stringify + merge alongside password. General lesson: any field added to Account interface later must be added to the merge loop.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Cross-extension coordination — .clinerules-based logging protocol for multiple AI coding extensions on same project
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When 4 AI coding extensions (Roo, Claude, Codex, Kimi) work on the same project simultaneously, they need a shared coordination protocol. Created 3 log files: CHANGELOG.md (commits + deploy status), BUG_LOG.md (bugs with root cause + fix), UPDATE_LOG.md (real-time work tracking). Added mandatory logging rules to .clinerules so every extension reads them on startup. Key rules: git pull before editing logs, git commit after updating, coordinate via UPDATE_LOG when multiple extensions active. This prevents merge conflicts and provides a single source of truth for all extensions.
+
+#### Lesson Learned
+
+When 4 AI coding extensions (Roo, Claude, Codex, Kimi) work on the same project simultaneously, they need a shared coordination protocol. Created 3 log files: CHANGELOG.md (commits + deploy status), BUG_LOG.md (bugs with root cause + fix), UPDATE_LOG.md (real-time work tracking). Added mandatory logging rules to .clinerules so every extension reads them on startup. Key rules: git pull before editing logs, git commit after updating, coordinate via UPDATE_LOG when multiple extensions active. This prevents merge conflicts and provides a single source of truth for all extensions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Telegram bot 409 Conflict on restart — add bot.telegram.callApi('close') + retry logic with exponential backoff
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Telegram bot crashes with 409 Conflict error when restarting because the previous bot instance still holds the Telegram polling lock. Root cause: Telegram's long-polling API doesn't release the lock immediately on disconnect. Fix: call bot.telegram.callApi('close') before bot.launch() to release the lock, add retry logic with exponential backoff for 429 rate-limits, and increase retries to 30 attempts.
+
+#### Lesson Learned
+
+Telegram bot crashes with 409 Conflict error when restarting because the previous bot instance still holds the Telegram polling lock. Root cause: Telegram's long-polling API doesn't release the lock immediately on disconnect. Fix: call bot.telegram.callApi('close') before bot.launch() to release the lock, add retry logic with exponential backoff for 429 rate-limits, and increase retries to 30 attempts.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Next.js Docker build OOM on 1GB VPS — use npm install instead of npm ci to reduce memory usage
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Dashboard Docker build crashes with OOM (Out of Memory) on a 1GB VPS during npm ci. Root cause: npm ci is stricter and uses more memory than npm install because it performs a clean install from lockfile. Fix: replace npm ci with npm install in Dockerfile, add --max-old-space-size flag, reduce npm maxsockets, and use --prefer-offline flag to minimize memory usage during build.
+
+#### Lesson Learned
+
+Dashboard Docker build crashes with OOM (Out of Memory) on a 1GB VPS during npm ci. Root cause: npm ci is stricter and uses more memory than npm install because it performs a clean install from lockfile. Fix: replace npm ci with npm install in Dockerfile, add --max-old-space-size flag, reduce npm maxsockets, and use --prefer-offline flag to minimize memory usage during build.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Google Drive upload — add withRetry wrapper with exponential backoff + token refresh for 401 errors
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Google Drive file uploads fail silently when the access token expires. Root cause: OAuth 2.0 tokens have a 1-hour expiry, and the upload function had no retry logic or token refresh mechanism. Fix: create a withRetry() wrapper that catches 401 errors, refreshes the token via oauth2Client.refreshAccessToken(), and retries the upload with exponential backoff (1s, 2s, 4s, 8s delays).
+
+#### Lesson Learned
+
+Google Drive file uploads fail silently when the access token expires. Root cause: OAuth 2.0 tokens have a 1-hour expiry, and the upload function had no retry logic or token refresh mechanism. Fix: create a withRetry() wrapper that catches 401 errors, refreshes the token via oauth2Client.refreshAccessToken(), and retries the upload with exponential backoff (1s, 2s, 4s, 8s delays).
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Item-level production infinite loop — add skip-set check before auto-advance in Telegram inline button handlers
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Telegram bot enters infinite loop when user clicks 'Not Yet' on an already-not_yet item in production or en-route flows. Root cause: the auto-advance logic didn't check if the item was already in a skip/set state before advancing to the next item, causing the same item to be processed repeatedly. Fix: add skip-set check (if item.status === 'not_yet' && already processed) before calling auto-advance logic in item_prod and item_en_route handlers.
+
+#### Lesson Learned
+
+Telegram bot enters infinite loop when user clicks 'Not Yet' on an already-not_yet item in production or en-route flows. Root cause: the auto-advance logic didn't check if the item was already in a skip/set state before advancing to the next item, causing the same item to be processed repeatedly. Fix: add skip-set check (if item.status === 'not_yet' && already processed) before calling auto-advance logic in item_prod and item_en_route handlers.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

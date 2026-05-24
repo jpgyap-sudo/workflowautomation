@@ -236,9 +236,17 @@ const STAGE_INFO: Record<string, StageInfo> = {
     responsibleParty: 'Finance Team',
     autoAdvance: false,
   },
+  delivery_pending: {
+    stage: 'delivery_pending',
+    entryAction: 'Balance paid and balance verified — awaiting delivery scheduling',
+    exitCondition: 'Delivery date set and order moves to delivery_scheduled',
+    triggeredBy: 'Delivery Agent / Team',
+    responsibleParty: 'Delivery Team',
+    autoAdvance: false,
+  },
   inventory_arrived: {
     stage: 'inventory_arrived',
-    entryAction: 'Inventory Agent checks item-level arrival â€” asks about each item via process of elimination',
+    entryAction: 'Inventory Agent checks item-level arrival — asks about each item via process of elimination',
     exitCondition: 'All items confirmed arrived â†’ Ready for Delivery clicked â†’ advances to balance_due',
     triggeredBy: 'Inventory Agent',
     responsibleParty: 'Inventory Team',
@@ -556,30 +564,31 @@ function ProcurementFlowDiagram() {
     { id: 'itemTracking', x: 2204, y: 154, type: 'agent', lines: ['Production Agent', 'Tracks Items'] },
     { id: 'itemsFinished', x: 2376, y: 137, type: 'decision', lines: ['All Items', 'Finished?'] },
     { id: 'enRoute', x: 2548, y: 154, type: 'stage', lines: ['En', 'Route'] },
-    { id: 'inventoryArrivedDecision', x: 2720, y: 137, type: 'decision', lines: ['Inventory', 'Arrived?'] },
-    { id: 'inventoryArrived', x: 2892, y: 154, type: 'stage', lines: ['Inventory', 'Arrived'] },
-    { id: 'inventoryCheck', x: 3056, y: 154, type: 'agent', lines: ['Inventory Agent', 'Checks Arrival'] },
-    { id: 'balanceDue', x: 3220, y: 154, type: 'stage', lines: ['Balance', 'Due'] },
-    { id: 'balanceReceived', x: 3392, y: 137, type: 'decision', lines: ['Balance Paid', 'Received?'] },
-    { id: 'balanceReminder', x: 3372, y: 302, type: 'reminder', lines: ['Balance Payment', 'Reminder'] },
-    { id: 'balanceVerification', x: 3564, y: 154, type: 'stage', lines: ['Balance', 'Verification'] },
-    { id: 'balanceVerified', x: 3736, y: 137, type: 'decision', lines: ['Balance', 'Verified?'] },
-    { id: 'deliveryScheduled', x: 3908, y: 154, type: 'stage', lines: ['Delivery', 'Scheduled'] },
-    { id: 'deliveryTracking', x: 4072, y: 154, type: 'agent', lines: ['Delivery Agent', 'Tracks Date'] },
-    { id: 'deliveredDecision', x: 4244, y: 137, type: 'decision', lines: ['Delivered?'] },
-    { id: 'delivered', x: 4416, y: 154, type: 'stage', lines: ['Delivered'] },
-    { id: 'deliveryProof', x: 4580, y: 154, type: 'process', lines: ['Delivery Photos', 'Receipt Uploaded'] },
-    { id: 'countered', x: 4744, y: 154, type: 'stage', lines: ['Countered'] },
-    { id: 'collectionRequest', x: 4908, y: 154, type: 'agent', lines: ['Collection Agent', 'Requests Payment'] },
-    { id: 'finalPaymentConfirmed', x: 5080, y: 137, type: 'decision', lines: ['Payment', 'Confirmed?'] },
-    { id: 'paymentReceived', x: 5252, y: 154, type: 'stage', lines: ['Payment', 'Received'] },
-    { id: 'paymentConfirmed', x: 5416, y: 154, type: 'auto', lines: ['Payment', 'Confirmed'] },
-    { id: 'completed', x: 5580, y: 154, type: 'stage', lines: ['Completed'] },
-    { id: 'end', x: 5744, y: 164, type: 'terminator', lines: ['End'] },
+    { id: 'enRouteVerif', x: 2720, y: 154, type: 'stage', lines: ['En Route', 'Verification'] },
+    { id: 'inventoryArrivedDecision', x: 2892, y: 137, type: 'decision', lines: ['Inventory', 'Arrived?'] },
+    { id: 'inventoryArrived', x: 3064, y: 154, type: 'stage', lines: ['Inventory', 'Arrived'] },
+    { id: 'inventoryCheck', x: 3228, y: 154, type: 'agent', lines: ['Inventory Agent', 'Checks Arrival'] },
+    { id: 'balanceDue', x: 3392, y: 154, type: 'stage', lines: ['Balance', 'Due'] },
+    { id: 'balanceReceived', x: 3564, y: 137, type: 'decision', lines: ['Balance Paid', 'Received?'] },
+    { id: 'balanceReminder', x: 3544, y: 302, type: 'reminder', lines: ['Balance Payment', 'Reminder'] },
+    { id: 'balanceVerification', x: 3736, y: 154, type: 'stage', lines: ['Balance', 'Verification'] },
+    { id: 'balanceVerified', x: 3908, y: 137, type: 'decision', lines: ['Balance', 'Verified?'] },
+    { id: 'deliveryScheduled', x: 4080, y: 154, type: 'stage', lines: ['Delivery', 'Scheduled'] },
+    { id: 'deliveryTracking', x: 4244, y: 154, type: 'agent', lines: ['Delivery Agent', 'Tracks Date'] },
+    { id: 'deliveredDecision', x: 4416, y: 137, type: 'decision', lines: ['Delivered?'] },
+    { id: 'delivered', x: 4588, y: 154, type: 'stage', lines: ['Delivered'] },
+    { id: 'deliveryProof', x: 4752, y: 154, type: 'process', lines: ['Delivery Photos', 'Receipt Uploaded'] },
+    { id: 'countered', x: 4916, y: 154, type: 'stage', lines: ['Countered'] },
+    { id: 'collectionRequest', x: 5080, y: 154, type: 'agent', lines: ['Collection Agent', 'Requests Payment'] },
+    { id: 'finalPaymentConfirmed', x: 5252, y: 137, type: 'decision', lines: ['Payment', 'Confirmed?'] },
+    { id: 'paymentReceived', x: 5424, y: 154, type: 'stage', lines: ['Payment', 'Received'] },
+    { id: 'paymentConfirmed', x: 5588, y: 154, type: 'auto', lines: ['Payment', 'Confirmed'] },
+    { id: 'completed', x: 5752, y: 154, type: 'stage', lines: ['Completed'] },
+    { id: 'end', x: 5916, y: 164, type: 'terminator', lines: ['End'] },
   ];
   const nodeMap = Object.fromEntries(nodes.map((node) => [node.id, node]));
   const straightEdges = [
-    ['start', 'sales'], ['sales', 'received'], ['received', 'mathCheck'], ['mathCheck', 'mathVerified'], ['mathVerified', 'purchasing'], ['purchasing', 'depositReceived'], ['depositReceived', 'depositVerification', 'Yes'], ['depositVerification', 'depositVerified'], ['depositVerified', 'productionPending', 'Yes'], ['productionPending', 'productionReminder'], ['productionReminder', 'productionStarted'], ['productionStarted', 'productionConfirmed', 'Yes'], ['productionConfirmed', 'itemTracking'], ['itemTracking', 'itemsFinished'], ['itemsFinished', 'enRoute', 'Yes'], ['enRoute', 'inventoryArrivedDecision'], ['inventoryArrivedDecision', 'inventoryArrived', 'Yes'], ['inventoryArrived', 'inventoryCheck'], ['inventoryCheck', 'balanceDue'], ['balanceDue', 'balanceReceived'], ['balanceReceived', 'balanceVerification', 'Yes'], ['balanceVerification', 'balanceVerified'], ['balanceVerified', 'deliveryScheduled', 'Yes'], ['deliveryScheduled', 'deliveryTracking'], ['deliveryTracking', 'deliveredDecision'], ['deliveredDecision', 'delivered', 'Yes'], ['delivered', 'deliveryProof'], ['deliveryProof', 'countered'], ['countered', 'collectionRequest'], ['collectionRequest', 'finalPaymentConfirmed'], ['finalPaymentConfirmed', 'paymentReceived', 'Yes'], ['paymentReceived', 'paymentConfirmed'], ['paymentConfirmed', 'completed'], ['completed', 'end'],
+    ['start', 'sales'], ['sales', 'received'], ['received', 'mathCheck'], ['mathCheck', 'mathVerified'], ['mathVerified', 'purchasing'], ['purchasing', 'depositReceived'], ['depositReceived', 'depositVerification', 'Yes'], ['depositVerification', 'depositVerified'], ['depositVerified', 'productionPending', 'Yes'], ['productionPending', 'productionReminder'], ['productionReminder', 'productionStarted'], ['productionStarted', 'productionConfirmed', 'Yes'], ['productionConfirmed', 'itemTracking'], ['itemTracking', 'itemsFinished'], ['itemsFinished', 'enRoute', 'Yes'], ['enRoute', 'enRouteVerif'], ['enRouteVerif', 'inventoryArrivedDecision'], ['inventoryArrivedDecision', 'inventoryArrived', 'Yes'], ['inventoryArrived', 'inventoryCheck'], ['inventoryCheck', 'balanceDue'], ['balanceDue', 'balanceReceived'], ['balanceReceived', 'balanceVerification', 'Yes'], ['balanceVerification', 'balanceVerified'], ['balanceVerified', 'deliveryScheduled', 'Yes'], ['deliveryScheduled', 'deliveryTracking'], ['deliveryTracking', 'deliveredDecision'], ['deliveredDecision', 'delivered', 'Yes'], ['delivered', 'deliveryProof'], ['deliveryProof', 'countered'], ['countered', 'collectionRequest'], ['collectionRequest', 'finalPaymentConfirmed'], ['finalPaymentConfirmed', 'paymentReceived', 'Yes'], ['paymentReceived', 'paymentConfirmed'], ['paymentConfirmed', 'completed'], ['completed', 'end'],
   ] as const;
   function nodeCenter(node: (typeof nodes)[number]) {
     const width = node.type === 'decision' ? decisionSize : nodeWidth;
@@ -649,11 +658,11 @@ function ProcurementFlowDiagram() {
       <path d={loopPath('depositVerified', 'depositVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1274} y={68}>No</FlowArrowLabel>
       <path d={loopPath('productionStarted', 'productionReminder', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={1810} y={68}>No</FlowArrowLabel>
       <path d={loopPath('itemsFinished', 'itemTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2310} y={68}>No / Partial</FlowArrowLabel>
-      <path d={loopPath('inventoryArrivedDecision', 'enRoute', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2650} y={68}>No</FlowArrowLabel>
-      <path d={loopPath('balanceReceived', 'balanceReminder', 278)} fill="none" className="stroke-orange-400" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" /><path d={loopPath('balanceReminder', 'balanceReceived', 410)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3418} y={270}>No</FlowArrowLabel><FlowArrowLabel x={3418} y={432}>remind</FlowArrowLabel>
-      <path d={loopPath('balanceVerified', 'balanceVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3650} y={68}>No</FlowArrowLabel>
-      <path d={loopPath('deliveredDecision', 'deliveryTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={4160} y={68}>No</FlowArrowLabel>
-      <path d={loopPath('finalPaymentConfirmed', 'collectionRequest', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={5000} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('inventoryArrivedDecision', 'enRouteVerif', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={2820} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('balanceReceived', 'balanceReminder', 278)} fill="none" className="stroke-orange-400" strokeWidth="2" markerEnd="url(#workflow-arrowhead)" /><path d={loopPath('balanceReminder', 'balanceReceived', 410)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3590} y={270}>No</FlowArrowLabel><FlowArrowLabel x={3590} y={432}>remind</FlowArrowLabel>
+      <path d={loopPath('balanceVerified', 'balanceVerification', 78)} fill="none" className="stroke-rose-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={3822} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('deliveredDecision', 'deliveryTracking', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={4332} y={68}>No</FlowArrowLabel>
+      <path d={loopPath('finalPaymentConfirmed', 'collectionRequest', 78)} fill="none" className="stroke-orange-400" strokeWidth="2" strokeDasharray="5 5" markerEnd="url(#workflow-arrowhead)" /><FlowArrowLabel x={5172} y={68}>No</FlowArrowLabel>
       {nodes.map((node) => {
         const { x, y, width, height } = nodeCenter(node);
         if (node.type === 'decision') return <g key={node.id}><path d={`M ${x} ${y - height / 2} L ${x + width / 2} ${y} L ${x} ${y + height / 2} L ${x - width / 2} ${y} Z`} className={nodeColors(node.type)} /><FlowNodeLabel x={x} y={y - 4} lines={node.lines} className={textColor(node.type)} size={11} /></g>;
@@ -707,7 +716,7 @@ function ProcurementFlowDiagram() {
           <svg
             role="img"
             aria-labelledby="workflow-diagram-title workflow-diagram-desc"
-            viewBox="0 0 5920 500"
+            viewBox="0 0 6090 500"
             preserveAspectRatio="xMinYMid meet"
             style={{ height: '100%', width: 'auto', minWidth: '100%', display: 'block' }}
           >
@@ -721,7 +730,7 @@ function ProcurementFlowDiagram() {
           <svg
             role="img"
             aria-labelledby="workflow-diagram-title workflow-diagram-desc"
-            viewBox="0 0 5920 500"
+            viewBox="0 0 6090 500"
             className="h-auto min-w-[2200px] max-w-none"
           >
             <title id="workflow-diagram-title">Full quotation automation app workflow</title>

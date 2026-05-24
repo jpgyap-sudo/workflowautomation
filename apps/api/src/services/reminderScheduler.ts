@@ -125,17 +125,17 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'balance_verification' && reminder.balance_paid && reminder.balance_verified) stale = true;
     if (reminder.stage === 'delivery_scheduled' && ['delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if (reminder.stage === 'en_route' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if ((reminder.stage === 'production_confirmed' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if (reminder.stage === 'production_pending' && (reminder.production_started || ['production_confirmed', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
-    if ((reminder.stage === 'purchasing_pending') && ['production_confirmed', 'production_pending', 'en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'en_route' && ['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'production_confirmed' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'production_pending' && (reminder.production_started || ['production_confirmed', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
+    if ((reminder.stage === 'purchasing_pending') && ['production_confirmed', 'production_pending', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // Item-level tracking reminders — stale if order has moved past the relevant stage
-    if (reminder.stage === 'item_level_production' && ['en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'item_level_production' && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_en_route' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_inventory' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    // En route timed reminders — stale once order advances past en_route (for midpoint) or inventory_arrived (for arrival)
-    if (reminder.stage === 'en_route_midpoint' && reminder.current_stage !== 'en_route') stale = true;
-    if (reminder.stage === 'en_route_arrival' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    // En route timed reminders — en_route_midpoint stays active through en_route_verification (arrival still expected)
+    if (reminder.stage === 'en_route_midpoint' && !['en_route', 'en_route_verification'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'en_route_arrival' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
 
     if (stale) {
       await query(
@@ -161,6 +161,7 @@ export async function processDueReminders(): Promise<number> {
       deposit_pending: '💳 Deposit Pending',
       deposit_verification: '🔍 Deposit Verification',
       en_route: '🚚 En Route',
+      en_route_verification: '🔎 En Route Verification',
       en_route_reminder: '🚚 En Route',
       en_route_midpoint: '✅ En Route Midpoint Check',
       en_route_arrival: '📦 En Route Arrival Check',

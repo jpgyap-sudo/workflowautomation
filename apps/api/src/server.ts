@@ -169,7 +169,9 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   production_confirmed:  ['production-agent'],
   // Production → En Route
   en_route:              ['production-agent', 'inventory-agent'],
-  // En Route → Inventory Verification (when all items arrived)
+  // En Route → En Route Verification (all items dispatched, waiting for arrival)
+  en_route_verification: ['production-agent'],
+  // En Route Verification → Inventory Verification (all items arrived)
   inventory_verification: ['inventory-agent'],
   // Inventory Verification → Inventory Arrived
   inventory_arrived:     ['inventory-agent'],
@@ -1575,7 +1577,9 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 // ── Confirm En Route ──────────────────────────────────────────────────
 // After production is finished, the order is in 'en_route' stage awaiting
 // dispatch confirmation. When confirmed, this endpoint is called with
-// estimated arrival days. The order moves from 'en_route' to 'inventory_verification'.
+// estimated arrival days. The order moves from 'en_route' → 'en_route_verification'
+// (all items dispatched, waiting for arrival). The production agent then advances
+// to 'inventory_verification' once all items are confirmed arrived.
 const confirmEnRouteSchema = z.object({
   estimated_arrival_days: z.number().int().positive(),
   updated_by: z.string().optional(),
@@ -1601,7 +1605,7 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
 
   const rows = await query(
     `UPDATE orders SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
-     estimated_arrival_days = $1, current_stage = 'inventory_verification', updated_at = NOW()
+     estimated_arrival_days = $1, current_stage = 'en_route_verification', updated_at = NOW()
      WHERE id = $2 RETURNING *`,
     [body.estimated_arrival_days, id]
   );
@@ -1610,19 +1614,20 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
 
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'inventory_verification', 'en_route_confirmed', $2, 'system')`,
-    [id, `En route confirmed; estimated arrival in ${body.estimated_arrival_days} day(s). Inventory verification pending.`]
+     VALUES ($1, 'en_route_verification', 'en_route_confirmed', $2, 'system')`,
+    [id, `En route confirmed; estimated arrival in ${body.estimated_arrival_days} day(s). Verifying all items are dispatched.`]
   );
 
-  // Complete the en_route_reminder (legacy) and item_level_en_route (item-level tracking)
+  // Complete legacy en-route reminders — item-level tracking reminders stay active
+  // so the production agent can continue monitoring item arrival progress
   await query(
     `UPDATE reminders SET status = 'completed', updated_at = NOW()
-     WHERE order_id = $1 AND status = 'active' AND stage IN ('en_route_reminder', 'item_level_en_route')`,
+     WHERE order_id = $1 AND status = 'active' AND stage = 'en_route_reminder'`,
     [id]
   );
 
-  // Notify inventory agent immediately that inventory verification is needed
-  triggerAgentsForStage('inventory_verification', rows[0].quotation_number, rows[0].client_name);
+  // Notify production agent immediately to monitor arrival of dispatched items
+  triggerAgentsForStage('en_route_verification', rows[0].quotation_number, rows[0].client_name);
 
   // Notify escalation group about en route confirmation (dashboard only)
   await notifyManualChange(
@@ -1643,7 +1648,7 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n` +
         `Estimated arrival: ${body.estimated_arrival_days} day(s)\n\n` +
-        `Order is en route. Inventory verification is now needed.`
+        `Order is en route. Verifying all items are dispatched before inventory check.`
       );
     });
   }

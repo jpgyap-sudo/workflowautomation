@@ -77,6 +77,7 @@ export const STAGE_LABELS: Record<string, string> = {
   deposit_pending: '💳 Downpayment Pending',
   deposit_verification: '🔍 Deposit Verification',
   en_route: '🚚 En Route',
+  en_route_verification: '🔎 En Route Verification',
   inventory_verification: '🔍 Inventory Verification',
   inventory_arrived: '📦 Inventory Arrived',
   balance_due: '⚖️ Balance Due',

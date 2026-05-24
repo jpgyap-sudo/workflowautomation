@@ -12,7 +12,6 @@ import {
   advanceStage,
   addAgentNote,
   inlineKeyboard,
-  createReminder,
 } from '../services/agentRunner.js';
 import { query } from '../db.js';
 import {
@@ -612,14 +611,15 @@ function calculateEnRoutePct(items: OrderItemRow[]): number {
 /**
  * Check item-level en-route tracking with process of elimination.
  *
- * Strategy:
- * 1. Fetch all order_items for the order
- * 2. Calculate en-route completion % based on quantity
- * 3. Find the first item not yet en_route (process of elimination)
- * 4. Ask about that specific item
- * 5. If >50% of quantity is en_route → progress the order but log % en-route
- * 6. If all items en_route → advance to inventory_arrived
- * 7. If no items exist → skip
+ * Handles two stages:
+ *
+ * en_route — Items being verified as dispatched one by one (process of elimination).
+ *   • All items en_route or arrived → auto-advance to en_route_verification
+ *   • Some items still not_yet → ask about next unconfirmed item
+ *
+ * en_route_verification — All items dispatched, monitoring arrival.
+ *   • All items arrived → auto-advance to inventory_verification
+ *   • Some items still en_route → checkEnRouteItemProgress handles arrival reminders
  */
 async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | null> {
   const input = {
@@ -627,58 +627,85 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     stage: order.current_stage,
   };
 
-  try {
-    // Only run for en_route stage orders
-    if (order.current_stage !== 'en_route') return null;
+  const isEnRoute = order.current_stage === 'en_route';
+  const isEnRouteVerif = order.current_stage === 'en_route_verification';
+  if (!isEnRoute && !isEnRouteVerif) return null;
 
-    // Fetch items and completion
+  try {
     const items = await getOrderItems(order.id);
-    if (items.length === 0) return null; // No items to track — skip
+    if (items.length === 0) return null;
 
     const enRoutePct = calculateEnRoutePct(items);
     const escalationLevel = await getEscalationLevel(order.id, 'item_level_en_route');
 
-    // Find the first item not yet en_route (process of elimination)
-    const notEnRouteItem = items.find(
-      (item) => item.en_route_status === 'not_yet',
-    );
-
-    // Find the first item that has not yet arrived
-    const notArrivedItem = items.find(
-      (item) => item.en_route_status !== 'arrived',
-    );
-
+    const notEnRouteItem = items.find((item) => item.en_route_status === 'not_yet');
+    const notArrivedItem = items.find((item) => item.en_route_status !== 'arrived');
     const enRouteCount = items.filter(
       (i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived',
     ).length;
     const totalCount = items.length;
+    const qn = order.quotation_number ?? 'unknown';
+    const client = order.client_name ?? 'Unknown';
 
-    // If all items are en_route or arrived (no not_yet), stop the process-of-elimination
-    // reminders and let checkEnRouteItemProgress handle arrival checks.
-    // Only advance to inventory_verification when ALL items have actually arrived.
-    if (!notEnRouteItem && !notArrivedItem) {
-      const qn = order.quotation_number ?? 'unknown';
-      const client = order.client_name ?? 'Unknown';
+    // ── en_route_verification: all items dispatched — check if all have arrived ──
+    if (isEnRouteVerif) {
+      if (!notArrivedItem) {
+        // All items arrived → advance to inventory_verification
+        await addProductionLog(null, order.id, `✅ All items arrived (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`, 'agent', AGENT_NAME);
+        await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) arrived. Auto-advancing to inventory_verification.`);
 
-      // Log the completion
-      await addProductionLog(null, order.id, `✅ All items arrived (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`, 'agent', AGENT_NAME);
-      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) arrived. Auto-advancing to inventory_verification.`);
+        const lastHuman = await findLastHumanTrigger(order.id);
+        await advanceStage(order.id, 'inventory_verification', qn, `All items arrived (${enRoutePct}% of qty)`, lastHuman);
 
-      // Advance to inventory_verification (attribute to last human who updated en-route status)
+        const groupChatId = getGroupChatId(AGENT_NAME);
+        if (groupChatId) {
+          const msg = `📦 <b>All Items Arrived</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) confirmed arrived.\nOrder auto-advanced to 🔍 Inventory Verification.`;
+          await sendTelegramMessage(groupChatId, msg);
+        }
+
+        const result: AgentResult = {
+          status: 'complete',
+          message: `✅ All items arrived for #${qn}. Auto-advanced to inventory_verification.`,
+          next_stage: 'inventory_verification',
+          reminder_needed: false,
+          escalation_level: escalationLevel,
+        };
+        await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
+        return result;
+      }
+
+      // Still waiting for some items to arrive — checkEnRouteItemProgress handles reminders
+      const result: AgentResult = {
+        status: 'needs_review',
+        message: `⏳ En route verification for #${qn}: ${enRouteCount}/${totalCount} items dispatched, waiting for all to arrive.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'needs_review', order.id);
+      return result;
+    }
+
+    // ── en_route: process of elimination — ask about each unconfirmed item ──
+
+    // All items are en_route or arrived → advance to en_route_verification
+    if (!notEnRouteItem) {
+      await addProductionLog(null, order.id, `✅ All items confirmed en route (${enRoutePct}% of qty). Auto-advancing to en_route_verification.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) confirmed dispatched. Auto-advancing to en_route_verification.`);
+
       const lastHuman = await findLastHumanTrigger(order.id);
-      await advanceStage(order.id, 'inventory_verification', qn, `All items arrived (${enRoutePct}% of qty)`, lastHuman);
+      await advanceStage(order.id, 'en_route_verification', qn, `All items confirmed dispatched (${enRoutePct}% of qty)`, lastHuman);
 
-      // Send notification to production group
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `🚚 <b>All Items Arrived</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) arrived (${enRoutePct}% of qty).\nOrder auto-advanced to 🔍 Inventory Verification.`;
+        const msg = `🚚 <b>All Items Dispatched</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) confirmed en route.\nMonitoring arrival — order at 🔎 En Route Verification.`;
         await sendTelegramMessage(groupChatId, msg);
       }
 
       const result: AgentResult = {
         status: 'complete',
-        message: `✅ All items arrived for #${qn}. Auto-advanced to inventory_verification.`,
-        next_stage: 'inventory_verification',
+        message: `✅ All items dispatched for #${qn}. Auto-advanced to en_route_verification.`,
+        next_stage: 'en_route_verification',
         reminder_needed: false,
         escalation_level: escalationLevel,
       };
@@ -686,32 +713,9 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
       return result;
     }
 
-    // If no not_yet items remain but some are still en_route, stop here.
-    // checkEnRouteItemProgress will handle arrival checks for en_route items.
-    if (!notEnRouteItem && notArrivedItem) {
-      const qn = order.quotation_number ?? 'unknown';
-      const result: AgentResult = {
-        status: 'complete',
-        message: `⏳ All items en route for #${qn}. Waiting for ${notArrivedItem.name} to arrive before advancing.`,
-        next_stage: null,
-        reminder_needed: false,
-        escalation_level: escalationLevel,
-      };
-      await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
-      return result;
-    }
-
-    // ── Process of elimination: ask about the next not-en-route item ──
-    // By this point notEnRouteItem is guaranteed to exist (the undefined
-    // cases are handled by the two early-return branches above).
-    if (!notEnRouteItem) return null;
-
-    const qn = order.quotation_number ?? 'unknown';
-    const client = order.client_name ?? 'Unknown';
+    // Ask about the next unconfirmed item
     const progressBar = buildProgressBar(enRoutePct);
     const dashboardUrl = `https://track.abcx124.xyz/production`;
-
-    // Determine if >50% threshold is met
     const thresholdMet = enRoutePct > 50;
 
     let message = `🚚 <b>Item-Level En Route Check</b>\n`;
@@ -726,16 +730,9 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
     message += `Next item: <b>${notEnRouteItem.name}</b> x${notEnRouteItem.quantity}\n\n`;
     message += `Is <b>${notEnRouteItem.name}</b> en route yet?`;
 
-    // Build inline keyboard — only "Yes, En Route" or "Not Yet".
-    // "Arrived" is NEVER shown here; it only appears after the item is
-    // already confirmed en_route and its estimated arrival date is reached.
     const keyboard = inlineKeyboard([
-      [
-        { text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
-      ],
-      [
-        { text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${qn}` },
-      ],
+      [{ text: `🚚 ${notEnRouteItem.name} — Yes, En Route`, callback_data: `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${qn}` }],
+      [{ text: `❌ ${notEnRouteItem.name} — Not Yet`, callback_data: `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${qn}` }],
     ]);
 
     const groupChatId = getGroupChatId(AGENT_NAME);
@@ -743,7 +740,6 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
       await sendTelegramMessage(groupChatId, message, keyboard);
     }
 
-    // Upsert a reminder for the next check (24h default for item-level en-route)
     if (groupChatId) {
       const reminderMsg = `🚚 Item-Level En Route: #${qn} — ${enRouteCount}/${totalCount} items en route (${enRoutePct}% of qty). Next item: ${notEnRouteItem.name}`;
       await upsertProductionReminder(order.id, 'item_level_en_route', groupChatId, reminderMsg, 24 * 60 * 60 * 1000);
@@ -780,7 +776,7 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
  * This runs daily for every en_route order alongside checkItemLevelEnRoute.
  */
 async function checkEnRouteItemProgress(order: OrderRow): Promise<void> {
-  if (order.current_stage !== 'en_route') return;
+  if (order.current_stage !== 'en_route' && order.current_stage !== 'en_route_verification') return;
 
   const items = await getOrderItems(order.id);
   const enRouteItems = items.filter((i) => i.en_route_status === 'en_route');
@@ -960,14 +956,14 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     }
   }
 
-  // 2. En route — adaptive frequency
-  const enRouteOrders = await getActiveOrdersByStage('en_route');
+  // 2. En route + En Route Verification — adaptive frequency
+  // Both stages are monitored: en_route (dispatching items) and en_route_verification (awaiting arrival)
+  const enRouteOrders = await getActiveOrdersByStages(['en_route', 'en_route_verification']);
   for (const order of enRouteOrders) {
-    // Check if order has item-level tracking items
     const items = await getOrderItems(order.id);
     if (items.length > 0) {
-      // Skip legacy check — item-level tracking handles this order
-      console.log(`[ProductionAgent] Skipping legacy en-route check for #${order.quotation_number} — using item-level tracking`);
+      // Item-level tracking handles this order (handled in section 5 below)
+      console.log(`[ProductionAgent] Skipping legacy en-route check for #${order.quotation_number} (${order.current_stage}) — using item-level tracking`);
     } else {
       // No items — use legacy check
       results.push(await checkEnRoute(order));
@@ -996,7 +992,9 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     }
   }
 
-  // 5. Item-level en-route tracking — en_route orders with order_items
+  // 5. Item-level en-route tracking — en_route and en_route_verification orders with items
+  // en_route: process of elimination (which items dispatched?)
+  // en_route_verification: arrival monitoring (which items arrived?)
   for (const order of enRouteOrders) {
     const itemResult = await checkItemLevelEnRoute(order);
     if (itemResult) {
