@@ -7349,3 +7349,51 @@ When adding a new input method (e.g., client name) for an existing action (e.g.,
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: wrap answerCbQuery in try/catch to handle expired callback queries in vision handlers
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3abb26b8b4f6f61db78e4f6d17a2d142510d0d71
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3abb26b8b4f6f61db78e4f6d17a2d142510d0d71
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+A crash in Telegram bot vision handlers when processing expired callback queries (e.g., user clicked an old inline button).
+
+**Why it broke:**  
+The `answerCbQuery` call was not wrapped in error handling. When a callback query expires (e.g., due to timeout or bot restart), Telegram throws an error. Without a `try/catch`, this unhandled rejection crashed the handler.
+
+**Reusable takeaway:**  
+Always wrap Telegram `answerCbQuery` (and similar ephemeral interactions) in `try/catch`. Callback queries have a short lifespan; assume they can expire before your handler responds. A silent failure (logging the error) is better than crashing the entire request flow.
+
+---
+*Original commit message: fix: wrap answerCbQuery in try/catch to handle expired callback queries in vision handlers*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A crash in Telegram bot vision handlers when processing expired callback queries (e.g., user clicked an old inline button).
+
+**Why it broke:**  
+The `answerCbQuery` call was not wrapped in error handling. When a callback query expires (e.g., due to timeout or bot restart), Telegram throws an error. Without a `try/catch`, this unhandled rejection crashed the handler.
+
+**Reusable takeaway:**  
+Always wrap Telegram `answerCbQuery` (and similar ephemeral interactions) in `try/catch`. Callback queries have a short lifespan; assume they can expire before your handler responds. A silent failure (logging the error) is better than crashing the entire request flow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
