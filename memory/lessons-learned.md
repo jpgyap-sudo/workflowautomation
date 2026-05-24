@@ -8505,3 +8505,41 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: deploy-agent — delegate container management to deploy.sh --skip-pull
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c5fb6fbf7d905e7169459508cb1f1ed15471fa5b
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** c5fb6fbf7d905e7169459508cb1f1ed15471fa5b
+**Files:** 
+
+**Summary:**
+Commit: fix: deploy-agent — delegate container management to deploy.sh --skip-pull
+Files: 
+Project: workflowautomation
+
+---
+*Original commit message: fix: deploy-agent — delegate container management to deploy.sh --skip-pull*
+
+#### Lesson Learned
+
+Commit: fix: deploy-agent — delegate container management to deploy.sh --skip-pull
+Files: 
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

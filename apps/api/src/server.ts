@@ -869,6 +869,267 @@ app.patch('/orders/:id', async (request, reply) => {
   return reply.send(rows[0]);
 });
 
+// ── Sync Extracted Data to Existing Order (smart fill-in, no duplicates) ──
+// Used by the AI Vision fallback flow: when a user uploads a file to an
+// existing order and extracts data, this endpoint merges the extracted fields
+// into the order without overwriting existing data.
+const syncExtractedSchema = z.object({
+  quotation_number: z.string().optional(),
+  client_name: z.string().optional(),
+  sales_agent: z.string().optional(),
+  total_amount: z.number().optional(),
+  order_date: z.string().optional(),
+  items: z.array(z.object({
+    name: z.string().min(1),
+    quantity: z.number().int().positive(),
+  })).optional(),
+  payment: z.object({
+    amount: z.number().positive(),
+    type: z.enum(['deposit', 'balance']),
+    reference_number: z.string().optional(),
+    paid_by: z.string().optional(),
+    payment_date: z.string().optional(),
+  }).optional(),
+  action_token: z.string(),
+});
+
+app.post('/orders/:id/sync-extracted', async (request, reply) => {
+  try {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = syncExtractedSchema.parse(request.body);
+
+    // Verify action token and extract email
+    let userEmail: string | null = null;
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
+
+    // Fetch existing order
+    const orderRows = await query(
+      `SELECT id, quotation_number, client_name, sales_agent, total_amount, order_confirmed_at,
+              deposit_paid, deposit_amount, balance_paid, balance_paid_at
+       FROM orders WHERE id=$1`,
+      [params.id]
+    );
+    if (!orderRows[0]) {
+      return reply.code(404).send({ error: 'Order not found' });
+    }
+    const order = orderRows[0];
+
+    const syncReport: {
+      order_fields: string[];
+      items_added: { name: string; quantity: number }[];
+      items_skipped: { name: string; reason: string }[];
+      payment_recorded?: { type: string; amount: number };
+      payment_skipped?: { type: string; reason: string };
+    } = {
+      order_fields: [],
+      items_added: [],
+      items_skipped: [],
+    };
+
+    // ── 1. Sync scalar fields (only if currently null/empty) ──────────
+    const updateFields: string[] = [];
+    const updateValues: (string | number | null)[] = [];
+    let idx = 1;
+
+    if (body.quotation_number && !order.quotation_number) {
+      updateFields.push(`quotation_number=$${idx++}`);
+      updateValues.push(body.quotation_number);
+      syncReport.order_fields.push('quotation_number');
+    }
+    if (body.client_name && !order.client_name) {
+      updateFields.push(`client_name=$${idx++}`);
+      updateValues.push(body.client_name);
+      syncReport.order_fields.push('client_name');
+      // Auto-link client
+      await autoLinkClientToOrder(params.id, body.client_name);
+    }
+    if (body.sales_agent && !order.sales_agent) {
+      updateFields.push(`sales_agent=$${idx++}`);
+      updateValues.push(body.sales_agent);
+      syncReport.order_fields.push('sales_agent');
+    }
+    if (body.total_amount != null && order.total_amount == null) {
+      updateFields.push(`total_amount=$${idx++}`);
+      updateValues.push(body.total_amount);
+      syncReport.order_fields.push('total_amount');
+    }
+    if (body.order_date && !order.order_confirmed_at) {
+      updateFields.push(`order_confirmed_at=$${idx++}`);
+      updateValues.push(body.order_date);
+      syncReport.order_fields.push('order_confirmed_at');
+    }
+
+    if (updateFields.length > 0) {
+      updateFields.push(`updated_at=NOW()`);
+      updateValues.push(params.id);
+      await query(
+        `UPDATE orders SET ${updateFields.join(', ')} WHERE id=$${idx}`,
+        updateValues
+      );
+    }
+
+    // ── 2. Sync items (merge by name, no duplicates) ──────────────────
+    if (body.items && body.items.length > 0) {
+      const existingItems = await query(
+        `SELECT name, quantity FROM order_items WHERE order_id=$1`,
+        [params.id]
+      );
+      const existingNames = new Set(
+        (existingItems as { name: string }[]).map((i) => i.name.toLowerCase().trim())
+      );
+
+      for (const item of body.items) {
+        const normalizedName = item.name.toLowerCase().trim();
+        if (existingNames.has(normalizedName)) {
+          syncReport.items_skipped.push({ name: item.name, reason: 'Item already exists' });
+          continue;
+        }
+        await query(
+          `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status)
+           VALUES ($1, $2, $3, 'pending', 'not_yet')`,
+          [params.id, item.name, item.quantity]
+        );
+        syncReport.items_added.push({ name: item.name, quantity: item.quantity });
+        existingNames.add(normalizedName);
+      }
+
+      if (syncReport.items_added.length > 0) {
+        await query(
+          `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+           VALUES ($1, $2, 'agent', 'Vision AI Sync')`,
+          [params.id, `📋 Vision AI sync added ${syncReport.items_added.length} item(s): ${syncReport.items_added.map(i => `${i.name} x${i.quantity}`).join(', ')}`]
+        );
+      }
+    }
+
+    // ── 3. Sync payment (only if not already recorded) ────────────────
+    if (body.payment) {
+      if (body.payment.type === 'deposit') {
+        if (order.deposit_paid) {
+          syncReport.payment_skipped = { type: 'deposit', reason: 'Deposit already recorded' };
+        } else {
+          await query(
+            `UPDATE orders SET
+               deposit_paid=TRUE,
+               deposit_verified=FALSE,
+               deposit_amount=$1,
+               deposit_paid_at=COALESCE($2, deposit_paid_at),
+               current_stage=CASE
+                 WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
+                 THEN 'deposit_verification'
+                 ELSE current_stage
+               END,
+               updated_at=NOW()
+             WHERE id=$3`,
+            [body.payment.amount, body.payment.payment_date ?? null, params.id]
+          );
+          syncReport.payment_recorded = { type: 'deposit', amount: body.payment.amount };
+
+          // Stage updates
+          await query(
+            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+             VALUES ($1, 'deposit_pending', 'deposit_paid', $2, $3)`,
+            [params.id, `Downpayment of ₱${body.payment.amount} recorded via AI sync`, userEmail ?? 'dashboard']
+          );
+          await query(
+            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+             VALUES ($1, 'deposit_verification', 'pending', 'Downpayment recorded via AI sync; awaiting verification', $2)`,
+            [params.id, userEmail ?? 'dashboard']
+          );
+
+          // Complete deposit reminders
+          await query(
+            `UPDATE reminders SET status='completed', updated_at=NOW()
+             WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+            [params.id]
+          );
+
+          // Notify
+          triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
+        }
+      } else if (body.payment.type === 'balance') {
+        if (order.balance_paid) {
+          syncReport.payment_skipped = { type: 'balance', reason: 'Balance already recorded' };
+        } else if (!order.deposit_paid) {
+          syncReport.payment_skipped = { type: 'balance', reason: 'Deposit must be paid first' };
+        } else {
+          await query(
+            `UPDATE orders SET
+               balance_paid=TRUE,
+               balance_verified=FALSE,
+               balance_paid_at=COALESCE($2, NOW()),
+               current_stage=CASE
+                 WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+                 THEN 'balance_verification'
+                 ELSE current_stage
+               END,
+               updated_at=NOW()
+             WHERE id=$1`,
+            [params.id, body.payment.payment_date ?? null]
+          );
+          syncReport.payment_recorded = { type: 'balance', amount: body.payment.amount };
+
+          // Stage updates
+          await query(
+            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+             VALUES ($1, 'balance_verification', 'balance_paid', $2, $3)`,
+            [params.id, `Balance of ₱${body.payment.amount} recorded via AI sync`, userEmail ?? 'dashboard']
+          );
+
+          // Complete balance reminders
+          await query(
+            `UPDATE reminders SET status='completed', updated_at=NOW()
+             WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
+            [params.id]
+          );
+
+          // Notify
+          triggerAgentsForStage('balance_verification', order.quotation_number, order.client_name);
+        }
+      }
+    }
+
+    // Invalidate caches
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+    broadcastSSE('order_updated', { id: params.id });
+
+    // Notify
+    const changedParts = [
+      syncReport.order_fields.length > 0 ? `fields: ${syncReport.order_fields.join(', ')}` : '',
+      syncReport.items_added.length > 0 ? `items: +${syncReport.items_added.length}` : '',
+      syncReport.payment_recorded ? `payment: ${syncReport.payment_recorded.type} ₱${syncReport.payment_recorded.amount.toLocaleString()}` : '',
+    ].filter(Boolean).join('; ');
+
+    if (changedParts) {
+      await notifyManualChange(
+        `🔄 AI sync: extracted data merged`,
+        `Quotation: *${order.quotation_number ?? params.id}*\nClient: ${order.client_name ?? '—'}\nSynced: ${changedParts}`,
+        userEmail,
+      );
+    }
+
+    return reply.send({ ok: true, synced: syncReport });
+  } catch (err: any) {
+    console.error('[sync-extracted] Error:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    return reply.status(500).send({ error: err?.message ?? 'Sync failed' });
+  }
+});
+
 // ── Delete Order (requires action token) ────────────────────────────
 app.delete('/orders/:id', async (request, reply) => {
   const params = z.object({ id: z.string() }).parse(request.params);

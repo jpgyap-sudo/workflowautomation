@@ -119,6 +119,11 @@ function VisionPageContent() {
   const [showOtp, setShowOtp] = useState(false);
   const [otpAction, setOtpAction] = useState<OtpAction>('createOrder');
 
+  // Sync-to-existing-order state (when opened from file viewer with ?order_id=)
+  const [existingOrder, setExistingOrder] = useState<{ id: string; quotation_number: string | null; client_name: string | null; sales_agent: string | null; total_amount: number | null; order_confirmed_at: string | null; deposit_paid: boolean; balance_paid: boolean } | null>(null);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; synced?: { order_fields: string[]; items_added: { name: string; quantity: number }[]; items_skipped: { name: string; reason: string }[]; payment_recorded?: { type: string; amount: number }; payment_skipped?: { type: string; reason: string } } } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
   // Editable fields after extraction
   const [quotationNumber, setQuotationNumber] = useState('');
   const [clientName, setClientName] = useState('');
@@ -256,6 +261,17 @@ function VisionPageContent() {
           setItems(normalizeExtractedItems(data.inventory));
         }
 
+        // If opened from file viewer with order_id, fetch existing order for sync comparison
+        const orderId = searchParams.get('order_id');
+        if (orderId) {
+          fetch(`${API_BASE}/orders/${encodeURIComponent(orderId)}`)
+            .then((res) => res.ok ? res.json() : null)
+            .then((order) => {
+              if (order) setExistingOrder(order);
+            })
+            .catch(() => { /* non-fatal */ });
+        }
+
         setStep('review');
       })
       .catch((err) => {
@@ -385,6 +401,64 @@ function VisionPageContent() {
     setShowOtp(true);
   }
 
+  // ── Sync extracted data to existing order ─────────────────────────────
+  function handleSyncToOrder() {
+    if (!existingOrder) return;
+    setOtpAction('createOrder'); // re-use OTP flow
+    setShowOtp(true);
+  }
+
+  async function executeSyncToOrder(actionToken: string) {
+    if (!existingOrder) return;
+    setSyncing(true);
+    setError('');
+    setShowOtp(false);
+
+    try {
+      const body: Record<string, unknown> = {
+        action_token: actionToken,
+      };
+
+      // Only include extracted fields that are present
+      if (quotationNumber.trim()) body.quotation_number = quotationNumber.trim();
+      if (clientName.trim()) body.client_name = clientName.trim();
+      if (salesAgent.trim()) body.sales_agent = salesAgent.trim();
+      if (totalAmount && Number(totalAmount) > 0) body.total_amount = Number(totalAmount);
+      if (orderDate) body.order_date = orderDate;
+      if (items.length > 0) {
+        body.items = items.map((item) => ({ name: item.product_name, quantity: item.quantity }));
+      }
+
+      // Include payment if extracted and matches the order context
+      if (result?.type === 'payment' && paymentType !== 'unknown' && paymentAmount && Number(paymentAmount) > 0) {
+        body.payment = {
+          amount: Number(paymentAmount),
+          type: paymentType,
+          reference_number: paymentReference || undefined,
+          paid_by: paymentPaidBy || undefined,
+          payment_date: paymentDate || undefined,
+        };
+      }
+
+      const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(existingOrder.id)}/sync-extracted`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sync failed');
+
+      setSyncResult(data);
+      setStep('done');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sync failed');
+      setStep('error');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function executeRecordPayment(actionToken: string) {
     setStep('creating');
     setError('');
@@ -447,6 +521,11 @@ function VisionPageContent() {
   function handleOtpVerified(actionToken: string) {
     if (otpAction === 'recordPayment') {
       executeRecordPayment(actionToken);
+      return;
+    }
+    // If we have an existing order context, sync instead of creating new
+    if (existingOrder) {
+      executeSyncToOrder(actionToken);
       return;
     }
     executeCreateOrder(actionToken);
@@ -920,8 +999,24 @@ function VisionPageContent() {
             </details>
           )}
 
+          {/* Existing Order Sync Banner */}
+          {existingOrder && result.type !== 'payment' && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <h4 className="mb-1 text-sm font-semibold text-blue-800">
+                🔄 Sync Mode — Existing Order
+              </h4>
+              <p className="text-xs text-blue-600">
+                Quotation: <span className="font-medium">{existingOrder.quotation_number ?? '—'}</span> ·
+                Client: <span className="font-medium">{existingOrder.client_name ?? '—'}</span>
+              </p>
+              <p className="mt-1 text-xs text-blue-500">
+                Only empty fields and new items will be filled in. Existing data will not be overwritten.
+              </p>
+            </div>
+          )}
+
           {/* Action Buttons */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {result.type === 'payment' ? (
               <button
                 onClick={handleRecordPayment}
@@ -931,6 +1026,24 @@ function VisionPageContent() {
                 <CheckCircle className="h-4 w-4" />
                 Record Edited Payment
               </button>
+            ) : existingOrder ? (
+              <>
+                <button
+                  onClick={handleSyncToOrder}
+                  disabled={syncing}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  {syncing ? 'Syncing…' : 'Sync to This Order'}
+                </button>
+                <button
+                  onClick={handleCreateOrder}
+                  disabled={!quotationNumber && !clientName}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Create New Order Instead
+                </button>
+              </>
             ) : (
               <button
                 onClick={handleCreateOrder}
@@ -951,11 +1064,13 @@ function VisionPageContent() {
         </div>
       )}
 
-      {/* Creating Spinner */}
+      {/* Creating / Syncing Spinner */}
       {step === 'creating' && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-12">
           <Loader2 className="mb-3 h-8 w-8 animate-spin text-[#2490ef]" />
-          <p className="text-sm font-medium text-gray-700">Creating order and uploading to Drive...</p>
+          <p className="text-sm font-medium text-gray-700">
+            {existingOrder ? 'Syncing extracted data to existing order...' : 'Creating order and uploading to Drive...'}
+          </p>
         </div>
       )}
 
@@ -990,7 +1105,7 @@ function VisionPageContent() {
       )}
 
       {/* Payment extracted (no order creation) */}
-      {step === 'done' && result?.type === 'payment' && !createdOrder && (
+      {step === 'done' && result?.type === 'payment' && !createdOrder && !syncResult && (
         <div className="rounded-xl border border-green-200 bg-green-50 p-6 text-center">
           <CheckCircle className="mx-auto mb-3 h-8 w-8 text-green-600" />
           <h3 className="text-sm font-semibold text-green-800">Payment Recorded</h3>
@@ -1000,6 +1115,53 @@ function VisionPageContent() {
           <button onClick={handleReset} className="mt-4 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700">
             Upload Another
           </button>
+        </div>
+      )}
+
+      {/* Sync Success */}
+      {step === 'done' && syncResult && syncResult.ok && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-6">
+          <div className="text-center">
+            <CheckCircle className="mx-auto mb-3 h-8 w-8 text-green-600" />
+            <h3 className="text-base font-semibold text-green-800">Data Synced Successfully!</h3>
+          </div>
+          <div className="mt-4 space-y-2 text-sm text-green-700">
+            {syncResult.synced?.order_fields && syncResult.synced.order_fields.length > 0 && (
+              <p><span className="font-medium">Fields updated:</span> {syncResult.synced.order_fields.join(', ')}</p>
+            )}
+            {syncResult.synced?.items_added && syncResult.synced.items_added.length > 0 && (
+              <p><span className="font-medium">Items added:</span> {syncResult.synced.items_added.map(i => `${i.name} x${i.quantity}`).join(', ')}</p>
+            )}
+            {syncResult.synced?.items_skipped && syncResult.synced.items_skipped.length > 0 && (
+              <p className="text-xs text-green-600"><span className="font-medium">Skipped ({syncResult.synced.items_skipped.length}):</span> {syncResult.synced.items_skipped.map(i => i.name).join(', ')}</p>
+            )}
+            {syncResult.synced?.payment_recorded && (
+              <p><span className="font-medium">Payment recorded:</span> {syncResult.synced.payment_recorded.type} ₱{syncResult.synced.payment_recorded.amount.toLocaleString()}</p>
+            )}
+            {syncResult.synced?.payment_skipped && (
+              <p className="text-xs text-green-600"><span className="font-medium">Payment skipped:</span> {syncResult.synced.payment_skipped.reason}</p>
+            )}
+            {(!syncResult.synced?.order_fields?.length && !syncResult.synced?.items_added?.length && !syncResult.synced?.payment_recorded) && (
+              <p className="text-xs text-green-600">No new data was found to sync — the order already has all the extracted information.</p>
+            )}
+          </div>
+          <div className="mt-4 flex justify-center gap-3">
+            {existingOrder && (
+              <a
+                href={`/orders/${existingOrder.quotation_number ?? existingOrder.id}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+              >
+                <ExternalLink className="h-4 w-4" />
+                View Order
+              </a>
+            )}
+            <button
+              onClick={handleReset}
+              className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-100"
+            >
+              Upload Another
+            </button>
+          </div>
         </div>
       )}
 
@@ -1018,11 +1180,19 @@ function VisionPageContent() {
       {/* OTP Modal */}
       <OtpModal
         open={showOtp}
-        title={otpAction === 'recordPayment' ? 'Record Payment' : 'Create Order'}
+        title={
+          otpAction === 'recordPayment'
+            ? 'Record Payment'
+            : existingOrder
+              ? 'Sync to Existing Order'
+              : 'Create Order'
+        }
         description={
           otpAction === 'recordPayment'
             ? `Confirm recording the edited payment for "${paymentQuotationNumber || 'this order'}". Enter the OTP sent to your email to confirm.`
-            : `Confirm creating order "${quotationNumber || clientName || '?'}". Enter the OTP sent to your email to confirm.`
+            : existingOrder
+              ? `Confirm syncing extracted data to order "${existingOrder.quotation_number || existingOrder.id}". Only empty fields and new items will be added. Enter the OTP sent to your email to confirm.`
+              : `Confirm creating order "${quotationNumber || clientName || '?'}". Enter the OTP sent to your email to confirm.`
         }
         onVerified={handleOtpVerified}
         onClose={() => setShowOtp(false)}
