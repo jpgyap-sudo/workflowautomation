@@ -27,6 +27,7 @@ When you **finish**:
 |-----------|-----------|------|--------|
 | 2026-05-24 11:37 | Codex | Test: validate cross-extension logging files and `.clinerules` references | ? Done |
 | 2026-05-24 11:29 | Roo (Code) | Verified all services deployed at `ada6e80`, created changelog/bug/update log system | ✅ Done |
+| 2026-05-24 11:58 | Roo (Code) | Deploy: 2 pending commits — en_route_verification stage + bot fix | 🔴 Active |
 
 ---
 
