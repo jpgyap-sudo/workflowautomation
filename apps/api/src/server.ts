@@ -43,7 +43,10 @@ const ORDER_LIST_SELECT = `
   o.id, o.quotation_number, o.client_name, o.sales_agent,
   o.total_amount, o.computed_amount, o.math_status, o.current_stage, o.status,
   o.deposit_paid, o.deposit_amount, o.deposit_image_url, o.deposit_paid_at,
-  o.balance_paid, o.balance_paid_at, o.order_confirmed_at,
+  o.deposit_verified, o.deposit_verified_at, o.deposit_verified_by,
+  o.balance_paid, o.balance_paid_at,
+  o.balance_verified, o.balance_verified_at, o.balance_verified_by,
+  o.order_confirmed_at,
   o.production_started, o.production_started_at, o.estimated_production_days,
   o.production_delayed, o.production_delay_days,
   o.production_finished, o.production_finished_at, o.delivery_estimated_days,
@@ -2838,6 +2841,37 @@ app.post('/stage-updates', async (request, reply) => {
       `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage=$2 AND status='active'`,
       [orderId, previousStage]
     );
+  }
+
+  // When the deposit is verified and the order moves to purchasing_pending,
+  // notify the production group and create a persistent reminder asking
+  // whether to start the production workflow.
+  // This covers cases where the deposit was verified outside the verify-deposit
+  // endpoint (e.g., manual SQL update or dashboard stage transition).
+  if (body.stage === 'purchasing_pending' && order.deposit_verified && PRODUCTION_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage =
+      `💰 Deposit verified for #${ref} (${client}). Do we proceed to start the production workflow?`;
+
+    await upsertStageReminder(orderId, 'purchasing_pending', PRODUCTION_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChatWithButtons(
+        PRODUCTION_CHAT_ID,
+        `💰 <b>Downpayment Verified</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `The client has made the downpayment and the deposit is now verified.\n\n` +
+        `❓ <b>Do we proceed to start the production workflow?</b>`,
+        [
+          [
+            { text: '✅ Yes, proceed', callback_data: `deposit:start_production:yes:${orderId}:${ref}` },
+            { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${orderId}:${ref}` },
+          ],
+        ]
+      );
+    });
   }
 
   // When the team only starts the production workflow, create the separate reminder

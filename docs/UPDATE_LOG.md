@@ -25,6 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
+| 2026-05-24 15:35 | Codex | Fix: include payment verification fields in orders list API for dashboard sync | Done |
 | 2026-05-24 15:10 | Codex | Update: add balance payment date and payment verification columns to order tables | Done |
 | 2026-05-24 14:30 | Codex | Fix: split production workflow acknowledgement from actual production start in dashboard and Telegram | Done |
 | 2026-05-24 12:45 | Codex | Fix: restore En Route Verification in stage pipeline tab after `ada6e80` regression | Done |
