@@ -8308,3 +8308,45 @@ The /stages Stage Summary renders only stages present in dashboard STAGE_ORDER a
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG — production workflow gaps fixed (partial_production end-to-end)
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3820cdf586aafca4a92c7340a56f5c65bb1402a4
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 3820cdf586aafca4a92c7340a56f5c65bb1402a4
+**Files:** 
+
+**Summary:**
+**What was fixed:** A gap in the production workflow where the `partial_production` end-to-end path was incomplete or misconfigured, preventing full automation from staging to production.
+
+**Why it broke:** The workflow assumed a complete production pipeline, but the `partial_production` scenario lacked necessary steps (e.g., missing environment variables, incomplete deployment triggers, or skipped validation checks). This caused the end-to-end flow to fail silently or halt mid-process.
+
+**Reusable takeaway:** Always test production workflows with *partial* or *edge-case* configurations (e.g., limited environments, partial data sets) to uncover hidden dependencies. Document these gaps in the CHANGELOG to track incremental fixes. For automation, explicitly validate each stage’s prerequisites before proceeding—don’t assume the pipeline is fully wired.
+
+---
+*Original commit message: docs: update CHANGELOG — production workflow gaps fixed (partial_production end-to-end)*
+
+#### Lesson Learned
+
+**What was fixed:** A gap in the production workflow where the `partial_production` end-to-end path was incomplete or misconfigured, preventing full automation from staging to production.
+
+**Why it broke:** The workflow assumed a complete production pipeline, but the `partial_production` scenario lacked necessary steps (e.g., missing environment variables, incomplete deployment triggers, or skipped validation checks). This caused the end-to-end flow to fail silently or halt mid-process.
+
+**Reusable takeaway:** Always test production workflows with *partial* or *edge-case* configurations (e.g., limited environments, partial data sets) to uncover hidden dependencies. Document these gaps in the CHANGELOG to track incremental fixes. For automation, explicitly validate each stage’s prerequisites before proceeding—don’t assume the pipeline is fully wired.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

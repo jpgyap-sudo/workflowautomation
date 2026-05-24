@@ -565,6 +565,8 @@ const SAFE_PREFIXES = [
   'vision:retry_extract',
   'vision:upload',
   'upload:retry',
+  'vision:process_yes',
+  'vision:extract_yes',
   // Item-level production status updates — simple status toggles, not destructive
   'item_prod:',
   // Item-level en-route status updates — simple status toggles, not destructive
