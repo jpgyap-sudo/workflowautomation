@@ -28,6 +28,7 @@ When you **finish**:
 | 2026-05-25 07:39 | Codex | Fix: inventory verification permanent link Telegram completion details and item update notification | Done |
 | 2026-05-24 20:10 | Roo (Code) | Deploy: Codex features — inventory accountability, item production dates, early inventory verification, production finished tracking | ✅ Done |
 | 2026-05-24 20:32 | Roo (Code) | Feat: replace Production Finished Actions column with notes input — users can add/view notes per order | ✅ Done |
+| 2026-05-25 07:42 | Roo (Code) | Feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ Done |
 | 2026-05-24 19:58 | Codex | Update: item-level inventory verification with arrival dates and inventory/delivery accountability | ✅ Done |
 | 2026-05-24 19:30 | Codex | Update: add manual Proceed to Inventory Verification action for early arrivals | Done |
 | 2026-05-24 19:10 | Codex | Update: add per-item production finished date to Production Finished expandable item list | Done |

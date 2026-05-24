@@ -9,19 +9,20 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps â€” Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | âœ… VPS `45a144b` |
 | `693c922` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | Pending deploy |
 
 ## 2026-05-24
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `16eec73` | Roo (Code) | fix: add missing stock replenishment migration (order_type column) — resolves API 500 error | ? VPS `16eec73` |
-| `a871000` | Roo (Code) | feat: replace Production Finished Actions column with notes input — users can add/view notes per order | ? VPS `a871000` |
-| `7166d8c` | Roo (Code) | deploy: Codex features — inventory accountability, item production dates, early inventory verification, production finished tracking | ? VPS `7166d8c` |
+| `16eec73` | Roo (Code) | fix: add missing stock replenishment migration (order_type column) ï¿½ resolves API 500 error | ? VPS `16eec73` |
+| `a871000` | Roo (Code) | feat: replace Production Finished Actions column with notes input ï¿½ users can add/view notes per order | ? VPS `a871000` |
+| `7166d8c` | Roo (Code) | deploy: Codex features ï¿½ inventory accountability, item production dates, early inventory verification, production finished tracking | ? VPS `7166d8c` |
 | `7c77bca` | Codex | feat: add item-level inventory verification accountability | ? VPS `7166d8c` |
 | `188f941` | Codex | feat: add early-arrival proceed to inventory verification action | ? VPS `7166d8c` |
 | `87dfc24` | Codex | feat: track and display item production finished dates | ? VPS `7166d8c` |
-| `bb26c61` | Claude Sonnet 4.6 | fix: E2E gaps — en_route_verification stale check + dashboard section + purchasing_pending deposit guard + inventory_verification dashboard link | ? VPS `7166d8c` |
+| `bb26c61` | Claude Sonnet 4.6 | fix: E2E gaps ï¿½ en_route_verification stale check + dashboard section + purchasing_pending deposit guard + inventory_verification dashboard link | ? VPS `7166d8c` |
 | `57c7dba` | Roo (Code) | docs: mark production auto-finish deployed | âœ… VPS `57c7dba` |
 | `ff25dee` | Roo (Code) | fix: refine item production Telegram prompts | âœ… VPS `57c7dba` |
 | `3a2263b` | Roo (Code) | fix: auto-finish completed item production | âœ… VPS `57c7dba` |
