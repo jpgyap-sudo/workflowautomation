@@ -2461,8 +2461,10 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = inventoryVerifyItemSchema.parse(request.body);
 
+  console.log(`[inventory-verify-item] order=${id} item=${body.item_id} action=${body.action} verified_qty=${body.verified_qty}`);
+
   // Verify the order is in inventory_verification stage
-  const orderRows = await query(`SELECT current_stage, quotation_number FROM orders WHERE id = $1`, [id]);
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
   if (orderRows[0].current_stage !== 'inventory_verification') {
     return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
@@ -2474,6 +2476,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
 
   const item = itemRows[0];
   let newVerifiedQty = item.verified_qty ?? 0;
+  console.log(`[inventory-verify-item] item=${item.name} qty=${item.quantity} current_verified=${item.verified_qty}`);
 
   switch (body.action) {
     case 'all':
@@ -2493,14 +2496,16 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   const inventoryDelta = newVerifiedQty - previousVerifiedQty;
 
   // Update verified_qty and the first arrival verification date on the item.
-  await query(
+  const updateResult = await query(
     `UPDATE order_items
      SET verified_qty = $1,
          inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
          updated_at = NOW()
-     WHERE id = $2`,
+     WHERE id = $2
+     RETURNING verified_qty`,
     [newVerifiedQty, body.item_id]
   );
+  console.log(`[inventory-verify-item] updated verified_qty=${updateResult[0]?.verified_qty} delta=${inventoryDelta}`);
 
   if (inventoryDelta !== 0) {
     await adjustInventoryForOrderItem(

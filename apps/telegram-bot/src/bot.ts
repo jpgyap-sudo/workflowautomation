@@ -2726,33 +2726,42 @@ bot.on(message('text'), async (ctx) => {
     // ── Inventory Verification — enter partial qty ────────────────────
     case 'awaiting_inv_verify_qty': {
       const { itemId, orderId, quotationNumber } = session.step.data;
+      console.log(`[bot awaiting_inv_verify_qty] chat=${chatId} item=${itemId} order=${orderId} text="${text}"`);
       const qty = parseInt(text, 10);
       if (isNaN(qty) || qty < 0) {
         await ctx.reply('❌ Please enter a valid number (e.g., `5`).', { parse_mode: 'Markdown', ...cancelButton() });
         break;
       }
       try {
+        console.log(`[bot awaiting_inv_verify_qty] calling API with verified_qty=${qty}`);
         const result = await postJson(`/orders/${orderId}/inventory-verify-item`, {
           item_id: itemId,
           action: 'partial',
           verified_qty: qty,
         });
+        console.log(`[bot awaiting_inv_verify_qty] API result:`, JSON.stringify(result));
 
         resetStep(chatId);
 
         // Fetch updated items to show next question
         const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
-        const items = await itemsRes.json();
+        const itemsData = await itemsRes.json();
+        const currentItem = itemsData?.items?.find((i: any) => i.id === itemId);
 
         // Find the next not-fully-verified item (process of elimination)
-        const notVerifiedItem = items.items?.find(
+        const notVerifiedItem = itemsData?.items?.find(
           (item: any) => (item.verified_qty ?? 0) < item.quantity
         );
+
+        // Acknowledge the update explicitly
+        let ackMsg = `✅ *Recorded: ${currentItem?.name ?? 'Item'} — ${qty} unit(s) verified*\n`;
+        ackMsg += `Progress: ${result.verification_pct}% of total qty\n\n`;
 
         if (!notVerifiedItem) {
           // All items fully verified! Offer to complete verification
           await ctx.reply(
-            `✅ *All Items Fully Verified!*\n\nOrder #${orderId.slice(0, 8)}\nAll items and quantities verified (${result.verification_pct}% of qty).\n\nReady to complete inventory verification and proceed to inventory arrival?`,
+            ackMsg +
+            `🎉 *All Items Fully Verified!*\n\nOrder #${orderId.slice(0, 8)}\nAll items and quantities verified (${result.verification_pct}% of qty).\n\nReady to complete inventory verification and proceed to inventory arrival?`,
             {
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
@@ -2763,13 +2772,14 @@ bot.on(message('text'), async (ctx) => {
           );
         } else {
           // Ask about the next not-fully-verified item
-          const verifiedCount = items.items.filter((i: any) => (i.verified_qty ?? 0) >= i.quantity).length;
-          const totalCount = items.items.length;
+          const verifiedCount = itemsData.items.filter((i: any) => (i.verified_qty ?? 0) >= i.quantity).length;
+          const totalCount = itemsData.items.length;
           const remainingQty = notVerifiedItem.quantity - (notVerifiedItem.verified_qty ?? 0);
 
           const progressBar = '█'.repeat(Math.round(result.verification_pct / 10)) + '░'.repeat(10 - Math.round(result.verification_pct / 10));
 
-          let msg = `🔍 *Inventory Verification*\n\n`;
+          let msg = ackMsg;
+          msg += `🔍 *Inventory Verification*\n\n`;
           msg += `Verified: ${result.verification_pct}% ${progressBar}\n`;
           msg += `Items: ${verifiedCount}/${totalCount} fully verified\n\n`;
           msg += `*Process of Elimination:*\n`;
@@ -2787,6 +2797,7 @@ bot.on(message('text'), async (ctx) => {
           });
         }
       } catch (err: any) {
+        console.error(`[bot awaiting_inv_verify_qty] API error:`, err.message);
         await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
       }
       break;
@@ -5333,6 +5344,7 @@ bot.action(/^inv_verify:(all|partial|not_yet):([^:]+):([^:]+):(.+)$/, async (ctx
     const resolveItemsData = await resolveItemsRes.json();
     const resolveItems = resolveItemsData?.items ?? [];
     const targetItem = resolveItems.find((item: any) => item.id?.startsWith(itemIdPrefix));
+    console.log(`[bot inv_verify callback] action=${action} itemPrefix=${itemIdPrefix} resolved=${targetItem?.id ?? 'NOT_FOUND'} items=${resolveItems.length}`);
     if (!targetItem) {
       await ctx.editMessageText('❌ Item not found. It may have been removed or already verified.', { parse_mode: 'Markdown', ...cancelButton() });
       return;

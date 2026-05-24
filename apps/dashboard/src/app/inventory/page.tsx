@@ -1106,158 +1106,36 @@ export default function InventoryPage() {
 // ── Orders Awaiting Inventory Arrival Section ─────────────────────────────
 
 function InventoryVerificationSection() {
-  const inventoryVerification = useOrdersByStage('inventory_verification');
-  const inventoryArrived = useOrdersByStage('inventory_arrived');
-  const balanceDue = useOrdersByStage('balance_due');
-  const balanceVerification = useOrdersByStage('balance_verification');
-  const deliveryPending = useOrdersByStage('delivery_pending');
-  const deliveryScheduled = useOrdersByStage('delivery_scheduled');
-  const sourceOrders = [
-    ...(inventoryVerification.data ?? []),
-    ...(inventoryArrived.data ?? []),
-    ...(balanceDue.data ?? []),
-    ...(balanceVerification.data ?? []),
-    ...(deliveryPending.data ?? []),
-    ...(deliveryScheduled.data ?? []),
-  ];
-  const orders = Array.from(new Map(sourceOrders.map((order) => [order.id, order])).values());
-  const isLoading = inventoryVerification.isLoading || inventoryArrived.isLoading || balanceDue.isLoading || balanceVerification.isLoading || deliveryPending.isLoading || deliveryScheduled.isLoading;
-  const mutate = async () => {
-    await Promise.all([
-      inventoryVerification.mutate(),
-      inventoryArrived.mutate(),
-      balanceDue.mutate(),
-      balanceVerification.mutate(),
-      deliveryPending.mutate(),
-      deliveryScheduled.mutate(),
-    ]);
-  };
-  const { mutate: mutateInventoryItems } = useInventory();
-  const [itemDetailsMap, setItemDetailsMap] = useState<Record<string, OrderItem[]>>({});
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-  const [loadingItems, setLoadingItems] = useState(false);
-  const [verifyingItemId, setVerifyingItemId] = useState<string | null>(null);
-
-  const [itemOtp, setItemOtp] = useState<{
-    open: boolean;
-    orderId: string;
-    quotationNumber: string;
-    itemId: string;
-    itemName: string;
-    action: 'all' | 'partial' | 'not_yet';
-    verifiedQty?: number;
-  }>({ open: false, orderId: '', quotationNumber: '', itemId: '', itemName: '', action: 'all' });
-
-  // OTP modal state for "Complete Verification" action
-  const [verifyOtp, setVerifyOtp] = useState<{ open: boolean; orderId: string; quotationNumber: string }>({
-    open: false, orderId: '', quotationNumber: '',
-  });
-  const [verifying, setVerifying] = useState(false);
+  const { data: orders = [], isLoading, mutate } = useOrdersByStage('inventory_verification');
+  const [itemSummaryMap, setItemSummaryMap] = useState<Record<string, { verified: number; total: number; totalQty: number; verifiedQty: number }>>({});
 
   useEffect(() => {
     if (orders.length === 0) {
-      setItemDetailsMap({});
+      setItemSummaryMap({});
       return;
     }
     let cancelled = false;
-    async function fetchItems() {
-      setLoadingItems(true);
-      const details: Record<string, OrderItem[]> = {};
+    async function fetchSummaries() {
+      const summary: Record<string, { verified: number; total: number; totalQty: number; verifiedQty: number }> = {};
       await Promise.all(orders.map(async (order) => {
         try {
           const res = await getOrderItems(order.id);
-          details[order.id] = res.items ?? [];
+          const items = res.items ?? [];
+          summary[order.id] = {
+            verified: items.filter((item) => (item.verified_qty ?? 0) >= item.quantity).length,
+            total: items.length,
+            totalQty: items.reduce((sum, item) => sum + item.quantity, 0),
+            verifiedQty: items.reduce((sum, item) => sum + (item.verified_qty ?? 0), 0),
+          };
         } catch {
-          details[order.id] = [];
+          summary[order.id] = { verified: 0, total: 0, totalQty: 0, verifiedQty: 0 };
         }
       }));
-      if (!cancelled) {
-        setItemDetailsMap(details);
-        setLoadingItems(false);
-      }
+      if (!cancelled) setItemSummaryMap(summary);
     }
-    fetchItems();
+    fetchSummaries();
     return () => { cancelled = true; };
-  }, [orders.map((o) => o.id).sort().join('|')]);
-
-  async function refreshVerificationData() {
-    await mutate();
-    await mutateInventoryItems();
-    const details: Record<string, OrderItem[]> = {};
-    await Promise.all(orders.map(async (order) => {
-      try {
-        const res = await getOrderItems(order.id);
-        details[order.id] = res.items ?? [];
-      } catch {
-        details[order.id] = itemDetailsMap[order.id] ?? [];
-      }
-    }));
-    setItemDetailsMap(details);
-  }
-
-  function formatItemDate(value: string | null | undefined) {
-    if (!value) return '?';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '?';
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  }
-
-  function openItemVerification(order: any, item: OrderItem, action: 'all' | 'partial' | 'not_yet') {
-    let verifiedQty: number | undefined;
-    if (action === 'partial') {
-      const input = window.prompt(`Verified quantity for ${item.name}?`, String(item.verified_qty ?? 0));
-      if (input == null) return;
-      const qty = Number(input.replace(/[^0-9]/g, ''));
-      if (!Number.isInteger(qty) || qty < 0 || qty > item.quantity) {
-        alert(`Enter a quantity from 0 to ${item.quantity}.`);
-        return;
-      }
-      verifiedQty = qty;
-    }
-    setItemOtp({
-      open: true,
-      orderId: order.id,
-      quotationNumber: order.quotation_number ?? 'N/A',
-      itemId: item.id,
-      itemName: item.name,
-      action,
-      verifiedQty,
-    });
-  }
-
-  async function handleItemVerified(actionToken: string) {
-    if (!itemOtp.orderId || !itemOtp.itemId) return;
-    setVerifyingItemId(itemOtp.itemId);
-    try {
-      await inventoryVerifyItem(itemOtp.orderId, {
-        item_id: itemOtp.itemId,
-        action: itemOtp.action,
-        verified_qty: itemOtp.verifiedQty,
-        action_token: actionToken,
-      });
-      await refreshVerificationData();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to verify inventory item');
-    } finally {
-      setVerifyingItemId(null);
-      setItemOtp({ open: false, orderId: '', quotationNumber: '', itemId: '', itemName: '', action: 'all' });
-    }
-  }
-
-  async function handleCompleteVerification(actionToken: string) {
-    if (!verifyOtp.orderId) return;
-    setVerifying(true);
-    try {
-      await completeInventoryVerification(verifyOtp.orderId, actionToken);
-      mutate();
-      mutateInventoryItems();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to complete verification');
-    } finally {
-      setVerifying(false);
-      setVerifyOtp({ open: false, orderId: '', quotationNumber: '' });
-    }
-  }
+  }, [orders.map((order) => order.id).sort().join('|')]);
 
   if (isLoading) {
     return (
@@ -1286,118 +1164,44 @@ function InventoryVerificationSection() {
       <div className="flex items-center gap-2 border-b border-teal-200 px-5 py-3">
         <Search className="h-4 w-4 text-teal-600" />
         <h3 className="text-sm font-semibold text-teal-800">Orders Awaiting Inventory Verification</h3>
-        <span className="ml-auto rounded-full bg-teal-200 px-2 py-0.5 text-[10px] font-bold text-teal-800">
-          {orders.length}
-        </span>
+        <span className="ml-auto rounded-full bg-teal-200 px-2 py-0.5 text-[10px] font-bold text-teal-800">{orders.length}</span>
         <Link href="/workflow" className="inline-flex items-center gap-1 rounded-md bg-white/80 px-2.5 py-1 text-[11px] font-medium text-teal-700 shadow-sm transition-colors hover:bg-white">
-          <ExternalLink className="h-3 w-3" />
-          Workflow
+          <ExternalLink className="h-3 w-3" /> Workflow
         </Link>
       </div>
       <div className="divide-y divide-teal-100 px-5 py-2">
         {orders.map((order) => {
-          const orderItems = itemDetailsMap[order.id] ?? [];
-          const verifiedItems = orderItems.filter((i) => (i.verified_qty ?? 0) >= i.quantity).length;
-          const expanded = expandedOrderId === order.id;
+          const summary = itemSummaryMap[order.id] ?? { verified: 0, total: 0, totalQty: 0, verifiedQty: 0 };
+          const verificationUrl = `/inventory/verification/${encodeURIComponent(order.quotation_number ?? order.id)}`;
           return (
-            <div key={order.id} className="py-3">
-              <button type="button" onClick={() => setExpandedOrderId(expanded ? null : order.id)} className="flex w-full items-center justify-between text-left">
-                <div className="flex items-center gap-3">
-                  <Package className="h-4 w-4 text-teal-500" />
-                  <div>
-                    <Link href={`/orders/${encodeURIComponent(order.quotation_number ?? '')}`} className="text-sm font-medium text-gray-900 hover:text-teal-700 hover:underline" onClick={(e) => e.stopPropagation()}>
-                      #{order.quotation_number ?? 'N/A'}
-                    </Link>
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown'}</p>
-                    <div className="mt-1 flex items-center gap-1">
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-200">
-                        <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${order.inventory_verification_pct ?? 0}%` }} />
-                      </div>
-                      <span className="text-[10px] font-medium text-teal-600">
-                        {order.inventory_verification_pct ?? 0}% verified ? {verifiedItems}/{orderItems.length || 0} item(s) ? {order.current_stage.replace(/_/g, ' ')}
-                      </span>
+            <div key={order.id} className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <Package className="h-4 w-4 text-teal-500" />
+                <div>
+                  <Link href={verificationUrl} className="text-sm font-medium text-gray-900 hover:text-teal-700 hover:underline">
+                    #{order.quotation_number ?? 'N/A'}
+                  </Link>
+                  <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown'}</p>
+                  <div className="mt-1 flex items-center gap-1">
+                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-200">
+                      <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${order.inventory_verification_pct ?? 0}%` }} />
                     </div>
+                    <span className="text-[10px] font-medium text-teal-600">
+                      {order.inventory_verification_pct ?? 0}% verified ? {summary.verified}/{summary.total} item(s) ? {summary.verifiedQty}/{summary.totalQty} units
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {order.current_stage === 'inventory_verification' ? (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setVerifyOtp({ open: true, orderId: order.id, quotationNumber: order.quotation_number ?? 'N/A' }); }} disabled={verifying} className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-teal-700 disabled:opacity-50">
-                      {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-                      Complete Verification
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-teal-700">Visible until delivered</span>
-                  )}
-                  <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-medium text-teal-700">Inventory Agent Active</span>
-                  <ArrowRight className={`h-4 w-4 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-                </div>
-              </button>
-
-              {expanded && (
-                <div className="mt-3 overflow-x-auto rounded-lg border border-teal-100 bg-white">
-                  {loadingItems && orderItems.length === 0 ? (
-                    <div className="flex items-center gap-2 p-3 text-xs text-gray-500"><Loader2 className="h-3 w-3 animate-spin" /> Loading items...</div>
-                  ) : orderItems.length === 0 ? (
-                    <div className="p-3 text-xs text-gray-500">No item records found for this order.</div>
-                  ) : (
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-teal-50 text-[10px] uppercase tracking-wide text-teal-700">
-                        <tr>
-                          <th className="px-3 py-2">Item Name</th>
-                          <th className="px-3 py-2">Qty</th>
-                          <th className="px-3 py-2">Verified Qty</th>
-                          <th className="px-3 py-2">Arrival Verified Date</th>
-                          <th className="px-3 py-2">Delivered</th>
-                          <th className="px-3 py-2 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {orderItems.map((item) => (
-                          <tr key={item.id}>
-                            <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
-                            <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
-                            <td className="px-3 py-2"><span className="rounded-full bg-teal-100 px-2 py-0.5 font-semibold text-teal-700">{item.verified_qty ?? 0}/{item.quantity}</span></td>
-                            <td className="px-3 py-2 text-gray-600">{formatItemDate(item.inventory_verified_at)}</td>
-                            <td className="px-3 py-2 text-gray-600">{item.delivered_qty ?? 0}{item.delivered_at ? ` - ${formatItemDate(item.delivered_at)}` : ''}</td>
-                            <td className="px-3 py-2 text-right">
-                              <div className="flex justify-end gap-1">
-                                {order.current_stage === 'inventory_verification' ? (
-                                  <>
-                                    <button onClick={() => openItemVerification(order, item, 'all')} disabled={verifyingItemId === item.id} className="rounded bg-green-50 px-2 py-1 text-[10px] font-medium text-green-700 hover:bg-green-100 disabled:opacity-50">Verify All</button>
-                                    <button onClick={() => openItemVerification(order, item, 'partial')} disabled={verifyingItemId === item.id} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50">Partial</button>
-                                    <button onClick={() => openItemVerification(order, item, 'not_yet')} disabled={verifyingItemId === item.id} className="rounded bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50">Not Yet</button>
-                                  </>
-                                ) : (
-                                  <span className="text-[10px] text-gray-400">Tracked until delivered</span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href={verificationUrl} className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-teal-700">
+                  <ExternalLink className="h-3 w-3" /> Open Verification Link
+                </Link>
+                <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-medium text-teal-700">Permanent Link</span>
+              </div>
             </div>
           );
         })}
       </div>
-
-      <OtpModal
-        open={itemOtp.open}
-        title="Verify Inventory Item"
-        description={`You are about to update inventory verification for ${itemOtp.itemName} in order #${itemOtp.quotationNumber}. This will update on-hand inventory and create an accountability movement log.`}
-        onVerified={handleItemVerified}
-        onClose={() => setItemOtp({ open: false, orderId: '', quotationNumber: '', itemId: '', itemName: '', action: 'all' })}
-      />
-      <OtpModal
-        open={verifyOtp.open}
-        title="Complete Inventory Verification"
-        description={`You are about to complete inventory verification for order #${verifyOtp.quotationNumber}. Enter the OTP sent to your email to confirm.`}
-        onVerified={handleCompleteVerification}
-        onClose={() => setVerifyOtp({ open: false, orderId: '', quotationNumber: '' })}
-      />
     </div>
   );
 }
