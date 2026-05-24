@@ -9148,3 +9148,195 @@ Always validate E2E flows with real-world edge cases before deployment. Use chan
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: close e2e workflow wiring gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 87eb50cb1e7a8771e483532d176432bd2ea41fd6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 87eb50cb1e7a8771e483532d176432bd2ea41fd6
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused broken API calls, missing OTP modal integration, and incomplete page routing for collection and purchasing modules.
+
+**Why it broke:**  
+The initial implementation left loose connections between frontend components and backend endpoints. Specifically, the OTP modal wasn't wired to the API, and page-level data flows for collection and purchasing were incomplete, leading to silent failures or unresponsive UI states.
+
+**Reusable takeaway:**  
+When building multi-step workflows, explicitly trace each data path from UI component → API call → backend handler. Use integration tests or manual walkthroughs to verify every "wire" is connected before merging. Document wiring gaps in a bug log to prevent recurrence.
+
+---
+*Original commit message: fix: close e2e workflow wiring gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused broken API calls, missing OTP modal integration, and incomplete page routing for collection and purchasing modules.
+
+**Why it broke:**  
+The initial implementation left loose connections between frontend components and backend endpoints. Specifically, the OTP modal wasn't wired to the API, and page-level data flows for collection and purchasing were incomplete, leading to silent failures or unresponsive UI states.
+
+**Reusable takeaway:**  
+When building multi-step workflows, explicitly trace each data path from UI component → API call → backend handler. Use integration tests or manual walkthroughs to verify every "wire" is connected before merging. Document wiring gaps in a bug log to prevent recurrence.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: close e2e workflow wiring gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3cf7272f254144baba7f3b4c296a880c5c278434
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3cf7272f254144baba7f3b4c296a880c5c278434
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused incomplete data flow between the API server, dashboard pages (collection, purchasing), OTP modal, and API client library.
+
+**Why it broke:**  
+Missing or misaligned connections between components—likely mismatched API endpoints, missing state updates, or unhandled asynchronous flows—prevented the workflow from completing correctly.
+
+**Reusable takeaway:**  
+When building multi-step workflows, explicitly trace the data path from user action through API call to UI update. Use integration tests or manual walkthroughs to verify every link in the chain. Document wiring assumptions in a shared log (e.g., BUG_LOG.md) to catch gaps early.
+
+---
+*Original commit message: fix: close e2e workflow wiring gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused incomplete data flow between the API server, dashboard pages (collection, purchasing), OTP modal, and API client library.
+
+**Why it broke:**  
+Missing or misaligned connections between components—likely mismatched API endpoints, missing state updates, or unhandled asynchronous flows—prevented the workflow from completing correctly.
+
+**Reusable takeaway:**  
+When building multi-step workflows, explicitly trace the data path from user action through API call to UI update. Use integration tests or manual walkthroughs to verify every link in the chain. Document wiring assumptions in a shared log (e.g., BUG_LOG.md) to catch gaps early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: close e2e workflow wiring gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a7fd60cd7abca0c55df089cd397e974452ea4ae1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a7fd60cd7abca0c55df089cd397e974452ea4ae1
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused failures in collection and purchasing flows, particularly around OTP modal handling and API client configuration.
+
+**Why it broke:**  
+The `OtpModal` component and `api.ts` client had mismatched event handling and missing state synchronization. The collection and purchasing pages relied on incomplete or inconsistent wiring between the modal’s submit action and the API’s response parsing, leading to silent failures or unhandled promise rejections.
+
+**Reusable takeaway:**  
+When building multi-step e2e workflows (e.g., OTP verification → data submission), ensure that every UI component’s event handler is directly wired to the corresponding API client method, and that all state transitions (loading, success, error) are explicitly handled. Use integration tests that simulate the full user flow—not just isolated unit tests—to catch wiring gaps early. Document these wiring patterns in a shared BUG_LOG to prevent regression.
+
+---
+*Original commit message: fix: close e2e workflow wiring gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused failures in collection and purchasing flows, particularly around OTP modal handling and API client configuration.
+
+**Why it broke:**  
+The `OtpModal` component and `api.ts` client had mismatched event handling and missing state synchronization. The collection and purchasing pages relied on incomplete or inconsistent wiring between the modal’s submit action and the API’s response parsing, leading to silent failures or unhandled promise rejections.
+
+**Reusable takeaway:**  
+When building multi-step e2e workflows (e.g., OTP verification → data submission), ensure that every UI component’s event handler is directly wired to the corresponding API client method, and that all state transitions (loading, success, error) are explicitly handled. Use integration tests that simulate the full user flow—not just isolated unit tests—to catch wiring gaps early. Document these wiring patterns in a shared BUG_LOG to prevent regression.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: close e2e workflow wiring gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d5c6a7b4a8a96f57e829f956cb8db092786142ea
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d5c6a7b4a8a96f57e829f956cb8db092786142ea
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused broken API calls and missing OTP modal integration in the dashboard.
+
+**Why it broke:**  
+The API client (`api.ts`) was not correctly wired to the server endpoints (`server.ts`), and the OTP modal component (`OtpModal.tsx`) was not properly connected to the purchasing and collection pages. This led to silent failures or incomplete user flows.
+
+**Reusable takeaway:**  
+When building multi-service workflows, explicitly verify that all frontend-to-backend wiring is complete and that shared components (like modals) are integrated into every relevant page. Use integration tests or manual end-to-end checks to catch these gaps early.
+
+---
+*Original commit message: fix: close e2e workflow wiring gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Closed wiring gaps in the end-to-end workflow that caused broken API calls and missing OTP modal integration in the dashboard.
+
+**Why it broke:**  
+The API client (`api.ts`) was not correctly wired to the server endpoints (`server.ts`), and the OTP modal component (`OtpModal.tsx`) was not properly connected to the purchasing and collection pages. This led to silent failures or incomplete user flows.
+
+**Reusable takeaway:**  
+When building multi-service workflows, explicitly verify that all frontend-to-backend wiring is complete and that shared components (like modals) are integrated into every relevant page. Use integration tests or manual end-to-end checks to catch these gaps early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
