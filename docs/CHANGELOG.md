@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `16eec73` | Roo (Code) | fix: add missing stock replenishment migration (order_type column) — resolves API 500 error | ✅ VPS `16eec73` |
 | `a871000` | Roo (Code) | feat: replace Production Finished Actions column with notes input — users can add/view notes per order | ✅ VPS `a871000` |
 | `7166d8c` | Roo (Code) | deploy: Codex features — inventory accountability, item production dates, early inventory verification, production finished tracking | ✅ VPS `7166d8c` |
 | `7c77bca` | Codex | feat: add item-level inventory verification accountability | ✅ VPS `7166d8c` |
