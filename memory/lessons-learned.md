@@ -7551,3 +7551,51 @@ When bridging two systems (e.g., dashboard ↔ messaging), ensure your event-dri
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: wrap bot.stop() in try/catch to prevent uncaught exception crash on SIGTERM
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit aaa257aa6ab16645d60e40f900de002c2a5d5333
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** aaa257aa6ab16645d60e40f900de002c2a5d5333
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+A crash caused by an uncaught exception when `bot.stop()` was called during a `SIGTERM` shutdown signal.
+
+**Why it broke:**  
+The `bot.stop()` method threw an error (likely due to an already-closed connection or cleanup race condition), and the code lacked error handling. This unhandled exception propagated to the process, causing an abrupt crash instead of a graceful shutdown.
+
+**Reusable takeaway:**  
+Always wrap cleanup/shutdown operations (e.g., `stop()`, `close()`, `disconnect()`) in try/catch blocks. Graceful shutdown handlers must tolerate errors from partially initialized or already-terminated resources. This prevents a single failed cleanup from crashing the entire process.
+
+---
+*Original commit message: fix: wrap bot.stop() in try/catch to prevent uncaught exception crash on SIGTERM*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A crash caused by an uncaught exception when `bot.stop()` was called during a `SIGTERM` shutdown signal.
+
+**Why it broke:**  
+The `bot.stop()` method threw an error (likely due to an already-closed connection or cleanup race condition), and the code lacked error handling. This unhandled exception propagated to the process, causing an abrupt crash instead of a graceful shutdown.
+
+**Reusable takeaway:**  
+Always wrap cleanup/shutdown operations (e.g., `stop()`, `close()`, `disconnect()`) in try/catch blocks. Graceful shutdown handlers must tolerate errors from partially initialized or already-terminated resources. This prevents a single failed cleanup from crashing the entire process.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
