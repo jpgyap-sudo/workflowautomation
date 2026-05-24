@@ -15,6 +15,10 @@ const bot = new Telegraf(token);
 // when clicked. Telegram requires answerCbQuery within 10 seconds.
 bot.use(async (ctx, next) => {
   if (ctx.callbackQuery) {
+    const cq = ctx.callbackQuery as any;
+    const chatId = String(ctx.chat?.id ?? '');
+    const userId = String(ctx.from?.id ?? '');
+    console.log(`[callback] data=${cq.data} chat=${chatId} user=${userId}`);
     await ctx.answerCbQuery().catch(() => {});
   }
   return next();
@@ -5745,6 +5749,7 @@ bot.action('vision:type_quotation', async (ctx) => {
   console.log(`[vision:type_quotation] START chat=${chatId} user=${userId} session=${session.step.action}`);
 
   if (session.step.action !== 'awaiting_vision_document_type') {
+    console.log(`[vision:type_quotation] EXPIRED chat=${chatId} session=${session.step.action}`);
     return ctx.editMessageText(
       '⏳ *Session Expired*\n\n' +
       'The previous session was lost, possibly due to a bot restart.\n\n' +
@@ -5758,6 +5763,7 @@ bot.action('vision:type_quotation', async (ctx) => {
     );
   }
 
+  console.log(`[vision:type_quotation] OK chat=${chatId} session=${session.step.action}`);
   const { imageBase64, mimeType, fileName } = session.step;
 
   // Store data for next step (same as vision:process_yes)
@@ -5768,18 +5774,24 @@ bot.action('vision:type_quotation', async (ctx) => {
     fileName,
   });
 
-  await ctx.editMessageText(
-    `📄 *Quotation/Order detected:* ${escapeMarkdown(fileName)}\n\n` +
-    `Do you want me to extract the information using AI?`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('✅ Yes, extract info', 'vision:extract_yes')],
-        [Markup.button.callback('📤 Just upload to Drive', 'vision:upload')],
-        [Markup.button.callback('❌ Cancel', 'action:cancel')],
-      ]),
-    }
-  );
+  try {
+    await ctx.editMessageText(
+      `📄 *Quotation/Order detected:* ${escapeMarkdown(fileName)}\n\n` +
+      `Do you want me to extract the information using AI?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Yes, extract info', 'vision:extract_yes')],
+          [Markup.button.callback('📤 Just upload to Drive', 'vision:upload')],
+          [Markup.button.callback('❌ Cancel', 'action:cancel')],
+        ]),
+      }
+    );
+    console.log(`[vision:type_quotation] EDITED chat=${chatId}`);
+  } catch (err: any) {
+    console.error(`[vision:type_quotation] EDIT-FAILED chat=${chatId} err=${err.message}`);
+    throw err;
+  }
 });
 
 // User said the document is a Deposit Slip/Payment — go directly to extraction
