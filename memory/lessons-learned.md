@@ -7455,3 +7455,99 @@ This reduces user frustration and support requests by making recovery paths expl
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: close dashboard-telegram sync gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 25354a5ef3153133088b83cd44265f895ea5b5d5
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 25354a5ef3153133088b83cd44265f895ea5b5d5
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A synchronization gap between the dashboard and Telegram notifications, where certain workflow state changes were not being relayed to Telegram.
+
+**Why it broke:**  
+The sync logic only triggered on explicit user actions (e.g., button clicks), but missed state transitions caused by automated rules or background processes. This created a race condition where Telegram updates were skipped.
+
+**Reusable takeaway:**  
+When building event-driven integrations, ensure all state-change paths (manual + automated) are covered by the same notification hook. Use a single, centralized event bus or callback to fire notifications, rather than attaching them to specific UI actions. This prevents silent gaps and ensures consistency across channels.
+
+---
+*Original commit message: fix: close dashboard-telegram sync gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A synchronization gap between the dashboard and Telegram notifications, where certain workflow state changes were not being relayed to Telegram.
+
+**Why it broke:**  
+The sync logic only triggered on explicit user actions (e.g., button clicks), but missed state transitions caused by automated rules or background processes. This created a race condition where Telegram updates were skipped.
+
+**Reusable takeaway:**  
+When building event-driven integrations, ensure all state-change paths (manual + automated) are covered by the same notification hook. Use a single, centralized event bus or callback to fire notifications, rather than attaching them to specific UI actions. This prevents silent gaps and ensures consistency across channels.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: close dashboard-telegram sync gaps (part 2)
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 16738dabcba33ea5a9204eca193317eaddcec495
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 16738dabcba33ea5a9204eca193317eaddcec495
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A synchronization gap between the dashboard and Telegram notifications, where certain state changes or events were not being forwarded to Telegram users.
+
+**Why it broke:**  
+The previous logic only triggered Telegram updates on a subset of dashboard events, missing edge cases (e.g., status transitions, delayed updates, or batch operations). The sync was not exhaustive, leading to silent data loss in Telegram notifications.
+
+**Reusable takeaway:**  
+When bridging two systems (e.g., dashboard ↔ messaging), ensure your event-driven sync covers *all* relevant state transitions—not just primary ones. Use a unified event bus or a diff-based reconciliation loop to catch missed updates. Test with real-world edge cases (e.g., rapid changes, offline periods) to expose gaps.
+
+---
+*Original commit message: fix: close dashboard-telegram sync gaps (part 2)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A synchronization gap between the dashboard and Telegram notifications, where certain state changes or events were not being forwarded to Telegram users.
+
+**Why it broke:**  
+The previous logic only triggered Telegram updates on a subset of dashboard events, missing edge cases (e.g., status transitions, delayed updates, or batch operations). The sync was not exhaustive, leading to silent data loss in Telegram notifications.
+
+**Reusable takeaway:**  
+When bridging two systems (e.g., dashboard ↔ messaging), ensure your event-driven sync covers *all* relevant state transitions—not just primary ones. Use a unified event bus or a diff-based reconciliation loop to catch missed updates. Test with real-world edge cases (e.g., rapid changes, offline periods) to expose gaps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
