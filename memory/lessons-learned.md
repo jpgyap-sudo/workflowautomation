@@ -7259,3 +7259,93 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: normalize Content-Type header in fetchJson to avoid duplicate headers causing 415
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c8a5bd6e6239a65bd2e078adf9060df6df3df3ce
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c8a5bd6e6239a65bd2e078adf9060df6df3df3ce
+**Files:** apps/dashboard/src/lib/api.ts
+
+**Summary:**
+**What was fixed:** A `415 Unsupported Media Type` error in `fetchJson` caused by duplicate `Content-Type` headers.
+
+**Why it broke:** The code was setting a default `Content-Type: application/json` header, then later adding another `Content-Type` header (e.g., for multipart data) without removing the first. The server rejected the request due to conflicting or duplicate media type declarations.
+
+**Reusable takeaway:** When building HTTP clients, always normalize or deduplicate headers before sending. A common pattern: define a base headers object, then merge request-specific headers using a merge strategy that overwrites (not appends) existing keys. In JavaScript/TypeScript, use `Object.assign` or spread syntax with the request-specific headers last to ensure they override defaults. This prevents subtle bugs where default headers persist and conflict with explicit overrides.
+
+---
+*Original commit message: fix: normalize Content-Type header in fetchJson to avoid duplicate headers causing 415*
+
+#### Lesson Learned
+
+**What was fixed:** A `415 Unsupported Media Type` error in `fetchJson` caused by duplicate `Content-Type` headers.
+
+**Why it broke:** The code was setting a default `Content-Type: application/json` header, then later adding another `Content-Type` header (e.g., for multipart data) without removing the first. The server rejected the request due to conflicting or duplicate media type declarations.
+
+**Reusable takeaway:** When building HTTP clients, always normalize or deduplicate headers before sending. A common pattern: define a base headers object, then merge request-specific headers using a merge strategy that overwrites (not appends) existing keys. In JavaScript/TypeScript, use `Object.assign` or spread syntax with the request-specific headers last to ensure they override defaults. This prevents subtle bugs where default headers persist and conflict with explicit overrides.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: save deposit slip to order file viewer when recording deposit by client name
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c30496bc93993de8955b908008b3adeea4a44c5f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c30496bc93993de8955b908008b3adeea4a44c5f
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Deposit slips were not being saved to the order file viewer when a deposit was recorded using the client’s name.
+
+**Why it broke:**  
+The code path for recording deposits by client name omitted the step that attaches the deposit slip to the order’s file viewer. The slip-saving logic was only triggered in the deposit-by-order-ID branch.
+
+**Reusable takeaway:**  
+When adding a new input method (e.g., client name) for an existing action (e.g., recording a deposit), ensure all side effects (e.g., file attachments, notifications) are replicated from the original method. Use shared helper functions or middleware to enforce consistent post-processing across all entry points.
+
+---
+*Original commit message: fix: save deposit slip to order file viewer when recording deposit by client name*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Deposit slips were not being saved to the order file viewer when a deposit was recorded using the client’s name.
+
+**Why it broke:**  
+The code path for recording deposits by client name omitted the step that attaches the deposit slip to the order’s file viewer. The slip-saving logic was only triggered in the deposit-by-order-ID branch.
+
+**Reusable takeaway:**  
+When adding a new input method (e.g., client name) for an existing action (e.g., recording a deposit), ensure all side effects (e.g., file attachments, notifications) are replicated from the original method. Use shared helper functions or middleware to enforce consistent post-processing across all entry points.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

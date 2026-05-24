@@ -198,10 +198,77 @@ function VisionPageContent() {
     });
   }, [searchParams]);
 
-  // Load recent uploads when no token is present
+  // Load file from order file viewer for AI extraction fallback via ?file_id=&order_id=&file_type=
+  useEffect(() => {
+    const fileId = searchParams.get('file_id');
+    const orderId = searchParams.get('order_id');
+    const fileType = searchParams.get('file_type');
+    if (!fileId || !orderId) return;
+
+    setStep('extracting');
+    setError('');
+
+    const downloadUrl = `${API_BASE}/orders/${encodeURIComponent(orderId)}/files/${encodeURIComponent(fileId)}/download`;
+
+    fetch(downloadUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to download file (HTTP ${res.status})`);
+        const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+        return res.arrayBuffer().then((buf) => ({ buf, contentType }));
+      })
+      .then(({ buf, contentType }) => {
+        const base64 = btoa(
+          new Uint8Array(buf).reduce((data, byte) => data + String.fromCharCode(byte), '')
+        );
+        const dataUrl = `data:${contentType};base64,${base64}`;
+        setPreview(dataUrl);
+        setFileName(`file_${fileId.slice(0, 8)}.${contentType.includes('pdf') ? 'pdf' : 'jpg'}`);
+
+        // Determine extraction mode based on file_type
+        const mode = fileType === 'deposit' || fileType === 'balance_proof' ? 'payment' : 'auto';
+
+        return fetch(`${API_BASE}/vision/extract`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_base64: base64, mime_type: contentType, mode }),
+        });
+      })
+      .then((res) => res.json())
+      .then((data: VisionResult) => {
+        if (!data.ok) throw new Error(data.error || 'Extraction failed');
+        setResult(data);
+
+        if (data.type === 'quotation' && data.quotation) {
+          setQuotationNumber(data.quotation.quotation_number ?? '');
+          setClientName(data.quotation.client_name ?? '');
+          setSalesAgent(data.quotation.sales_agent ?? '');
+          setTotalAmount(data.quotation.total_amount ? String(data.quotation.total_amount) : '');
+          setOrderDate(data.quotation.order_date ?? '');
+          setItems(normalizeExtractedItems(data.quotation.items));
+        } else if (data.type === 'payment') {
+          setPaymentQuotationNumber(data.quotation?.quotation_number ?? '');
+          setPaymentType(data.payment?.type ?? 'unknown');
+          setPaymentAmount(data.payment?.amount ? String(data.payment.amount) : '');
+          setPaymentDate(data.payment?.payment_date ?? '');
+          setPaymentReference(data.payment?.reference_number ?? '');
+          setPaymentPaidBy(data.payment?.paid_by ?? '');
+        } else if (data.type === 'inventory') {
+          setItems(normalizeExtractedItems(data.inventory));
+        }
+
+        setStep('review');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to extract file');
+        setStep('error');
+      });
+  }, [searchParams]);
+
+  // Load recent uploads when no token or file_id is present
   useEffect(() => {
     const token = searchParams.get('token');
-    if (token) return; // Don't load list when viewing a specific share
+    const fileId = searchParams.get('file_id');
+    if (token || fileId) return; // Don't load list when viewing a specific share or file extraction
 
     setLoadingUploads(true);
     fetch(`${API_BASE}/vision/uploads`)

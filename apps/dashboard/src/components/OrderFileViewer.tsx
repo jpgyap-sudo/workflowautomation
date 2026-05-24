@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Order, OrderFile } from '@/lib/api';
 import { getOrderFiles, getOrderFileDownloadUrl, uploadOrderFile } from '@/lib/api';
-import { X, FileText, ExternalLink, Upload, Loader2 } from 'lucide-react';
+import { X, FileText, ExternalLink, Upload, Loader2, Sparkles } from 'lucide-react';
 
 function getErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
@@ -187,23 +187,61 @@ export function FileViewerModal({
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
                     {imageFiles.map((file) => (
-                      <a
+                      <div
                         key={file.id}
-                        href={getOrderFileDownloadUrl(order.id, file.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="group relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
                       >
-                        <img
-                          src={getOrderFileDownloadUrl(order.id, file.id)}
-                          alt={file.original_filename ?? 'Order file'}
-                          className="h-40 w-full object-contain"
-                          loading="lazy"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
-                          {file.original_filename ?? 'View image'}
-                        </div>
-                      </a>
+                        <a
+                          href={getOrderFileDownloadUrl(order.id, file.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <img
+                            src={getOrderFileDownloadUrl(order.id, file.id)}
+                            alt={file.original_filename ?? 'Order file'}
+                            className="h-40 w-full object-contain"
+                            loading="lazy"
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                            {file.original_filename ?? 'View image'}
+                          </div>
+                        </a>
+                        {/* AI Extract button — only for processable file types */}
+                        {file.file_type === 'quotation' && (
+                          <a
+                            href={`/vision?file_id=${encodeURIComponent(file.id)}&order_id=${encodeURIComponent(order.id)}&file_type=quotation`}
+                            className="absolute left-1 top-1 flex items-center gap-1 rounded-md bg-purple-600 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 shadow-sm transition-opacity hover:bg-purple-700 group-hover:opacity-100"
+                            title="Extract data from this quotation using AI"
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            AI Extract
+                          </a>
+                        )}
+                        {(file.file_type === 'deposit' || file.file_type === 'balance_proof') && (
+                          <div className="absolute left-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <select
+                              className="rounded-md border-0 bg-purple-600 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm hover:bg-purple-700 focus:ring-2 focus:ring-purple-400 focus:outline-none cursor-pointer"
+                              defaultValue=""
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                e.target.value = ''; // reset so same option can be re-selected
+                                if (val === 'deposit' || val === 'balance') {
+                                  const targetType = val === 'deposit' ? 'deposit' : 'balance_proof';
+                                  window.open(
+                                    `/vision?file_id=${encodeURIComponent(file.id)}&order_id=${encodeURIComponent(order.id)}&file_type=${targetType}`,
+                                    '_blank'
+                                  );
+                                }
+                              }}
+                              title="Extract payment data using AI"
+                            >
+                              <option value="" disabled className="text-gray-700">AI Extract…</option>
+                              <option value="deposit" className="text-gray-700">💰 Downpayment</option>
+                              <option value="balance" className="text-gray-700">⚖️ Balance</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
