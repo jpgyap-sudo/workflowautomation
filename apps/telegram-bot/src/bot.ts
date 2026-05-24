@@ -1481,6 +1481,11 @@ bot.on(message('text'), async (ctx) => {
     metadata: { step: session.step.action },
   });
 
+  // ── Skip slash commands so bot.command() handlers can process them ──
+  if (text.startsWith('/')) {
+    return;
+  }
+
   // ── Idle: production assistant (group) or main menu (DM) ────────────
   if (session.step.action === 'idle') {
     const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PRODUCTION_GROUP_ID ?? '';
