@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
@@ -44,6 +44,16 @@ function addDays(dateStr: string | null | undefined, days: number | null | undef
 function getEstimatedInventoryArrivalDate(order: Order): Date | null {
   return addDays(order.en_route_confirmed_at, order.estimated_arrival_days)
     ?? addDays(order.inventory_en_route_at, order.estimated_inventory_arrival_days);
+}
+
+function getEstimatedItemInventoryArrivalDate(order: Order, item: OrderItem): Date | null {
+  return addDays(order.en_route_confirmed_at, item.estimated_arrival_days)
+    ?? getEstimatedInventoryArrivalDate(order);
+}
+
+function formatStatusLabel(value: string | null | undefined): string {
+  if (!value) return '\u2014';
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function getEnRouteVerificationText(order: Order): string {
@@ -791,6 +801,29 @@ function ProductionFinishedTrackingSection({
   onConfirmEnRoute: (o: Order) => void;
   onViewFiles?: (o: Order) => void;
 }) {
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
+  const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
+
+  async function toggleOrderItems(order: Order) {
+    if (expandedOrderId === order.id) {
+      setExpandedOrderId(null);
+      return;
+    }
+    setExpandedOrderId(order.id);
+    if (!itemsByOrder[order.id]) {
+      setLoadingItemsForOrder(order.id);
+      try {
+        const res = await getOrderItems(order.id);
+        setItemsByOrder((prev) => ({ ...prev, [order.id]: res.items ?? [] }));
+      } catch {
+        setItemsByOrder((prev) => ({ ...prev, [order.id]: [] }));
+      } finally {
+        setLoadingItemsForOrder(null);
+      }
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
@@ -834,34 +867,98 @@ function ProductionFinishedTrackingSection({
                 const summary = summaries[order.id];
                 const estimatedArrival = getEstimatedInventoryArrivalDate(order);
                 const enRouteVerified = getEnRouteVerificationText(order) !== 'Pending';
+                const isExpanded = expandedOrderId === order.id;
+                const orderItems = itemsByOrder[order.id] ?? [];
                 return (
-                  <tr key={order.id} className="hover:bg-gray-50/60">
-                    <td className="px-6 py-4 font-medium text-gray-900">
-                      <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
-                    </td>
-                    <td className="px-4 py-4 text-gray-700">{order.client_name ?? 'Unknown client'}</td>
-                    <td className="px-4 py-4">
-                      <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
-                        {summary ? `${summary.finishedCount}/${summary.totalCount} item${summary.totalCount === 1 ? '' : 's'}` : 'At least 1 item'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enRouteVerified ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {getEnRouteVerificationText(order)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {estimatedArrival ? formatDate(estimatedArrival) : <span className="text-gray-400">Pending en-route days</span>}
-                    </td>
-                    <td className="px-4 py-4"><StageBadge stage={order.current_stage} /></td>
-                    <td className="px-4 py-4 text-right">
-                      {order.current_stage === 'en_route' && !order.en_route_confirmed && (
-                        <button onClick={() => onConfirmEnRoute(order)} className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700">
-                          Confirm En Route
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={order.id}>
+                    <tr
+                      onClick={() => toggleOrderItems(order)}
+                      className="cursor-pointer hover:bg-gray-50/60"
+                    >
+                      <td className="px-6 py-4 font-medium text-gray-900">
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                          <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-gray-700">{order.client_name ?? 'Unknown client'}</td>
+                      <td className="px-4 py-4">
+                        <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                          {summary ? `${summary.finishedCount}/${summary.totalCount} item${summary.totalCount === 1 ? '' : 's'}` : 'At least 1 item'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enRouteVerified ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {getEnRouteVerificationText(order)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-gray-700">
+                        {estimatedArrival ? formatDate(estimatedArrival) : <span className="text-gray-400">Pending en-route days</span>}
+                      </td>
+                      <td className="px-4 py-4"><StageBadge stage={order.current_stage} /></td>
+                      <td className="px-4 py-4 text-right">
+                        {order.current_stage === 'en_route' && !order.en_route_confirmed && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onConfirmEnRoute(order); }}
+                            className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                          >
+                            Confirm En Route
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={`${order.id}-items`} className="bg-gray-50/70">
+                        <td colSpan={7} className="px-6 py-4">
+                          {loadingItemsForOrder === order.id ? (
+                            <div className="text-xs text-gray-400">Loading item list...</div>
+                          ) : orderItems.length === 0 ? (
+                            <div className="text-xs text-gray-400">No item records found for this order.</div>
+                          ) : (
+                            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                  <tr>
+                                    <th className="px-3 py-2">Item</th>
+                                    <th className="px-3 py-2">Qty</th>
+                                    <th className="px-3 py-2">Production</th>
+                                    <th className="px-3 py-2">En Route</th>
+                                    <th className="px-3 py-2">Item Arrival Days</th>
+                                    <th className="px-3 py-2">Estimated Inventory Arrival Date</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {orderItems.map((item) => {
+                                    const itemArrival = getEstimatedItemInventoryArrivalDate(order, item);
+                                    return (
+                                      <tr key={item.id}>
+                                        <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                        <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                        <td className="px-3 py-2">
+                                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.production_status === 'finished' ? 'bg-green-100 text-green-700' : item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {formatStatusLabel(item.production_status)}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {formatStatusLabel(item.en_route_status)}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-600">{item.estimated_arrival_days ? `${item.estimated_arrival_days} day(s)` : '\u2014'}</td>
+                                        <td className="px-3 py-2 text-gray-700">
+                                          {itemArrival ? formatDate(itemArrival) : <span className="text-gray-400">Pending en-route days</span>}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
