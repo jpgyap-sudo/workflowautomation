@@ -571,6 +571,8 @@ const SAFE_PREFIXES = [
   'item_prod:',
   // Item-level en-route status updates — simple status toggles, not destructive
   'item_en_route:',
+  // Dispatch ready — navigation to en-route for finished items
+  'dispatch_ready:',
 ];
 
 // Set of recently-confirmed callback keys (format: "callbackData:chatId").
@@ -2965,23 +2967,31 @@ async function showItemLevelEnRoute(ctx: any, orderId: string, quotationNumber: 
     items = itemsData?.items ?? [];
   }
 
-  const totalQty = items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-  const enRouteQty = items
+  // Only consider finished items for en-route tracking
+  const finishedItems = items.filter((i: any) => i.production_status === 'finished');
+  const totalQty = finishedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+  const enRouteQty = finishedItems
     .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
     .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
   const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
-  const enRouteCount = items.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
-  const totalCount = items.length;
+  const enRouteCount = finishedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+  const totalCount = finishedItems.length;
+  const allItemsFinished = items.length > 0 && items.every((i: any) => i.production_status === 'finished');
 
-  const notEnRouteItem = items.find((i: any) => i.en_route_status === 'not_yet');
+  const notEnRouteItem = finishedItems.find((i: any) => i.en_route_status === 'not_yet');
 
   if (!notEnRouteItem) {
-    const maxDays = Math.max(...items.map((i: any) => i.estimated_arrival_days ?? 28));
-    await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
+    const maxDays = Math.max(...finishedItems.map((i: any) => i.estimated_arrival_days ?? 28));
+    if (allItemsFinished) {
+      await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
+    }
+    const statusLine = allItemsFinished
+      ? `All items completed and already en route (${enRoutePct}% of qty).`
+      : `All finished items are en route (${enRoutePct}% of finished qty). Production still in progress for other items.`;
     const msg =
-      `✅ *All Items Finished & En Route!*\n\n` +
+      `✅ *All Finished Items En Route!*\n\n` +
       `Order #${quotationNumber}\n` +
-      `All items completed and already en route (${enRoutePct}% of qty).\n\n` +
+      `${statusLine}\n\n` +
       `📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n` +
       `📦 Arrival check in the inventory group on the estimated arrival date.`;
     if (edit) {
@@ -2994,10 +3004,11 @@ async function showItemLevelEnRoute(ctx: any, orderId: string, quotationNumber: 
 
   const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
 
-  let msg = `✅ *All Items Produced!*\n\n`;
-  msg += `Order #${quotationNumber}\nAll production items are finished.\n\n`;
+  let msg = allItemsFinished
+    ? `✅ *All Items Produced!*\n\nOrder #${quotationNumber}\nAll production items are finished.\n\n`
+    : `🏗️ *Production In Progress*\n\nOrder #${quotationNumber}\nSome items still in production.\n\n`;
   msg += `🚚 *Item-Level En Route*\n`;
-  msg += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
+  msg += `En Route: ${enRoutePct}% of finished qty ${progressBar}\n`;
   msg += `Items: ${enRouteCount}/${totalCount} en route\n\n`;
   msg += `*Process of Elimination:*\n`;
   msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\n`;
@@ -4242,6 +4253,9 @@ bot.action(/^item_prod:(finished|in_progress|pending|ontime|delayed):([^:]+):(.+
       const finishedCount = updatedItems.filter((i: any) => i.production_status === 'finished').length;
       const totalCount = updatedItems.length;
       const prodPct = completion?.production_pct ?? 0;
+      const finishedNotEnRoute = updatedItems.some(
+        (i: any) => i.production_status === 'finished' && i.en_route_status === 'not_yet'
+      );
 
       const progressBar = '█'.repeat(Math.round(prodPct / 10)) + '░'.repeat(10 - Math.round(prodPct / 10));
 
@@ -4252,16 +4266,66 @@ bot.action(/^item_prod:(finished|in_progress|pending|ontime|delayed):([^:]+):(.+
       msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
       msg += `Has *${unfinishedItem.name}* started production?`;
 
+      const keyboardRows: any[] = [
+        [Markup.button.callback(`🚀 ${unfinishedItem.name} — Started`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+        [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+      ];
+      if (finishedNotEnRoute) {
+        keyboardRows.push([Markup.button.callback(`🚚 Dispatch Finished Items`, `dispatch_ready:${quotationNumber}`)]);
+      }
+
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback(`🚀 ${unfinishedItem.name} — Started`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
-        ]),
+        ...Markup.inlineKeyboard(keyboardRows),
       });
     }
   } catch (err: any) {
     await ctx.reply(`❌ Error updating item production: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── Dispatch Ready Callback ──────────────────────────────────────────────
+// Fires when user clicks "🚚 Dispatch Finished Items" from the production
+// tracking flow. Starts item-level en-route for finished items only.
+
+bot.action(/^dispatch_ready:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `dispatch_ready:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const orderId = orderData.id;
+
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    const items = itemsData?.items ?? [];
+
+    const finishedNotEnRoute = items.filter(
+      (i: any) => i.production_status === 'finished' && i.en_route_status === 'not_yet'
+    );
+
+    if (finishedNotEnRoute.length === 0) {
+      await ctx.editMessageText(
+        `✅ *No finished items waiting for dispatch.*\n\nOrder #${quotationNumber}\nAll finished items are already en route or arrived.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
+    await logAction({ chatId, userId, username, label: 'Dispatch Finished Items', details: `Order #${quotationNumber} — ${finishedNotEnRoute.length} item(s) ready` });
+    await showItemLevelEnRoute(ctx, orderId, quotationNumber, items, true);
+  } catch (err: any) {
+    const safeMsg = err.message.replace(/[_*\[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+    await ctx.reply(`❌ Error starting dispatch: ${safeMsg}`, { parse_mode: 'MarkdownV2', ...cancelButton() });
   }
 });
 
@@ -4376,16 +4440,18 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     const updatedItemsData = await updatedItemsRes.json();
     const updatedItems = updatedItemsData?.items ?? [];
 
-    // Calculate en-route % based on quantity
-    const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-    const enRouteQty = updatedItems
+    // Calculate en-route % based on FINISHED items only
+    const finishedItems = updatedItems.filter((i: any) => i.production_status === 'finished');
+    const totalQty = finishedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+    const enRouteQty = finishedItems
       .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
       .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
     const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
     const thresholdMet = enRoutePct > 50;
+    const allItemsFinished = updatedItems.length > 0 && updatedItems.every((i: any) => i.production_status === 'finished');
 
-    // Find the next item not yet en route, skipping items the user already said "Not Yet" to
-    const notEnRouteItem = updatedItems.find(
+    // Find the next FINISHED item not yet en route, skipping items the user already said "Not Yet" to
+    const notEnRouteItem = finishedItems.find(
       (item: any) => item.en_route_status === 'not_yet' && !skipSet.has(item.id)
     );
 
@@ -4394,26 +4460,31 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
       // If so, don't auto-advance — just acknowledge
       if (skipSet.size > 0) {
         await ctx.editMessageText(
-          `⏳ *All remaining items marked as not yet en route.*\n\nOrder #${quotationNumber}\n${enRoutePct}% of qty en route.\n\nThe order will advance once items are confirmed en route.`,
+          `⏳ *All remaining finished items marked as not yet en route.*\n\nOrder #${quotationNumber}\n${enRoutePct}% of finished qty en route.\n\nThe order will advance once all finished items are confirmed en route.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } else {
-        // All items en route! Start timed tracking — do NOT advance stage
-        const maxDays = Math.max(...updatedItems.map((i: any) => i.estimated_arrival_days ?? 28));
-        await postJson(`/orders/${orderId}/production-logs`, {
-          order_item_id: null,
-          note: `✅ All items en route (${enRoutePct}% of qty). En route tracking started — arrival in ${maxDays} days.`,
-          log_type: 'user',
-          created_by: username ?? `user_${userId}`,
-        });
+        // All finished items en route! Start timed tracking only if all items are finished
+        const maxDays = Math.max(...finishedItems.map((i: any) => i.estimated_arrival_days ?? 28));
+        if (allItemsFinished) {
+          await postJson(`/orders/${orderId}/production-logs`, {
+            order_item_id: null,
+            note: `✅ All items en route (${enRoutePct}% of qty). En route tracking started — arrival in ${maxDays} days.`,
+            log_type: 'user',
+            created_by: username ?? `user_${userId}`,
+          });
 
-        await postJson(`/orders/${orderId}/start-en-route-tracking`, {
-          estimated_inventory_arrival_days: maxDays,
-        });
-        await logAction({ chatId, userId, username, label: 'All Items En Route — Tracking Started', details: `Order #${quotationNumber} — ${maxDays} days to arrival` });
+          await postJson(`/orders/${orderId}/start-en-route-tracking`, {
+            estimated_inventory_arrival_days: maxDays,
+          });
+        }
+        await logAction({ chatId, userId, username, label: 'All Finished Items En Route', details: `Order #${quotationNumber} — ${maxDays} days to arrival` });
 
+        const statusLine = allItemsFinished
+          ? `All items en route (${enRoutePct}% of qty).`
+          : `All finished items en route (${enRoutePct}% of finished qty). Production still in progress.`;
         await ctx.editMessageText(
-          `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\n📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check in the inventory group on the estimated arrival date.`,
+          `✅ *All Finished Items En Route!*\n\nOrder #${quotationNumber}\n${statusLine}\n\n📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check in the inventory group on the estimated arrival date.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       }

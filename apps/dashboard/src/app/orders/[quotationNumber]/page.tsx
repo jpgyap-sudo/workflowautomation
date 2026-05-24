@@ -1322,7 +1322,7 @@ function ItemTrackingSection({
                           : item.en_route_status === 'en_route' ? '⟳ En Route'
                           : '○ Not Yet'}
                       </span>
-                      {stageAllowsEnRouteEdit && (
+                      {(stageAllowsEnRouteEdit || item.production_status === 'finished') && (
                         <div className="flex gap-1">
                           {item.en_route_status !== 'not_yet' && (
                             <button

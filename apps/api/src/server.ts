@@ -259,7 +259,6 @@ async function finalizeProductionIfAllItemsFinished(
          production_finished = TRUE,
          production_finished_at = COALESCE(production_finished_at, NOW()),
          partial_production_items = '[]'::jsonb,
-         current_stage = 'en_route',
          updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
@@ -268,11 +267,11 @@ async function finalizeProductionIfAllItemsFinished(
   const order = rows[0] ?? null;
   if (!order) return { finalized: false, order: null, itemCount: items.length };
 
-  if (!before?.production_finished || before.current_stage !== 'en_route') {
+  if (!before?.production_finished) {
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-       VALUES ($1, 'en_route', 'production_finished', $2, $3)`,
-      [orderId, remarks, source],
+       VALUES ($1, $2, 'production_finished', $3, $4)`,
+      [orderId, before?.current_stage ?? order.current_stage, remarks, source],
     );
   }
 
@@ -285,8 +284,52 @@ async function finalizeProductionIfAllItemsFinished(
     [orderId],
   );
 
-  triggerAgentsForStage('en_route', order.quotation_number, order.client_name);
+  triggerAgentsForStage(order.current_stage, order.quotation_number, order.client_name);
   return { finalized: true, order, itemCount: items.length };
+}
+
+async function advanceToEnRouteIfAllDispatched(
+  orderId: string,
+  source: string,
+  remarks: string,
+): Promise<{ advanced: boolean; order: any | null }> {
+  const items = await query<{ en_route_status: string; production_status: string }>(
+    `SELECT en_route_status, production_status FROM order_items WHERE order_id = $1`,
+    [orderId],
+  );
+  const allFinished = items.length > 0 && items.every((item) => item.production_status === 'finished');
+  const allDispatched = items.length > 0 && items.every((item) => item.en_route_status === 'en_route' || item.en_route_status === 'arrived');
+  if (!allFinished || !allDispatched) return { advanced: false, order: null };
+
+  const beforeRows = await query<{ current_stage: string }>(
+    `SELECT current_stage FROM orders WHERE id = $1`,
+    [orderId],
+  );
+  const beforeStage = beforeRows[0]?.current_stage;
+
+  if (!beforeStage || beforeStage === 'en_route') {
+    return { advanced: false, order: null };
+  }
+
+  const rows = await query(
+    `UPDATE orders
+     SET current_stage = 'en_route',
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [orderId],
+  );
+  const order = rows[0] ?? null;
+  if (!order) return { advanced: false, order: null };
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'en_route', 'all_dispatched', $2, $3)`,
+    [orderId, remarks, source],
+  );
+
+  triggerAgentsForStage('en_route', order.quotation_number, order.client_name);
+  return { advanced: true, order };
 }
 
 // ── Email (OTP) ──────────────────────────────────────────────────────
@@ -1962,19 +2005,32 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   const tokenPayload = JSON.parse(tokenData);
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
+  // Check if order has item-level tracking items
+  const itemRows = await query(
+    `SELECT COUNT(*)::int AS cnt FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+  const hasItems = itemRows[0]?.cnt > 0;
+
+  // For item-level orders, mark production finished but keep stage (en_route
+  // advancement happens via advanceToEnRouteIfAllDispatched when all items
+  // are dispatched). For legacy orders, advance to en_route immediately.
   const rows = await query(
     `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
-     delivery_estimated_days = $1, current_stage = 'en_route', updated_at = NOW()
-     WHERE id = $2 RETURNING *`,
-    [body.delivery_estimated_days, id]
+     delivery_estimated_days = $1,
+     current_stage = CASE WHEN $2 = TRUE THEN current_stage ELSE 'en_route' END,
+     updated_at = NOW()
+     WHERE id = $3 RETURNING *`,
+    [body.delivery_estimated_days, hasItems, id]
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
 
+  const nextStage = hasItems ? rows[0].current_stage : 'en_route';
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'en_route', 'production_finished', $2, 'system')`,
-    [id, `Production finished; delivery availability estimated in ${body.delivery_estimated_days} day(s)`]
+     VALUES ($1, $2, 'production_finished', $3, 'system')`,
+    [id, nextStage, `Production finished; delivery availability estimated in ${body.delivery_estimated_days} day(s)`]
   );
 
   // Complete item-level production reminder if it exists
@@ -1983,13 +2039,6 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
      WHERE order_id = $1 AND status = 'active' AND stage = 'item_level_production'`,
     [id]
   );
-
-  // Check if order has item-level tracking items
-  const itemRows = await query(
-    `SELECT COUNT(*)::int AS cnt FROM order_items WHERE order_id = $1`,
-    [id]
-  );
-  const hasItems = itemRows[0]?.cnt > 0;
 
   // For legacy orders (no items), create an en_route reminder immediately.
   // For item-level orders, skip this — the production agent's checkItemLevelEnRoute
@@ -3038,6 +3087,19 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
         );
       }
     }
+  }
+
+  // ── Auto-advance to en_route when all items are dispatched ──────────
+  if (body.en_route_status !== undefined) {
+    const orderRows = await query<{ quotation_number: string | null; client_name: string | null }>(
+      `SELECT quotation_number, client_name FROM orders WHERE id = $1`,
+      [order_id]
+    );
+    await advanceToEnRouteIfAllDispatched(
+      order_id,
+      'item_update',
+      `Item en_route_status updated to ${body.en_route_status} — checking if all items dispatched`,
+    );
   }
 
   // ── Item-Level Production Timeline Reminders ────────────────────────
