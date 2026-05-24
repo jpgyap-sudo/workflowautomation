@@ -7707,3 +7707,51 @@ When designing workflow automation, explicitly map all order types (e.g., item-l
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: add unified changelog, bug log, and update log for cross-extension collaboration
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 483ab3cafade02a53cd0467933c299d025f060ce
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 483ab3cafade02a53cd0467933c299d025f060ce
+**Files:** docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Added three documentation files (BUG_LOG, CHANGELOG, UPDATE_LOG) to standardize cross-extension collaboration tracking.
+
+**Why it broke:**  
+Previously, no unified logging system existed. Extensions lacked a shared record of bugs, changes, or updates, causing communication gaps, duplicated effort, and inconsistent version tracking.
+
+**Reusable takeaway:**  
+For multi-extension or modular systems, establish a minimal, standardized documentation framework early. Separate logs by purpose (bugs, changes, updates) to reduce confusion and enable efficient cross-team debugging and release coordination.
+
+---
+*Original commit message: docs: add unified changelog, bug log, and update log for cross-extension collaboration*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added three documentation files (BUG_LOG, CHANGELOG, UPDATE_LOG) to standardize cross-extension collaboration tracking.
+
+**Why it broke:**  
+Previously, no unified logging system existed. Extensions lacked a shared record of bugs, changes, or updates, causing communication gaps, duplicated effort, and inconsistent version tracking.
+
+**Reusable takeaway:**  
+For multi-extension or modular systems, establish a minimal, standardized documentation framework early. Separate logs by purpose (bugs, changes, updates) to reduce confusion and enable efficient cross-team debugging and release coordination.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

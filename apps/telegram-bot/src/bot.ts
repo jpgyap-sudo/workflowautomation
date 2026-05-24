@@ -1,6 +1,7 @@
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { AsyncLocalStorage } from 'async_hooks';
+import * as fs from 'fs';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:8080';
@@ -655,6 +656,57 @@ interface UserSession {
 }
 
 const sessions = new Map<string, UserSession>();
+const SESSIONS_FILE = '/app/.sessions.json';
+
+function saveSessions(): void {
+  try {
+    const obj: Record<string, UserSession> = {};
+    for (const [chatId, session] of sessions.entries()) {
+      obj[chatId] = session;
+    }
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(obj), 'utf8');
+  } catch (err) {
+    console.error('[sessions] Failed to save sessions:', err);
+  }
+}
+
+function loadSessions(): void {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return;
+    const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+    const obj = JSON.parse(raw) as Record<string, UserSession>;
+    for (const [chatId, session] of Object.entries(obj)) {
+      // Reset image-based sessions since base64 images are too large to persist
+      // and would be stale anyway after a restart.
+      const imageBasedActions = [
+        'awaiting_vision_document_type',
+        'awaiting_vision_process',
+        'awaiting_vision_extract',
+        'awaiting_vision_retry_extract',
+        'awaiting_upload_retry',
+        'awaiting_deposit_confirmation',
+        'awaiting_deposit_client_name',
+      ];
+      if (imageBasedActions.includes((session.step as any).action)) {
+        session.step = { action: 'idle' };
+        delete session.ownerUserId;
+        delete session.ownerUsername;
+        delete session.lockedAt;
+      }
+      sessions.set(chatId, session);
+    }
+    console.log(`[sessions] Restored ${sessions.size} sessions from disk`);
+  } catch (err) {
+    console.error('[sessions] Failed to load sessions:', err);
+  }
+}
+
+loadSessions();
+
+// Periodically save sessions to disk
+setInterval(() => {
+  saveSessions();
+}, 30_000);
 
 function getSession(chatId: string): UserSession {
   let session = sessions.get(chatId);
@@ -667,25 +719,22 @@ function getSession(chatId: string): UserSession {
 
 function setStep(chatId: string, step: UserStep) {
   const session = getSession(chatId);
-  const wasIdle = session.step.action === 'idle';
   session.step = step;
 
-  // Auto-lock on transition from idle -> active using AsyncLocalStorage context
-  if (wasIdle && step.action !== 'idle') {
+  if (step.action !== 'idle') {
     const ctx = ctxStore.getStore();
     if (ctx) {
       session.ownerUserId = String(ctx.from?.id ?? '');
       session.ownerUsername = ctx.from?.username;
-      session.lockedAt = Date.now();
     }
-  }
-
-  // Auto-unlock on reset
-  if (step.action === 'idle') {
+    session.lockedAt = Date.now();
+  } else {
     delete session.ownerUserId;
     delete session.ownerUsername;
     delete session.lockedAt;
   }
+
+  saveSessions();
 }
 
 function resetStep(chatId: string) {
@@ -694,6 +743,7 @@ function resetStep(chatId: string) {
   delete session.ownerUserId;
   delete session.ownerUsername;
   delete session.lockedAt;
+  saveSessions();
 }
 
 // ── Auto-release stale group locks ─────────────────────────────────────
