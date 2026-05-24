@@ -101,6 +101,32 @@ function buildProgressBar(pct: number, width: number = 10): string {
   return '█'.repeat(filled) + '░'.repeat(empty);
 }
 
+
+function buildInventoryVerificationUrl(quotationNumber: string): string {
+  return `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(quotationNumber)}`;
+}
+
+function formatVerificationItemList(items: OrderItemRow[], mode: 'pending' | 'verified' = 'pending'): string {
+  const lines = items
+    .map((item) => {
+      const qty = Number(item.quantity ?? 0);
+      const verified = Math.min(Number(item.verified_qty ?? 0), qty);
+      const remaining = Math.max(qty - verified, 0);
+      if (mode === 'verified') {
+        return `- ${item.name}: ${verified}/${qty} verified`;
+      }
+      if (remaining <= 0) return null;
+      return `- ${item.name}: ${remaining} remaining (${verified}/${qty} verified)`;
+    })
+    .filter(Boolean) as string[];
+
+  if (!lines.length) {
+    return mode === 'verified' ? '- No item quantities recorded' : '- No pending items';
+  }
+
+  return lines.join('\n');
+}
+
 // ── Main Runner ───────────────────────────────────────────────────────
 
 export async function runInventoryAgent(): Promise<AgentResult[]> {
@@ -294,10 +320,26 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
       broadcastSSE('invalidate', { keys: cachePatterns });
       await cacheDeletePattern(`order:detail:${qn}`);
 
-      // Notify inventory group
+      // Notify inventory group with permanent record link and verified quantities
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `📦 <b>Inventory Verification Complete</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) verified (${verificationPct}% of qty).\n\n✅ All items accounted for! Proceeding to inventory arrival check.\nThe bot will now ask about each item's arrival status.`;
+        const dashboardUrl = buildInventoryVerificationUrl(qn);
+        const verifiedList = formatVerificationItemList(items, 'verified');
+        const msg = `?? <b>Inventory Verification Complete</b>
+
+` +
+          `Order: #${qn}
+` +
+          `Client: ${client}
+` +
+          `?? <a href="${dashboardUrl}">Permanent Verification Link</a>
+
+` +
+          `<b>Verified Items</b>
+${verifiedList}
+
+` +
+          `? All items accounted for. Proceeding to inventory arrival check.`;
 
         await sendTelegramMessage(groupChatId, msg);
       }
@@ -326,7 +368,7 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(verificationPct);
-    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+    const dashboardUrl = buildInventoryVerificationUrl(qn);
 
     // Build Hermes context for smarter messaging
     const hermesCtx: HermesProductionContext = {
@@ -357,6 +399,7 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
     message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n`;
     message += `Verified: ${verificationPct}% ${progressBar}\n`;
     message += `Items: ${fullyVerifiedItems}/${totalItems} fully verified\n\n`;
+    message += `<b>Items Not Yet Verified</b>\n${formatVerificationItemList(items, 'pending')}\n\n`;
 
     if (hermesAnalysis) {
       message += `${hermesAnalysis.message}\n\n`;

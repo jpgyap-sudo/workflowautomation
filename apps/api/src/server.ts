@@ -2550,12 +2550,12 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
     setImmediate(() => {
       notifyGroupChat(
         INVENTORY_GROUP_CHAT_ID,
-        `🔍 <b>Inventory Verified (Dashboard)</b>\n\n` +
-        `Quotation: <b>${ref}</b>\n` +
-        `Client: ${client}\n\n` +
-        `Item: <b>${item.name}</b> x${item.quantity}\n` +
-        `Status: ${actionLabel}\n` +
-        `Progress: ${verificationPct}% verified`
+        `<b>Inventory Verification Complete (Dashboard)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>\n\n` +
+        `<b>Verified Items</b>\n${verifiedItemList}\n\n` +
+        `Order is now in Inventory Arrived stage.`
       );
     });
   }
@@ -2617,6 +2617,19 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
     });
   }
 
+  const verifiedItemRows = await query<{ name: string; quantity: number; verified_qty: number }>(
+    `SELECT name, quantity, COALESCE(verified_qty, 0) AS verified_qty
+     FROM order_items
+     WHERE order_id = $1
+     ORDER BY created_at ASC`,
+    [id]
+  );
+  const verifiedItemList = verifiedItemRows.length
+    ? verifiedItemRows.map((item) => `- ${item.name}: ${Number(item.verified_qty ?? 0)}/${Number(item.quantity ?? 0)} verified`).join('\n')
+    : '- No item quantities recorded';
+  const verificationRef = orderRows[0].quotation_number ?? id.slice(0, 8);
+  const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(verificationRef)}`;
+
   // Advance to inventory_arrived
   await query(
     `UPDATE orders SET inventory_verified_at = NOW(), inventory_verification_pct = 100,
@@ -2655,10 +2668,12 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
     setImmediate(() => {
       notifyGroupChat(
         DELIVERY_CHAT_ID,
-        `📦 <b>Inventory Verification Complete (Dashboard)</b>\n\n` +
-        `Quotation: <b>${ref}</b>\n` +
-        `Client: ${client}\n\n` +
-        `Inventory verification has been completed via dashboard. Order is now in Inventory Arrived stage.`
+        `<b>Inventory Verification Complete (Dashboard)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>\n\n` +
+        `<b>Verified Items</b>\n${verifiedItemList}\n\n` +
+        `Order is now in Inventory Arrived stage.`
       );
     });
   }
@@ -3950,6 +3965,7 @@ app.post('/stage-updates', async (request, reply) => {
       inventory_verification: DELIVERY_CHAT_ID,
       inventory_arrived: DELIVERY_CHAT_ID,
       balance_due: COLLECTION_CHAT_ID,
+      balance_verification: COLLECTION_CHAT_ID,
       delivery_pending: DELIVERY_CHAT_ID,
       delivery_scheduled: DELIVERY_CHAT_ID,
       delivered: DELIVERY_CHAT_ID,

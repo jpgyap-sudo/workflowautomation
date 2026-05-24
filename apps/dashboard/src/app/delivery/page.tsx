@@ -7,7 +7,7 @@ import { updateOrder, deleteOrder, payBalance, recordStageUpdate } from '@/lib/a
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -168,11 +168,14 @@ function DeliveryInfo({ order }: { order: Order }) {
 export default function DeliveryPage() {
   const { data: inventoryArrivedOrders = [], isLoading: loadingInventory, mutate: mutateInventory } = useOrdersByStage('inventory_arrived');
   const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
+  const { data: balanceVerificationOrders = [], isLoading: loadingBalanceVerification, mutate: mutateBalanceVerification } = useOrdersByStage('balance_verification');
   const { data: pendingOrders = [], isLoading: loadingPending, mutate: mutatePending } = useOrdersByStage('delivery_pending');
   const { data: scheduledOrders = [], isLoading: loadingScheduled, mutate: mutateScheduled } = useOrdersByStage('delivery_scheduled');
   const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
+  const { data: paymentReceivedOrders = [], isLoading: loadingPaymentReceived, mutate: mutatePaymentReceived } = useOrdersByStage('payment_received');
+  const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, mutate: mutatePaymentConfirmed } = useOrdersByStage('payment_confirmed');
 
-  const loading = loadingInventory && loadingBalanceDue && loadingPending && loadingScheduled && loadingDelivered;
+  const loading = loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -191,11 +194,11 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'record_payment' | 'complete_directly';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function mutateAll() {
-    mutateInventory(); mutateBalanceDue(); mutatePending(); mutateScheduled(); mutateDelivered();
+    mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed();
   }
 
   // ── Payment ────────────────────────────────────────────────────────────
@@ -467,6 +470,172 @@ export default function DeliveryPage() {
     }
   }
 
+  // ── Verify Balance (balance_verification → delivery_pending) ────────────
+
+  function handleVerifyBalance(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Verify Balance Payment',
+      description: `Confirm that the balance payment for "${order.quotation_number ?? '—'}" has been verified and advance to delivery pending.`,
+      pendingAction: 'verify_balance',
+    });
+  }
+
+  async function executeVerifyBalance(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'delivery_pending',
+        status: 'auto_advanced',
+        remarks: 'Balance verified — advancing to delivery pending',
+        action_token: actionToken,
+      });
+      mutateBalanceVerification();
+      mutatePending();
+    } catch (err: any) {
+      alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Advance balance_due → delivery_scheduled (skip payment for exceptions) ──
+
+  function handleSkipPaymentSchedule(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Skip Payment — Schedule Delivery',
+      description: `Skip balance payment for "${order.quotation_number ?? '—'}" and schedule delivery directly (exception orders only).`,
+      pendingAction: 'schedule_delivery',
+    });
+  }
+
+  // ── Advance delivered → payment_received ────────────────────────────────
+
+  function handleMarkPaymentReceived(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Mark Payment Received',
+      description: `Confirm that payment has been received for "${order.quotation_number ?? '—'}" and advance to Payment Received stage.`,
+      pendingAction: 'mark_payment_received',
+    });
+  }
+
+  async function executeMarkPaymentReceived(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'payment_received',
+        status: 'auto_advanced',
+        remarks: 'Payment received — advancing to payment received stage',
+        action_token: actionToken,
+      });
+      mutateDelivered();
+      mutatePaymentReceived();
+    } catch (err: any) {
+      alert('Failed to mark payment received: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Advance delivered → payment_confirmed ───────────────────────────────
+
+  function handleMarkPaymentConfirmed(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Mark Payment Confirmed',
+      description: `Confirm that payment has been confirmed for "${order.quotation_number ?? '—'}" and advance to Payment Confirmed stage.`,
+      pendingAction: 'mark_payment_confirmed',
+    });
+  }
+
+  async function executeMarkPaymentConfirmed(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'payment_confirmed',
+        status: 'auto_advanced',
+        remarks: 'Payment confirmed — advancing to payment confirmed stage',
+        action_token: actionToken,
+      });
+      mutateDelivered();
+      mutatePaymentConfirmed();
+    } catch (err: any) {
+      alert('Failed to mark payment confirmed: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Advance payment_received → payment_confirmed ────────────────────────
+
+  function handleAdvancePaymentReceived(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Advance to Payment Confirmed',
+      description: `Confirm payment for "${order.quotation_number ?? '—'}" and advance from Payment Received to Payment Confirmed.`,
+      pendingAction: 'advance_payment_received',
+    });
+  }
+
+  async function executeAdvancePaymentReceived(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'payment_confirmed',
+        status: 'auto_advanced',
+        remarks: 'Payment confirmed — advancing from payment received',
+        action_token: actionToken,
+      });
+      mutatePaymentReceived();
+      mutatePaymentConfirmed();
+    } catch (err: any) {
+      alert('Failed to advance payment: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ── Advance payment_confirmed → completed ───────────────────────────────
+
+  function handleAdvancePaymentConfirmed(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Complete Order',
+      description: `Confirm completion for "${order.quotation_number ?? '—'}" and advance from Payment Confirmed to Completed.`,
+      pendingAction: 'advance_payment_confirmed',
+    });
+  }
+
+  async function executeAdvancePaymentConfirmed(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'completed',
+        status: 'auto_completed',
+        remarks: 'Payment confirmed — order completed',
+        action_token: actionToken,
+      });
+      mutatePaymentConfirmed();
+    } catch (err: any) {
+      alert('Failed to complete order: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   function handleOtpVerified(actionToken: string) {
     const order = (window as any).__pendingActionOrder as Order | undefined;
     if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
@@ -482,6 +651,11 @@ export default function DeliveryPage() {
     if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order, actionToken);
     else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order, actionToken);
     else if (otpModal.pendingAction === 'advance_balance_due') executeAdvanceBalanceDue(order, actionToken);
+    else if (otpModal.pendingAction === 'verify_balance') executeVerifyBalance(order, actionToken);
+    else if (otpModal.pendingAction === 'mark_payment_received') executeMarkPaymentReceived(order, actionToken);
+    else if (otpModal.pendingAction === 'mark_payment_confirmed') executeMarkPaymentConfirmed(order, actionToken);
+    else if (otpModal.pendingAction === 'advance_payment_received') executeAdvancePaymentReceived(order, actionToken);
+    else if (otpModal.pendingAction === 'advance_payment_confirmed') executeAdvancePaymentConfirmed(order, actionToken);
     (window as any).__pendingActionOrder = null;
   }
 
@@ -502,7 +676,7 @@ export default function DeliveryPage() {
     );
   }
 
-  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0) {
+  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -647,6 +821,35 @@ export default function DeliveryPage() {
                       >
                         <DollarSign className="h-4 w-4" />
                       </button>
+                      {/* Skip-payment buttons for exception orders */}
+                      {hasException && (
+                        <>
+                          <button
+                            onClick={() => handleOpenSchedule(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
+                            title="Skip payment — schedule delivery directly"
+                          >
+                            <Calendar className="h-3.5 w-3.5 inline mr-0.5" />Schedule
+                          </button>
+                          <button
+                            onClick={() => handleMarkDelivered(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                            title="Skip payment — mark as delivered directly"
+                          >
+                            <PackageCheck className="h-3.5 w-3.5 inline mr-0.5" />Deliver
+                          </button>
+                          <button
+                            onClick={() => handleMarkCountered(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
+                            title="Skip payment — mark as countered directly"
+                          >
+                            <DollarSign className="h-3.5 w-3.5 inline mr-0.5" />Counter
+                          </button>
+                        </>
+                      )}
                       <RowActions order={order} />
                     </div>
                   </div>
@@ -671,6 +874,60 @@ export default function DeliveryPage() {
                         Cancel
                       </button>
                     </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Balance Verification ────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <ThumbsUp className="h-4 w-4 text-emerald-500" />
+          <h2 className="text-base font-semibold text-gray-800">Balance Verification</h2>
+          <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+            {balanceVerificationOrders.length}
+          </span>
+        </div>
+        {balanceVerificationOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders awaiting balance verification</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {balanceVerificationOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleVerifyBalance(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+                        title="Verify balance and advance to delivery pending"
+                      >
+                        {actionLoading === order.id ? '…' : 'Verify Balance →'}
+                      </button>
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
                   )}
                 </div>
               );
@@ -907,15 +1164,141 @@ export default function DeliveryPage() {
                           <CheckCircle2 className="h-4 w-4" />
                         </button>
                       ) : (
-                        <button
-                          onClick={() => handleMarkCountered(order)}
-                          disabled={actionLoading === order.id}
-                          className="rounded-lg p-1.5 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
-                          title="Mark as countered (awaiting payment)"
-                        >
-                          <DollarSign className="h-4 w-4" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleMarkPaymentReceived(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                            title="Mark payment received"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleMarkPaymentConfirmed(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40"
+                            title="Mark payment confirmed"
+                          >
+                            <ThumbsUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleMarkCountered(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg p-1.5 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
+                            title="Mark as countered (awaiting payment)"
+                          >
+                            <DollarSign className="h-4 w-4" />
+                          </button>
+                        </>
                       )}
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Payment Received ────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <CreditCard className="h-4 w-4 text-blue-500" />
+          <h2 className="text-base font-semibold text-gray-800">Payment Received</h2>
+          <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+            {paymentReceivedOrders.length}
+          </span>
+        </div>
+        {paymentReceivedOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders with payment received</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {paymentReceivedOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleAdvancePaymentReceived(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                        title="Advance to Payment Confirmed"
+                      >
+                        {actionLoading === order.id ? '…' : 'Confirm Payment →'}
+                      </button>
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Payment Confirmed ──────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <ThumbsUp className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-base font-semibold text-gray-800">Payment Confirmed</h2>
+          <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+            {paymentConfirmedOrders.length}
+          </span>
+        </div>
+        {paymentConfirmedOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders with payment confirmed</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {paymentConfirmedOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleAdvancePaymentConfirmed(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+                        title="Complete order"
+                      >
+                        {actionLoading === order.id ? '…' : 'Complete →'}
+                      </button>
                       <RowActions order={order} />
                     </div>
                   </div>

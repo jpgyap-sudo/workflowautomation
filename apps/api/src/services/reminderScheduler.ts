@@ -43,6 +43,41 @@ interface Reminder {
   item_id?: string | null;
 }
 
+
+function buildInventoryVerificationUrl(quotationNumber: string): string {
+  return `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(quotationNumber)}`;
+}
+
+async function buildInventoryVerificationReminderDetails(reminder: Reminder): Promise<string> {
+  const qn = reminder.quotation_number ?? reminder.order_id.slice(0, 8);
+  const dashboardUrl = buildInventoryVerificationUrl(qn);
+  const items = await query<{ name: string; quantity: number; verified_qty: number }>(
+    `SELECT name, quantity, COALESCE(verified_qty, 0) AS verified_qty
+     FROM order_items
+     WHERE order_id = $1
+     ORDER BY created_at ASC`,
+    [reminder.order_id],
+  );
+
+  const pending = items
+    .map((item) => {
+      const qty = Number(item.quantity ?? 0);
+      const verified = Math.min(Number(item.verified_qty ?? 0), qty);
+      const remaining = Math.max(qty - verified, 0);
+      if (remaining <= 0) return null;
+      return `- ${item.name}: ${remaining} remaining (${verified}/${qty} verified)`;
+    })
+    .filter(Boolean);
+
+  return `
+
+Link: <a href="${dashboardUrl}">Open Permanent Inventory Verification Link</a>` +
+    `
+
+<b>Items Not Yet Verified</b>
+${pending.length ? pending.join('\n') : '- No pending items'}`;
+}
+
 /**
  * Send a Telegram message to a group chat.
  */
@@ -632,9 +667,9 @@ export async function processDueReminders(): Promise<number> {
         ],
       ]);
     } else if (reminder.stage === 'inventory_verification') {
-      // Inventory verification — include dashboard link since there are no Telegram-only action buttons
-      const dashboardUrl = `https://track.abcx124.xyz/inventory`;
-      ok = await sendTelegramMessage(reminder.group_chat_id, text + `\n📊 <a href="${dashboardUrl}">Verify items on Inventory Dashboard</a>`);
+      // Inventory verification ? send the permanent per-order link and pending item list.
+      const inventoryDetails = await buildInventoryVerificationReminderDetails(reminder);
+      ok = await sendTelegramMessage(reminder.group_chat_id, text + inventoryDetails);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);
