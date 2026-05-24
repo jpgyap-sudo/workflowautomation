@@ -7217,3 +7217,45 @@ Always validate state-changing conditions *before* executing auto-advance or tra
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: skip slash commands in text handler so /prod and /production reach bot.command() handlers
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 006e4469345d644e32f7bf13c851fda39e3ee5cd
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 006e4469345d644e32f7bf13c851fda39e3ee5cd
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:** Slash commands like `/prod` and `/production` were not reaching the `bot.command()` handler; they were being intercepted by a generic text handler.
+
+**Why it broke:** The text handler was processing all incoming messages, including those starting with `/`. Since it ran before the command handler, it consumed the message and prevented the command handler from firing.
+
+**Reusable takeaway:** When building a Telegram bot (or similar event-driven system), always check for and skip command-prefixed messages in generic text handlers. Add an early return or filter at the top of the text handler: `if (msg.text?.startsWith('/')) return`. This ensures command handlers receive priority and prevents accidental interception of intended commands.
+
+---
+*Original commit message: fix: skip slash commands in text handler so /prod and /production reach bot.command() handlers*
+
+#### Lesson Learned
+
+**What was fixed:** Slash commands like `/prod` and `/production` were not reaching the `bot.command()` handler; they were being intercepted by a generic text handler.
+
+**Why it broke:** The text handler was processing all incoming messages, including those starting with `/`. Since it ran before the command handler, it consumed the message and prevented the command handler from firing.
+
+**Reusable takeaway:** When building a Telegram bot (or similar event-driven system), always check for and skip command-prefixed messages in generic text handlers. Add an early return or filter at the top of the text handler: `if (msg.text?.startsWith('/')) return`. This ensures command handlers receive priority and prevents accidental interception of intended commands.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
