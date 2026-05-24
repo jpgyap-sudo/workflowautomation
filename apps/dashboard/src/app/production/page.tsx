@@ -8,6 +8,7 @@ import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
   reportProductionStatus, finishProduction, confirmEnRoute, setProduction,
+  recordStageUpdate,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
 } from '@/lib/api';
@@ -509,11 +510,12 @@ interface OrderRowProps {
   onReportDelayed?: (o: Order) => void;
   onFinishProduction?: (o: Order) => void;
   onConfirmEnRoute?: (o: Order) => void;
+  onProceedInventoryVerification?: (o: Order) => void;
   onGrantException?: (o: Order) => void;
   onRevokeException?: (o: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onGrantException, onRevokeException }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -667,6 +669,13 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
               <button onClick={() => onConfirmEnRoute(order)}
                 className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700">
                 Confirm En Route
+              </button>
+            )}
+            {/* Early arrival action */}
+            {order.current_stage === 'en_route_verification' && onProceedInventoryVerification && (
+              <button onClick={() => onProceedInventoryVerification(order)}
+                className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700">
+                Proceed to Inventory Verification
               </button>
             )}
             {/* Production Exception actions */}
@@ -1112,7 +1121,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'grantProductionException' | 'revokeProductionException' | 'setProduction';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); }
@@ -1153,6 +1162,7 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'reportStatus') handleReportStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'finishProduction') handleFinishProductionVerified(actionToken);
     else if (otpModal.pendingAction === 'confirmEnRoute') handleConfirmEnRouteVerified(actionToken);
+    else if (otpModal.pendingAction === 'proceedInventoryVerification') handleProceedInventoryVerificationVerified(actionToken);
     else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
     else if (otpModal.pendingAction === 'grantProductionException') handleGrantExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeExceptionVerified(actionToken);
@@ -1216,6 +1226,23 @@ export default function ProductionPage() {
       refresh();
     } catch (err: any) { alert('Failed: ' + (err.message ?? 'Unknown error')); }
     finally { (window as any).__pendingConfirmEnRouteData = null; }
+  }
+
+  async function handleProceedInventoryVerificationVerified(actionToken: string) {
+    const pending = (window as any).__pendingProceedInventoryVerificationData;
+    if (!pending) return;
+    try {
+      await recordStageUpdate({
+        quotation_number: pending.quotationNumber,
+        stage: 'inventory_verification',
+        status: 'manual_advanced',
+        remarks: 'Items arrived early; manually proceeded from En Route Awaiting Arrival to Inventory Verification.',
+        updated_by: 'dashboard_quick_action',
+        action_token: actionToken,
+      });
+      refresh();
+    } catch (err: any) { alert('Failed to proceed to inventory verification: ' + (err.message ?? 'Unknown error')); }
+    finally { (window as any).__pendingProceedInventoryVerificationData = null; }
   }
 
   function handleEdit(order: Order) { setEditingOrder(order); }
@@ -1285,6 +1312,15 @@ export default function ProductionPage() {
       description: `You are about to confirm order "${order.quotation_number ?? '—'}" as en route with ${days} day(s) estimated arrival. Enter the OTP sent to your email to confirm.`,
       pendingAction: 'confirmEnRoute' });
     (window as any).__pendingConfirmEnRouteData = { orderId: order.id, days };
+  }
+
+  async function handleProceedInventoryVerification(order: Order) {
+    if (!order.quotation_number) { alert('Cannot proceed: this order has no quotation number.'); return; }
+    if (!window.confirm(`Proceed order "${order.quotation_number}" to Inventory Verification now? Use this when items arrived earlier than the estimated arrival date.`)) return;
+    setOtpModal({ open: true, title: 'Proceed to Inventory Verification',
+      description: `You are about to manually move order "${order.quotation_number}" to Inventory Verification because items arrived early. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'proceedInventoryVerification' });
+    (window as any).__pendingProceedInventoryVerificationData = { orderId: order.id, quotationNumber: order.quotation_number };
   }
 
   async function handleGrantException(order: Order) {
@@ -1466,6 +1502,7 @@ export default function ProductionPage() {
           <>
             <OrderRow
               order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
+              onProceedInventoryVerification={handleProceedInventoryVerification}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
             />

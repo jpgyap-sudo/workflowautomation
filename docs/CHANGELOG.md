@@ -9,7 +9,8 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| $new | Codex | feat: track and display item production finished dates | ✅ VPS $new |
+| $short | Codex | feat: add early-arrival proceed to inventory verification action | Pending deploy |
+| `87dfc24` | Codex | feat: track and display item production finished dates | ✅ VPS `87dfc24` |
 | `57c7dba` | Roo (Code) | docs: mark production auto-finish deployed | âœ… VPS `57c7dba` |
 | `ff25dee` | Roo (Code) | fix: refine item production Telegram prompts | âœ… VPS `57c7dba` |
 | `3a2263b` | Roo (Code) | fix: auto-finish completed item production | âœ… VPS `57c7dba` |
