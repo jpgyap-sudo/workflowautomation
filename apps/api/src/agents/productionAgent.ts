@@ -420,9 +420,9 @@ Order auto-advanced to En Route. Please verify dispatch item-by-item.`;
     message += `<b>${pendingItem.name}</b> ×${pendingItem.quantity}\n\n`;
     message += `Has <b>${pendingItem.name}</b> started production yet?`;
 
+    // Context-aware keyboard: pending items can only be started or deferred
     const keyboard = inlineKeyboard([
-      [{ text: `✅ ${pendingItem.name} — Finished`, callback_data: `item_prod:finished:${pendingItem.id.slice(0, 8)}:${qn}` }],
-      [{ text: `🔄 ${pendingItem.name} — In Progress`, callback_data: `item_prod:in_progress:${pendingItem.id.slice(0, 8)}:${qn}` }],
+      [{ text: `🚀 ${pendingItem.name} — Started`, callback_data: `item_prod:in_progress:${pendingItem.id.slice(0, 8)}:${qn}` }],
       [{ text: `⏳ ${pendingItem.name} — Not Yet`, callback_data: `item_prod:pending:${pendingItem.id.slice(0, 8)}:${qn}` }],
     ]);
 
@@ -725,20 +725,22 @@ Order auto-advanced to En Route. Please verify en route status for each item.`;
     message += `Next item: <b>${unfinishedItem.name}</b> x${unfinishedItem.quantity}\n\n`;
     message += `Has <b>${unfinishedItem.name}</b> started or finished production?`;
 
-    // Build inline keyboard for this specific item
-    // NOTE: callback_data uses first 8 chars of item UUID + quotation_number (short)
-    // to stay within Telegram's 64-byte limit for callback_data.
-    const keyboard = inlineKeyboard([
-      [
-        { text: `✅ ${unfinishedItem.name} — Finished`, callback_data: `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${qn}` },
-      ],
-      [
-        { text: `🔄 ${unfinishedItem.name} — In Progress`, callback_data: `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${qn}` },
-      ],
-      [
-        { text: `⏳ ${unfinishedItem.name} — Not Yet`, callback_data: `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${qn}` },
-      ],
-    ]);
+    // Build context-aware inline keyboard based on item production_status
+    // Pending → only "Started" / "Not Yet"
+    // In Progress → "Finished" / "On Time" / "Delayed"
+    let keyboard;
+    if (unfinishedItem.production_status === 'pending') {
+      keyboard = inlineKeyboard([
+        [{ text: `🚀 ${unfinishedItem.name} — Started`, callback_data: `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${qn}` }],
+        [{ text: `⏳ ${unfinishedItem.name} — Not Yet`, callback_data: `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${qn}` }],
+      ]);
+    } else {
+      keyboard = inlineKeyboard([
+        [{ text: `✅ ${unfinishedItem.name} — Finished`, callback_data: `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${qn}` }],
+        [{ text: `🟢 ${unfinishedItem.name} — On Time`, callback_data: `item_prod:ontime:${unfinishedItem.id.slice(0, 8)}:${qn}` }],
+        [{ text: `🔴 ${unfinishedItem.name} — Delayed`, callback_data: `item_prod:delayed:${unfinishedItem.id.slice(0, 8)}:${qn}` }],
+      ]);
+    }
 
     // Send the message to the production group chat
     const groupChatId = getGroupChatId(AGENT_NAME);

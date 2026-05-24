@@ -135,6 +135,7 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'item_level_production' && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_en_route' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_inventory' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'item_prod_midpoint' || reminder.stage === 'item_prod_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // En route timed reminders — en_route_midpoint stays active through en_route_verification (arrival still expected)
     if (reminder.stage === 'en_route_midpoint' && !['en_route', 'en_route_verification'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route_arrival' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
@@ -179,6 +180,8 @@ export async function processDueReminders(): Promise<number> {
       partial_production: '🏭 Partial Production',
       item_level_production: '🏗️ Item Production',
       item_level_en_route: '🚚 Item En Route',
+      item_prod_midpoint: '🏭 Item Production Midpoint',
+      item_prod_due: '🏭 Item Production Due',
     };
 
     const stageLabel = stageLabels[reminder.stage] ?? reminder.stage;
@@ -278,8 +281,7 @@ export async function processDueReminders(): Promise<number> {
             `Has <b>${pendingItem.name}</b> started production?`;
           const itemIdShort = String(pendingItem.id).slice(0, 8);
           ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, partialText, [
-            [{ text: `✅ ${pendingItem.name} — Finished`, callback_data: `item_prod:finished:${itemIdShort}:${quotationNumber}` }],
-            [{ text: `🔄 ${pendingItem.name} — In Progress`, callback_data: `item_prod:in_progress:${itemIdShort}:${quotationNumber}` }],
+            [{ text: `🚀 ${pendingItem.name} — Started`, callback_data: `item_prod:in_progress:${itemIdShort}:${quotationNumber}` }],
             [{ text: `⏳ ${pendingItem.name} — Not Yet`, callback_data: `item_prod:pending:${itemIdShort}:${quotationNumber}` }],
           ]);
         }
@@ -409,7 +411,39 @@ export async function processDueReminders(): Promise<number> {
         [{ text: '💵 Record Payment', callback_data: `pick:payment:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'item_level_production') {
-      // Item-level production reminder — fetch item name and show inline buttons
+      // Item-level production reminder — fetch item name, status, and show context-aware inline buttons
+      let itemName = 'Unknown Item';
+      let itemQty = 1;
+      let itemStatus = 'pending';
+      if (reminder.item_id) {
+        const itemRows = await query(
+          `SELECT name, quantity, production_status FROM order_items WHERE id = $1`,
+          [reminder.item_id]
+        );
+        if (itemRows[0]) {
+          itemName = itemRows[0].name;
+          itemQty = itemRows[0].quantity;
+          itemStatus = itemRows[0].production_status;
+        }
+      }
+      text += `*Item:* ${itemName} x${itemQty}\n\n`;
+      const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
+      if (itemStatus === 'pending') {
+        text += `Has *${itemName}* started production?`;
+        ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+          [{ text: `🚀 ${itemName} — Started`, callback_data: `reminder:item_prod:in_progress:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+          [{ text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+        ]);
+      } else {
+        text += `Has *${itemName}* finished production?`;
+        ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+          [{ text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+          [{ text: `🟢 ${itemName} — On Time`, callback_data: `reminder:item_prod:ontime:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+          [{ text: `🔴 ${itemName} — Delayed`, callback_data: `reminder:item_prod:delayed:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+        ]);
+      }
+    } else if (reminder.stage === 'item_prod_midpoint') {
+      // Item-level midpoint check — ask if on time or delayed
       let itemName = 'Unknown Item';
       let itemQty = 1;
       if (reminder.item_id) {
@@ -423,16 +457,32 @@ export async function processDueReminders(): Promise<number> {
         }
       }
       text += `*Item:* ${itemName} x${itemQty}\n\n`;
-      text += `Has *${itemName}* started or finished production?`;
+      text += `*Midpoint check:* Is *${itemName}* on track?`;
       const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
-        [
-          { text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
-          { text: `🔄 ${itemName} — In Progress`, callback_data: `reminder:item_prod:in_progress:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
-        ],
-        [
-          { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_prod:pending:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
-        ],
+        [{ text: `🟢 ${itemName} — On Time`, callback_data: `reminder:item_prod:ontime:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+        [{ text: `🔴 ${itemName} — Delayed`, callback_data: `reminder:item_prod:delayed:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+      ]);
+    } else if (reminder.stage === 'item_prod_due') {
+      // Item-level due check — ask if finished or delayed
+      let itemName = 'Unknown Item';
+      let itemQty = 1;
+      if (reminder.item_id) {
+        const itemRows = await query(
+          `SELECT name, quantity FROM order_items WHERE id = $1`,
+          [reminder.item_id]
+        );
+        if (itemRows[0]) {
+          itemName = itemRows[0].name;
+          itemQty = itemRows[0].quantity;
+        }
+      }
+      text += `*Item:* ${itemName} x${itemQty}\n\n`;
+      text += `*Due date reached:* Is *${itemName}* finished?`;
+      const itemIdShort = (reminder.item_id ?? '').slice(0, 8);
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [{ text: `✅ ${itemName} — Finished`, callback_data: `reminder:item_prod:finished:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
+        [{ text: `🔴 ${itemName} — Delayed`, callback_data: `reminder:item_prod:delayed:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'item_level_en_route') {
       // Item-level en route reminder — fetch item name and show inline buttons
@@ -572,6 +622,7 @@ export async function processDueReminders(): Promise<number> {
       // For once-frequency timed reminders, mark as completed after sending.
       // These will be re-created by the bot callback handlers if rescheduled.
       if (reminder.stage === 'production_midpoint' || reminder.stage === 'production_due' ||
+          reminder.stage === 'item_prod_midpoint' || reminder.stage === 'item_prod_due' ||
           reminder.stage === 'en_route_midpoint' || reminder.stage === 'en_route_arrival') {
         await query(
           `UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1`,

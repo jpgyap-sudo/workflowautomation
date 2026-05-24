@@ -121,4 +121,5 @@
 - **Deployed**: `✅` if deployed to VPS, `❌` if committed but not yet deployed
 - **VPS tag**: Add `✅ VPS <commit>` when the VPS is confirmed at a specific commit
 
+| `this commit` | Codex | update: context-aware item production Telegram reminder buttons and item production day prompts | pending deploy |
 | `this commit` | Codex | fix: auto-finish item-level production when all partial items are finished, then trigger en-route Telegram workflow | pending deploy |

@@ -619,6 +619,9 @@ type UserStep =
   | { action: 'awaiting_delivery_timeline'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_custom_delivery_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_remaining_production_days'; orderId: string; quotationNumber: string }
+  // Item-level production timeline flow
+  | { action: 'awaiting_item_prod_days'; itemId: string; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_item_prod_delay_days'; itemId: string; orderId: string; quotationNumber: string }
   // En route flow
   | { action: 'awaiting_en_route'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_arrival_days'; orderId: string; quotationNumber: string }
@@ -2374,6 +2377,68 @@ bot.on(message('text'), async (ctx) => {
       break;
     }
 
+    // ── Item-level production: initial days estimate ───────────────────
+    case 'awaiting_item_prod_days': {
+      const { itemId: ipItemId, orderId: ipOrderId, quotationNumber: ipQuotationNumber } = session.step;
+      const prodDays = parseInt(text, 10);
+      if (isNaN(prodDays) || prodDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `7`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await patchJson(`/orders/${ipOrderId}/items/${ipItemId}`, {
+          estimated_production_days: prodDays,
+        });
+        await logAction({ chatId, userId, username, label: 'Item Production Days Set', quotationNumber: ipQuotationNumber, details: `${prodDays} day(s)` });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Timeline Set* — ${ipQuotationNumber}\n\n*${prodDays} days* estimated for this item.\n\n📅 Midpoint check at day ${Math.floor(prodDays / 2)}.\n🏭 Due reminder at day ${prodDays}.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── Item-level production: delay additional days ───────────────────
+    case 'awaiting_item_prod_delay_days': {
+      const { itemId: idItemId, orderId: idOrderId, quotationNumber: idQuotationNumber } = session.step;
+      const extraDays = parseInt(text, 10);
+      if (isNaN(extraDays) || extraDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `3`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        // Fetch current item to get existing estimated_production_days
+        const itemsRes = await fetch(`${apiBaseUrl}/orders/${idOrderId}/items`);
+        const itemsData = await itemsRes.json();
+        const items = itemsData?.items ?? [];
+        const item = items.find((i: any) => i.id === idItemId);
+        const currentDays = item?.estimated_production_days ?? 0;
+        const newDays = currentDays + extraDays;
+
+        await patchJson(`/orders/${idOrderId}/items/${idItemId}`, {
+          estimated_production_days: newDays,
+        });
+        await postJson(`/orders/${idOrderId}/production-logs`, {
+          order_item_id: idItemId,
+          note: `🔴 Item "${item?.name ?? 'Unknown'}" delayed by ${extraDays} day(s). New timeline: ${newDays} day(s) total.`,
+          log_type: 'user',
+          created_by: username ?? `user_${userId}`,
+        });
+        await logAction({ chatId, userId, username, label: 'Item Production Delayed', quotationNumber: idQuotationNumber, details: `+${extraDays} days = ${newDays} total` });
+        resetStep(chatId);
+        await ctx.reply(
+          `🔴 *Delay Recorded* — ${idQuotationNumber}\n\nItem delayed by *${extraDays} day(s)*.\nNew timeline: *${newDays} days* total.\n\n📅 Midpoint and due reminders recalculated.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
     case 'awaiting_en_route_arrival_days': {
       const { orderId: eOrderId, quotationNumber: eQuotationNumber } = session.step;
       const arrivalDays = parseInt(text, 10);
@@ -3579,13 +3644,20 @@ bot.action(/^produce:partial:(.+)$/, async (ctx) => {
       msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
       msg += `Has *${unfinishedItem.name}* started or finished production?`;
 
+      // Context-aware keyboard based on item status
+      const kb = unfinishedItem.production_status === 'pending'
+        ? [
+            [Markup.button.callback(`🚀 ${unfinishedItem.name} — Started`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+            [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          ]
+        : [
+            [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+            [Markup.button.callback(`🟢 ${unfinishedItem.name} — On Time`, `item_prod:ontime:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+            [Markup.button.callback(`🔴 ${unfinishedItem.name} — Delayed`, `item_prod:delayed:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          ];
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
-        ]),
+        ...Markup.inlineKeyboard(kb),
       });
     } else {
       // No item-level data — fall back to free-text input (legacy flow)
@@ -3653,8 +3725,7 @@ bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${pendingItem.name} — Finished`, `item_prod:finished:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`🔄 ${pendingItem.name} — In Progress`, `item_prod:in_progress:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🚀 ${pendingItem.name} — Started`, `item_prod:in_progress:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`⏳ ${pendingItem.name} — Not Yet`, `item_prod:pending:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
@@ -3991,7 +4062,7 @@ bot.action(/^production:not_finished:(.+):(.+)$/, async (ctx) => {
 // NOTE: callback_data format uses first 8 chars of item UUID + quotation_number
 // to stay within Telegram's 64-byte limit. The handler resolves the quotation_number
 // to the full order UUID before making API calls.
-bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx) => {
+bot.action(/^item_prod:(finished|in_progress|pending|ontime|delayed):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
   const itemIdPrefix = ctx.match[2];
@@ -4029,6 +4100,30 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     }
     const itemId = targetItem.id;
 
+    // ── Handle On Time / Delayed (no status change, just log/ack) ──
+    if (newStatus === 'ontime') {
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: itemId,
+        note: `🟢 Item "${targetItem.name}" production confirmed on time`,
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+      await ctx.editMessageText(
+        `🟢 *On Time* — ${quotationNumber}\n\nItem *${targetItem.name}* is on track.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
+    if (newStatus === 'delayed') {
+      setStep(chatId, { action: 'awaiting_item_prod_delay_days', itemId, orderId, quotationNumber });
+      await ctx.editMessageText(
+        `🔴 *Delayed* — ${quotationNumber}\n\nItem: *${targetItem.name}*\n\nHow many *additional* days are needed?`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
+    }
+
     // Track items the user has already said "Not Yet" to in this session
     // so we can skip them and avoid bouncing between the same items
     const skipSet: Set<string> = (ctx as any).__prodSkipSet ?? new Set();
@@ -4058,6 +4153,16 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
         log_type: 'user',
         created_by: username ?? `user_${userId}`,
       });
+    }
+
+    // ── If item just started and has no estimated days, prompt for them ──
+    if (newStatus === 'in_progress' && !targetItem.estimated_production_days) {
+      setStep(chatId, { action: 'awaiting_item_prod_days', itemId, orderId, quotationNumber });
+      await ctx.editMessageText(
+        `🚀 *Production Started* — ${quotationNumber}\n\nItem: *${targetItem.name}*\n\nHow many days to finish this item?`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
     }
 
     // Fetch updated completion
@@ -4150,8 +4255,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🚀 ${unfinishedItem.name} — Started`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
       });
@@ -5516,7 +5620,7 @@ async function resolveReminderItem(orderId: string, itemIdPrefix: string): Promi
 }
 
 // Item-level production reminder: user clicked a button
-bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(.+)$/, async (ctx) => {
+bot.action(/^reminder:item_prod:(finished|in_progress|pending|ontime|delayed):([^:]*):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const newStatus = ctx.match[1];
   const itemId = ctx.match[2];
@@ -5550,6 +5654,30 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(
 
     const fullItem = await resolveReminderItem(orderId, itemId);
 
+    // ── Handle On Time / Delayed (no status change) ──
+    if (newStatus === 'ontime') {
+      await postJson(`/orders/${orderId}/production-logs`, {
+        order_item_id: fullItem.id,
+        note: `🟢 Item "${fullItem.name}" production confirmed on time (from reminder)`,
+        log_type: 'user',
+        created_by: username ?? `user_${userId}`,
+      });
+      await ctx.editMessageText(
+        `🟢 *On Time* — ${quotationNumber}\n\nItem *${fullItem.name}* is on track.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+
+    if (newStatus === 'delayed') {
+      setStep(chatId, { action: 'awaiting_item_prod_delay_days', itemId: fullItem.id, orderId, quotationNumber });
+      await ctx.editMessageText(
+        `🔴 *Delayed* — ${quotationNumber}\n\nItem: *${fullItem.name}*\n\nHow many *additional* days are needed?`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
+    }
+
     // Update the item's production status via API. Reminder callback data only
     // carries an 8-char item prefix; the API requires PATCH + the full UUID.
     await patchJson(`/orders/${orderId}/items/${fullItem.id}`, {
@@ -5568,6 +5696,16 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(
       log_type: 'user',
       created_by: username ?? `user_${userId}`,
     });
+
+    // ── If item just started and has no estimated days, prompt for them ──
+    if (newStatus === 'in_progress' && !fullItem.estimated_production_days) {
+      setStep(chatId, { action: 'awaiting_item_prod_days', itemId: fullItem.id, orderId, quotationNumber });
+      await ctx.editMessageText(
+        `🚀 *Production Started* — ${quotationNumber}\n\nItem: *${fullItem.name}*\n\nHow many days to finish this item?`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      return;
+    }
 
     if (newStatus === 'finished') {
       // Item finished — complete the reminder (handled by PATCH endpoint)
