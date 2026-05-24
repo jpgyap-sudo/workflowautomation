@@ -12,7 +12,7 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -25,8 +25,6 @@ const CONFIG = {
   sshIdentityFile: process.env.QAS_DEPLOY_KEY ?? resolve(process.env.HOME || process.env.USERPROFILE || '.', '.ssh', 'id_rsa'),
   // Target directory on VPS
   vpsPath: '/opt/quotation-automation',
-  // Health check endpoint
-  healthEndpoint: 'http://localhost:8080/health',
   // Project root (this file's directory)
   projectRoot: __dirname,
 };
@@ -158,86 +156,16 @@ function deployContainers() {
   console.log('  Step 3: Build and start containers');
   console.log('═══════════════════════════════════════════');
 
-  // Check if docker-compose (v1) or docker compose (v2) is available
-  const composeCheck = runCapture('Checking Docker Compose',
-    sshCmd(`docker-compose --version 2>/dev/null || docker compose version 2>/dev/null || echo "none"`),
-    { ignoreError: true, timeout: 10_000 });
-
-  const isV1 = composeCheck?.includes('docker-compose');
-  const composeBin = isV1 ? 'docker-compose' : 'docker compose';
-  console.log(`Using: ${composeBin}`);
-
-  // ── Isolation safeguard: verify we're in the right project ──
-  // Ensure docker-compose only manages containers defined in THIS project's compose file.
-  // The compose project name is derived from the directory name ("quotation-automation"),
-  // so running compose from /opt/quotation-automation will only affect our containers.
-  const projectCheck = runCapture('Verifying project isolation',
-    sshCmd(`cd ${CONFIG.vpsPath} && ${composeBin} ps --services 2>/dev/null`),
-    { ignoreError: true, timeout: 15_000 });
-
-  if (projectCheck) {
-    const expectedServices = ['api', 'dashboard', 'telegram-bot', 'postgres', 'redis'];
-    const actualServices = projectCheck.split('\n').map(s => s.trim()).filter(Boolean);
-    const missing = expectedServices.filter(s => !actualServices.includes(s));
-    if (missing.length > 0) {
-      console.log(`⚠  Some expected services not found by compose: ${missing.join(', ')}`);
-      console.log('   This may be a first-time deploy or the project directory is wrong.');
-    }
-    // Warn if we see services that don't belong to this project
-    const unexpected = actualServices.filter(s => !expectedServices.includes(s));
-    if (unexpected.length > 0) {
-      console.log(`⚠  Unexpected services detected: ${unexpected.join(', ')}`);
-      console.log('   These belong to another project sharing this Docker daemon.');
-    }
-  }
-
-  // ── Build and start (scoped to this project's compose file) ──
-  // docker-compose up -d --build only affects services defined in the local docker-compose.yml.
-  // Other projects' containers, images, and networks are NOT touched.
-  run('Building and starting containers',
-    sshCmd(`cd ${CONFIG.vpsPath} && ${composeBin} up -d --build`),
+  // ── Delegate to deploy.sh --skip-pull ──
+  // deploy.sh recreates services one-at-a-time (stop → rm → up --no-deps) to avoid
+  // the Docker Compose v1 ContainerConfig / stale image hash interactive [yN] prompt bug.
+  // It also handles rollback tagging, DB backup, health checks, and image cleanup.
+  // --skip-pull: files were already synced via git archive in Step 1.
+  run('Running deploy.sh --skip-pull on VPS',
+    sshCmd(`cd ${CONFIG.vpsPath} && bash scripts/deploy.sh --skip-pull`),
     { timeout: 600_000 });
 
-  console.log('✓ Containers started');
-}
-
-function verifyDeployment() {
-  console.log('\n═══════════════════════════════════════════');
-  console.log('  Step 4: Verify deployment');
-  console.log('═══════════════════════════════════════════');
-
-  // Wait a moment for containers to start
-  console.log('Waiting 10 seconds for services to initialize...');
-  execSync('timeout /t 10 /nobreak 2>nul || sleep 10', { stdio: 'inherit' });
-
-  // Check running containers
-  const ps = runCapture('Container status',
-    sshCmd(`cd ${CONFIG.vpsPath} && docker-compose ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}'`),
-    { ignoreError: true, timeout: 15_000 });
-
-  if (ps) {
-    console.log(ps);
-  }
-
-  // Health check
-  const health = runCapture('API health check',
-    sshCmd(`curl -s ${CONFIG.healthEndpoint}`),
-    { ignoreError: true, timeout: 15_000 });
-
-  if (health) {
-    try {
-      const parsed = JSON.parse(health);
-      if (parsed.ok) {
-        console.log('✓ API health check passed');
-      } else {
-        console.log('⚠  API health check returned unexpected response:', health);
-      }
-    } catch {
-      console.log('⚠  API health check response:', health);
-    }
-  } else {
-    console.log('⚠  Health check failed — API may still be starting');
-  }
+  console.log('✓ deploy.sh completed');
 }
 
 // ── Main ───────────────────────────────────────────────────────
@@ -257,7 +185,6 @@ function main() {
   try {
     if (buildOnly) {
       deployContainers();
-      verifyDeployment();
     } else if (syncOnly) {
       syncFiles();
       syncCredentials();
@@ -265,7 +192,6 @@ function main() {
       syncFiles();
       syncCredentials();
       deployContainers();
-      verifyDeployment();
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
