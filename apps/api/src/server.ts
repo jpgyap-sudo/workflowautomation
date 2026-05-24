@@ -783,18 +783,23 @@ app.patch('/orders/:id', async (request, reply) => {
   const params = z.object({ id: z.string() }).parse(request.params);
   const body = updateOrderSchema.parse(request.body);
 
-  // Verify action token and extract email
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  // Verify action token and extract email (dashboard only; bot calls may omit)
+  let userEmail: string | null = null;
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   // Build SET clause dynamically
   const fields: string[] = [];
@@ -1545,9 +1550,9 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
     userEmail,
   );
 
-  // Notify production group directly (FIXED: was using PURCHASING_GROUP_CHAT_ID)
+  // Notify production group directly (legacy order-level buttons; skip for item-level orders)
   const productionGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
-  if (productionGroupChatId && _TELEGRAM_BOT_TOKEN) {
+  if (productionGroupChatId && _TELEGRAM_BOT_TOKEN && !hasItems) {
     const ref = rows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = rows[0].client_name ?? 'Unknown';
     setImmediate(() => {

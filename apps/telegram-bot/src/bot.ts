@@ -3859,24 +3859,59 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     );
 
     if (allFinished) {
-      // All items finished! Advance the order immediately
+      // All items finished! Call finish-production and start item-level en route verification
       await postJson(`/orders/${orderId}/production-logs`, {
         order_item_id: null,
-        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
+        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Starting en route verification.`,
         log_type: 'user',
         created_by: username ?? `user_${userId}`,
       });
 
-      // Use standard 28-day delivery estimate (same default used by the production agent)
+      // Advance order to en_route stage so the production agent can assist with reminders
       await postJson(`/orders/${orderId}/finish-production`, {
         delivery_estimated_days: 28,
       });
-      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber} auto-advanced to en_route` });
+      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber}` });
 
-      await ctx.editMessageText(
-        `✅ *All Items Production Finished!*\n\nOrder #${quotationNumber}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
+      // Immediately start item-level en route verification (don't wait for agent)
+      const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+      const enRouteQty = updatedItems
+        .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
+        .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+      const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
+      const enRouteCount = updatedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+      const totalCount = updatedItems.length;
+
+      const notEnRouteItem = updatedItems.find((i: any) => i.en_route_status === 'not_yet');
+
+      if (!notEnRouteItem) {
+        // All items already en route (unlikely but possible if pre-marked)
+        const maxDays = Math.max(...updatedItems.map((i: any) => i.estimated_arrival_days ?? 28));
+        await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
+        await ctx.editMessageText(
+          `✅ *All Items Finished & En Route!*\n\nOrder #${quotationNumber}\nAll items completed and already en route (${enRoutePct}% of qty).\n\n📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check in the inventory group on the estimated arrival date.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } else {
+        const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
+
+        let msg = `✅ *All Items Produced!*\n\n`;
+        msg += `Order #${quotationNumber}\nAll production items are finished.\n\n`;
+        msg += `🚚 *Item-Level En Route*\n`;
+        msg += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
+        msg += `Items: ${enRouteCount}/${totalCount} en route\n\n`;
+        msg += `*Process of Elimination:*\n`;
+        msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\n`;
+        msg += `Is *${notEnRouteItem.name}* en route yet?`;
+
+        await ctx.editMessageText(msg, {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+            [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+          ]),
+        });
+      }
     } else if (!nextPendingItem) {
       // No more pending items to ask about
       if (skipSet.size > 0) {
