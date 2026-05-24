@@ -544,6 +544,8 @@ function ItemTrackingSection({
   const [completingVerification, setCompletingVerification] = useState(false);
   const [arrivingItemId, setArrivingItemId] = useState<string | null>(null);
   const [confirmingArrival, setConfirmingArrival] = useState(false);
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [updatingEnRouteItemId, setUpdatingEnRouteItemId] = useState<string | null>(null);
   const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | 'extract_items' | 'upload_extract' | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [pendingVerifyItem, setPendingVerifyItem] = useState<{
@@ -562,6 +564,8 @@ function ItemTrackingSection({
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
   const stageShowsArrivalCols = currentStage === 'en_route' || currentStage === 'inventory_arrived' || currentStage === 'inventory_verification';
+  const stageAllowsProdEdit = ['production_pending', 'production_confirmed', 'partial_production', 'en_route'].includes(currentStage);
+  const stageAllowsEnRouteEdit = currentStage === 'en_route';
 
   async function refreshItemTracking() {
     const [itemsRes, compRes, logsRes] = await Promise.all([
@@ -759,6 +763,48 @@ function ItemTrackingSection({
     } finally {
       setArrivingItemId(null);
       setPendingMarkArrived(null);
+    }
+  }
+
+  async function handleItemProductionStatus(itemId: string, status: 'pending' | 'in_progress' | 'finished') {
+    setUpdatingItemId(itemId);
+    try {
+      await updateOrderItem(orderId, itemId, { production_status: status });
+      const res = await getOrderItems(orderId);
+      if (res.ok) setItems(res.items);
+      const compRes = await getItemCompletion(orderId);
+      if (compRes.ok) setCompletion(compRes);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to update production status');
+    } finally {
+      setUpdatingItemId(null);
+    }
+  }
+
+  async function handleItemEnRouteStatus(itemId: string, status: 'not_yet' | 'en_route' | 'arrived') {
+    let estimatedArrivalDays: number | null = null;
+    const item = items.find((i) => i.id === itemId);
+    if (status === 'en_route' && !item?.estimated_arrival_days) {
+      const input = window.prompt(`Estimated arrival days for "${item?.name ?? 'Item'}"?`, '28');
+      if (input === null) return;
+      const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+      if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
+      estimatedArrivalDays = days;
+    }
+    setUpdatingEnRouteItemId(itemId);
+    try {
+      await updateOrderItem(orderId, itemId, {
+        en_route_status: status,
+        ...(estimatedArrivalDays != null ? { estimated_arrival_days: estimatedArrivalDays } : {}),
+      });
+      const res = await getOrderItems(orderId);
+      if (res.ok) setItems(res.items);
+      const compRes = await getItemCompletion(orderId);
+      if (compRes.ok) setCompletion(compRes);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to update en route status');
+    } finally {
+      setUpdatingEnRouteItemId(null);
     }
   }
 
@@ -983,26 +1029,90 @@ function ItemTrackingSection({
                   <td className="py-2 pr-3 font-medium text-gray-800">{item.name}</td>
                   <td className="py-2 pr-3 text-gray-600">{item.quantity}</td>
                   <td className="py-2 pr-3">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      item.production_status === 'finished' ? 'bg-green-100 text-green-700'
-                      : item.production_status === 'in_progress' ? 'bg-amber-100 text-amber-700'
-                      : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {item.production_status === 'finished' ? '✓ Finished'
-                        : item.production_status === 'in_progress' ? '⟳ In Progress'
-                        : '○ Pending'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        item.production_status === 'finished' ? 'bg-green-100 text-green-700'
+                        : item.production_status === 'in_progress' ? 'bg-amber-100 text-amber-700'
+                        : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {item.production_status === 'finished' ? '✓ Finished'
+                          : item.production_status === 'in_progress' ? '⟳ In Progress'
+                          : '○ Pending'}
+                      </span>
+                      {stageAllowsProdEdit && item.production_status !== 'finished' && (
+                        <div className="flex gap-1">
+                          {item.production_status !== 'pending' && (
+                            <button
+                              onClick={() => handleItemProductionStatus(item.id, 'pending')}
+                              disabled={updatingItemId === item.id}
+                              className="rounded bg-gray-50 px-1 py-0.5 text-[9px] font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              ○
+                            </button>
+                          )}
+                          {item.production_status !== 'in_progress' && (
+                            <button
+                              onClick={() => handleItemProductionStatus(item.id, 'in_progress')}
+                              disabled={updatingItemId === item.id}
+                              className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-medium text-amber-600 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              ⟳
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleItemProductionStatus(item.id, 'finished')}
+                            disabled={updatingItemId === item.id}
+                            className="rounded bg-green-50 px-1 py-0.5 text-[9px] font-medium text-green-600 hover:bg-green-100 disabled:opacity-50"
+                          >
+                            ✓
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 pr-3">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700'
-                      : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700'
-                      : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {item.en_route_status === 'arrived' ? '✓ Arrived'
-                        : item.en_route_status === 'en_route' ? '⟳ En Route'
-                        : '○ Not Yet'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700'
+                        : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700'
+                        : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {item.en_route_status === 'arrived' ? '✓ Arrived'
+                          : item.en_route_status === 'en_route' ? '⟳ En Route'
+                          : '○ Not Yet'}
+                      </span>
+                      {stageAllowsEnRouteEdit && (
+                        <div className="flex gap-1">
+                          {item.en_route_status !== 'not_yet' && (
+                            <button
+                              onClick={() => handleItemEnRouteStatus(item.id, 'not_yet')}
+                              disabled={updatingEnRouteItemId === item.id}
+                              className="rounded bg-gray-50 px-1 py-0.5 text-[9px] font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              ○
+                            </button>
+                          )}
+                          {item.en_route_status !== 'en_route' && (
+                            <button
+                              onClick={() => handleItemEnRouteStatus(item.id, 'en_route')}
+                              disabled={updatingEnRouteItemId === item.id}
+                              className="rounded bg-sky-50 px-1 py-0.5 text-[9px] font-medium text-sky-600 hover:bg-sky-100 disabled:opacity-50"
+                            >
+                              🚚
+                            </button>
+                          )}
+                          {item.en_route_status !== 'arrived' && (
+                            <button
+                              onClick={() => handleItemEnRouteStatus(item.id, 'arrived')}
+                              disabled={updatingEnRouteItemId === item.id}
+                              className="rounded bg-green-50 px-1 py-0.5 text-[9px] font-medium text-green-600 hover:bg-green-100 disabled:opacity-50"
+                            >
+                              ✓
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {stageShowsInventoryCols && (
                     <td className="py-2 pr-3">
