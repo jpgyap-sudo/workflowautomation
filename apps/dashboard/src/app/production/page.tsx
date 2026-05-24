@@ -767,6 +767,44 @@ export default function ProductionPage() {
   const inProgressOrders = confirmedOrders.filter((o: Order) => !o.production_finished);
   const finishedOrders = confirmedOrders.filter((o: Order) => o.production_finished);
 
+  // Fetch item completion for en_route orders so we can split them into
+  // "En Route Verification" (some items not yet en_route) vs "En Route" (all tracking)
+  const [enRouteCompletion, setEnRouteCompletion] = useState<Record<string, { pct: number; allArrived: boolean }>>({});
+  useEffect(() => {
+    if (enRouteOrders.length === 0) return;
+    let cancelled = false;
+    async function fetchEnRouteCompletion() {
+      const map: Record<string, { pct: number; allArrived: boolean }> = {};
+      await Promise.all(
+        enRouteOrders.map(async (order: Order) => {
+          try {
+            const [compRes, itemsRes] = await Promise.all([
+              getItemCompletion(order.id),
+              getOrderItems(order.id),
+            ]);
+            if (!cancelled) {
+              const items = itemsRes.items ?? [];
+              const allArrived = items.length > 0 && items.every((i: any) => i.en_route_status === 'arrived');
+              map[order.id] = { pct: compRes.en_route_completion_pct ?? 0, allArrived };
+            }
+          } catch { /* ignore */ }
+        })
+      );
+      if (!cancelled) setEnRouteCompletion(map);
+    }
+    fetchEnRouteCompletion();
+    return () => { cancelled = true; };
+  }, [enRouteOrders]);
+
+  const enRouteVerificationOrders = enRouteOrders.filter((o: Order) => {
+    const comp = enRouteCompletion[o.id];
+    return !comp || comp.pct < 100;
+  });
+  const enRouteTrackingOrders = enRouteOrders.filter((o: Order) => {
+    const comp = enRouteCompletion[o.id];
+    return comp && comp.pct >= 100 && !comp.allArrived;
+  });
+
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
@@ -968,6 +1006,7 @@ export default function ProductionPage() {
   }
 
   const totalActive = pendingOrders.length + partialOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length;
+  const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
   return (
     <div className="space-y-6">
@@ -1078,15 +1117,40 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* En Route */}
+      {/* En Route Verification — some items still not confirmed en route */}
+      <OrderSection
+        icon={<Truck className="h-4 w-4 text-amber-500" />}
+        title="En Route Verification"
+        count={enRouteVerificationOrders.length}
+        countBg="bg-amber-100" countText="text-amber-700"
+        orders={enRouteVerificationOrders} isLoading={loadingEnRoute} error={errorEnRoute}
+        onRetry={() => mutateEnRoute()}
+        emptyText="No orders awaiting en route confirmation"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
+              onConfirmEnRoute={handleConfirmEnRoute}
+              onGrantException={handleGrantException}
+              onRevokeException={handleRevokeException}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* En Route — all items confirmed en route, awaiting arrival */}
       <OrderSection
         icon={<Truck className="h-4 w-4 text-sky-500" />}
         title="En Route"
-        count={enRouteOrders.length}
+        count={enRouteTrackingOrders.length}
         countBg="bg-sky-100" countText="text-sky-700"
-        orders={enRouteOrders} isLoading={loadingEnRoute} error={errorEnRoute}
+        orders={enRouteTrackingOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
-        emptyText="No orders en route"
+        emptyText="No orders fully en route"
       >
         {(order) => (
           <>
