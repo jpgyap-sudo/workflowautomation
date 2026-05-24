@@ -126,9 +126,11 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'delivery_scheduled' && ['delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route' && ['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'en_route_reminder' && ['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if ((reminder.stage === 'production_confirmed' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if (reminder.stage === 'production_pending' && (reminder.production_started || ['production_confirmed', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
-    if ((reminder.stage === 'purchasing_pending') && ['production_confirmed', 'production_pending', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'production_pending' && (reminder.production_started || ['partial_production', 'production_confirmed', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
+    if (reminder.stage === 'partial_production' && ['production_confirmed', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'purchasing_pending') && ['partial_production', 'production_confirmed', 'production_pending', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // Item-level tracking reminders — stale if order has moved past the relevant stage
     if (reminder.stage === 'item_level_production' && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_en_route' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
@@ -234,26 +236,67 @@ export async function processDueReminders(): Promise<number> {
         [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
       ]);
     } else if (reminder.stage === 'en_route_reminder') {
-      // En route check: ask if order is en route
+      // En route check: ask if order has been dispatched
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
-          { text: '✅ Yes', callback_data: `en_route:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
-          { text: '❌ No', callback_data: `en_route:no:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '✅ Yes, dispatched', callback_data: `en_route:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '❌ Not yet', callback_data: `en_route:no:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'partial_production') {
-      // Partial production: list pending items and offer update button
-      const items: string[] = Array.isArray(reminder.partial_production_items)
-        ? reminder.partial_production_items
-        : [];
-      const itemsList = items.length > 0
-        ? `\n\nItems still pending production:\n${items.map(i => `• ${i}`).join('\n')}`
-        : '\n\nNo items listed — all may have been produced.';
-      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text + itemsList, [
-        [
-          { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId.slice(0, 8)}:${quotationNumber}` },
-        ],
-      ]);
+      // Partial production: check for item-level tracking first
+      const orderItemRows = await query(
+        `SELECT id, name, quantity, production_status
+         FROM order_items
+         WHERE order_id = $1
+         ORDER BY created_at ASC`,
+        [reminder.order_id]
+      );
+
+      if (orderItemRows.length > 0) {
+        // Item-level path: find first pending item and show process-of-elimination buttons
+        const pendingItem = (orderItemRows as any[]).find((i) => i.production_status === 'pending');
+        const startedCount = (orderItemRows as any[]).filter((i) => i.production_status !== 'pending').length;
+        const totalCount = orderItemRows.length;
+
+        if (!pendingItem) {
+          // All started — this reminder should already be stale; skip sending
+          ok = true; // treat as sent so we don't retry
+        } else {
+          const itemsList = (orderItemRows as any[])
+            .map((i) => {
+              const statusIcon = i.production_status === 'finished' ? '✅' : i.production_status === 'in_progress' ? '🔄' : '⏳';
+              return `${statusIcon} ${i.name} ×${i.quantity}`;
+            })
+            .join('\n');
+          const partialText =
+            `⏳ <b>Partial Production Reminder</b>\n\n` +
+            `Order: <b>${quotationNumber}</b>\n` +
+            `Client: ${reminder.client_name ?? 'Unknown'}\n\n` +
+            `${startedCount}/${totalCount} items started:\n${itemsList}\n\n` +
+            `Next pending item: <b>${pendingItem.name}</b> ×${pendingItem.quantity}\n\n` +
+            `Has <b>${pendingItem.name}</b> started production?`;
+          const itemIdShort = String(pendingItem.id).slice(0, 8);
+          ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, partialText, [
+            [{ text: `✅ ${pendingItem.name} — Finished`, callback_data: `item_prod:finished:${itemIdShort}:${quotationNumber}` }],
+            [{ text: `🔄 ${pendingItem.name} — In Progress`, callback_data: `item_prod:in_progress:${itemIdShort}:${quotationNumber}` }],
+            [{ text: `⏳ ${pendingItem.name} — Not Yet`, callback_data: `item_prod:pending:${itemIdShort}:${quotationNumber}` }],
+          ]);
+        }
+      } else {
+        // Legacy JSONB path: list pending items and offer free-text update
+        const legacyItems: string[] = Array.isArray(reminder.partial_production_items)
+          ? reminder.partial_production_items
+          : [];
+        const itemsList = legacyItems.length > 0
+          ? `\n\nItems still pending production:\n${legacyItems.map(i => `• ${i}`).join('\n')}`
+          : '\n\nNo items listed — all may have been produced.';
+        ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text + itemsList, [
+          [
+            { text: '📝 Update Items Produced', callback_data: `partial_production:update:${orderId.slice(0, 8)}:${quotationNumber}` },
+          ],
+        ]);
+      }
     } else if (reminder.stage === 'production_pending') {
       // Production pending: ask if production has started
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
@@ -489,6 +532,33 @@ export async function processDueReminders(): Promise<number> {
         [
           { text: '✅ Yes, arrived!', callback_data: `en_route_arr:yes:${quotationNumber}` },
           { text: '⏳ Not yet', callback_data: `en_route_arr:no:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'en_route_verification') {
+      // En route verification: ask if all items have arrived at inventory
+      const orderRows = await query(
+        `SELECT inventory_en_route_at, estimated_inventory_arrival_days FROM orders WHERE id = $1`,
+        [reminder.order_id]
+      );
+      const enRouteAt = orderRows[0]?.inventory_en_route_at;
+      const totalDays = orderRows[0]?.estimated_inventory_arrival_days ?? 28;
+      const estimatedArrival = enRouteAt
+        ? new Date(new Date(enRouteAt).getTime() + totalDays * 86_400_000)
+            .toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
+        : 'Unknown';
+      const verifText =
+        `🔎 <b>En Route Verification</b>\n\n` +
+        `Order: <b>${quotationNumber}</b>\n` +
+        `Client: ${reminder.client_name ?? 'Unknown'}\n\n` +
+        `Estimated arrival: <b>${estimatedArrival}</b>\n\n` +
+        `Have all items arrived at the inventory?`;
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, verifText, [
+        [
+          { text: '✅ Yes, all arrived', callback_data: `en_route_verif:yes:${quotationNumber}` },
+          { text: '⏳ Not yet', callback_data: `en_route_verif:no:${quotationNumber}` },
+        ],
+        [
+          { text: '📋 Check items', callback_data: `en_route_verif:check:${quotationNumber}` },
         ],
       ]);
     } else {

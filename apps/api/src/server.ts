@@ -167,6 +167,8 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   purchasing_pending:    ['production-agent', 'collection-agent'],
   production_pending:    ['production-agent', 'collection-agent'],
   production_confirmed:  ['production-agent'],
+  // Partial Production → production agent monitors item-level progress
+  partial_production:    ['production-agent'],
   // Production → En Route
   en_route:              ['production-agent', 'inventory-agent'],
   // En Route → En Route Verification (all items dispatched, waiting for arrival)
@@ -1155,22 +1157,35 @@ app.post('/orders/:id/partial-production', async (request, reply) => {
   }
 
   const existingRows = await query(
-    `SELECT id, quotation_number, client_name FROM orders WHERE id = $1`,
+    `SELECT id, quotation_number, client_name, current_stage FROM orders WHERE id = $1`,
     [id]
   );
   if (!existingRows[0]) return reply.code(404).send({ error: 'Order not found' });
   const order = existingRows[0];
 
+  // If called from production_pending, advance current_stage to partial_production.
+  // If already at partial_production (or purchasing_pending legacy path), just update JSONB.
+  const advanceToPartial = order.current_stage === 'production_pending';
+
   await query(
-    `UPDATE orders SET partial_production_items = $1, updated_at = NOW() WHERE id = $2`,
+    `UPDATE orders
+     SET partial_production_items = $1,
+         current_stage = CASE WHEN current_stage = 'production_pending' THEN 'partial_production' ELSE current_stage END,
+         updated_at = NOW()
+     WHERE id = $2`,
     [JSON.stringify(body.missing_items), id]
   );
 
+  const stageForLog = advanceToPartial ? 'partial_production' : (order.current_stage as string);
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'purchasing_pending', 'partial', $2, 'system')`,
-    [id, `Partial production: items pending — ${body.missing_items.join(', ')}`]
+     VALUES ($1, $2, 'partial', $3, 'system')`,
+    [id, stageForLog, `Partial production: items pending — ${body.missing_items.join(', ')}`]
   );
+
+  if (advanceToPartial) {
+    triggerAgentsForStage('partial_production', order.quotation_number, order.client_name);
+  }
 
   const groupChatId = process.env.PURCHASING_GROUP_ID;
   if (groupChatId) {
@@ -1798,6 +1813,14 @@ app.patch('/orders/:id/reschedule-reminder', async (request, reply) => {
       ? (process.env.DELIVERY_GROUP_CHAT_ID ?? '')
       : (process.env.PRODUCTION_GROUP_CHAT_ID ?? '');
     if (chatId && orderRow[0]) {
+      let reminderMessage: string;
+      if (body.stage === 'en_route_arrival') {
+        reminderMessage = `📦 En Route Arrival — #${orderRow[0].quotation_number}`;
+      } else if (body.stage === 'en_route_verification') {
+        reminderMessage = `🔎 En Route Verification — #${orderRow[0].quotation_number}`;
+      } else {
+        reminderMessage = `📦 En Route Midpoint — #${orderRow[0].quotation_number}`;
+      }
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
          VALUES ($1, $2, $3, $4, 'once', $5, 'active')
@@ -1805,7 +1828,7 @@ app.patch('/orders/:id/reschedule-reminder', async (request, reply) => {
            next_run_at = EXCLUDED.next_run_at,
            status = 'active',
            updated_at = NOW()`,
-        [id, body.stage, chatId, `📦 En Route ${body.stage === 'en_route_arrival' ? 'Arrival' : 'Midpoint'} — #${orderRow[0].quotation_number}`, newRunAt.toISOString()]
+        [id, body.stage, chatId, reminderMessage, newRunAt.toISOString()]
       );
     }
   }
@@ -2297,6 +2320,63 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     }
   }
 
+  // ── Auto-advance order stage based on item production_status changes ──
+  // production_pending: any item starts → partial_production
+  //                     all items start → production_confirmed (skip partial)
+  // partial_production: all items start → production_confirmed
+  if (body.production_status !== undefined) {
+    const stageRows = await query<{ id: string; current_stage: string }>(
+      `SELECT id, current_stage FROM orders WHERE id = $1`,
+      [order_id]
+    );
+    const currentOrder = stageRows[0];
+
+    if (currentOrder && ['production_pending', 'partial_production'].includes(currentOrder.current_stage)) {
+      const allItemStatuses = await query<{ production_status: string; name: string }>(
+        `SELECT production_status, name FROM order_items WHERE order_id = $1`,
+        [order_id]
+      );
+
+      if (allItemStatuses.length > 0) {
+        const allStarted = allItemStatuses.every((i) => i.production_status !== 'pending');
+        const anyStarted = allItemStatuses.some((i) => i.production_status !== 'pending');
+        const pendingNames = allItemStatuses.filter((i) => i.production_status === 'pending').map((i) => i.name);
+
+        if (allStarted) {
+          // All items in progress or finished → advance to production_confirmed
+          await query(
+            `UPDATE orders SET current_stage = 'production_confirmed', production_started = TRUE,
+             production_started_at = COALESCE(production_started_at, NOW()), updated_at = NOW()
+             WHERE id = $1`,
+            [order_id]
+          );
+          await query(
+            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+             VALUES ($1, 'production_confirmed', 'auto', $2, 'system')`,
+            [order_id, `All items started production — auto-advanced from ${currentOrder.current_stage}`]
+          );
+          triggerAgentsForStage('production_confirmed');
+        } else if (anyStarted && currentOrder.current_stage === 'production_pending') {
+          // Some items started — advance to partial_production
+          await query(
+            `UPDATE orders
+             SET current_stage = 'partial_production',
+                 partial_production_items = $1,
+                 updated_at = NOW()
+             WHERE id = $2`,
+            [JSON.stringify(pendingNames), order_id]
+          );
+          await query(
+            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+             VALUES ($1, 'partial_production', 'auto', $2, 'system')`,
+            [order_id, `Partial production started — pending: ${pendingNames.join(', ')}`]
+          );
+          triggerAgentsForStage('partial_production');
+        }
+      }
+    }
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { order_id });
   return reply.send({ ok: true, item: updatedItem });
@@ -2639,9 +2719,9 @@ app.post('/stage-updates', async (request, reply) => {
     deposit_pending:           ['deposit_verification'],
     deposit_verification:      ['purchasing_pending'],
     purchasing_pending:        ['production_pending'],
-    production_pending:        ['production_confirmed'],
+    production_pending:        ['production_confirmed', 'partial_production'],
     production_confirmed:      ['en_route', 'partial_production'],
-    partial_production:        ['en_route'],
+    partial_production:        ['production_confirmed', 'en_route'],
     en_route:                  ['inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due'],

@@ -563,9 +563,10 @@ function ItemTrackingSection({
 
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
-  const stageShowsArrivalCols = currentStage === 'en_route' || currentStage === 'inventory_arrived' || currentStage === 'inventory_verification';
+  const stageShowsArrivalCols = ['en_route', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(currentStage);
   const stageAllowsProdEdit = ['production_pending', 'production_confirmed', 'partial_production', 'en_route'].includes(currentStage);
-  const stageAllowsEnRouteEdit = currentStage === 'en_route';
+  // Allow en-route dispatch edits at en_route, and arrival edits at en_route_verification too
+  const stageAllowsEnRouteEdit = ['en_route', 'en_route_verification'].includes(currentStage);
 
   async function refreshItemTracking() {
     const [itemsRes, compRes, logsRes] = await Promise.all([
@@ -1006,6 +1007,46 @@ function ItemTrackingSection({
           </div>
         </div>
       )}
+
+      {/* Production Pending guidance banner */}
+      {currentStage === 'production_pending' && items.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold text-amber-800">🏭 Starting Production</p>
+          <p className="mt-1 text-[11px] text-amber-700">
+            Mark each item below as <strong>In Progress</strong> or <strong>Finished</strong> to begin tracking.
+            Starting at least one item moves this order to <strong>Partial Production</strong>.
+            Starting all items advances directly to <strong>Production Confirmed</strong>.
+          </p>
+        </div>
+      )}
+
+      {/* Partial Production guidance banner */}
+      {currentStage === 'partial_production' && items.length > 0 && (() => {
+        const pendingCount = items.filter(i => i.production_status === 'pending').length;
+        return pendingCount > 0 ? (
+          <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3">
+            <p className="text-xs font-semibold text-orange-800">⏳ Partial Production — {pendingCount} item{pendingCount !== 1 ? 's' : ''} not yet started</p>
+            <p className="mt-1 text-[11px] text-orange-700">
+              Mark remaining items as <strong>In Progress</strong> or <strong>Finished</strong>.
+              Once all items have started, the order will auto-advance to <strong>Production Confirmed</strong>.
+            </p>
+          </div>
+        ) : null;
+      })()}
+
+      {/* En Route Verification guidance banner */}
+      {currentStage === 'en_route_verification' && items.length > 0 && (() => {
+        const notArrivedCount = items.filter(i => i.en_route_status !== 'arrived').length;
+        return notArrivedCount > 0 ? (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <p className="text-xs font-semibold text-blue-800">🔎 En Route Verification — {notArrivedCount} item{notArrivedCount !== 1 ? 's' : ''} not yet arrived</p>
+            <p className="mt-1 text-[11px] text-blue-700">
+              Mark items as <strong>Arrived</strong> (✓ button in the En Route column) as they come in.
+              Once all items arrive, the order advances to <strong>Inventory Verification</strong> automatically.
+            </p>
+          </div>
+        ) : null;
+      })()}
 
       {/* Items table */}
       {items.length > 0 && (

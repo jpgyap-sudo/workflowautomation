@@ -624,6 +624,7 @@ type UserStep =
   | { action: 'awaiting_en_route_item_new_days'; itemId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_midpoint_new_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_arrival_not_yet_days'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_en_route_verif_not_yet_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_client_search' }
   // Partial production flow
   | { action: 'awaiting_partial_missing_items'; orderId: string; quotationNumber: string }
@@ -2551,6 +2552,28 @@ bot.on(message('text'), async (ctx) => {
       break;
     }
 
+    // ── En Route Verification: not yet — reschedule ─────────────────
+    case 'awaiting_en_route_verif_not_yet_days': {
+      const { orderId: evOrderId, quotationNumber: evQn } = session.step;
+      const evMoreDays = parseInt(text, 10);
+      if (isNaN(evMoreDays) || evMoreDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `7`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await patchJson(`/orders/${evOrderId}/reschedule-reminder`, { stage: 'en_route_verification', new_days: evMoreDays });
+        await logAction({ chatId, userId, username, label: 'En Route Verif Not Yet — Rescheduled', quotationNumber: evQn, details: `${evMoreDays} more days` });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Noted* — ${evQn}\n\nI'll check again in *${evMoreDays} days*.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
     // ── Partial Production — enter missing items ────────────────────
     case 'awaiting_partial_missing_items': {
       const { orderId, quotationNumber } = session.step;
@@ -3523,16 +3546,18 @@ bot.action(/^produce:partial:(.+)$/, async (ctx) => {
       const finishedCount = items.filter((i: any) => i.production_status === 'finished').length;
       const totalCount = items.length;
 
+      const startedCount = items.filter((i: any) => i.production_status !== 'pending').length;
       let msg = `⚠️ *Partial Production — ${quotationNumber}*\n\n`;
       msg += `Item-level tracking is available. Let's go through each item:\n\n`;
-      msg += `Items: ${finishedCount}/${totalCount} finished\n\n`;
+      msg += `Items: ${finishedCount}/${totalCount} finished, ${startedCount}/${totalCount} started\n\n`;
       msg += `*Process of Elimination:*\n`;
       msg += `Next item: *${unfinishedItem.name}* x${unfinishedItem.quantity}\n\n`;
-      msg += `Has *${unfinishedItem.name}* started production?`;
+      msg += `Has *${unfinishedItem.name}* started or finished production?`;
 
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
@@ -3567,6 +3592,51 @@ bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
 
   try {
     const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+
+    // Prefer item-level tracking if order_items exist
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/items`);
+    const itemsData = itemsRes.ok ? await itemsRes.json() : { items: [] };
+    const orderItems: any[] = Array.isArray(itemsData?.items) ? itemsData.items : [];
+
+    if (orderItems.length > 0) {
+      // Item-level path: route to process-of-elimination
+      const pendingItem = orderItems.find((i: any) => i.production_status === 'pending');
+
+      if (!pendingItem) {
+        resetStep(chatId);
+        await ctx.editMessageText(
+          `✅ All items have started production for *${quotationNumber}*. Order will advance to Production Confirmed shortly.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+        return;
+      }
+
+      const finishedCount = orderItems.filter((i: any) => i.production_status === 'finished').length;
+      const startedCount = orderItems.filter((i: any) => i.production_status !== 'pending').length;
+      const totalCount = orderItems.length;
+
+      const statusLines = orderItems.map((i: any) => {
+        const icon = i.production_status === 'finished' ? '✅' : i.production_status === 'in_progress' ? '🔄' : '⏳';
+        return `${icon} ${i.name} ×${i.quantity}`;
+      }).join('\n');
+
+      let msg = `⏳ *Partial Production — ${quotationNumber}*\n\n`;
+      msg += `${startedCount}/${totalCount} items started, ${finishedCount}/${totalCount} finished:\n${statusLines}\n\n`;
+      msg += `*Next pending:* *${pendingItem.name}* ×${pendingItem.quantity}\n\n`;
+      msg += `Has *${pendingItem.name}* started production?`;
+
+      await ctx.editMessageText(msg, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ ${pendingItem.name} — Finished`, `item_prod:finished:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`🔄 ${pendingItem.name} — In Progress`, `item_prod:in_progress:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
+          [Markup.button.callback(`⏳ ${pendingItem.name} — Not Yet`, `item_prod:pending:${pendingItem.id.slice(0, 8)}:${quotationNumber}`)],
+        ]),
+      });
+      return;
+    }
+
+    // Legacy JSONB path: free-text update
     const remainingItems: string[] = Array.isArray(order.partial_production_items)
       ? order.partial_production_items
       : [];
@@ -3581,7 +3651,6 @@ bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
     }
 
     const list = remainingItems.map(i => `• ${i}`).join('\n');
-    // Use full orderId from order lookup, not the 8-char prefix from callback
     setStep(chatId, { action: 'awaiting_partial_items_update', orderId: order.id, quotationNumber, remainingItems });
     await ctx.editMessageText(
       `📝 *Update Items — ${quotationNumber}*\n\nCurrently pending:\n${list}\n\nWhich items have been produced? (comma or newline separated, or type \`all\` if all are done):`,
@@ -4056,6 +4125,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await ctx.editMessageText(msg, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ ${unfinishedItem.name} — Finished`, `item_prod:finished:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`🔄 ${unfinishedItem.name} — In Progress`, `item_prod:in_progress:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
           [Markup.button.callback(`⏳ ${unfinishedItem.name} — Not Yet`, `item_prod:pending:${unfinishedItem.id.slice(0, 8)}:${quotationNumber}`)],
         ]),
@@ -4470,6 +4540,83 @@ bot.action(/^en_route_arr:no:(.+)$/, async (ctx) => {
     await ctx.editMessageText(
       `⏳ *Not Yet* — ${quotationNumber}\n\nHow many more days until the inventory arrives? (e.g., \`7\`):`,
       { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown' });
+  }
+});
+
+// ── En Route Verification Reminder Handlers ──────────────────────────────
+// En Route Verification: yes — all items arrived, advance to inventory_verification
+bot.action(/^en_route_verif:yes:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_verif:yes:${quotationNumber}`, direction: 'incoming' });
+  await ctx.editMessageText(`🔎 Confirming all items arrived for *${quotationNumber}*...`, { parse_mode: 'Markdown' }).catch(() => {});
+  try {
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'inventory_verification',
+      status: 'arrived',
+      remarks: 'All items arrived — confirmed via en route verification reminder',
+      updated_by: ctx.from?.username ?? `user_${userId}`,
+    });
+    await logAction({ chatId, userId, username, label: 'All Items Arrived (En Route Verification)', quotationNumber });
+    await ctx.editMessageText(
+      `✅ *All Items Arrived!* — ${quotationNumber}\n\nOrder advanced to Inventory Verification stage.\n\nInventory team will now verify the items.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// En Route Verification: no — not yet arrived, ask for more days
+bot.action(/^en_route_verif:no:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_verif:no:${quotationNumber}`, direction: 'incoming' });
+  try {
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    setStep(chatId, { action: 'awaiting_en_route_verif_not_yet_days', orderId: orderData.id, quotationNumber });
+    await ctx.editMessageText(
+      `⏳ *Not Yet* — ${quotationNumber}\n\nHow many more days until all items arrive? (e.g., \`7\`):`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown' });
+  }
+});
+
+// En Route Verification: check — show item-level status
+bot.action(/^en_route_verif:check:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_verif:check:${quotationNumber}`, direction: 'incoming' });
+  try {
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!orderData || !orderData.items || orderData.items.length === 0) {
+      await ctx.editMessageText(
+        `📋 *Item Status* — ${quotationNumber}\n\nNo item-level tracking found for this order. Use the dashboard to update item statuses.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+      return;
+    }
+    const itemsList = orderData.items
+      .map((i: any) => {
+        const icon = i.en_route_status === 'arrived' ? '✅' : i.en_route_status === 'en_route' ? '🚚' : '⏳';
+        return `${icon} ${i.name} ×${i.quantity} — ${i.en_route_status ?? 'not_yet'}`;
+      })
+      .join('\n');
+    await ctx.editMessageText(
+      `📋 *Item Arrival Status* — ${quotationNumber}\n\n${itemsList}\n\nUse the dashboard to update individual item statuses.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {
     await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown' });
@@ -5334,6 +5481,15 @@ bot.action(/^item_inventory:(arrived|en_route|not_yet):([^:]+):(.+)$/, async (ct
 // Format: reminder:item_en_route:{status}:{itemId}:{orderId}
 //   status = en_route | arrived | not_yet
 
+async function resolveReminderItem(orderId: string, itemIdPrefix: string): Promise<any> {
+  const items = await getOrderItems(orderId);
+  const item = items.find((candidate: any) => String(candidate.id ?? '').startsWith(itemIdPrefix));
+  if (!item) {
+    throw new Error(`Item not found for prefix ${itemIdPrefix}. It may have been removed or already updated.`);
+  }
+  return item;
+}
+
 // Item-level production reminder: user clicked a button
 bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
@@ -5367,8 +5523,11 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(
       return;
     }
 
-    // Update the item's production status via API
-    await postJson(`/orders/${orderId}/items/${itemId}`, {
+    const fullItem = await resolveReminderItem(orderId, itemId);
+
+    // Update the item's production status via API. Reminder callback data only
+    // carries an 8-char item prefix; the API requires PATCH + the full UUID.
+    await patchJson(`/orders/${orderId}/items/${fullItem.id}`, {
       production_status: newStatus,
     });
 
@@ -5379,7 +5538,7 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(
       pending: '⏳ Still Pending (from reminder)',
     };
     await postJson(`/orders/${orderId}/production-logs`, {
-      order_item_id: itemId,
+      order_item_id: fullItem.id,
       note: `Item production status updated via reminder to: ${statusLabels[newStatus]}`,
       log_type: 'user',
       created_by: username ?? `user_${userId}`,
@@ -5387,7 +5546,7 @@ bot.action(/^reminder:item_prod:(finished|in_progress|pending):([^:]*):([^:]+):(
 
     if (newStatus === 'finished') {
       // Item finished — complete the reminder (handled by PATCH endpoint)
-      await logAction({ chatId, userId, username, label: 'Item Production Finished (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${itemId}` });
+      await logAction({ chatId, userId, username, label: 'Item Production Finished (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${fullItem.id}` });
       await ctx.editMessageText(
         `✅ *Item Production Updated via Reminder*\n\nItem marked as *Finished*.\nThe reminder for this item has been completed.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -5443,8 +5602,11 @@ bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):([^:]+):(
       return;
     }
 
-    // Update the item's en_route status via API
-    await postJson(`/orders/${orderId}/items/${itemId}`, {
+    const fullItem = await resolveReminderItem(orderId, itemId);
+
+    // Update the item's en_route status via API. Reminder callback data only
+    // carries an 8-char item prefix; the API requires PATCH + the full UUID.
+    await patchJson(`/orders/${orderId}/items/${fullItem.id}`, {
       en_route_status: newStatus,
     });
 
@@ -5455,7 +5617,7 @@ bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):([^:]+):(
       not_yet: '⏳ Not Yet (from reminder)',
     };
     await postJson(`/orders/${orderId}/production-logs`, {
-      order_item_id: itemId,
+      order_item_id: fullItem.id,
       note: `Item en-route status updated via reminder to: ${statusLabels[newStatus]}`,
       log_type: 'user',
       created_by: username ?? `user_${userId}`,
@@ -5463,7 +5625,7 @@ bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):([^:]+):(
 
     if (newStatus === 'arrived') {
       // Item arrived — complete the reminder (handled by PATCH endpoint)
-      await logAction({ chatId, userId, username, label: 'Item Arrived at Inventory (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${itemId}` });
+      await logAction({ chatId, userId, username, label: 'Item Arrived at Inventory (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${fullItem.id}` });
       await ctx.editMessageText(
         `📦 *Item En Route Updated via Reminder*\n\nItem marked as *Arrived*.\nThe reminder for this item has been completed.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -5520,8 +5682,11 @@ bot.action(/^reminder:item_inventory:(arrived|en_route|not_yet):([^:]*):([^:]+):
       return;
     }
 
-    // Update the item's en_route_status via API
-    await postJson(`/orders/${orderId}/items/${itemId}`, {
+    const fullItem = await resolveReminderItem(orderId, itemId);
+
+    // Update the item's en_route_status via API. Reminder callback data only
+    // carries an 8-char item prefix; the API requires PATCH + the full UUID.
+    await patchJson(`/orders/${orderId}/items/${fullItem.id}`, {
       en_route_status: newStatus,
     });
 
@@ -5532,14 +5697,14 @@ bot.action(/^reminder:item_inventory:(arrived|en_route|not_yet):([^:]*):([^:]+):
       not_yet: '⏳ Not Yet Arrived (from reminder)',
     };
     await postJson(`/orders/${orderId}/production-logs`, {
-      order_item_id: itemId,
+      order_item_id: fullItem.id,
       note: `Item inventory arrival status updated via reminder to: ${statusLabels[newStatus]}`,
       log_type: 'user',
       created_by: username ?? `user_${userId}`,
     });
 
     if (newStatus === 'arrived') {
-      await logAction({ chatId, userId, username, label: 'Item Arrived at Inventory (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${itemId}` });
+      await logAction({ chatId, userId, username, label: 'Item Arrived at Inventory (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${fullItem.id}` });
       await ctx.editMessageText(
         `📦 *Item Inventory Updated via Reminder*\n\nItem marked as *Arrived* at inventory.\nThe reminder for this item has been completed.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -8049,4 +8214,3 @@ process.once('SIGTERM', () => {
     // Bot may already be stopped — ignore
   }
 });
-

@@ -36,11 +36,13 @@ import {
  *   overdue               → 2h  (critical, escalating)
  *
  * Monitors:
- *   1. production_confirmed — tracks timeline, sends adaptive reminders
- *   2. en_route             — daily check until inventory arrives
- *   3. partial_production   — daily check for pending items (purchasing_pending with items)
- *   4. item-level tracking  — item-by-item production tracking with process of elimination
+ *   1. production_confirmed  — tracks timeline, sends adaptive reminders
+ *   2. en_route              — daily check until inventory arrives
+ *   3. partial_production    — item-level: asks about pending items one-by-one;
+ *                              auto-advances to production_confirmed when all started
+ *   4. item-level tracking   — item-by-item production tracking with process of elimination
  *      (production_confirmed orders that have order_items)
+ *   5. en_route + en_route_verification — item-level dispatch & arrival monitoring
  */
 
 // ── Item-level tracking types ─────────────────────────────────────────
@@ -317,12 +319,120 @@ async function checkEnRoute(order: OrderRow): Promise<AgentResult> {
 }
 
 // ── 3. Check partial_production orders ───────────────────────────────
+//
+// Two paths:
+//   a) Item-level (preferred): order has order_items — process of elimination
+//      asking about each pending item; auto-advance to production_confirmed when all started.
+//   b) Legacy JSONB: purchasing_pending orders with partial_production_items array.
 
 interface PartialOrder extends OrderRow {
   partial_production_items: string[];
 }
 
-async function checkPartialProduction(order: PartialOrder): Promise<AgentResult> {
+/**
+ * Item-level partial production check.
+ *
+ * Runs for orders at `partial_production` stage that have order_items.
+ * - Finds the next pending item and asks the production team about it.
+ * - If all items are in_progress or finished → auto-advance to production_confirmed.
+ */
+async function checkItemLevelPartialProduction(order: OrderRow): Promise<AgentResult | null> {
+  const input = { quotation_number: order.quotation_number, stage: order.current_stage };
+
+  try {
+    if (order.current_stage !== 'partial_production') return null;
+
+    const items = await getOrderItems(order.id);
+    if (items.length === 0) return null; // Legacy JSONB path handles this order
+
+    const completion = await getCompletionPct(order.id);
+    const prodPct = completion?.get_production_completion_pct ?? 0;
+    const escalationLevel = await getEscalationLevel(order.id, 'partial_production');
+
+    const pendingItem = items.find((i) => i.production_status === 'pending');
+    const startedCount = items.filter((i) => i.production_status !== 'pending').length;
+    const totalCount = items.length;
+    const qn = order.quotation_number ?? 'unknown';
+    const client = order.client_name ?? 'Unknown';
+
+    // All items started — advance to production_confirmed
+    if (!pendingItem) {
+      await addProductionLog(null, order.id, `✅ All items started production (${prodPct}% complete). Auto-advancing to production_confirmed.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) started. Auto-advancing to production_confirmed.`);
+
+      const lastHuman = await findLastHumanTrigger(order.id);
+      await advanceStage(order.id, 'production_confirmed', qn, `All items started production (${prodPct}% complete)`, lastHuman);
+
+      const groupChatId = getGroupChatId(AGENT_NAME);
+      if (groupChatId) {
+        const msg = `🏭 <b>All Items Started Production</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) have started.\nOrder auto-advanced to 🏭 Production Confirmed.`;
+        await sendTelegramMessage(groupChatId, msg);
+      }
+
+      const result: AgentResult = {
+        status: 'complete',
+        message: `✅ All items started for #${qn}. Auto-advanced to production_confirmed.`,
+        next_stage: 'production_confirmed',
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction(AGENT_NAME, input, result, 'complete', order.id);
+      return result;
+    }
+
+    // Ask about the next pending item (process of elimination)
+    const progressBar = buildProgressBar(prodPct);
+    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+
+    let message = `⏳ <b>Partial Production Check</b>\n`;
+    message += `Order: #${qn} (${client})\n`;
+    message += `📊 <a href="${dashboardUrl}">View on Dashboard</a>\n`;
+    message += `Progress: ${startedCount}/${totalCount} items started ${progressBar}\n\n`;
+    message += `<b>Next pending item:</b>\n`;
+    message += `<b>${pendingItem.name}</b> ×${pendingItem.quantity}\n\n`;
+    message += `Has <b>${pendingItem.name}</b> started production yet?`;
+
+    const keyboard = inlineKeyboard([
+      [{ text: `✅ ${pendingItem.name} — Finished`, callback_data: `item_prod:finished:${pendingItem.id.slice(0, 8)}:${qn}` }],
+      [{ text: `🔄 ${pendingItem.name} — In Progress`, callback_data: `item_prod:in_progress:${pendingItem.id.slice(0, 8)}:${qn}` }],
+      [{ text: `⏳ ${pendingItem.name} — Not Yet`, callback_data: `item_prod:pending:${pendingItem.id.slice(0, 8)}:${qn}` }],
+    ]);
+
+    const groupChatId = getGroupChatId(AGENT_NAME);
+    if (groupChatId) {
+      await sendTelegramMessage(groupChatId, message, keyboard);
+      const reminderMsg = `⏳ Partial Production: #${qn} — ${startedCount}/${totalCount} items started. Next: ${pendingItem.name}`;
+      await upsertProductionReminder(order.id, 'partial_production', groupChatId, reminderMsg, 24 * 60 * 60 * 1000);
+    }
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Partial production check for #${qn}: ${startedCount}/${totalCount} items started. Asking about "${pendingItem.name}".`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+    await logAgentAction(AGENT_NAME, input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking partial production for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: false,
+      escalation_level: 0,
+    };
+    await logAgentAction(AGENT_NAME, input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Legacy partial production check — for purchasing_pending orders with JSONB items list.
+ * Kept for backward compat with the old purchasing flow only.
+ */
+async function checkLegacyPartialProduction(order: PartialOrder): Promise<AgentResult> {
   const input = {
     quotation_number: order.quotation_number,
     partial_production_items: order.partial_production_items,
@@ -339,26 +449,16 @@ async function checkPartialProduction(order: PartialOrder): Promise<AgentResult>
         ? '🟠 NEEDS ATTENTION'
         : '🟡 PENDING';
 
-    // ── Hermes Claw AI analysis for partial production ───────────────
-    const hermesCtx = buildHermesContext(
-      order,
-      daysPending,
-      0, // No timeline pct for partial
-      daysPending >= 7,
-      escalationLevel,
-    );
+    const hermesCtx = buildHermesContext(order, daysPending, 0, daysPending >= 7, escalationLevel);
     const hermesAnalysis = await analyzeProductionOrder(hermesCtx, order.id);
 
     const itemList = items.map(i => `• ${i}`).join('\n');
-
-    // Use Hermes message if available, otherwise fall back to rule-based
     const message = hermesAnalysis
       ? `${urgency} — ${hermesAnalysis.message}\n\nItems not yet produced:\n${itemList}\n\nUpdate via Telegram: reply which items are now done.`
       : `${urgency} — Partial production for #${order.quotation_number ?? 'unknown'} (${daysPending}d pending).\n\nItems not yet produced:\n${itemList}\n\nUpdate via Telegram: reply which items are now done.`;
 
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
-      // Partial production uses fixed 24h — the reminder scheduler owns this stage
       await upsertProductionReminder(order.id, 'partial_production', groupChatId, message, 24 * 60 * 60 * 1000);
     }
 
@@ -375,7 +475,7 @@ async function checkPartialProduction(order: PartialOrder): Promise<AgentResult>
     const errorMsg = err instanceof Error ? err.message : String(err);
     const result: AgentResult = {
       status: 'blocked',
-      message: `❌ Error checking partial production for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      message: `❌ Error checking legacy partial production for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
       next_stage: null,
       reminder_needed: false,
       escalation_level: 0,
@@ -674,12 +774,18 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
         return result;
       }
 
-      // Still waiting for some items to arrive — checkEnRouteItemProgress handles reminders
+      // Still waiting for some items to arrive — create a persistent reminder
+      const groupChatId = getGroupChatId(AGENT_NAME);
+      if (groupChatId) {
+        const reminderMsg = `🔎 En Route Verification: #${qn} — ${enRouteCount}/${totalCount} items arrived. Waiting for ${items.length - enRouteCount} more item(s) to arrive at inventory.`;
+        await upsertProductionReminder(order.id, 'en_route_verification', groupChatId, reminderMsg, 24 * 60 * 60 * 1000);
+      }
+
       const result: AgentResult = {
         status: 'needs_review',
         message: `⏳ En route verification for #${qn}: ${enRouteCount}/${totalCount} items dispatched, waiting for all to arrive.`,
         next_stage: null,
-        reminder_needed: false,
+        reminder_needed: true,
         escalation_level: escalationLevel,
       };
       await logAgentAction(AGENT_NAME, input, result, 'needs_review', order.id);
@@ -970,8 +1076,24 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     }
   }
 
-  // 3. Partial production — purchasing_pending with pending items
-  const partialRows = await query<PartialOrder>(
+  // 3a. Partial production (item-level) — partial_production stage orders with order_items
+  //     Asks about each pending item one-by-one; auto-advances to production_confirmed when all started
+  const partialProductionOrders = await getActiveOrdersByStage('partial_production');
+  for (const order of partialProductionOrders) {
+    const items = await getOrderItems(order.id);
+    if (items.length > 0) {
+      const itemResult = await checkItemLevelPartialProduction(order);
+      if (itemResult) results.push(itemResult);
+    } else {
+      // No order_items — fall back to legacy JSONB check
+      const legacyOrder = order as PartialOrder;
+      legacyOrder.partial_production_items = (order as any).partial_production_items ?? [];
+      results.push(await checkLegacyPartialProduction(legacyOrder));
+    }
+  }
+
+  // 3b. Legacy partial production — purchasing_pending with JSONB pending items
+  const legacyPartialRows = await query<PartialOrder>(
     `SELECT *, partial_production_items
      FROM orders
      WHERE current_stage = 'purchasing_pending'
@@ -980,8 +1102,8 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
        AND partial_production_items != '[]'::jsonb
      ORDER BY created_at ASC`,
   );
-  for (const order of partialRows) {
-    results.push(await checkPartialProduction(order));
+  for (const order of legacyPartialRows) {
+    results.push(await checkLegacyPartialProduction(order));
   }
 
   // 4. Item-level production tracking — production_confirmed orders with order_items

@@ -8091,3 +8091,26 @@ Incomplete integration of a new stage into an existing workflow due to missing t
 cross-project, local-fallback
 
 ---
+
+### Lesson: Telegram reminder item sync patch
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When Telegram reminder callbacks use shortened item IDs in callback_data, resolve the full order item UUID with GET /orders/{orderId}/items before PATCHing /orders/{orderId}/items/{itemId}. Avoid POST for item updates because the API only exposes PATCH for single-item updates; this keeps reminder-driven Telegram updates synced with dashboard manual inventory/delivery tabs.
+
+#### Lesson Learned
+
+When Telegram reminder callbacks use shortened item IDs in callback_data, resolve the full order item UUID with GET /orders/{orderId}/items before PATCHing /orders/{orderId}/items/{itemId}. Avoid POST for item updates because the API only exposes PATCH for single-item updates; this keeps reminder-driven Telegram updates synced with dashboard manual inventory/delivery tabs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
