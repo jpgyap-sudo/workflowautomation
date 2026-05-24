@@ -9,7 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `pending` | Codex | chore: record OTP 502 recovery lessons and logs | ✅ Not deployed (docs/memory only; VPS recovery already verified) |
+| `9af8ae5` | Codex | chore: record OTP 502 recovery lessons and logs | ✅ Not deployed (docs/memory only; VPS recovery already verified) |
 | `1749ed9` | Roo (Code) | fix: reminder scheduler gaps for en_route_verification stage | ✅ VPS `1749ed9` |
 | `f51564b` | Roo (Code) | docs: update UPDATE_LOG — Roo deploying en_route_verification stage | ✅ VPS `f51564b` |
 | `7e17451` | jpgyap-sudo | chore: auto-commit before deploy | ✅ VPS `f51564b` |
