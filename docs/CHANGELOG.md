@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `1749ed9` | Claude Sonnet 4.6 | fix: production workflow — partial_production end-to-end (auto-advance, item-level tracking, Telegram + dashboard + reminders + agent) | Not deployed yet |
 | `029adcd` | Codex | fix: restore en_route_verification in dashboard stage pipeline | Not deployed yet |
 | `9af8ae5` | Codex | chore: record OTP 502 recovery lessons and logs | ✅ Not deployed (docs/memory only; VPS recovery already verified) |
 | `1749ed9` | Roo (Code) | fix: reminder scheduler gaps for en_route_verification stage | ✅ VPS `1749ed9` |
