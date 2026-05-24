@@ -2267,18 +2267,26 @@ bot.on(message('text'), async (ctx) => {
           delivery_estimated_days: deliveryDays,
         });
         await logAction({ chatId, userId, username, label: 'Production Finished', quotationNumber: cQuotationNumber, details: `Delivery in: ${deliveryDays} day(s)` });
-        // Ask: Is the order en route?
-        setStep(chatId, { action: 'awaiting_en_route', orderId: cOrderId, quotationNumber: cQuotationNumber });
-        await ctx.reply(
-          `✅ *Delivery Timeline Set* — ${cQuotationNumber}\n\nProduction is finished. Estimated delivery availability: *${deliveryDays} days*.\n\n🚚 Is the order en route to the client?`,
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
-              [Markup.button.callback('❌ Not yet', `en_route:no:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
-            ]),
-          }
-        );
+
+        // For item-level orders, start per-item en route verification
+        const itemsRes = await fetch(`${apiBaseUrl}/orders/${cOrderId}/items`);
+        const itemsData = await itemsRes.json();
+        if (itemsData?.items?.length > 0) {
+          await showItemLevelEnRoute(ctx, cOrderId, cQuotationNumber, itemsData.items, false);
+        } else {
+          // Legacy order-level flow
+          setStep(chatId, { action: 'awaiting_en_route', orderId: cOrderId, quotationNumber: cQuotationNumber });
+          await ctx.reply(
+            `✅ *Delivery Timeline Set* — ${cQuotationNumber}\n\nProduction is finished. Estimated delivery availability: *${deliveryDays} days*.\n\n🚚 Is the order en route to the client?`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
+                [Markup.button.callback('❌ Not yet', `en_route:no:${cOrderId.slice(0, 8)}:${cQuotationNumber}`)],
+              ]),
+            }
+          );
+        }
       } catch (err: any) {
         await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
       }
@@ -2738,7 +2746,7 @@ bot.on(message('text'), async (ctx) => {
 // Callback data max is 64 bytes. Using 8-char ID prefixes keeps us well under.
 
 
-type BoardCategory = 'pending_start' | 'in_progress' | 'ready_for_delivery' | 'en_route';
+type BoardCategory = 'pending_start' | 'in_progress' | 'en_route_verification' | 'en_route';
 
 interface BoardOrder {
   id: string;
@@ -2759,7 +2767,7 @@ interface BoardResponse {
 const BOARD_CATEGORIES: { id: BoardCategory; label: string; icon: string }[] = [
   { id: 'pending_start', label: 'Pending Start', icon: '?' },
   { id: 'in_progress', label: 'In Progress', icon: '??' },
-  { id: 'ready_for_delivery', label: 'Ready for Delivery', icon: '?' },
+  { id: 'en_route_verification', label: 'En Route Verification', icon: '?' },
   { id: 'en_route', label: 'En Route', icon: '??' },
 ];
 
@@ -2784,7 +2792,8 @@ function anyItemEnRoute(order: BoardOrder): boolean {
 
 function boardCategory(order: BoardOrder): BoardCategory {
   if (order.current_stage === 'en_route' || productionDone(order)) {
-    return anyItemEnRoute(order) || order.en_route_confirmed ? 'en_route' : 'ready_for_delivery';
+    const allEnRoute = order.items.every((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
+    return allEnRoute || order.en_route_confirmed ? 'en_route' : 'en_route_verification';
   }
   if (order.production_started || anyItemStarted(order) || order.current_stage === 'production_confirmed' || order.current_stage === 'partial_production') {
     return 'in_progress';
@@ -2798,8 +2807,68 @@ const panelMessageIds = new Map<string, number>();
 function prodReplyKeyboard() {
   return Markup.keyboard([
     ['📊 Dashboard', '✅ Mark Produced', '🚚 Mark En Route'],
-    ['⏳ Pending', '🔧 In Progress', '📦 Ready', '🚛 En Route'],
+    ['⏳ Pending', '🔧 In Progress', '🚚 Verify En Route', '🚛 En Route'],
   ]).resize();
+}
+
+async function showItemLevelEnRoute(ctx: any, orderId: string, quotationNumber: string, existingItems?: any[], edit = false): Promise<void> {
+  let items: any[];
+  if (existingItems && existingItems.length > 0) {
+    items = existingItems;
+  } else {
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    items = itemsData?.items ?? [];
+  }
+
+  const totalQty = items.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+  const enRouteQty = items
+    .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
+    .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
+  const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
+  const enRouteCount = items.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+  const totalCount = items.length;
+
+  const notEnRouteItem = items.find((i: any) => i.en_route_status === 'not_yet');
+
+  if (!notEnRouteItem) {
+    const maxDays = Math.max(...items.map((i: any) => i.estimated_arrival_days ?? 28));
+    await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
+    const msg =
+      `✅ *All Items Finished & En Route!*\n\n` +
+      `Order #${quotationNumber}\n` +
+      `All items completed and already en route (${enRoutePct}% of qty).\n\n` +
+      `📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n` +
+      `📦 Arrival check in the inventory group on the estimated arrival date.`;
+    if (edit) {
+      await ctx.editMessageText(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+    } else {
+      await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+    }
+    return;
+  }
+
+  const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
+
+  let msg = `✅ *All Items Produced!*\n\n`;
+  msg += `Order #${quotationNumber}\nAll production items are finished.\n\n`;
+  msg += `🚚 *Item-Level En Route*\n`;
+  msg += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
+  msg += `Items: ${enRouteCount}/${totalCount} en route\n\n`;
+  msg += `*Process of Elimination:*\n`;
+  msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\n`;
+  msg += `Is *${notEnRouteItem.name}* en route yet?`;
+
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+    [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
+  ]);
+
+  if (edit) {
+    await ctx.editMessageText(msg, { parse_mode: 'Markdown', ...keyboard });
+  } else {
+    await ctx.reply(msg, { parse_mode: 'Markdown', ...keyboard });
+  }
 }
 
 async function handleProdQuickAction(ctx: any, text: string, chatId: string): Promise<boolean> {
@@ -2833,7 +2902,7 @@ async function handleProdQuickAction(ctx: any, text: string, chatId: string): Pr
 
   if (trimmed === '🚚 Mark En Route') {
     const orders = await fetchBoard();
-    const ready = orders.filter((o) => boardCategory(o) === 'ready_for_delivery' || boardCategory(o) === 'en_route');
+    const ready = orders.filter((o) => boardCategory(o) === 'en_route_verification' || boardCategory(o) === 'en_route');
     if (ready.length === 0) {
       await ctx.reply('❌ No orders ready for en route.');
     } else {
@@ -2855,7 +2924,7 @@ async function handleProdQuickAction(ctx: any, text: string, chatId: string): Pr
   const categoryMap: Record<string, BoardCategory> = {
     '⏳ Pending': 'pending_start',
     '🔧 In Progress': 'in_progress',
-    '📦 Ready': 'ready_for_delivery',
+    '🚚 Verify En Route': 'en_route_verification',
     '🚛 En Route': 'en_route',
   };
 
@@ -2913,7 +2982,7 @@ function boardDashboard(orders: BoardOrder[]): { text: string; keyboard: ReturnT
         Markup.button.callback(`? Pending Start (${counts.get('pending_start') ?? 0})`, 'prd:cat:pending_start'),
         Markup.button.callback(`?? In Progress (${counts.get('in_progress') ?? 0})`, 'prd:cat:in_progress'),
       ],
-      [Markup.button.callback(`? Ready for Delivery (${counts.get('ready_for_delivery') ?? 0})`, 'prd:cat:ready_for_delivery')],
+      [Markup.button.callback(`? En Route Verification (${counts.get('en_route_verification') ?? 0})`, 'prd:cat:en_route_verification')],
       [Markup.button.callback(`?? En Route (${counts.get('en_route') ?? 0})`, 'prd:cat:en_route')],
     ]),
   };
@@ -2934,7 +3003,7 @@ function boardOrderList(orders: BoardOrder[], category: BoardCategory): { text: 
     const total = o.items.length;
     const produced = o.items.filter((i) => i.production_status === 'finished').length;
     const routed = o.items.filter((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
-    const progress = category === 'ready_for_delivery' || category === 'en_route'
+    const progress = category === 'en_route_verification' || category === 'en_route'
       ? `${routed}/${total || 'no'} en route`
       : `${produced}/${total || 'no'} produced`;
     return `? *${o.quotation_number ?? o.id.slice(0, 8)}* ? ${o.client_name ?? 'Unknown'} (${progress})`;
@@ -2980,7 +3049,7 @@ function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<
   const rows: ReturnType<typeof Markup.button.callback>[][] = [];
   const orderPrefix = order.id.slice(0, 8);
 
-  if (category === 'ready_for_delivery' || category === 'en_route') {
+  if (category === 'en_route_verification' || category === 'en_route') {
     for (const item of order.items) {
       if (item.en_route_status === 'en_route' || item.en_route_status === 'arrived') continue;
       rows.push([
@@ -3002,7 +3071,7 @@ function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<
     }
   }
 
-  if (rows.length === 0 && category === 'ready_for_delivery') {
+  if (rows.length === 0 && category === 'en_route_verification') {
     rows.push([Markup.button.callback('?? All items are en route', 'noop')]);
   } else if (rows.length === 0 && category !== 'en_route') {
     rows.push([Markup.button.callback('? All production items finished', 'noop')]);
@@ -3060,7 +3129,7 @@ bot.action('prd:quick:produced', async (ctx) => {
 // prd:quick:en_route ? quick action — pick an order to mark as en route
 bot.action('prd:quick:en_route', async (ctx) => {
   const orders = await fetchBoard();
-  const ready = orders.filter((o) => boardCategory(o) === 'ready_for_delivery' || boardCategory(o) === 'en_route');
+  const ready = orders.filter((o) => boardCategory(o) === 'en_route_verification' || boardCategory(o) === 'en_route');
   if (ready.length === 0) {
     await ctx.answerCbQuery('? No orders ready for en route').catch(() => {});
     return;
@@ -3079,7 +3148,7 @@ bot.action('prd:quick:en_route', async (ctx) => {
 });
 
 // prd:cat:{category} ? show a section list
-bot.action(/^prd:cat:(pending_start|in_progress|ready_for_delivery|en_route)$/, async (ctx) => {
+bot.action(/^prd:cat:(pending_start|in_progress|en_route_verification|en_route)$/, async (ctx) => {
   const category = ctx.match[1] as BoardCategory;
   const orders = await fetchBoard();
   const { text, keyboard } = boardOrderList(orders, category);
@@ -3874,44 +3943,7 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
       await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber}` });
 
       // Immediately start item-level en route verification (don't wait for agent)
-      const totalQty = updatedItems.reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-      const enRouteQty = updatedItems
-        .filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived')
-        .reduce((sum: number, i: any) => sum + (i.quantity ?? 1), 0);
-      const enRoutePct = totalQty > 0 ? Math.round((enRouteQty / totalQty) * 100) : 0;
-      const enRouteCount = updatedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
-      const totalCount = updatedItems.length;
-
-      const notEnRouteItem = updatedItems.find((i: any) => i.en_route_status === 'not_yet');
-
-      if (!notEnRouteItem) {
-        // All items already en route (unlikely but possible if pre-marked)
-        const maxDays = Math.max(...updatedItems.map((i: any) => i.estimated_arrival_days ?? 28));
-        await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
-        await ctx.editMessageText(
-          `✅ *All Items Finished & En Route!*\n\nOrder #${quotationNumber}\nAll items completed and already en route (${enRoutePct}% of qty).\n\n📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check in the inventory group on the estimated arrival date.`,
-          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-        );
-      } else {
-        const progressBar = '█'.repeat(Math.round(enRoutePct / 10)) + '░'.repeat(10 - Math.round(enRoutePct / 10));
-
-        let msg = `✅ *All Items Produced!*\n\n`;
-        msg += `Order #${quotationNumber}\nAll production items are finished.\n\n`;
-        msg += `🚚 *Item-Level En Route*\n`;
-        msg += `En Route: ${enRoutePct}% of qty ${progressBar}\n`;
-        msg += `Items: ${enRouteCount}/${totalCount} en route\n\n`;
-        msg += `*Process of Elimination:*\n`;
-        msg += `Next item: *${notEnRouteItem.name}* x${notEnRouteItem.quantity}\n\n`;
-        msg += `Is *${notEnRouteItem.name}* en route yet?`;
-
-        await ctx.editMessageText(msg, {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback(`🚚 ${notEnRouteItem.name} — Yes, En Route`, `item_en_route:yes:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
-            [Markup.button.callback(`❌ ${notEnRouteItem.name} — Not Yet`, `item_en_route:no:${notEnRouteItem.id.slice(0, 8)}:${quotationNumber}`)],
-          ]),
-        });
-      }
+      await showItemLevelEnRoute(ctx, orderId, quotationNumber, updatedItems, true);
     } else if (!nextPendingItem) {
       // No more pending items to ask about
       if (skipSet.size > 0) {
@@ -4414,18 +4446,26 @@ bot.action(/^production:delivery_standard:(.+):(.+)$/, async (ctx) => {
       delivery_estimated_days: 28,
     });
     await logAction({ chatId, userId, username, label: 'Production Finished', quotationNumber, details: 'Delivery in: 28 days (standard)' });
-    // Now ask: Is the order en route?
-    setStep(chatId, { action: 'awaiting_en_route', orderId, quotationNumber });
-    await ctx.editMessageText(
-      `✅ *Delivery Timeline Set* — ${quotationNumber}\n\nProduction is finished. Estimated delivery availability: *4 weeks (28 days)*.\n\n🚚 Is the order en route to the client?`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${orderId.slice(0, 8)}:${quotationNumber}`)],
-          [Markup.button.callback('❌ Not yet', `en_route:no:${orderId.slice(0, 8)}:${quotationNumber}`)],
-        ]),
-      }
-    );
+
+    // For item-level orders, start per-item en route verification
+    const itemsRes = await fetch(`${apiBaseUrl}/orders/${orderId}/items`);
+    const itemsData = await itemsRes.json();
+    if (itemsData?.items?.length > 0) {
+      await showItemLevelEnRoute(ctx, orderId, quotationNumber, itemsData.items, true);
+    } else {
+      // Legacy order-level flow
+      setStep(chatId, { action: 'awaiting_en_route', orderId, quotationNumber });
+      await ctx.editMessageText(
+        `✅ *Delivery Timeline Set* — ${quotationNumber}\n\nProduction is finished. Estimated delivery availability: *4 weeks (28 days)*.\n\n🚚 Is the order en route to the client?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Yes, it\'s en route', `en_route:yes:${orderId.slice(0, 8)}:${quotationNumber}`)],
+            [Markup.button.callback('❌ Not yet', `en_route:no:${orderId.slice(0, 8)}:${quotationNumber}`)],
+          ]),
+        }
+      );
+    }
   } catch (err: any) {
     await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
   }

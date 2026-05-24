@@ -512,7 +512,7 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
       // Send notification to production group
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `✅ <b>All Items Production Finished</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) completed (${prodPct}%).\nOrder auto-advanced to 🚚 En Route.`;
+        const msg = `✅ <b>All Items Production Finished</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) completed (${prodPct}%).\nPlease verify en route status for each item.`;
         await sendTelegramMessage(groupChatId, msg);
       }
 
