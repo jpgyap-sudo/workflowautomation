@@ -9,7 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `pending` | Codex | fix: sync payment verification fields in orders list API | Not deployed yet |
+| `3b6a178` | Codex | fix: sync payment verification fields in orders list API | Not deployed yet |
 | `f24d0ad` | Codex | feat: show balance payment date and payment verification columns in orders table | ? VPS `3a3cf11` |
 | `3b7767e` | Codex | fix: split production workflow handoff from actual production start | ? VPS `bb32b09` |
 | `ee87c55` | Roo (Code) | fix: deposit sync failure — remove mandatory action_token from POST /deposits, add OTP modals to all deposit flows | ✅ VPS `ee87c55` |
