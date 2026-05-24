@@ -957,6 +957,7 @@ export interface InventoryExtractResult {
     description?: string;
     dimension?: string;
     quantity?: number;
+    category?: string;
   }>;
   raw_text: string;
   confidence: 'high' | 'medium' | 'low';

@@ -6,6 +6,10 @@
  * payment receipts, etc.
  */
 
+import {
+  CATEGORY_CLASSIFICATION_RULES,
+} from './furnitureCategories.js';
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.0-flash-001';
@@ -37,6 +41,7 @@ export interface ExtractedInventoryItem {
   description?: string;
   dimension?: string;
   quantity?: number;
+  category?: string;
 }
 
 export interface VisionExtractResult {
@@ -243,15 +248,17 @@ const QUOTATION_PROMPT = `You are a data extraction assistant. Analyze the image
   "sales_agent": "string or null — the sales agent or person who prepared the quotation",
   "total_amount": "number or null — the total amount in PHP (numeric only, no currency symbol)",
   "order_date": "string or null — the date on the quotation/order confirmation document in ISO 8601 format (YYYY-MM-DD)",
-  "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number }"
+  "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number, category: string }"
 }
+
+${CATEGORY_CLASSIFICATION_RULES}
 
 Rules:
 - Return ONLY valid JSON, no extra text.
 - If a field is not visible in the image, set it to null.
 - For total_amount, extract the numeric value only (e.g. 15000, not "₱15,000").
 - For order_date, look for any date printed on the document (issued date, quotation date, etc.) and format as YYYY-MM-DD.
-- For items, extract EVERY product/item listed in the quotation with its name and quantity. If quantity is not specified, default to 1.
+- For items, extract EVERY product/item listed in the quotation with its name, quantity, and category. If quantity is not specified, default to 1.
 - If no items are visible, set items to an empty array [].
 - Be as accurate as possible.`;
 
@@ -278,6 +285,7 @@ export async function extractQuotation(
       .map((item: any) => ({
         product_name: typeof item.product_name === 'string' ? item.product_name.trim() : undefined,
         quantity: typeof item.quantity === 'number' ? item.quantity : (typeof item.quantity === 'string' ? parseInt(item.quantity, 10) || 1 : 1),
+        category: typeof item.category === 'string' ? item.category.trim() : undefined,
       }));
     if (items.length === 0) items = undefined;
   }
@@ -375,8 +383,10 @@ If it's a QUOTATION or ORDER CONFIRMATION, return:
   "sales_agent": "string or null",
   "total_amount": "number or null",
   "order_date": "string or null — the date on the document in YYYY-MM-DD format",
-  "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number }"
+  "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number, category: string }"
 }
+
+${CATEGORY_CLASSIFICATION_RULES}
 
 If it's a PAYMENT RECEIPT or DEPOSIT SLIP, return:
 {
@@ -440,6 +450,7 @@ export async function autoExtract(
       .map((item: any) => ({
         product_name: typeof item.product_name === 'string' ? item.product_name.trim() : undefined,
         quantity: typeof item.quantity === 'number' ? item.quantity : (typeof item.quantity === 'string' ? parseInt(item.quantity, 10) || 1 : 1),
+        category: typeof item.category === 'string' ? item.category.trim() : undefined,
       }));
     if (items.length === 0) items = undefined;
   }
@@ -478,10 +489,13 @@ const INVENTORY_PROMPT = `You are a data extraction assistant. Analyze the image
       "product_name": "string - the product name or title",
       "description": "string - detailed description if available, otherwise null",
       "dimension": "string - size, dimensions, or specifications (e.g. '10x20x5 cm', 'Large', 'XL'). Capture any measurement info.",
-      "quantity": "number - quantity or stock count. Use 0 if out of stock, null if not visible."
+      "quantity": "number - quantity or stock count. Use 0 if out of stock, null if not visible.",
+      "category": "string - the furniture category"
     }
   ]
 }
+
+${CATEGORY_CLASSIFICATION_RULES}
 
 Rules:
 - Return ONLY valid JSON, no extra text.
@@ -515,6 +529,7 @@ export async function extractInventory(
       description: typeof item.description === 'string' ? item.description : undefined,
       dimension: typeof item.dimension === 'string' ? item.dimension : undefined,
       quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+      category: typeof item.category === 'string' ? item.category : undefined,
     }))
     .filter((item: ExtractedInventoryItem) => item.product_name || item.description || item.dimension || item.quantity !== undefined);
 

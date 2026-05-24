@@ -7020,9 +7020,9 @@ app.post('/inventory/bulk-upload', async (request, reply) => {
       const quantity = quantityRaw ? parseInt(quantityRaw.replace(/[^0-9]/g, ''), 10) : null;
 
       const draftRows = await query(
-        `INSERT INTO inventory_drafts (product_name, description, dimension, quantity, source_type, source_filename, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [productName, description ?? null, dimension ?? null, isNaN(quantity as number) ? null : quantity, 'csv', body.original_filename, 'pending']
+        `INSERT INTO inventory_drafts (product_name, description, dimension, category, quantity, source_type, source_filename, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [productName, description ?? null, dimension ?? null, null, isNaN(quantity as number) ? null : quantity, 'csv', body.original_filename, 'pending']
       );
       drafts.push(draftRows[0]);
     }
@@ -7034,12 +7034,13 @@ app.post('/inventory/bulk-upload', async (request, reply) => {
         for (const item of result.inventory) {
           if (!item.product_name && !item.description) continue;
           const draftRows = await query(
-            `INSERT INTO inventory_drafts (product_name, description, dimension, quantity, source_type, source_filename, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            `INSERT INTO inventory_drafts (product_name, description, dimension, category, quantity, source_type, source_filename, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
             [
               item.product_name ?? null,
               item.description ?? null,
               item.dimension ?? null,
+              item.category ?? null,
               item.quantity ?? null,
               mimeType.startsWith('image/') ? 'image' : 'pdf',
               body.original_filename,

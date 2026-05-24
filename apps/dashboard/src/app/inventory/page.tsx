@@ -51,6 +51,17 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
+const FURNITURE_CATEGORIES = [
+  'Sofa', 'Armchair', 'Lounge Chair', 'Accent Chair', 'Chaise Lounge',
+  'Bench', 'Ottoman & Pouf', 'Bar Stool', 'Dining Chair', 'Modular Seating',
+  'Collection Set', 'Coffee Table', 'Center Table', 'Side Table', 'Console Table',
+  'Dining Table', 'Sideboard', 'TV Cabinet', 'TV Stand', 'Night Stand',
+  'Bed', 'Bed Bench', 'Ceiling Fan', 'Table Lamp', 'Pendant Light',
+  'Ceiling Light', 'Floor Lamp', 'Wall Light', 'Rug', 'Throw Pillow',
+  'Decorative', 'Wall Panel', 'Sintered Stone', 'Natural Stone',
+  'Finish Material', 'Unknown',
+];
+
 type ModalView = 'none' | 'add' | 'bulk' | 'drafts';
 
 interface DraftEditState {
@@ -642,7 +653,8 @@ export default function InventoryPage() {
                           value={editForm.category}
                           onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
                           className="w-full rounded border border-gray-200 px-2 py-1 text-sm"
-                          placeholder="e.g. Raw Material"
+                          placeholder="e.g. Sofa, Dining Table"
+                          list="furniture-categories"
                         />
                       ) : item.category ? (
                         <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
@@ -764,8 +776,9 @@ export default function InventoryPage() {
                 <input
                   value={addForm.category}
                   onChange={(e) => setAddForm((f) => ({ ...f, category: e.target.value }))}
-                  placeholder="e.g. Raw Material, Finished Good, Packaging"
+                  placeholder="e.g. Sofa, Dining Table, Armchair"
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  list="furniture-categories"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1004,7 +1017,13 @@ export default function InventoryPage() {
                                   onChange={(e) => updateDraftField(draft.id, 'category', e.target.value)}
                                   className="w-full rounded border border-gray-200 px-2 py-1 text-sm"
                                   placeholder="Category"
+                                  list="furniture-categories"
                                 />
+                                <datalist id="furniture-categories">
+                                  {FURNITURE_CATEGORIES.map((cat) => (
+                                    <option key={cat} value={cat} />
+                                  ))}
+                                </datalist>
                               </td>
                               <td className="px-3 py-2">
                                 <input
