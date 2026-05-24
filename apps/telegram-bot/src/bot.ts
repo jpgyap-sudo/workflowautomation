@@ -3633,24 +3633,33 @@ bot.action(/^item_prod:(finished|in_progress|pending):([^:]+):(.+)$/, async (ctx
     );
 
     if (!unfinishedItem) {
-      // All items finished! Advance the order immediately
-      await postJson(`/orders/${orderId}/production-logs`, {
-        order_item_id: null,
-        note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
-        log_type: 'user',
-        created_by: username ?? `user_${userId}`,
-      });
+      // Check if user said "Not Yet" to all remaining items (skip set has items)
+      // If so, don't auto-advance — just acknowledge
+      if (skipSet.size > 0) {
+        await ctx.editMessageText(
+          `⏳ *All remaining items marked as not yet started.*\n\nOrder #${quotationNumber}\n${completion?.production_pct ?? 0}% complete.\n\nThe order will advance once items are finished.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } else {
+        // All items finished! Advance the order immediately
+        await postJson(`/orders/${orderId}/production-logs`, {
+          order_item_id: null,
+          note: `✅ All items production finished (${completion?.production_pct ?? 100}% complete). Auto-advancing to en_route.`,
+          log_type: 'user',
+          created_by: username ?? `user_${userId}`,
+        });
 
-      // Use standard 28-day delivery estimate (same default used by the production agent)
-      await postJson(`/orders/${orderId}/finish-production`, {
-        delivery_estimated_days: 28,
-      });
-      await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber} auto-advanced to en_route` });
+        // Use standard 28-day delivery estimate (same default used by the production agent)
+        await postJson(`/orders/${orderId}/finish-production`, {
+          delivery_estimated_days: 28,
+        });
+        await logAction({ chatId, userId, username, label: 'All Items Production Finished', details: `Order #${quotationNumber} auto-advanced to en_route` });
 
-      await ctx.editMessageText(
-        `✅ *All Items Production Finished!*\n\nOrder #${quotationNumber}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
+        await ctx.editMessageText(
+          `✅ *All Items Production Finished!*\n\nOrder #${quotationNumber}\nAll items completed (${completion?.production_pct ?? 100}%).\n\nOrder has been auto-advanced to 🚚 En Route.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      }
     } else {
       // ── Advance order to partial_production if any item is pending ──
       const hasPendingItem = items.some(
