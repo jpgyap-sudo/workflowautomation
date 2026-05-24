@@ -2536,6 +2536,25 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
     [id, body.item_id, `Inventory verification: ${item.name} — ${body.action} (verified ${newVerifiedQty}/${item.quantity})`]
   );
 
+  // Notify inventory group chat about manual verification
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    const actionLabel = body.action === 'all' ? 'All verified' : body.action === 'partial' ? `Partial (${newVerifiedQty}/${item.quantity})` : 'Not yet';
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `🔍 <b>Inventory Verified (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `Item: <b>${item.name}</b> x${item.quantity}\n` +
+        `Status: ${actionLabel}\n` +
+        `Progress: ${verificationPct}% verified`
+      );
+    });
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
 
@@ -2635,6 +2654,22 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n\n` +
         `Inventory verification has been completed via dashboard. Order is now in Inventory Arrived stage.`
+      );
+    });
+  }
+
+  // Notify inventory group chat
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `📦 <b>Inventory Verification Complete (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `All items have been verified via dashboard. Order moved to Inventory Arrived stage.`
       );
     });
   }
@@ -3085,6 +3120,20 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
           `SELECT complete_item_reminder($1, $2, 'item_level_en_route')`,
           [order_id, item_id]
         );
+        // Notify inventory group chat that an item has arrived
+        const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+        if (INVENTORY_GROUP_CHAT_ID) {
+          setImmediate(() => {
+            notifyGroupChat(
+              INVENTORY_GROUP_CHAT_ID,
+              `📦 <b>Item Arrived (Dashboard)</b>\n\n` +
+              `Quotation: <b>${orderRef}</b>\n` +
+              `Client: ${client}\n\n` +
+              `Item: <b>${updatedItem.name}</b> x${updatedItem.quantity}\n` +
+              `Status: Arrived at inventory`
+            );
+          });
+        }
       }
     }
   }
