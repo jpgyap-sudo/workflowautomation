@@ -1494,6 +1494,10 @@ bot.on(message('text'), async (ctx) => {
     const isProductionChat = PRODUCTION_CHAT_ID && chatId === PRODUCTION_CHAT_ID;
 
     if (isProductionChat) {
+      // Handle reply-keyboard quick actions first
+      const handled = await handleProdQuickAction(ctx, text, chatId);
+      if (handled) return;
+
       // Try AI production assistant first for keyword messages
       const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
       const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
@@ -2779,6 +2783,80 @@ function boardCategory(order: BoardOrder): BoardCategory {
 // ── Persistent control panel message ID (per chat) ──────────────────────
 const panelMessageIds = new Map<string, number>();
 
+function prodReplyKeyboard() {
+  return Markup.keyboard([
+    ['📊 Dashboard', '✅ Mark Produced', '🚚 Mark En Route'],
+    ['⏳ Pending', '🔧 In Progress', '📦 Ready', '🚛 En Route'],
+  ]).resize();
+}
+
+async function handleProdQuickAction(ctx: any, text: string, chatId: string): Promise<boolean> {
+  const trimmed = text.trim();
+
+  if (trimmed === '📊 Dashboard') {
+    await showOrUpdatePanel(ctx, chatId);
+    return true;
+  }
+
+  if (trimmed === '✅ Mark Produced') {
+    const orders = await fetchBoard();
+    const pending = orders.filter((o) => boardCategory(o) === 'in_progress' || boardCategory(o) === 'pending_start');
+    if (pending.length === 0) {
+      await ctx.reply('❌ No orders pending production.');
+    } else {
+      const buttons = pending.slice(0, 20).map((o) => [
+        Markup.button.callback(
+          `${o.quotation_number ?? o.id.slice(0, 8)} 🔨 ${o.client_name ?? '?'}`.slice(0, 58),
+          `prd:o:${o.id.slice(0, 8)}`,
+        ),
+      ]);
+      buttons.push([Markup.button.callback('🔙 Back to Dashboard', 'prd:list')]);
+      await ctx.reply('🔨 *Mark Produced*\n\nSelect an order to view and mark items as produced:', {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons),
+      });
+    }
+    return true;
+  }
+
+  if (trimmed === '🚚 Mark En Route') {
+    const orders = await fetchBoard();
+    const ready = orders.filter((o) => boardCategory(o) === 'ready_for_delivery' || boardCategory(o) === 'en_route');
+    if (ready.length === 0) {
+      await ctx.reply('❌ No orders ready for en route.');
+    } else {
+      const buttons = ready.slice(0, 20).map((o) => [
+        Markup.button.callback(
+          `${o.quotation_number ?? o.id.slice(0, 8)} 🚚 ${o.client_name ?? '?'}`.slice(0, 58),
+          `prd:o:${o.id.slice(0, 8)}`,
+        ),
+      ]);
+      buttons.push([Markup.button.callback('🔙 Back to Dashboard', 'prd:list')]);
+      await ctx.reply('🚚 *Mark En Route*\n\nSelect an order to view and mark items as en route:', {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons),
+      });
+    }
+    return true;
+  }
+
+  const categoryMap: Record<string, BoardCategory> = {
+    '⏳ Pending': 'pending_start',
+    '🔧 In Progress': 'in_progress',
+    '📦 Ready': 'ready_for_delivery',
+    '🚛 En Route': 'en_route',
+  };
+
+  if (categoryMap[trimmed]) {
+    const orders = await fetchBoard();
+    const { text: catText, keyboard } = boardOrderList(orders, categoryMap[trimmed]);
+    await ctx.reply(catText, { parse_mode: 'Markdown', ...keyboard });
+    return true;
+  }
+
+  return false;
+}
+
 async function showOrUpdatePanel(ctx: any, chatId: string): Promise<void> {
   try {
     const orders = await fetchBoard();
@@ -2924,16 +3002,19 @@ function boardItemView(order: BoardOrder): { text: string; keyboard: ReturnType<
   return { text, keyboard: Markup.inlineKeyboard(rows) };
 }
 
-// /prod command ? show production dashboard
+// /prod command ? show production dashboard + quick-actions keyboard
 bot.command('prod', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   await showOrUpdatePanel(ctx, chatId);
+  // Ensure the persistent quick-actions reply keyboard is shown
+  await ctx.reply('⌨️ Quick actions:', { ...prodReplyKeyboard() }).catch(() => {});
 });
 
 // Also allow /production as alias
 bot.command('production', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   await showOrUpdatePanel(ctx, chatId);
+  await ctx.reply('⌨️ Quick actions:', { ...prodReplyKeyboard() }).catch(() => {});
 });
 
 // prd:list ? refresh/back to production dashboard
@@ -5673,6 +5754,21 @@ bot.action('vision:extract_yes', async (ctx) => {
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
+
+    // If the user has a linked order, also save the file to the order's file viewer
+    // so it appears in the dashboard's file viewer across all tabs.
+    if (session.linkedOrder) {
+      uploadFileAndRecord({
+        chatId,
+        imageBase64,
+        mimeType,
+        fileName,
+        quotationNumber: session.linkedOrder,
+        telegramMessageId: String(ctx.message?.message_id ?? ''),
+        uploadedBy: from,
+        fileType: 'quotation',
+      }).catch((err: any) => console.error('[vision] Failed to save file to order:', err));
+    }
 
     // Log successful extraction
     botLog({
