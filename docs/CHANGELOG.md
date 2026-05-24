@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `a871000` | Roo (Code) | feat: replace Production Finished Actions column with notes input — users can add/view notes per order | ✅ VPS `a871000` |
 | `7166d8c` | Roo (Code) | deploy: Codex features — inventory accountability, item production dates, early inventory verification, production finished tracking | ✅ VPS `7166d8c` |
 | `7c77bca` | Codex | feat: add item-level inventory verification accountability | ✅ VPS `7166d8c` |
 | `188f941` | Codex | feat: add early-arrival proceed to inventory verification action | ✅ VPS `7166d8c` |
