@@ -5675,7 +5675,11 @@ bot.action('vision:process_no', async (ctx) => {
 
 // Step 2: User said Yes to extract → call Gemini Vision, share to dashboard
 bot.action('vision:extract_yes', async (ctx) => {
-  await ctx.answerCbQuery('🤖 Analyzing...');
+  try {
+    await ctx.answerCbQuery('🤖 Analyzing...');
+  } catch {
+    // Callback query may have expired — non-critical, continue processing
+  }
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
   const userId = String(ctx.from?.id ?? '');
@@ -6754,7 +6758,11 @@ bot.action('vision:ignore', async (ctx) => {
 
 // Retry extraction after a vision API failure
 bot.action('vision:retry_extract', async (ctx) => {
-  await ctx.answerCbQuery('🤖 Retrying...');
+  try {
+    await ctx.answerCbQuery('🤖 Retrying...');
+  } catch {
+    // Callback query may have expired — non-critical, continue processing
+  }
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
   const userId = String(ctx.from?.id ?? '');
