@@ -9,6 +9,12 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `57c7dba` | Roo (Code) | docs: mark production auto-finish deployed | ✅ VPS `57c7dba` |
+| `ff25dee` | Roo (Code) | fix: refine item production Telegram prompts | ✅ VPS `57c7dba` |
+| `3a2263b` | Roo (Code) | fix: auto-finish completed item production | ✅ VPS `57c7dba` |
+| `6ef6d10` | Claude Sonnet 4.6 | fix: partial-production dashboard endpoint missing partial_production stage orders | ✅ VPS `57c7dba` |
+| `9a68b00` | Claude Sonnet 4.6 | fix: purchasing_pending orders never got Telegram notification to start production workflow | ✅ VPS `57c7dba` |
+| `c5fb6fb` | Claude Sonnet 4.6 | fix: deploy-agent — delegate container management to deploy.sh --skip-pull to avoid Docker Compose v1 [yN] hang | ✅ VPS `57c7dba` |
 | `a5909bc` | Roo (Code) | fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production status on purchasing page + stage advancement on order detail page — Telegram-independent dashboard progression | ✅ VPS `a5909bc` |
 | `3b6a178` | Codex | fix: sync payment verification fields in orders list API | ? VPS `e9c72b5` |
 | `f24d0ad` | Codex | feat: show balance payment date and payment verification columns in orders table | ? VPS `3a3cf11` |
