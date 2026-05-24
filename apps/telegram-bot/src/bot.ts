@@ -5782,10 +5782,17 @@ bot.action('vision:extract_yes', async (ctx) => {
   const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_vision_extract') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the file again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the file again to restart the AI extraction process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { imageBase64, mimeType, fileName } = session.step;
@@ -6283,10 +6290,17 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
   const quotationNumber = ctx.match[1];
 
   if (session.step.action !== 'awaiting_deposit_confirmation') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the deposit slip again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the deposit slip photo again to restart the process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { depositAmount, imageBase64, mimeType, fileName, paymentDate } = session.step;
@@ -6401,10 +6415,17 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
   const quotationNumber = ctx.match[1];
 
   if (session.step.action !== 'awaiting_deposit_confirmation') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the payment slip again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the payment slip photo again to restart the process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { depositAmount, imageBase64, mimeType, fileName } = session.step;
@@ -6500,10 +6521,17 @@ bot.action('deposit:confirm_no', async (ctx) => {
   const username = ctx.from?.username;
 
   if (session.step.action !== 'awaiting_deposit_confirmation') {
-    return ctx.editMessageText('⏳ This session has expired. Please upload the deposit slip again.', {
-      parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
-    });
+    return ctx.editMessageText(
+      '⏳ *Session Expired*\n\n' +
+      'The previous session was lost, possibly due to a bot restart.\n\n' +
+      '📤 Please send the deposit slip photo again to restart the process.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+        ]),
+      }
+    );
   }
 
   const { imageBase64, mimeType, fileName, depositAmount } = session.step;
