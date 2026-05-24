@@ -232,13 +232,23 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleDepositSubmit() {
+  // Deposit OTP state
+  const [depositOtpOpen, setDepositOtpOpen] = useState(false);
+
+  function handleDepositSubmit() {
     if (!depositOrder) return;
     const parsed = parseFloat(depositAmount);
     if (isNaN(parsed) || parsed <= 0) {
       setDepositResult({ ok: false, message: 'Enter a valid amount.' });
       return;
     }
+    // Open OTP modal to verify action before recording deposit
+    setDepositOtpOpen(true);
+  }
+
+  async function handleDepositVerified(actionToken: string) {
+    if (!depositOrder) return;
+    const parsed = parseFloat(depositAmount);
     setDepositRecording(true);
     setDepositResult(null);
     try {
@@ -257,6 +267,7 @@ export default function OrdersPage() {
         image_base64: imageBase64,
         mime_type: mimeType,
         original_filename: originalFilename,
+        action_token: actionToken,
       });
       setDepositResult({ ok: true, message: `✅ Deposit of ₱${parsed.toLocaleString()} recorded!` });
       setTimeout(() => {
@@ -625,6 +636,18 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
+
+      {/* Deposit OTP Modal */}
+      <OtpModal
+        open={depositOtpOpen}
+        title="Verify Deposit Recording"
+        description={depositOrder ? `You are about to record a downpayment of ₱${parseFloat(depositAmount || '0').toLocaleString()} for order "${depositOrder.quotation_number ?? '—'}". Enter the code sent to your Telegram or email to confirm.` : ''}
+        onVerified={(token) => {
+          setDepositOtpOpen(false);
+          handleDepositVerified(token);
+        }}
+        onClose={() => setDepositOtpOpen(false)}
+      />
     </div>
   );
 }

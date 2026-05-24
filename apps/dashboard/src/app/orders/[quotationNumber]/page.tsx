@@ -1461,6 +1461,7 @@ function DepositUploadSection({
   const [recording, setRecording] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [showOtp, setShowOtp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function fileToBase64(f: File): Promise<string> {
@@ -1503,7 +1504,7 @@ function DepositUploadSection({
     }
   }
 
-  async function handleRecordDeposit() {
+  function handleRecordDepositClick() {
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setResult({ ok: false, message: 'Please enter a valid deposit amount.' });
@@ -1511,6 +1512,16 @@ function DepositUploadSection({
     }
     if (!quotationNumber) {
       setResult({ ok: false, message: 'This order has no quotation number.' });
+      return;
+    }
+    // Open OTP modal to verify action before recording deposit
+    setShowOtp(true);
+  }
+
+  async function handleRecordDepositWithToken(actionToken: string) {
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setResult({ ok: false, message: 'Please enter a valid deposit amount.' });
       return;
     }
 
@@ -1535,6 +1546,7 @@ function DepositUploadSection({
         image_base64: imageBase64,
         mime_type: mimeType,
         original_filename: originalFilename,
+        action_token: actionToken,
       });
 
       setResult({ ok: true, message: `✅ Deposit of ₱${parsedAmount.toLocaleString()} recorded successfully!` });
@@ -1547,80 +1559,94 @@ function DepositUploadSection({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
-      <p className="text-xs font-semibold text-blue-800">📥 Record Downpayment</p>
+    <>
+      <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <p className="text-xs font-semibold text-blue-800">📥 Record Downpayment</p>
 
-      {/* File upload */}
-      <div>
-        <label className="text-xs font-medium text-blue-700">Deposit Slip (JPEG/PDF) — optional</label>
-        <div className="mt-1 flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-blue-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-blue-700 hover:file:bg-blue-200"
-          />
-          {file && (
-            <button
-              onClick={handleExtractWithAI}
-              disabled={extracting}
-              className="flex items-center gap-1 rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-50"
-            >
-              {extracting ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <SparklesIcon className="h-3 w-3" />
-              )}
-              AI Extract
-            </button>
-          )}
+        {/* File upload */}
+        <div>
+          <label className="text-xs font-medium text-blue-700">Deposit Slip (JPEG/PDF) — optional</label>
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-blue-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-blue-700 hover:file:bg-blue-200"
+            />
+            {file && (
+              <button
+                onClick={handleExtractWithAI}
+                disabled={extracting}
+                className="flex items-center gap-1 rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-50"
+              >
+                {extracting ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <SparklesIcon className="h-3 w-3" />
+                )}
+                AI Extract
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Amount */}
-      <div>
-        <label className="text-xs font-medium text-blue-700">Amount (₱)</label>
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="e.g. 5000"
-          className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-        />
-      </div>
+        {/* Amount */}
+        <div>
+          <label className="text-xs font-medium text-blue-700">Amount (₱)</label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="e.g. 5000"
+            className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
 
-      {/* Payment date */}
-      <div>
-        <label className="text-xs font-medium text-blue-700">Payment Date (optional)</label>
-        <input
-          type="date"
-          value={paymentDate}
-          onChange={(e) => setPaymentDate(e.target.value)}
-          className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-        />
-      </div>
+        {/* Payment date */}
+        <div>
+          <label className="text-xs font-medium text-blue-700">Payment Date (optional)</label>
+          <input
+            type="date"
+            value={paymentDate}
+            onChange={(e) => setPaymentDate(e.target.value)}
+            className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
 
-      {/* Submit */}
-      <button
-        onClick={handleRecordDeposit}
-        disabled={recording || !amount}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
-      >
-        {recording ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Upload className="h-4 w-4" />
+        {/* Submit */}
+        <button
+          onClick={handleRecordDepositClick}
+          disabled={recording || !amount}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+        >
+          {recording ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          {recording ? 'Recording...' : 'Record Deposit'}
+        </button>
+
+        {/* Result message */}
+        {result && (
+          <p className={`text-xs font-medium ${result.ok ? 'text-green-700' : 'text-red-600'}`}>
+            {result.message}
+          </p>
         )}
-        {recording ? 'Recording...' : 'Record Deposit'}
-      </button>
+      </div>
 
-      {/* Result message */}
-      {result && (
-        <p className={`text-xs font-medium ${result.ok ? 'text-green-700' : 'text-red-600'}`}>
-          {result.message}
-        </p>
-      )}
-    </div>
+      {/* OTP Modal for deposit action verification */}
+      <OtpModal
+        open={showOtp}
+        title="Verify Deposit Recording"
+        description={`You are about to record a downpayment of ₱${parseFloat(amount || '0').toLocaleString()} for order "${quotationNumber}". Enter the code sent to your Telegram or email to confirm.`}
+        onVerified={(token) => {
+          setShowOtp(false);
+          handleRecordDepositWithToken(token);
+        }}
+        onClose={() => setShowOtp(false)}
+      />
+    </>
   );
 }

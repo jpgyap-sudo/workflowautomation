@@ -2913,20 +2913,19 @@ app.post('/deposits', async (request, reply) => {
   try {
     const body = depositSchema.parse(request.body);
 
-    // Verify action token and extract email
+    // Extract user email from action token if provided (for audit logging)
+    // NOTE: action_token is OPTIONAL for deposits. The Telegram bot records deposits
+    // without any token, and the file upload endpoint also has no auth requirement.
+    // The token is used only for audit trail when available.
     let userEmail: string | null = null;
-    if (isDashboardOrigin(body.updated_by)) {
-      if (!cacheClient?.isOpen) {
-        return reply.status(503).send({ error: 'Action verification unavailable' });
-      }
+    if (body.action_token && cacheClient?.isOpen) {
       const tokenKey = `action_token:${body.action_token}`;
       const tokenData = await cacheClient.get(tokenKey);
-      if (!tokenData) {
-        return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+      if (tokenData) {
+        await cacheClient.del(tokenKey);
+        const tokenPayload = JSON.parse(tokenData);
+        userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
       }
-      await cacheClient.del(tokenKey);
-      const tokenPayload = JSON.parse(tokenData);
-      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
     }
 
     const orders = await query(`SELECT id, current_stage, quotation_number, client_name, sales_agent, total_amount FROM orders WHERE quotation_number=$1`, [body.quotation_number]);

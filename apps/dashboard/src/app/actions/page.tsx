@@ -152,6 +152,7 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
         image_base64: imageBase64,
         mime_type: file?.type,
         original_filename: file?.name,
+        action_token: actionToken,
       });
 
       onResult({

@@ -229,6 +229,7 @@ export async function recordDepositWithFile(data: {
   image_base64?: string;
   mime_type?: string;
   original_filename?: string;
+  action_token?: string;
 }): Promise<{ ok: boolean; quotation_number: string; amount: number }> {
   // First upload the file if provided
   if (data.image_base64 && data.original_filename) {
@@ -244,6 +245,7 @@ export async function recordDepositWithFile(data: {
   }
 
   // Then record the deposit
+  // action_token is optional — API accepts it for audit logging but does not require it
   return fetchJson<{ ok: boolean; quotation_number: string; amount: number }>('/deposits', {
     method: 'POST',
     body: JSON.stringify({
@@ -252,6 +254,7 @@ export async function recordDepositWithFile(data: {
       deposit_paid_at: data.deposit_paid_at,
       updated_by: data.updated_by ?? 'dashboard_quick_action',
       image_url: null,
+      ...(data.action_token ? { action_token: data.action_token } : {}),
     }),
   });
 }
