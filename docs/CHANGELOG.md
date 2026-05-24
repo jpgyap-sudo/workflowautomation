@@ -9,7 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `f66eea3` | Codex | feat: track and display item production finished dates | Pending deploy |
+| $new | Codex | feat: track and display item production finished dates | ✅ VPS $new |
 | `57c7dba` | Roo (Code) | docs: mark production auto-finish deployed | âœ… VPS `57c7dba` |
 | `ff25dee` | Roo (Code) | fix: refine item production Telegram prompts | âœ… VPS `57c7dba` |
 | `3a2263b` | Roo (Code) | fix: auto-finish completed item production | âœ… VPS `57c7dba` |
