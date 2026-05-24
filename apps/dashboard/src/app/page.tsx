@@ -32,6 +32,8 @@ const STAGE_COLORS: Record<string, string> = {
   production_pending: '#eab308',
   production_confirmed: '#6366f1',
   deposit_pending: '#ec4899',
+  en_route: '#0ea5e9',
+  en_route_verification: '#3b82f6',
   inventory_arrived: '#06b6d4',
   balance_due: '#8b5cf6',
   delivery_scheduled: '#a855f7',
