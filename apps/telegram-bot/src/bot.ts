@@ -5433,6 +5433,80 @@ bot.action(/^reminder:item_en_route:(en_route|arrived|not_yet):([^:]*):([^:]+):(
   }
 });
 
+// Item-level inventory arrival reminder: user clicked a button
+bot.action(/^reminder:item_inventory:(arrived|en_route|not_yet):([^:]*):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const newStatus = ctx.match[1];
+  const itemId = ctx.match[2];
+  const orderIdPrefix = ctx.match[3];
+  const quotationNumber = ctx.match[4];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'callback_query',
+    content: `reminder:item_inventory:${newStatus}:${itemId}:${orderIdPrefix}:${quotationNumber}`,
+    direction: 'incoming',
+  });
+
+  try {
+    if (!itemId) {
+      await ctx.editMessageText('❌ Cannot update: item ID is missing.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Resolve full order UUID from quotation number
+    let orderId: string;
+    try {
+      const orderData = await getOrderByQuotation(quotationNumber);
+      orderId = orderData.id;
+    } catch (_) {
+      await ctx.editMessageText(`❌ Error: Could not resolve order from quotation #${quotationNumber}.`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Update the item's en_route_status via API
+    await postJson(`/orders/${orderId}/items/${itemId}`, {
+      en_route_status: newStatus,
+    });
+
+    // Add a production update log
+    const statusLabels: Record<string, string> = {
+      arrived: '📦 Arrived at Inventory (from reminder)',
+      en_route: '🚚 En Route to Inventory (from reminder)',
+      not_yet: '⏳ Not Yet Arrived (from reminder)',
+    };
+    await postJson(`/orders/${orderId}/production-logs`, {
+      order_item_id: itemId,
+      note: `Item inventory arrival status updated via reminder to: ${statusLabels[newStatus]}`,
+      log_type: 'user',
+      created_by: username ?? `user_${userId}`,
+    });
+
+    if (newStatus === 'arrived') {
+      await logAction({ chatId, userId, username, label: 'Item Arrived at Inventory (Reminder)', details: `Order #${orderId.slice(0, 8)} item ${itemId}` });
+      await ctx.editMessageText(
+        `📦 *Item Inventory Updated via Reminder*\n\nItem marked as *Arrived* at inventory.\nThe reminder for this item has been completed.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else if (newStatus === 'en_route') {
+      await ctx.editMessageText(
+        `🚚 *Item Inventory Updated via Reminder*\n\nItem marked as *En Route*.\nThe reminder will continue until the item arrives at inventory.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } else {
+      await ctx.editMessageText(
+        `⏳ *Item Inventory Updated via Reminder*\n\nItem still marked as *Not Yet* arrived.\nThe reminder will continue until the item arrives at inventory.`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    }
+  } catch (err: any) {
+    const safeMsg = err.message.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+    await ctx.reply(`❌ Error updating item from reminder: ${safeMsg}`, { parse_mode: 'MarkdownV2', ...cancelButton() });
+  }
+});
+
 // ── Balance Payment Callback Handlers ────────────────────────────────
 
 // User confirmed client paid the balance → ask for proof of payment photo
