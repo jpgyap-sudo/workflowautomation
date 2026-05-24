@@ -5764,8 +5764,7 @@ bot.action('vision:extract_yes', async (ctx) => {
         mimeType,
         fileName,
         quotationNumber: session.linkedOrder,
-        telegramMessageId: String(ctx.message?.message_id ?? ''),
-        uploadedBy: from,
+        uploadedBy: username ?? userId,
         fileType: 'quotation',
       }).catch((err: any) => console.error('[vision] Failed to save file to order:', err));
     }
@@ -6834,6 +6833,19 @@ bot.action('vision:retry_extract', async (ctx) => {
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
+
+    // If the user has a linked order, also save the file to the order's file viewer
+    if (session.linkedOrder) {
+      uploadFileAndRecord({
+        chatId,
+        imageBase64,
+        mimeType,
+        fileName,
+        quotationNumber: session.linkedOrder,
+        uploadedBy: username ?? userId,
+        fileType: 'quotation',
+      }).catch((err: any) => console.error('[vision:retry] Failed to save file to order:', err));
+    }
 
     // Log successful retry extraction
     botLog({
