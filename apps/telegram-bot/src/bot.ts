@@ -5741,6 +5741,8 @@ bot.action(/^delivery:delayed:(.+):(.+)$/, async (ctx) => {
 bot.action('vision:type_quotation', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  console.log(`[vision:type_quotation] START chat=${chatId} user=${userId} session=${session.step.action}`);
 
   if (session.step.action !== 'awaiting_vision_document_type') {
     return ctx.editMessageText(
@@ -5784,6 +5786,8 @@ bot.action('vision:type_quotation', async (ctx) => {
 bot.action('vision:type_deposit', async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  console.log(`[vision:type_deposit] START chat=${chatId} user=${userId} session=${session.step.action}`);
 
   if (session.step.action !== 'awaiting_vision_document_type') {
     return ctx.editMessageText(
@@ -7214,6 +7218,7 @@ bot.on(['document', 'photo'], async (ctx) => {
   const from = ctx.from?.username ?? String(ctx.from?.id);
   const userId = String(ctx.from?.id ?? '');
   const session = getSession(chatId);
+  console.log(`[photo-handler] START chat=${chatId} user=${userId} session=${session.step.action} owner=${session.ownerUserId}`);
 
   // Determine file info using type-safe narrowing
   let fileId: string;
@@ -7260,7 +7265,9 @@ bot.on(['document', 'photo'], async (ctx) => {
     if (!response.ok) throw new Error(`Telegram download failed: ${response.status}`);
     const fileBuffer = Buffer.from(await response.arrayBuffer());
     imageBase64 = fileBuffer.toString('base64');
+    console.log(`[photo-handler] DOWNLOADED chat=${chatId} file=${fileName} size=${fileBuffer.length} session=${session.step.action}`);
 
+    console.log(`[photo-handler] CHECK-FLOWS chat=${chatId} session=${session.step.action}`);
     // Check if user is in balance proof photo flow
     if (session.step.action === 'awaiting_balance_proof_photo') {
       const { orderId, quotationNumber } = session.step;
@@ -7656,7 +7663,7 @@ What type of document is this?`,
       );
     }
   } catch (error: any) {
-    console.error('Upload error:', error);
+    console.error(`[photo-handler] ERROR chat=${chatId} file=${fileName} error=${error.message}`);
     // Log the failure
     botLog({
       chatId, userId, username: from,

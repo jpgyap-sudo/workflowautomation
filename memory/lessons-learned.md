@@ -8031,3 +8031,63 @@ Telegram bot enters infinite loop when user clicks 'Not Yet' on an already-not_y
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: wire en_route_verification stage end-to-end + fix workflow gaps
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 48039275a6ec05d1af77384342a169834c0063d5
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 48039275a6ec05d1af77384342a169834c0063d5
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+The `en_route_verification` stage was not wired end-to-end in the workflow, causing it to be skipped or misaligned with subsequent stages. Workflow gaps (missing transitions or data handoffs) were also corrected.
+
+**Why it broke:**  
+The stage was defined in isolation but lacked proper integration into the workflow pipeline. Transition logic between stages was incomplete, and data dependencies (e.g., verification results not passed to next stage) were not accounted for.
+
+**Reusable takeaway:**  
+When adding a new stage to a workflow, ensure it is fully wired end-to-end:  
+- Define explicit input/output contracts with adjacent stages.  
+- Verify all transitions (success, failure, retry) are implemented.  
+- Test the full pipeline, not just the stage in isolation.  
+
+**Root cause:**  
+Incomplete integration of a new stage into an existing workflow due to missing transition logic and data handoffs.
+
+---
+*Original commit message: fix: wire en_route_verification stage end-to-end + fix workflow gaps*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `en_route_verification` stage was not wired end-to-end in the workflow, causing it to be skipped or misaligned with subsequent stages. Workflow gaps (missing transitions or data handoffs) were also corrected.
+
+**Why it broke:**  
+The stage was defined in isolation but lacked proper integration into the workflow pipeline. Transition logic between stages was incomplete, and data dependencies (e.g., verification results not passed to next stage) were not accounted for.
+
+**Reusable takeaway:**  
+When adding a new stage to a workflow, ensure it is fully wired end-to-end:  
+- Define explicit input/output contracts with adjacent stages.  
+- Verify all transitions (success, failure, retry) are implemented.  
+- Test the full pipeline, not just the stage in isolation.  
+
+**Root cause:**  
+Incomplete integration of a new stage into an existing workflow due to missing transition logic and data handoffs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
