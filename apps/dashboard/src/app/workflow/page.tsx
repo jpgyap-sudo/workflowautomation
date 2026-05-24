@@ -70,11 +70,10 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     color: 'border-indigo-200 bg-indigo-50',
     headingColor: 'text-indigo-700',
     description: 'Hermes Claw â€” adaptive-frequency reminders that tighten as production deadlines approach (daily â†’ 12h â†’ 4h â†’ 2h)',
-    monitors: ['production_confirmed', 'en_route', 'en_route_verification', 'partial_production'],
+    monitors: ['production_confirmed', 'en_route', 'partial_production'],
     triggers: [
       { from: 'production_confirmed', to: 'en_route', condition: 'Production finished via /finish-production' },
-      { from: 'en_route', to: 'en_route_verification', condition: 'En route confirmed with arrival days' },
-      { from: 'en_route_verification', to: 'inventory_verification', condition: 'All items verified as en route' },
+      { from: 'en_route', to: 'inventory_verification', condition: 'All items arrived (production agent auto-advance)' },
     ],
     notificationGroup: 'Production',
   },
@@ -125,7 +124,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     color: 'border-rose-200 bg-rose-50',
     headingColor: 'text-rose-700',
     description: 'Escalates stale orders that have not progressed',
-    monitors: ['purchasing_pending', 'production_pending', 'production_confirmed', 'en_route', 'en_route_verification', 'deposit_pending', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'countered'],
+    monitors: ['purchasing_pending', 'production_pending', 'production_confirmed', 'en_route', 'deposit_pending', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'countered'],
     triggers: [
       { from: '*', to: '*', condition: 'Escalation level increases per missed reminder' },
     ],
@@ -219,14 +218,6 @@ const STAGE_INFO: Record<string, StageInfo> = {
     exitCondition: 'En route confirmed with estimated arrival days',
     triggeredBy: 'Telegram Bot / Team',
     responsibleParty: 'Purchasing Team',
-    autoAdvance: false,
-  },
-  en_route_verification: {
-    stage: 'en_route_verification',
-    entryAction: 'En route confirmed — bot verifies each item is dispatched',
-    exitCondition: 'All items verified as en route → advances to inventory verification',
-    triggeredBy: 'Production Agent / Team',
-    responsibleParty: 'Production Team',
     autoAdvance: false,
   },
   deposit_pending: {
