@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, type OrderItem, type ItemCompletion, type ProductionUpdateLog } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, verifyPayment, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
@@ -29,6 +29,9 @@ export default function OrderDetailPage() {
   const [showVerifyDepositOtp, setShowVerifyDepositOtp] = useState(false);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [verifyDepositResult, setVerifyDepositResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentTotals, setPaymentTotals] = useState<{ deposit: number; balance: number; expected_balance: number | null; remaining_balance: number | null } | null>(null);
+
   const [showStageAdvanceOtp, setShowStageAdvanceOtp] = useState(false);
   const [targetAdvanceStage, setTargetAdvanceStage] = useState<string | null>(null);
   const [advancingStage, setAdvancingStage] = useState(false);
@@ -101,6 +104,21 @@ export default function OrderDetailPage() {
   }
 
   if (!order) return null;
+
+  // Fetch payment history
+  useEffect(() => {
+    let cancelled = false;
+    getOrderPayments(order.id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          setPayments(res.payments);
+          setPaymentTotals(res.totals);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [order.id]);
 
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
   const escalation = order.escalation_level ?? 0;
@@ -291,48 +309,78 @@ export default function OrderDetailPage() {
 
       {/* Downpayment status */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-          <CreditCard className="h-4 w-4" />
-          Downpayment
-        </div>
-        <div className="mt-2 flex items-center gap-3">
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              order.deposit_paid
-                ? 'bg-green-100 text-green-700'
-                : 'bg-yellow-100 text-yellow-700'
-            }`}
-          >
-            {order.deposit_paid ? '✅ Paid' : '⏳ Pending'}
-          </span>
-          {order.deposit_amount != null && (
-            <span className="text-sm text-gray-600">
-              Amount: ₱{Number(order.deposit_amount).toLocaleString()}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+            <CreditCard className="h-4 w-4" />
+            Downpayment
+          </div>
+          {paymentTotals && paymentTotals.expected_balance != null && (
+            <span className="text-xs text-gray-400">
+              {paymentTotals.deposit > 0 ? `₱${paymentTotals.deposit.toLocaleString()} recorded` : 'No deposits yet'}
             </span>
           )}
-          {order.deposit_image_url && (
-            <a
-              href={order.deposit_image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-[#2490ef] hover:underline"
-            >
-              View Deposit Slip
-            </a>
-          )}
         </div>
-        {!order.deposit_paid && (
-          <div className="mt-3">
-            <p className="mb-2 text-xs text-amber-600">
-              Downpayment required before production can proceed. Record it here or via Telegram.
-            </p>
-            <DepositUploadSection
-              quotationNumber={order.quotation_number ?? ''}
-              orderId={order.id}
-              onDepositRecorded={() => window.location.reload()}
-            />
+
+        {/* Payment history */}
+        {payments.filter((p) => p.type === 'deposit').length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {payments
+              .filter((p) => p.type === 'deposit')
+              .map((payment) => (
+                <div
+                  key={payment.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800">
+                        ₱{Number(payment.amount).toLocaleString()}
+                      </span>
+                      {payment.verified ? (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                          ✅ Verified
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          ⏳ Pending verification
+                        </span>
+                      )}
+                    </div>
+                    {payment.payment_date && (
+                      <p className="text-xs text-gray-400">
+                        {new Date(payment.payment_date).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                  {payment.image_url && (
+                    <a
+                      href={payment.image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-2 text-xs text-[#2490ef] hover:underline"
+                    >
+                      View slip
+                    </a>
+                  )}
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="mt-2">
+            <span className="text-sm text-gray-400">No deposit payments recorded yet.</span>
           </div>
         )}
+
+        {/* Deposit upload — always available for additional deposits */}
+        <div className="mt-3">
+          <DepositUploadSection
+            quotationNumber={order.quotation_number ?? ''}
+            orderId={order.id}
+            onDepositRecorded={() => window.location.reload()}
+          />
+        </div>
+
+        {/* Verification banner */}
         {order.deposit_paid && !order.deposit_verified && (
           <div className="mt-3 space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-4">
             <div className="flex items-center gap-2">
@@ -340,7 +388,7 @@ export default function OrderDetailPage() {
               <p className="text-xs font-semibold text-rose-800">Deposit Verification Required</p>
             </div>
             <p className="text-xs text-rose-700">
-              The downpayment has been recorded but not yet verified. Verify it to advance to purchasing.
+              Deposits have been recorded but not yet verified. Verify them to advance to purchasing.
             </p>
             {verifyDepositResult ? (
               <p className={`text-xs font-medium ${verifyDepositResult.ok ? 'text-green-700' : 'text-red-600'}`}>
@@ -357,7 +405,7 @@ export default function OrderDetailPage() {
                 ) : (
                   <CheckCircle className="h-3 w-3" />
                 )}
-                {verifyingDeposit ? 'Verifying...' : 'Verify Deposit'}
+                {verifyingDeposit ? 'Verifying...' : 'Verify All Deposits'}
               </button>
             )}
           </div>
@@ -366,39 +414,84 @@ export default function OrderDetailPage() {
 
       {/* Balance status */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-          <Scale className="h-4 w-4" />
-          Balance Payment
-        </div>
-        <div className="mt-2 flex items-center gap-3">
-          {order.total_amount != null && order.deposit_amount != null ? (
-            <>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  order.balance_paid
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-violet-100 text-violet-700'
-                }`}
-              >
-                {order.balance_paid ? '✅ Paid' : '⏳ Pending'}
-              </span>
-              <span className="text-sm text-gray-600">
-                Balance: ₱{(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}
-              </span>
-              <span className="text-sm text-gray-400">
-                (Total: ₱{Number(order.total_amount).toLocaleString()} − Downpayment: ₱{Number(order.deposit_amount).toLocaleString()})
-              </span>
-            </>
-          ) : (
-            <span className="text-sm text-gray-400">
-              {order.total_amount == null ? 'Total amount not set yet' : 'Downpayment not recorded yet'}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+            <Scale className="h-4 w-4" />
+            Balance Payment
+          </div>
+          {paymentTotals && paymentTotals.expected_balance != null && (
+            <span className="text-xs text-gray-400">
+              {paymentTotals.remaining_balance != null && paymentTotals.remaining_balance > 0
+                ? `₱${paymentTotals.remaining_balance.toLocaleString()} remaining`
+                : paymentTotals.balance > 0
+                  ? 'Fully paid'
+                  : 'No payments yet'}
             </span>
           )}
         </div>
-        {!order.balance_paid && order.deposit_paid && order.total_amount != null && (
-          <p className="mt-2 text-xs text-violet-600">
-            Balance must be paid before delivery can be scheduled. Use /paybalance in Telegram to record payment.
-          </p>
+
+        {/* Payment history */}
+        {payments.filter((p) => p.type === 'balance').length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {payments
+              .filter((p) => p.type === 'balance')
+              .map((payment) => (
+                <div
+                  key={payment.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800">
+                        ₱{Number(payment.amount).toLocaleString()}
+                      </span>
+                      {payment.verified ? (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                          ✅ Verified
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          ⏳ Pending verification
+                        </span>
+                      )}
+                    </div>
+                    {payment.payment_date && (
+                      <p className="text-xs text-gray-400">
+                        {new Date(payment.payment_date).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="mt-2">
+            <span className="text-sm text-gray-400">No balance payments recorded yet.</span>
+          </div>
+        )}
+
+        {/* Summary */}
+        {order.total_amount != null && order.deposit_amount != null && (
+          <div className="mt-2 text-xs text-gray-500">
+            Expected balance: ₱{(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}
+            {paymentTotals && paymentTotals.balance > 0 && (
+              <span className="ml-2 text-gray-400">
+                (paid so far: ₱{paymentTotals.balance.toLocaleString()})
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Balance upload — available when deposit is paid */}
+        {order.deposit_paid && order.total_amount != null && (
+          <div className="mt-3">
+            <BalanceUploadSection
+              quotationNumber={order.quotation_number ?? ''}
+              orderId={order.id}
+              expectedBalance={paymentTotals?.remaining_balance ?? (Number(order.total_amount) - Number(order.deposit_amount))}
+              onBalanceRecorded={() => window.location.reload()}
+            />
+          </div>
         )}
       </div>
 
@@ -1751,6 +1844,142 @@ function DepositUploadSection({
         onVerified={(token) => {
           setShowOtp(false);
           handleRecordDepositWithToken(token);
+        }}
+        onClose={() => setShowOtp(false)}
+      />
+    </>
+  );
+}
+
+// ── Balance Upload Section ──────────────────────────────────────────────
+
+function BalanceUploadSection({
+  quotationNumber,
+  orderId,
+  expectedBalance,
+  onBalanceRecorded,
+}: {
+  quotationNumber: string;
+  orderId: string;
+  expectedBalance: number;
+  onBalanceRecorded: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [showOtp, setShowOtp] = useState(false);
+
+  function handleRecordBalanceClick() {
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setResult({ ok: false, message: 'Please enter a valid payment amount.' });
+      return;
+    }
+    if (!quotationNumber) {
+      setResult({ ok: false, message: 'This order has no quotation number.' });
+      return;
+    }
+    setShowOtp(true);
+  }
+
+  async function handleRecordBalanceWithToken(actionToken: string) {
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setResult({ ok: false, message: 'Please enter a valid payment amount.' });
+      return;
+    }
+
+    setRecording(true);
+    setResult(null);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+      const res = await fetch(`${API_BASE}/pay-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quotation_number: quotationNumber,
+          amount: parsedAmount,
+          payment_date: paymentDate || undefined,
+          updated_by: 'dashboard_quick_action',
+          action_token: actionToken,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to record balance payment');
+
+      const msg = data.is_fully_paid
+        ? `✅ Balance of ₱${parsedAmount.toLocaleString()} recorded. Balance fully paid!`
+        : `✅ Balance of ₱${parsedAmount.toLocaleString()} recorded. Remaining: ₱${data.remaining_balance.toLocaleString()}`;
+      setResult({ ok: true, message: msg });
+      setTimeout(onBalanceRecorded, 1500);
+    } catch (err: any) {
+      setResult({ ok: false, message: err.message ?? 'Failed to record balance payment' });
+    } finally {
+      setRecording(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="space-y-3 rounded-lg border border-violet-200 bg-violet-50 p-4">
+        <p className="text-xs font-semibold text-violet-800">
+          📥 Record Balance Payment {expectedBalance > 0 ? `(expected: ₱${expectedBalance.toLocaleString()})` : ''}
+        </p>
+
+        {/* Amount */}
+        <div>
+          <label className="text-xs font-medium text-violet-700">Amount (₱)</label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="e.g. 5000"
+            className="mt-1 block w-full rounded border border-violet-200 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none"
+          />
+        </div>
+
+        {/* Payment date */}
+        <div>
+          <label className="text-xs font-medium text-violet-700">Payment Date (optional)</label>
+          <input
+            type="date"
+            value={paymentDate}
+            onChange={(e) => setPaymentDate(e.target.value)}
+            className="mt-1 block w-full rounded border border-violet-200 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none"
+          />
+        </div>
+
+        {/* Submit */}
+        <button
+          onClick={handleRecordBalanceClick}
+          disabled={recording || !amount}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          {recording ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          {recording ? 'Recording...' : 'Record Balance Payment'}
+        </button>
+
+        {/* Result message */}
+        {result && (
+          <p className={`text-xs font-medium ${result.ok ? 'text-green-700' : 'text-red-600'}`}>
+            {result.message}
+          </p>
+        )}
+      </div>
+
+      {/* OTP Modal */}
+      <OtpModal
+        open={showOtp}
+        title="Verify Balance Recording"
+        description={`You are about to record a balance payment of ₱${parseFloat(amount || '0').toLocaleString()} for order "${quotationNumber}". Enter the code sent to your Telegram or email to confirm.`}
+        onVerified={(token) => {
+          setShowOtp(false);
+          handleRecordBalanceWithToken(token);
         }}
         onClose={() => setShowOtp(false)}
       />

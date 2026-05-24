@@ -1148,6 +1148,33 @@ export async function uploadOrderFile(data: {
   });
 }
 
+export interface Payment {
+  id: string;
+  type: 'deposit' | 'balance';
+  amount: number;
+  reference_number: string | null;
+  paid_by: string | null;
+  payment_date: string | null;
+  image_url: string | null;
+  source: string;
+  verified: boolean;
+  verified_at: string | null;
+  verified_by: string | null;
+  created_at: string;
+}
+
+export async function getOrderPayments(orderId: string): Promise<{ ok: boolean; payments: Payment[]; totals: { deposit: number; balance: number; expected_balance: number | null; remaining_balance: number | null } }> {
+  return fetchJson(`/orders/${encodeURIComponent(orderId)}/payments`);
+}
+
+export async function verifyPayment(paymentId: string, verifiedBy: string, actionToken: string): Promise<{ ok: boolean; payment?: Payment }> {
+  return fetchJson(`/payments/${encodeURIComponent(paymentId)}/verify`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verified_by: verifiedBy, action_token: actionToken }),
+  });
+}
+
 export async function runAgent(name: string, actionToken: string): Promise<{ ok: boolean; message?: string }> {
   return fetchJson<{ ok: boolean; message?: string }>(`/agents/run/${encodeURIComponent(name)}`, {
     method: 'POST',

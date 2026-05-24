@@ -1014,86 +1014,104 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
       }
     }
 
-    // ── 3. Sync payment (only if not already recorded) ────────────────
+    // ── 3. Sync payment (insert into payments table, supports multiples) ──
     if (body.payment) {
       if (body.payment.type === 'deposit') {
-        if (order.deposit_paid) {
-          syncReport.payment_skipped = { type: 'deposit', reason: 'Deposit already recorded' };
-        } else {
-          await query(
-            `UPDATE orders SET
-               deposit_paid=TRUE,
-               deposit_verified=FALSE,
-               deposit_amount=$1,
-               deposit_paid_at=COALESCE($2, deposit_paid_at),
-               current_stage=CASE
-                 WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
-                 THEN 'deposit_verification'
-                 ELSE current_stage
-               END,
-               updated_at=NOW()
-             WHERE id=$3`,
-            [body.payment.amount, body.payment.payment_date ?? null, params.id]
-          );
-          syncReport.payment_recorded = { type: 'deposit', amount: body.payment.amount };
+        // Insert payment record
+        await query(
+          `INSERT INTO payments (order_id, type, amount, payment_date, source)
+           VALUES ($1, 'deposit', $2, $3, 'ai_sync')`,
+          [params.id, body.payment.amount, body.payment.payment_date ?? null]
+        );
 
-          // Stage updates
-          await query(
-            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-             VALUES ($1, 'deposit_pending', 'deposit_paid', $2, $3)`,
-            [params.id, `Downpayment of ₱${body.payment.amount} recorded via AI sync`, userEmail ?? 'dashboard']
-          );
-          await query(
-            `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-             VALUES ($1, 'deposit_verification', 'pending', 'Downpayment recorded via AI sync; awaiting verification', $2)`,
-            [params.id, userEmail ?? 'dashboard']
-          );
+        const { depositTotal } = await getPaymentTotals(params.id);
 
-          // Complete deposit reminders
-          await query(
-            `UPDATE reminders SET status='completed', updated_at=NOW()
-             WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
-            [params.id]
-          );
+        await query(
+          `UPDATE orders SET
+             deposit_paid=TRUE,
+             deposit_verified=FALSE,
+             deposit_amount=$1,
+             deposit_paid_at=COALESCE($2, deposit_paid_at),
+             current_stage=CASE
+               WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
+               THEN 'deposit_verification'
+               ELSE current_stage
+             END,
+             updated_at=NOW()
+           WHERE id=$3`,
+          [depositTotal, body.payment.payment_date ?? null, params.id]
+        );
+        syncReport.payment_recorded = { type: 'deposit', amount: body.payment.amount };
 
-          // Notify
-          triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
-        }
+        // Stage updates
+        await query(
+          `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+           VALUES ($1, 'deposit_pending', 'deposit_paid', $2, $3)`,
+          [params.id, `Downpayment of ₱${body.payment.amount} recorded via AI sync (total deposits: ₱${depositTotal.toLocaleString()})`, userEmail ?? 'dashboard']
+        );
+        await query(
+          `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+           VALUES ($1, 'deposit_verification', 'pending', 'Downpayment recorded via AI sync; awaiting verification', $2)`,
+          [params.id, userEmail ?? 'dashboard']
+        );
+
+        // Complete deposit reminders
+        await query(
+          `UPDATE reminders SET status='completed', updated_at=NOW()
+           WHERE order_id=$1 AND stage='deposit_pending' AND status='active'`,
+          [params.id]
+        );
+
+        // Notify
+        triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
       } else if (body.payment.type === 'balance') {
-        if (order.balance_paid) {
-          syncReport.payment_skipped = { type: 'balance', reason: 'Balance already recorded' };
-        } else if (!order.deposit_paid) {
+        if (!order.deposit_paid) {
           syncReport.payment_skipped = { type: 'balance', reason: 'Deposit must be paid first' };
         } else {
+          // Insert payment record
+          await query(
+            `INSERT INTO payments (order_id, type, amount, payment_date, source)
+             VALUES ($1, 'balance', $2, $3, 'ai_sync')`,
+            [params.id, body.payment.amount, body.payment.payment_date ?? null]
+          );
+
+          const { depositTotal, balanceTotal } = await getPaymentTotals(params.id);
+          const expectedBalance = (order.total_amount ?? 0) - depositTotal;
+          const isFullyPaid = balanceTotal >= expectedBalance;
+
           await query(
             `UPDATE orders SET
-               balance_paid=TRUE,
+               balance_paid=$1,
                balance_verified=FALSE,
-               balance_paid_at=COALESCE($2, NOW()),
+               balance_paid_at=COALESCE($3, NOW()),
                current_stage=CASE
                  WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
                  THEN 'balance_verification'
                  ELSE current_stage
                END,
                updated_at=NOW()
-             WHERE id=$1`,
-            [params.id, body.payment.payment_date ?? null]
+             WHERE id=$2`,
+            [isFullyPaid, params.id, body.payment.payment_date ?? null]
           );
           syncReport.payment_recorded = { type: 'balance', amount: body.payment.amount };
 
           // Stage updates
+          const remarks = isFullyPaid
+            ? `Balance of ₱${body.payment.amount} recorded via AI sync (total: ₱${balanceTotal.toLocaleString()})`
+            : `Partial balance of ₱${body.payment.amount} recorded via AI sync. Remaining: ₱${(expectedBalance - balanceTotal).toLocaleString()}`;
           await query(
             `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
              VALUES ($1, 'balance_verification', 'balance_paid', $2, $3)`,
-            [params.id, `Balance of ₱${body.payment.amount} recorded via AI sync`, userEmail ?? 'dashboard']
+            [params.id, remarks, userEmail ?? 'dashboard']
           );
 
-          // Complete balance reminders
-          await query(
-            `UPDATE reminders SET status='completed', updated_at=NOW()
-             WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
-            [params.id]
-          );
+          if (isFullyPaid) {
+            await query(
+              `UPDATE reminders SET status='completed', updated_at=NOW()
+               WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
+              [params.id]
+            );
+          }
 
           // Notify
           triggerAgentsForStage('balance_verification', order.quotation_number, order.client_name);
@@ -2413,6 +2431,132 @@ app.get('/orders/:id/items', async (request, reply) => {
   return reply.send({ ok: true, items: rows });
 });
 
+// GET /orders/:id/payments — Get all payment records for an order
+app.get('/orders/:id/payments', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  const payments = await query(
+    `SELECT id, type, amount, reference_number, paid_by, payment_date,
+            image_url, source, verified, verified_at, verified_by, created_at
+     FROM payments
+     WHERE order_id = $1
+     ORDER BY created_at ASC`,
+    [id]
+  );
+
+  const orderRows = await query(
+    `SELECT total_amount FROM orders WHERE id = $1`,
+    [id]
+  );
+  const totalAmount = orderRows[0]?.total_amount ? Number(orderRows[0].total_amount) : null;
+
+  const depositTotal = payments
+    .filter((p: any) => p.type === 'deposit')
+    .reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+  const balanceTotal = payments
+    .filter((p: any) => p.type === 'balance')
+    .reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+  const expectedBalance = totalAmount != null ? totalAmount - depositTotal : null;
+
+  return reply.send({
+    ok: true,
+    payments,
+    totals: {
+      deposit: depositTotal,
+      balance: balanceTotal,
+      expected_balance: expectedBalance,
+      remaining_balance: expectedBalance != null ? Math.max(0, expectedBalance - balanceTotal) : null,
+    },
+  });
+});
+
+// PATCH /payments/:id/verify — Verify a specific payment record
+app.patch('/payments/:id/verify', async (request, reply) => {
+  try {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({
+      verified_by: z.string(),
+      action_token: z.string(),
+    }).parse(request.body);
+
+    // Verify action token
+    let userEmail: string | null = null;
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
+
+    // Get payment and order info
+    const paymentRows = await query(
+      `SELECT p.*, o.quotation_number, o.client_name
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+       WHERE p.id = $1`,
+      [params.id]
+    );
+    if (!paymentRows[0]) {
+      return reply.code(404).send({ error: 'Payment not found' });
+    }
+    const payment = paymentRows[0];
+    const orderId = payment.order_id;
+    const verifier = userEmail ?? body.verified_by;
+
+    // Verify this payment
+    await query(
+      `UPDATE payments SET verified=TRUE, verified_at=NOW(), verified_by=$2, updated_at=NOW() WHERE id=$1`,
+      [params.id, verifier]
+    );
+
+    // Check if ALL payments of this type are now verified
+    const unverifiedCount = await query(
+      `SELECT COUNT(*) as count FROM payments WHERE order_id=$1 AND type=$2 AND verified=FALSE`,
+      [orderId, payment.type]
+    );
+    const allVerified = Number(unverifiedCount[0].count) === 0;
+
+    // Update order-level verification flag if all payments of this type are verified
+    if (allVerified) {
+      if (payment.type === 'deposit') {
+        await query(
+          `UPDATE orders SET deposit_verified=TRUE, deposit_verified_at=NOW(), deposit_verified_by=$2, updated_at=NOW() WHERE id=$1`,
+          [orderId, verifier]
+        );
+      } else if (payment.type === 'balance') {
+        await query(
+          `UPDATE orders SET balance_verified=TRUE, balance_verified_at=NOW(), balance_verified_by=$2, updated_at=NOW() WHERE id=$1`,
+          [orderId, verifier]
+        );
+      }
+    }
+
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+    broadcastSSE('order_updated', { id: orderId });
+
+    await notifyManualChange(
+      `✅ Payment verified`,
+      `Quotation: *${payment.quotation_number ?? orderId}*\nClient: ${payment.client_name ?? '—'}\nType: ${payment.type}\nAmount: ₱${Number(payment.amount).toLocaleString()}\nVerified by: ${verifier}`,
+      userEmail,
+    );
+
+    return reply.send({ ok: true, payment: { ...payment, verified: true, verified_at: new Date().toISOString(), verified_by: verifier } });
+  } catch (err: any) {
+    console.error('[payments/verify] Error:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    return reply.status(500).send({ error: err?.message ?? 'Verification failed' });
+  }
+});
+
 // POST /orders/:id/items — Bulk upsert items (from Hermes extraction or manual)
 app.post('/orders/:id/items', async (request, reply) => {
   const { id } = request.params as { id: string };
@@ -3331,6 +3475,25 @@ app.post('/stage-updates', async (request, reply) => {
   return { ok: true };
 });
 
+// ── Payment Helpers ───────────────────────────────────────────────────
+// With the payments table (migration 030), orders can have multiple
+// deposit and balance payment records. These helpers compute running totals.
+
+async function getPaymentTotals(orderId: string): Promise<{ depositTotal: number; balanceTotal: number }> {
+  const depositRows = await query(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE order_id=$1 AND type='deposit'`,
+    [orderId]
+  );
+  const balanceRows = await query(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE order_id=$1 AND type='balance'`,
+    [orderId]
+  );
+  return {
+    depositTotal: Number(depositRows[0]?.total ?? 0),
+    balanceTotal: Number(balanceRows[0]?.total ?? 0),
+  };
+}
+
 // ── Deposits ──────────────────────────────────────────────────────────
 
 const depositSchema = z.object({
@@ -3376,9 +3539,17 @@ app.post('/deposits', async (request, reply) => {
     const salesAgent = orders[0].sales_agent;
     const totalAmount = orders[0].total_amount;
 
-    // Update deposit fields.
-    // deposit_paid=TRUE but deposit_verified=FALSE — collection agent will remind team to verify.
-    // Stage advances to deposit_verification until the downpayment is verified.
+    // Insert payment record into payments table (supports multiple deposits)
+    await query(
+      `INSERT INTO payments (order_id, type, amount, payment_date, image_url, source)
+       VALUES ($1, 'deposit', $2, $3, $4, $5)`,
+      [orderId, body.amount, body.deposit_paid_at ?? null, body.image_url ?? null, body.updated_by ?? 'api']
+    );
+
+    // Recompute deposit total from payments table
+    const { depositTotal } = await getPaymentTotals(orderId);
+
+    // Update order summary fields (backward-compatible)
     await query(
       `UPDATE orders SET
          deposit_paid=TRUE,
@@ -3393,7 +3564,7 @@ app.post('/deposits', async (request, reply) => {
          END,
          updated_at=NOW()
        WHERE id=$3`,
-      [body.amount, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
+      [depositTotal, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
     );
 
     // Record stage update for deposit_pending → deposit_paid
@@ -3540,7 +3711,16 @@ app.post('/deposits/match-and-record', async (request, reply) => {
         ? Number(order.total_amount) / 2
         : null;
 
-      // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
+      // Insert payment record into payments table (supports multiple deposits)
+      await query(
+        `INSERT INTO payments (order_id, type, amount, payment_date, image_url, source)
+         VALUES ($1, 'deposit', $2, $3, $4, 'telegram_bot')`,
+        [order.id, body.amount, body.deposit_paid_at ?? null, body.image_url ?? null]
+      );
+
+      const { depositTotal } = await getPaymentTotals(order.id);
+
+      // Update order summary fields
       await query(
         `UPDATE orders SET
            deposit_paid=TRUE,
@@ -3555,13 +3735,13 @@ app.post('/deposits/match-and-record', async (request, reply) => {
            END,
            updated_at=NOW()
          WHERE id=$3`,
-        [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
+        [depositTotal, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
       );
 
       await query(
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
          VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
-        [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+        [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching (total deposits: ₱${depositTotal.toLocaleString()})`]
       );
       await query(
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
@@ -3634,8 +3814,16 @@ app.post('/deposits/match-and-record', async (request, reply) => {
         ? Number(order.total_amount) / 2
         : null;
 
-      // Record the deposit. deposit_paid=TRUE but deposit_verified=FALSE.
-      // Stage advances to deposit_verification until the downpayment is verified.
+      // Insert payment record into payments table (supports multiple deposits)
+      await query(
+        `INSERT INTO payments (order_id, type, amount, payment_date, image_url, source)
+         VALUES ($1, 'deposit', $2, $3, $4, 'telegram_bot')`,
+        [order.id, body.amount, body.deposit_paid_at ?? null, body.image_url ?? null]
+      );
+
+      const { depositTotal } = await getPaymentTotals(order.id);
+
+      // Update order summary fields
       await query(
         `UPDATE orders SET
            deposit_paid=TRUE,
@@ -3650,13 +3838,13 @@ app.post('/deposits/match-and-record', async (request, reply) => {
            END,
            updated_at=NOW()
          WHERE id=$3`,
-        [body.amount, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
+        [depositTotal, body.image_url ?? null, order.id, body.deposit_paid_at ?? null]
       );
 
       await query(
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
          VALUES ($1, 'deposit_pending', 'deposit_paid', $2, 'telegram_bot')`,
-        [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching`]
+        [order.id, `Downpayment of ₱${body.amount.toLocaleString()} recorded via deposit slip matching (total deposits: ₱${depositTotal.toLocaleString()})`]
       );
       await query(
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
@@ -3977,10 +4165,6 @@ app.post('/pay-balance', async (request, reply) => {
     if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
 
     const order = orders[0];
-    if (order.balance_paid) {
-      return reply.code(400).send({ error: 'Balance already paid for this order' });
-    }
-
     if (!order.deposit_paid) {
       return reply.code(400).send({ error: 'Deposit must be paid before balance payment can be processed. Please record the deposit first using /deposit.' });
     }
@@ -3989,55 +4173,59 @@ app.post('/pay-balance', async (request, reply) => {
       return reply.code(400).send({ error: 'Total amount not set for this order. Cannot compute balance.' });
     }
 
-    const totalAmount = Number(order.total_amount);
-    const depositAmount = Number(order.deposit_amount ?? 0);
-    const expectedBalance = totalAmount - depositAmount;
-
-    if (body.amount < expectedBalance) {
-      return reply.code(400).send({
-        error: `Insufficient payment. Expected balance: ₱${expectedBalance.toLocaleString()}, received: ₱${body.amount.toLocaleString()}`,
-        expected_balance: expectedBalance,
-        lacking_amount: expectedBalance - body.amount,
-      });
-    }
-
     const orderId = order.id;
-    const overpayment = body.amount - expectedBalance;
+    const totalAmount = Number(order.total_amount);
 
-    // Update balance fields on the order.
-    // balance_paid=TRUE but balance_verified=FALSE — collection agent will remind team to verify.
-    // Stage does NOT advance to payment_received until balance is verified.
+    // Insert payment record into payments table (supports multiple balance payments)
+    await query(
+      `INSERT INTO payments (order_id, type, amount, payment_date, source)
+       VALUES ($1, 'balance', $2, $3, $4)`,
+      [orderId, body.amount, body.payment_date ?? null, body.updated_by ?? 'api']
+    );
+
+    // Recompute totals from payments table
+    const { depositTotal, balanceTotal } = await getPaymentTotals(orderId);
+    const expectedBalance = totalAmount - depositTotal;
+    const remainingBalance = Math.max(0, expectedBalance - balanceTotal);
+    const isFullyPaid = balanceTotal >= expectedBalance;
+    const overpayment = isFullyPaid ? balanceTotal - expectedBalance : 0;
+
+    // Update order summary fields (backward-compatible)
     await query(
       `UPDATE orders SET
-         balance_paid=TRUE,
+         balance_paid=$1,
          balance_verified=FALSE,
-         balance_paid_at=COALESCE($2, NOW()),
+         balance_paid_at=COALESCE($3, NOW()),
          current_stage=CASE
            WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
            THEN 'balance_verification'
            ELSE current_stage
          END,
          updated_at=NOW()
-       WHERE id=$1`,
-      [orderId, body.payment_date ?? null]
+       WHERE id=$2`,
+      [isFullyPaid, orderId, body.payment_date ?? null]
     );
 
-    // Record stage update — balance paid → balance_verification
-    const remarks = overpayment > 0
-      ? `Balance of ₱${body.amount.toLocaleString()} paid (overpayment of ₱${overpayment.toLocaleString()})`
-      : `Balance of ₱${body.amount.toLocaleString()} paid`;
+    // Record stage update
+    const remarks = isFullyPaid
+      ? (overpayment > 0
+          ? `Balance of ₱${body.amount.toLocaleString()} paid (total balance: ₱${balanceTotal.toLocaleString()}, overpayment: ₱${overpayment.toLocaleString()})`
+          : `Balance of ₱${body.amount.toLocaleString()} paid (total balance: ₱${balanceTotal.toLocaleString()})`)
+      : `Partial balance of ₱${body.amount.toLocaleString()} recorded. Remaining: ₱${remainingBalance.toLocaleString()}`;
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
       [orderId, 'balance_verification', 'balance_paid', remarks, body.updated_by ?? null]
     );
 
-    // Complete any balance_due reminders for this order
-    await query(
-      `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
-      [orderId]
-    );
+    // Only complete balance_due reminders when balance is FULLY paid
+    if (isFullyPaid) {
+      await query(
+        `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
+        [orderId]
+      );
+    }
 
-    // Create a balance_verification reminder — collection agent will remind team to verify the balance payment (best-effort)
+    // Create a balance_verification reminder (best-effort)
     try {
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
@@ -4057,16 +4245,19 @@ app.post('/pay-balance', async (request, reply) => {
     // Notify collection agent immediately that balance needs verification
     triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
 
-    // Notify collection group immediately — balance payment recorded, needs verification
+    // Notify collection group
     setImmediate(() => {
       notifyGroupChat(
         COLLECTION_CHAT_ID,
         `💳 <b>Balance Payment Recorded — Needs Verification</b>\n\n` +
         `Quotation: <b>${body.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n` +
-        `Amount paid: PHP ${body.amount.toLocaleString()}\n` +
+        `This payment: PHP ${body.amount.toLocaleString()}\n` +
+        `Total balance paid: PHP ${balanceTotal.toLocaleString()}\n` +
         `Expected balance: PHP ${expectedBalance.toLocaleString()}\n` +
-        (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : '') +
+        (isFullyPaid
+          ? (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : 'Balance fully paid ✅\n')
+          : `Remaining balance: PHP ${remainingBalance.toLocaleString()}\n`) +
         `Recorded by: ${body.updated_by ?? 'dashboard'}\n\n` +
         `Please verify the balance payment on the dashboard.`
       );
@@ -4082,7 +4273,10 @@ app.post('/pay-balance', async (request, reply) => {
     if (isDashboardOrigin(body.updated_by)) {
       await notifyManualChange(
         'Quick Action: Balance payment recorded',
-        `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nExpected balance: PHP ${expectedBalance.toLocaleString()}\nOverpayment: PHP ${overpayment.toLocaleString()}`,
+        `Quotation: *${body.quotation_number}*\n` +
+        `This payment: PHP ${body.amount.toLocaleString()}\n` +
+        `Total balance: PHP ${balanceTotal.toLocaleString()} / PHP ${expectedBalance.toLocaleString()}\n` +
+        (isFullyPaid ? 'Status: Fully paid' : `Remaining: PHP ${remainingBalance.toLocaleString()}`),
         userEmail,
       );
     }
@@ -4092,6 +4286,9 @@ app.post('/pay-balance', async (request, reply) => {
       quotation_number: body.quotation_number,
       amount: body.amount,
       expected_balance: expectedBalance,
+      balance_total: balanceTotal,
+      remaining_balance: remainingBalance,
+      is_fully_paid: isFullyPaid,
       overpayment: overpayment,
     });
   } catch (err: any) {
@@ -4162,6 +4359,13 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   }
 
   const nextStage = 'purchasing_pending';
+
+  // Mark all deposit payment records as verified
+  await query(
+    `UPDATE payments SET verified=TRUE, verified_at=NOW(), verified_by=$2, updated_at=NOW()
+     WHERE order_id=$1 AND type='deposit' AND verified=FALSE`,
+    [id, body.verified_by ?? null]
+  );
 
   await query(
     `UPDATE orders SET
@@ -4326,6 +4530,13 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     : 'delivery_pending';
 
   const stageLabel = nextStage === 'payment_received' ? 'Payment Received' : 'Delivery Pending';
+
+  // Mark all balance payment records as verified
+  await query(
+    `UPDATE payments SET verified=TRUE, verified_at=NOW(), verified_by=$2, updated_at=NOW()
+     WHERE order_id=$1 AND type='balance' AND verified=FALSE`,
+    [id, body.verified_by ?? null]
+  );
 
   await query(
     `UPDATE orders SET

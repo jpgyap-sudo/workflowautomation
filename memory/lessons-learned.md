@@ -8591,3 +8591,249 @@ When designing state-driven notifications, ensure triggers cover all transitiona
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production statu
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 66682ef45c4a09e89e2f7d31f3de95728498205e
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 66682ef45c4a09e89e2f7d31f3de95728498205e
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+Added missing en_route verification, inventory balance, delivery reminder creation, stage-to-group mapping, manual production status on the purchasing page, and stage advancement on the order detail page. The dashboard progression was previously dependent on Telegram, which is now removed.
+
+**Why it broke:**  
+The system relied on Telegram for dashboard progression, creating a fragile dependency. When Telegram was unavailable or delayed, the dashboard could not advance stages or reflect accurate statuses.
+
+**Reusable takeaway:**  
+Avoid coupling core workflow progression to external messaging services. Instead, implement direct, service-agnostic logic for state transitions and reminders. This ensures reliability and independence from third-party availability.
+
+---
+*Original commit message: fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production status on purchasing page + stage advancement on order detail page — Telegram-independent dashboard progression*
+
+#### Lesson Learned
+
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+Added missing en_route verification, inventory balance, delivery reminder creation, stage-to-group mapping, manual production status on the purchasing page, and stage advancement on the order detail page. The dashboard progression was previously dependent on Telegram, which is now removed.
+
+**Why it broke:**  
+The system relied on Telegram for dashboard progression, creating a fragile dependency. When Telegram was unavailable or delayed, the dashboard could not advance stages or reflect accurate statuses.
+
+**Reusable takeaway:**  
+Avoid coupling core workflow progression to external messaging services. Instead, implement direct, service-agnostic logic for state transitions and reminders. This ensures reliability and independence from third-party availability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production statu
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3c26efd2372c739e2c9931c15c945c430ce3a1ca
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3c26efd2372c739e2c9931c15c945c430ce3a1ca
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A Telegram-independent dashboard progression system was added, including en_route_verification, inventory, balance, delivery reminder creation, stageToGroup map, manual production status on the purchasing page, and stage advancement on the order detail page.
+
+**Why it broke:**  
+The system previously relied on Telegram for all progression triggers. When Telegram was unavailable or delayed, dashboard stages stalled, breaking the workflow automation for users who needed direct dashboard control.
+
+**Reusable takeaway:**  
+Never make a critical workflow progression dependent on a single external communication channel. Always implement a fallback or independent UI-based progression mechanism (e.g., manual stage advancement buttons, status toggles) to ensure system resilience when external services are down or slow.
+
+---
+*Original commit message: fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production status on purchasing page + stage advancement on order detail page — Telegram-independent dashboard progression*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A Telegram-independent dashboard progression system was added, including en_route_verification, inventory, balance, delivery reminder creation, stageToGroup map, manual production status on the purchasing page, and stage advancement on the order detail page.
+
+**Why it broke:**  
+The system previously relied on Telegram for all progression triggers. When Telegram was unavailable or delayed, dashboard stages stalled, breaking the workflow automation for users who needed direct dashboard control.
+
+**Reusable takeaway:**  
+Never make a critical workflow progression dependent on a single external communication channel. Always implement a fallback or independent UI-based progression mechanism (e.g., manual stage advancement buttons, status toggles) to ensure system resilience when external services are down or slow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production statu
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit dd9a274e3d6ddc5185b3d59c0051f4a6da1607c3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** dd9a274e3d6ddc5185b3d59c0051f4a6da1607c3
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Summary**
+
+**What was fixed:**  
+Added missing `en_route_verification`, `inventory`, `balance`, and `delivery` reminder creation; corrected `stageToGroup` mapping; enabled manual production status on the purchasing page; and fixed stage advancement on the order detail page. The dashboard now progresses independently of Telegram.
+
+**Why it broke:**  
+The system previously relied on Telegram-dependent triggers for stage transitions and reminders. When Telegram was unavailable or delayed, the dashboard stalled because it lacked independent progression logic. Additionally, the `stageToGroup` map was incomplete, causing mismatches in stage-to-group assignments.
+
+**Reusable takeaway:**  
+Decouple dashboard progression from external messaging dependencies (e.g., Telegram). Maintain a complete and validated `stageToGroup` mapping to ensure stage transitions and reminders are triggered correctly regardless of external service availability. Always test stage advancement logic independently of external integrations.
+
+---
+*Original commit message: fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production status on purchasing page + stage advancement on order detail page — Telegram-independent dashboard progression*
+
+#### Lesson Learned
+
+**Summary**
+
+**What was fixed:**  
+Added missing `en_route_verification`, `inventory`, `balance`, and `delivery` reminder creation; corrected `stageToGroup` mapping; enabled manual production status on the purchasing page; and fixed stage advancement on the order detail page. The dashboard now progresses independently of Telegram.
+
+**Why it broke:**  
+The system previously relied on Telegram-dependent triggers for stage transitions and reminders. When Telegram was unavailable or delayed, the dashboard stalled because it lacked independent progression logic. Additionally, the `stageToGroup` map was incomplete, causing mismatches in stage-to-group assignments.
+
+**Reusable takeaway:**  
+Decouple dashboard progression from external messaging dependencies (e.g., Telegram). Maintain a complete and validated `stageToGroup` mapping to ensure stage transitions and reminders are triggered correctly regardless of external service availability. Always test stage advancement logic independently of external integrations.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production statu
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a5909bcbb2a5fe92e26de857de7cb4b2914af476
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a5909bcbb2a5fe92e26de857de7cb4b2914af476
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+Added missing `en_route_verification`, `inventory`, `balance`, and `delivery` reminder creation; fixed `stageToGroup` map; added manual production status on purchasing page; enabled stage advancement on order detail page. This completed Telegram-independent dashboard progression.
+
+**Why it broke:**  
+The system relied on Telegram for triggering stage transitions and reminders. When Telegram was removed, the dashboard lacked its own logic to advance stages and create reminders, causing the workflow to stall.
+
+**Reusable takeaway:**  
+When decoupling a system from an external dependency (e.g., Telegram), ensure all state transitions and side effects (reminders, status updates) are re-implemented natively in the primary interface. Do not assume the external service will continue to drive core logic.
+
+---
+*Original commit message: fix: add en_route_verification/inventory/balance/delivery reminder creation + stageToGroup map + manual production status on purchasing page + stage advancement on order detail page — Telegram-independent dashboard progression*
+
+#### Lesson Learned
+
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+Added missing `en_route_verification`, `inventory`, `balance`, and `delivery` reminder creation; fixed `stageToGroup` map; added manual production status on purchasing page; enabled stage advancement on order detail page. This completed Telegram-independent dashboard progression.
+
+**Why it broke:**  
+The system relied on Telegram for triggering stage transitions and reminders. When Telegram was removed, the dashboard lacked its own logic to advance stages and create reminders, causing the workflow to stall.
+
+**Reusable takeaway:**  
+When decoupling a system from an external dependency (e.g., Telegram), ensure all state transitions and side effects (reminders, status updates) are re-implemented natively in the primary interface. Do not assume the external service will continue to drive core logic.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: mark a5909bc as deployed — gap fixes for Telegram-independent dashboard progression
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 0eebaac872852239c2fd86f751bd11a4d50a0fa9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 0eebaac872852239c2fd86f751bd11a4d50a0fa9
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** A gap in dashboard progression logic that prevented Telegram-independent operation. The dashboard now advances correctly without requiring Telegram interaction.
+
+**Why it broke:** The original implementation assumed Telegram was always available as a progression trigger. When Telegram was absent or disconnected, the dashboard stalled because no fallback progression mechanism existed.
+
+**Reusable takeaway:** Never hardcode a single communication channel as a required dependency for core workflow progression. Design state machines and progression logic to be channel-agnostic, with Telegram (or any messaging service) as an optional notification layer, not a required control flow gate. Always decouple core automation logic from specific notification or input channels.
+
+---
+*Original commit message: docs: mark a5909bc as deployed — gap fixes for Telegram-independent dashboard progression*
+
+#### Lesson Learned
+
+**What was fixed:** A gap in dashboard progression logic that prevented Telegram-independent operation. The dashboard now advances correctly without requiring Telegram interaction.
+
+**Why it broke:** The original implementation assumed Telegram was always available as a progression trigger. When Telegram was absent or disconnected, the dashboard stalled because no fallback progression mechanism existed.
+
+**Reusable takeaway:** Never hardcode a single communication channel as a required dependency for core workflow progression. Design state machines and progression logic to be channel-agnostic, with Telegram (or any messaging service) as an optional notification layer, not a required control flow gate. Always decouple core automation logic from specific notification or input channels.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
