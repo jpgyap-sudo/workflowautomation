@@ -617,6 +617,8 @@ type UserStep =
   | { action: 'awaiting_en_route_arrival_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_item_days'; itemId: string; orderId: string; quotationNumber: string }
   | { action: 'awaiting_en_route_item_new_days'; itemId: string; quotationNumber: string }
+  | { action: 'awaiting_en_route_midpoint_new_days'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_en_route_arrival_not_yet_days'; orderId: string; quotationNumber: string }
   | { action: 'awaiting_client_search' }
   // Partial production flow
   | { action: 'awaiting_partial_missing_items'; orderId: string; quotationNumber: string }
@@ -2306,13 +2308,13 @@ bot.on(message('text'), async (ctx) => {
         break;
       }
       try {
-        await postJson(`/orders/${eOrderId}/confirm-en-route`, {
-          estimated_arrival_days: arrivalDays,
+        await postJson(`/orders/${eOrderId}/start-en-route-tracking`, {
+          estimated_inventory_arrival_days: arrivalDays,
         });
-        await logAction({ chatId, userId, username, label: 'En Route Confirmed', quotationNumber: eQuotationNumber, details: `Arrival in: ${arrivalDays} day(s)` });
+        await logAction({ chatId, userId, username, label: 'En Route Tracking Started', quotationNumber: eQuotationNumber, details: `Arrival in: ${arrivalDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *En Route Confirmed* — ${eQuotationNumber}\n\nEstimated inventory arrival: *${arrivalDays} days*.\n\nThe order has moved to the next stage.`,
+          `✅ *En Route Tracking Started* — ${eQuotationNumber}\n\nEstimated arrival: *${arrivalDays} days*.\n\n📅 Midpoint check scheduled at day ${Math.floor(arrivalDays / 2)}.\n📦 Arrival check will fire on the estimated arrival date in the inventory group.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -2366,9 +2368,10 @@ bot.on(message('text'), async (ctx) => {
         resetStep(chatId);
 
         if (!notEnRouteItem) {
-          await postJson(`/orders/${eiOrderId}/confirm-en-route`, { estimated_arrival_days: arrivalDays });
+          const maxDays = Math.max(...updatedItems.map((i: any) => i.estimated_arrival_days ?? 28));
+          await postJson(`/orders/${eiOrderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
           await ctx.reply(
-            `✅ *All Items En Route!*\n\nOrder #${eiQuotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+            `✅ *All Items En Route!*\n\nOrder #${eiQuotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\n📅 Midpoint check scheduled at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check will fire in the inventory group on the estimated arrival date.`,
             { parse_mode: 'Markdown', ...mainMenuKeyboard() }
           );
         } else {
@@ -2425,6 +2428,50 @@ bot.on(message('text'), async (ctx) => {
         resetStep(chatId);
         await ctx.reply(
           `✅ Updated — *${targetItem.name}* arrival estimate is now *${newDays} days*.\n\nI'll check again when the new arrival date comes.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── En Route Midpoint: new days after delay ─────────────────────
+    case 'awaiting_en_route_midpoint_new_days': {
+      const { orderId: mpOrderId, quotationNumber: mpQn } = session.step;
+      const newDays = parseInt(text, 10);
+      if (isNaN(newDays) || newDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `42`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await patchJson(`/orders/${mpOrderId}/reschedule-reminder`, { stage: 'en_route_arrival', new_days: newDays });
+        await logAction({ chatId, userId, username, label: 'En Route Delay — Arrival Rescheduled', quotationNumber: mpQn, details: `New estimate: ${newDays} days` });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Updated* — ${mpQn}\n\nArrival reminder rescheduled to *${newDays} days* from now.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── En Route Arrival: not yet — reschedule arrival check ─────────
+    case 'awaiting_en_route_arrival_not_yet_days': {
+      const { orderId: anOrderId, quotationNumber: anQn } = session.step;
+      const moreDays = parseInt(text, 10);
+      if (isNaN(moreDays) || moreDays < 1) {
+        await ctx.reply('❌ Please enter a valid number of days (e.g., `7`).', { parse_mode: 'Markdown', ...cancelButton() });
+        break;
+      }
+      try {
+        await patchJson(`/orders/${anOrderId}/reschedule-reminder`, { stage: 'en_route_arrival', new_days: moreDays });
+        await logAction({ chatId, userId, username, label: 'Arrival Not Yet — Rescheduled', quotationNumber: anQn, details: `${moreDays} more days` });
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Noted* — ${anQn}\n\nI'll check again in *${moreDays} days*.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
@@ -2981,15 +3028,15 @@ bot.action(/^assistant:en_route:([^:]+):(.+)$/, async (ctx) => {
   const quotationNumber = ctx.match[2];
   await ctx.editMessageText(`⏳ Confirming en route for ${quotationNumber}...`).catch(() => {});
   try {
-    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/confirm-en-route`, {
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/start-en-route-tracking`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ estimated_arrival_days: 28, updated_by: 'production_assistant' }),
+      body: JSON.stringify({ estimated_inventory_arrival_days: 28 }),
     });
     if (res.ok) {
-      await ctx.editMessageText(`✅ ${quotationNumber} marked as en route. Estimated arrival: 28 days (update from the dashboard if different).`).catch(() => {});
+      await ctx.editMessageText(`✅ ${quotationNumber} — en route tracking started. Midpoint check at day 14, arrival check at day 28 in the inventory group.`).catch(() => {});
     } else {
-      await ctx.editMessageText(`❌ Failed to mark en route. Use the dashboard or /produce command instead.`).catch(() => {});
+      await ctx.editMessageText(`❌ Failed to start en route tracking. Use the dashboard or /produce command instead.`).catch(() => {});
     }
   } catch {
     await ctx.editMessageText(`❌ Request failed. Use the dashboard or /produce command instead.`).catch(() => {});
@@ -3861,21 +3908,22 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } else {
-        // All items en route! Advance the order
+        // All items en route! Start timed tracking — do NOT advance stage
+        const maxDays = Math.max(...updatedItems.map((i: any) => i.estimated_arrival_days ?? 28));
         await postJson(`/orders/${orderId}/production-logs`, {
           order_item_id: null,
-          note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`,
+          note: `✅ All items en route (${enRoutePct}% of qty). En route tracking started — arrival in ${maxDays} days.`,
           log_type: 'user',
           created_by: username ?? `user_${userId}`,
         });
 
-        await postJson(`/orders/${orderId}/confirm-en-route`, {
-          estimated_arrival_days: 28,
+        await postJson(`/orders/${orderId}/start-en-route-tracking`, {
+          estimated_inventory_arrival_days: maxDays,
         });
-        await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${quotationNumber} auto-advanced to inventory_verification` });
+        await logAction({ chatId, userId, username, label: 'All Items En Route — Tracking Started', details: `Order #${quotationNumber} — ${maxDays} days to arrival` });
 
         await ctx.editMessageText(
-          `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+          `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\n📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check in the inventory group on the estimated arrival date.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       }
@@ -3985,10 +4033,11 @@ bot.action(/^item_arr:(28|custom):([^:]+):(.+)$/, async (ctx) => {
     const notEnRouteItem = updatedItems.find((i: any) => i.en_route_status === 'not_yet');
 
     if (!notEnRouteItem) {
-      await postJson(`/orders/${orderId}/confirm-en-route`, { estimated_arrival_days: arrivalDays });
-      await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${quotationNumber} auto-advanced` });
+      const maxDays = Math.max(...updatedItems.map((i: any) => i.estimated_arrival_days ?? 28));
+      await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
+      await logAction({ chatId, userId, username, label: 'All Items En Route — Tracking Started', details: `Order #${quotationNumber} — arrival in ${maxDays} days` });
       await ctx.editMessageText(
-        `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+        `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\n📅 Midpoint check at day ${Math.floor(maxDays / 2)}.\n📦 Arrival check in the inventory group on the estimated arrival date.`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } else {
@@ -4052,6 +4101,87 @@ bot.action(/^item_arr_check:(ontime|delayed):([^:]+):(.+)$/, async (ctx) => {
     }
   } catch (err: any) {
     await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// ── En Route Midpoint & Arrival Check Callbacks ───────────────────────────────
+// Fired by reminders created in start-en-route-tracking.
+
+// Midpoint: still on track
+bot.action(/^en_route_mid:ontime:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_mid:ontime:${quotationNumber}`, direction: 'incoming' });
+  await ctx.editMessageText(
+    `✅ *Still On Track* — ${quotationNumber}\n\nGreat! The shipment is on track. I'll check again when the estimated arrival date comes.`,
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
+  await logAction({ chatId, userId, username, label: 'En Route Midpoint: On Track', quotationNumber });
+});
+
+// Midpoint: delayed — ask for new total days
+bot.action(/^en_route_mid:delay:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_mid:delay:${quotationNumber}`, direction: 'incoming' });
+  try {
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    setStep(chatId, { action: 'awaiting_en_route_midpoint_new_days', orderId: orderData.id, quotationNumber });
+    await ctx.editMessageText(
+      `⚠️ *Delayed — ${quotationNumber}*\n\nHow many total days do you now estimate for arrival? (e.g., \`42\`):`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown' });
+  }
+});
+
+// Arrival check: arrived — advance to inventory_arrived
+bot.action(/^en_route_arr:yes:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_arr:yes:${quotationNumber}`, direction: 'incoming' });
+  await ctx.editMessageText(`📦 Confirming arrival for *${quotationNumber}*...`, { parse_mode: 'Markdown' }).catch(() => {});
+  try {
+    await postJson('/stage-updates', {
+      quotation_number: quotationNumber,
+      stage: 'inventory_arrived',
+      status: 'arrived',
+      remarks: 'Inventory arrived — confirmed via en route arrival reminder',
+      updated_by: ctx.from?.username ?? `user_${userId}`,
+    });
+    await logAction({ chatId, userId, username, label: 'Inventory Arrived (Arrival Reminder)', quotationNumber });
+    await ctx.editMessageText(
+      `📦 *Inventory Arrived!* — ${quotationNumber}\n\nOrder advanced to Inventory Arrived stage.\n\nBalance due process will now begin.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
+});
+
+// Arrival check: not yet — ask for how many more days
+bot.action(/^en_route_arr:no:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `en_route_arr:no:${quotationNumber}`, direction: 'incoming' });
+  try {
+    const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    setStep(chatId, { action: 'awaiting_en_route_arrival_not_yet_days', orderId: orderData.id, quotationNumber });
+    await ctx.editMessageText(
+      `⏳ *Not Yet* — ${quotationNumber}\n\nHow many more days until the inventory arrives? (e.g., \`7\`):`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Error: ${err.message}`, { parse_mode: 'Markdown' });
   }
 });
 
@@ -4210,13 +4340,13 @@ bot.action(/^en_route:arrival_standard:(.+):(.+)$/, async (ctx) => {
     const orderData = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
     const orderId = orderData.id;
 
-    await postJson(`/orders/${orderId}/confirm-en-route`, {
-      estimated_arrival_days: 28,
+    await postJson(`/orders/${orderId}/start-en-route-tracking`, {
+      estimated_inventory_arrival_days: 28,
     });
-    await logAction({ chatId, userId, username, label: 'En Route Confirmed', quotationNumber, details: 'Arrival in: 28 days (standard)' });
+    await logAction({ chatId, userId, username, label: 'En Route Tracking Started', quotationNumber, details: 'Arrival in: 28 days (standard)' });
     resetStep(chatId);
     await ctx.editMessageText(
-      `✅ *En Route Confirmed* — ${quotationNumber}\n\nEstimated inventory arrival: *28 days*.\n\nThe order has moved to the next stage.`,
+      `✅ *En Route Tracking Started* — ${quotationNumber}\n\nEstimated arrival: *28 days*.\n\n📅 Midpoint check at day 14.\n📦 Arrival check will fire in the inventory group on the estimated arrival date.`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {

@@ -132,6 +132,9 @@ export async function processDueReminders(): Promise<number> {
     // Item-level tracking reminders — stale if order has moved past the relevant stage
     if (reminder.stage === 'item_level_production' && ['en_route', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_en_route' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    // En route timed reminders — stale once order advances past en_route (for midpoint) or inventory_arrived (for arrival)
+    if (reminder.stage === 'en_route_midpoint' && reminder.current_stage !== 'en_route') stale = true;
+    if (reminder.stage === 'en_route_arrival' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
 
     if (stale) {
       await query(
@@ -158,6 +161,8 @@ export async function processDueReminders(): Promise<number> {
       deposit_verification: '🔍 Deposit Verification',
       en_route: '🚚 En Route',
       en_route_reminder: '🚚 En Route',
+      en_route_midpoint: '✅ En Route Midpoint Check',
+      en_route_arrival: '📦 En Route Arrival Check',
       inventory_arrived: '📦 Inventory Arrived',
       balance_due: '⚖️ Balance Due',
       balance_verification: '🔍 Balance Verification',
@@ -409,6 +414,54 @@ export async function processDueReminders(): Promise<number> {
           { text: `⏳ ${itemName} — Not Yet`, callback_data: `reminder:item_en_route:not_yet:${itemIdShort}:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
+    } else if (reminder.stage === 'en_route_midpoint') {
+      // Midpoint check — sent to production group, asks if still on track
+      const orderRows = await query(
+        `SELECT inventory_en_route_at, estimated_inventory_arrival_days FROM orders WHERE id = $1`,
+        [reminder.order_id]
+      );
+      const enRouteAt = orderRows[0]?.inventory_en_route_at;
+      const totalDays = orderRows[0]?.estimated_inventory_arrival_days ?? 28;
+      const estimatedArrival = enRouteAt
+        ? new Date(new Date(enRouteAt).getTime() + totalDays * 86_400_000)
+            .toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
+        : 'Unknown';
+      const midpointText =
+        `✅ <b>En Route Midpoint Check</b>\n\n` +
+        `Quotation: <b>${quotationNumber}</b>\n` +
+        `Client: ${reminder.client_name ?? 'Unknown'}\n\n` +
+        `Estimated arrival: <b>${estimatedArrival}</b>\n\n` +
+        `Is the shipment still on track? No delays expected?`;
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, midpointText, [
+        [
+          { text: '✅ Yes, on track', callback_data: `en_route_mid:ontime:${quotationNumber}` },
+          { text: '⚠️ No, it\'s delayed', callback_data: `en_route_mid:delay:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'en_route_arrival') {
+      // Arrival check — sent to delivery/inventory group
+      const orderRows = await query(
+        `SELECT inventory_en_route_at, estimated_inventory_arrival_days FROM orders WHERE id = $1`,
+        [reminder.order_id]
+      );
+      const enRouteAt = orderRows[0]?.inventory_en_route_at;
+      const totalDays = orderRows[0]?.estimated_inventory_arrival_days ?? 28;
+      const estimatedArrival = enRouteAt
+        ? new Date(new Date(enRouteAt).getTime() + totalDays * 86_400_000)
+            .toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
+        : 'today';
+      const arrivalText =
+        `📦 <b>En Route Arrival Check</b>\n\n` +
+        `Quotation: <b>${quotationNumber}</b>\n` +
+        `Client: ${reminder.client_name ?? 'Unknown'}\n\n` +
+        `Estimated arrival date: <b>${estimatedArrival}</b>\n\n` +
+        `Has the inventory arrived?`;
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, arrivalText, [
+        [
+          { text: '✅ Yes, arrived!', callback_data: `en_route_arr:yes:${quotationNumber}` },
+          { text: '⏳ Not yet', callback_data: `en_route_arr:no:${quotationNumber}` },
+        ],
+      ]);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);
@@ -417,9 +470,10 @@ export async function processDueReminders(): Promise<number> {
     if (ok) {
       sent++;
 
-      // For production midpoint and due reminders with 'once' frequency, mark as completed after sending
-      // (they will be re-created if needed by the bot callback handlers)
-      if (reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') {
+      // For once-frequency timed reminders, mark as completed after sending.
+      // These will be re-created by the bot callback handlers if rescheduled.
+      if (reminder.stage === 'production_midpoint' || reminder.stage === 'production_due' ||
+          reminder.stage === 'en_route_midpoint' || reminder.stage === 'en_route_arrival') {
         await query(
           `UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
           [reminder.id]

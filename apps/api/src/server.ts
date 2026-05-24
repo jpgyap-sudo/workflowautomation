@@ -1662,6 +1662,161 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   return reply.send({ ok: true, order: rows[0] });
 });
 
+// ── Start En Route Tracking ────────────────────────────────────────────
+// Called by the bot when all items are confirmed en route with a days estimate.
+// Does NOT advance the order stage — stays at 'en_route'.
+// Creates two timed reminders:
+//   • en_route_midpoint — fires at NOW() + floor(days/2), asks if still on track
+//   • en_route_arrival  — fires at NOW() + days, asks in inventory group if arrived
+
+/**
+ * Compute a UTC timestamp for the next 10:00 AM or 4:00 PM PHT (UTC+8)
+ * at or after `NOW() + days days`.
+ */
+function nextPhtReminderTimeAfterDays(days: number): Date {
+  const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const targetDate = new Date(Date.now() + days * 86_400_000);
+  const phtTarget = new Date(targetDate.getTime() + PHT_OFFSET_MS);
+  phtTarget.setUTCMinutes(0, 0, 0);
+  const phtHour = phtTarget.getUTCHours();
+  if (phtHour < 10) {
+    phtTarget.setUTCHours(10);
+  } else if (phtHour < 16) {
+    phtTarget.setUTCHours(16);
+  } else {
+    phtTarget.setUTCDate(phtTarget.getUTCDate() + 1);
+    phtTarget.setUTCHours(10);
+  }
+  return new Date(phtTarget.getTime() - PHT_OFFSET_MS);
+}
+
+const startEnRouteTrackingSchema = z.object({
+  estimated_inventory_arrival_days: z.number().int().positive(),
+});
+
+app.post('/orders/:id/start-en-route-tracking', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = startEnRouteTrackingSchema.parse(request.body);
+  const days = body.estimated_inventory_arrival_days;
+
+  const orderRows = await query(
+    `UPDATE orders
+     SET inventory_en_route_at = COALESCE(inventory_en_route_at, NOW()),
+         estimated_inventory_arrival_days = $1,
+         updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, quotation_number, client_name, inventory_en_route_at`,
+    [days, id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0];
+
+  const midpointDays = Math.max(1, Math.floor(days / 2));
+  const midpointAt = nextPhtReminderTimeAfterDays(midpointDays);
+  const arrivalAt = nextPhtReminderTimeAfterDays(days);
+
+  const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+  const deliveryChatId = process.env.DELIVERY_GROUP_CHAT_ID;
+
+  if (prodGroupChatId) {
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, 'en_route_midpoint', $2, $3, 'once', $4, 'active')
+       ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
+         group_chat_id = EXCLUDED.group_chat_id,
+         message       = EXCLUDED.message,
+         next_run_at   = EXCLUDED.next_run_at,
+         status        = 'active',
+         updated_at    = NOW()`,
+      [
+        id, prodGroupChatId,
+        `✅ En Route Midpoint — #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Halfway through the estimated arrival window. Is the shipment still on track?`,
+        midpointAt.toISOString(),
+      ]
+    );
+  }
+
+  if (deliveryChatId) {
+    await query(
+      `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+       VALUES ($1, 'en_route_arrival', $2, $3, 'once', $4, 'active')
+       ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
+         group_chat_id = EXCLUDED.group_chat_id,
+         message       = EXCLUDED.message,
+         next_run_at   = EXCLUDED.next_run_at,
+         status        = 'active',
+         updated_at    = NOW()`,
+      [
+        id, deliveryChatId,
+        `📦 En Route Arrival — #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Estimated arrival today. Has it arrived at inventory?`,
+        arrivalAt.toISOString(),
+      ]
+    );
+  }
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'en_route', 'tracking_started', $2, 'system')`,
+    [id, `En route tracking started — midpoint in ${midpointDays} day(s), arrival check in ${days} day(s)`]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);
+  return reply.send({ ok: true, midpoint_at: midpointAt.toISOString(), arrival_at: arrivalAt.toISOString() });
+});
+
+// ── Reschedule a Timed Reminder ────────────────────────────────────────
+// Used when: midpoint reports delay → push out arrival reminder.
+//            arrival check says "not yet" → reschedule arrival reminder.
+
+const rescheduleReminderSchema = z.object({
+  stage: z.string(),
+  new_days: z.number().int().positive(),
+});
+
+app.patch('/orders/:id/reschedule-reminder', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = rescheduleReminderSchema.parse(request.body);
+  const newRunAt = nextPhtReminderTimeAfterDays(body.new_days);
+
+  const result = await query(
+    `UPDATE reminders
+     SET next_run_at = $1,
+         status      = 'active',
+         escalation_level = 0,
+         updated_at  = NOW()
+     WHERE order_id = $2 AND stage = $3 AND item_id IS NULL
+     RETURNING id`,
+    [newRunAt.toISOString(), id, body.stage]
+  );
+
+  if (!result[0]) {
+    // Reminder may have been completed — re-insert it
+    const orderRow = await query(
+      `SELECT quotation_number, client_name,
+              COALESCE(DELIVERY_GROUP_CHAT_ID_placeholder, '') AS group_chat_id
+       FROM orders WHERE id = $1`,
+      [id]
+    );
+    // Use the DELIVERY_GROUP_CHAT_ID env var for arrival stage
+    const chatId = body.stage === 'en_route_arrival'
+      ? (process.env.DELIVERY_GROUP_CHAT_ID ?? '')
+      : (process.env.PRODUCTION_GROUP_CHAT_ID ?? '');
+    if (chatId && orderRow[0]) {
+      await query(
+        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+         VALUES ($1, $2, $3, $4, 'once', $5, 'active')
+         ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
+           next_run_at = EXCLUDED.next_run_at,
+           status = 'active',
+           updated_at = NOW()`,
+        [id, body.stage, chatId, `📦 En Route ${body.stage === 'en_route_arrival' ? 'Arrival' : 'Midpoint'} — #${orderRow[0].quotation_number}`, newRunAt.toISOString()]
+      );
+    }
+  }
+
+  return reply.send({ ok: true, next_run_at: newRunAt.toISOString() });
+});
+
 // ── Inventory Verification Endpoints ──────────────────────────────────
 
 /**
@@ -2491,7 +2646,7 @@ app.post('/stage-updates', async (request, reply) => {
     production_pending:        ['production_confirmed'],
     production_confirmed:      ['en_route', 'partial_production'],
     partial_production:        ['en_route'],
-    en_route:                  ['inventory_verification'],
+    en_route:                  ['inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due'],
     balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
