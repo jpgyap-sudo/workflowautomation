@@ -7397,3 +7397,61 @@ Always wrap Telegram `answerCbQuery` (and similar ephemeral interactions) in `tr
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: improve session expired messages with clearer instructions and Main Menu button
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 78e19782fb49a828d6bc4eda186388b0fa496722
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 78e19782fb49a828d6bc4eda186388b0fa496722
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**What was fixed:**  
+Session expired messages now include clearer instructions and a "Main Menu" button, improving user guidance when a session expires mid-interaction.
+
+**Why it broke:**  
+Previously, session expiry messages were vague (e.g., "Session expired") with no actionable next steps, leaving users confused about how to restart or navigate back.
+
+**Reusable takeaway:**  
+When handling session expiry or state loss in user-facing systems, always provide:  
+1. A clear explanation of what happened (e.g., "Your session expired due to inactivity").  
+2. A direct call-to-action (e.g., "Return to Main Menu" button).  
+3. A way to re-enter the flow without friction.  
+
+This reduces user frustration and support requests by making recovery paths explicit.
+
+---
+*Original commit message: fix: improve session expired messages with clearer instructions and Main Menu button*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Session expired messages now include clearer instructions and a "Main Menu" button, improving user guidance when a session expires mid-interaction.
+
+**Why it broke:**  
+Previously, session expiry messages were vague (e.g., "Session expired") with no actionable next steps, leaving users confused about how to restart or navigate back.
+
+**Reusable takeaway:**  
+When handling session expiry or state loss in user-facing systems, always provide:  
+1. A clear explanation of what happened (e.g., "Your session expired due to inactivity").  
+2. A direct call-to-action (e.g., "Return to Main Menu" button).  
+3. A way to re-enter the flow without friction.  
+
+This reduces user frustration and support requests by making recovery paths explicit.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
