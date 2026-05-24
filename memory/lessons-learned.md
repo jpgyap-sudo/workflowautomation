@@ -9100,3 +9100,51 @@ When item-level production has order_items and every production_status is finish
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG — deployed E2E gap fixes + Codex features at 1083384
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7166d8c6135cef38a060a1e4ebbce54b8521d118
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 7166d8c6135cef38a060a1e4ebbce54b8521d118
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Deployed fixes for end-to-end (E2E) gaps in workflow automation, plus added Codex features.
+
+**Why it broke:**  
+The E2E gaps likely stemmed from incomplete integration testing or missing edge-case handling between workflow stages, causing failures in automated pipelines.
+
+**Reusable takeaway:**  
+Always validate E2E flows with real-world edge cases before deployment. Use changelogs to track both fixes and feature additions, ensuring transparency and traceability for future debugging.
+
+---
+*Original commit message: docs: update CHANGELOG — deployed E2E gap fixes + Codex features at 1083384*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Deployed fixes for end-to-end (E2E) gaps in workflow automation, plus added Codex features.
+
+**Why it broke:**  
+The E2E gaps likely stemmed from incomplete integration testing or missing edge-case handling between workflow stages, causing failures in automated pipelines.
+
+**Reusable takeaway:**  
+Always validate E2E flows with real-world edge cases before deployment. Use changelogs to track both fixes and feature additions, ensuring transparency and traceability for future debugging.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
