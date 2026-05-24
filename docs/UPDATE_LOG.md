@@ -33,7 +33,8 @@ When you **finish**:
 | 2026-05-24 11:29 | Roo (Code) | Verified all services deployed at `ada6e80`, created changelog/bug/update log system | ✅ Done |
 | 2026-05-24 11:58 | Roo (Code) | Deploy: 2 pending commits — en_route_verification stage + bot fix | ✅ Done |
 | 2026-05-24 14:19 | Roo (Code) | Fix: deposit sync failure — removed mandatory action_token requirement from POST /deposits, added OTP modals to all deposit flows, fixed recordDepositWithFile() to pass action_token | ✅ Done |
-| 2026-05-24 14:39 | Roo (Code) | Fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required | 🔴 Active |
+| 2026-05-24 14:39 | Roo (Code) | Fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required | ✅ Done |
+| 2026-05-24 14:44 | Roo (Code) | Fix: add client_name and actor_name to stage_updates table for traceability | 🔴 Active |
 
 ---
 

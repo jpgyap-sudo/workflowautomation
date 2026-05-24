@@ -8421,3 +8421,45 @@ Purchasing dashboard must not call /set-production when the team only acknowledg
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a86fd7cdd4559002c230ecde6c8c691a7d4edb87
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a86fd7cdd4559002c230ecde6c8c691a7d4edb87
+**Files:** apps/telegram-bot/src/bot.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** The Telegram bot now auto-detects deposit slip photos sent to a collection group chat, eliminating the need for users to click a button to trigger processing.
+
+**Why it broke:** The previous implementation required an explicit user action (button click) to initiate deposit slip detection, causing friction and missed auto-processing when users simply sent photos without interacting with the bot's UI.
+
+**Reusable takeaway:** When designing chat-based automation, prefer passive event-driven triggers (e.g., photo upload detection) over active user-initiated actions (e.g., button clicks) for common workflows. This reduces user friction and ensures reliable processing even when users skip explicit confirmation steps. Always consider the most natural user behavior (sending a photo) as the trigger, not the UI element they might ignore.
+
+---
+*Original commit message: fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required*
+
+#### Lesson Learned
+
+**What was fixed:** The Telegram bot now auto-detects deposit slip photos sent to a collection group chat, eliminating the need for users to click a button to trigger processing.
+
+**Why it broke:** The previous implementation required an explicit user action (button click) to initiate deposit slip detection, causing friction and missed auto-processing when users simply sent photos without interacting with the bot's UI.
+
+**Reusable takeaway:** When designing chat-based automation, prefer passive event-driven triggers (e.g., photo upload detection) over active user-initiated actions (e.g., button clicks) for common workflows. This reduces user friction and ensures reliable processing even when users skip explicit confirmation steps. Always consider the most natural user behavior (sending a photo) as the trigger, not the UI element they might ignore.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

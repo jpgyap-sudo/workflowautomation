@@ -2779,10 +2779,12 @@ app.post('/stage-updates', async (request, reply) => {
   }
 
   const orderId = order.id;
+  const clientName = order?.client_name ?? null;
+  const actorName = userEmail ?? body.updated_by ?? null;
 
   await query(
-    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1,$2,$3,$4,$5)`,
-    [orderId, body.stage, body.status, body.remarks ?? null, body.updated_by ?? null]
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [orderId, body.stage, body.status, body.remarks ?? null, body.updated_by ?? null, clientName, actorName]
   );
   await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [body.stage, orderId]);
 
@@ -2813,9 +2815,9 @@ app.post('/stage-updates', async (request, reply) => {
     // are N/A. The order can go directly to 'completed'.
     if (order.balance_paid) {
       await query(
-        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-         VALUES ($1, 'completed', 'auto_completed', 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)', $2)`,
-        [orderId, body.updated_by ?? null]
+        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
+         VALUES ($1, 'completed', 'auto_completed', 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)', $2, $3, $4)`,
+        [orderId, body.updated_by ?? null, clientName, actorName]
       );
       await query(`UPDATE orders SET current_stage='completed', updated_at=NOW() WHERE id=$1`, [orderId]);
 
@@ -2876,7 +2878,7 @@ app.post('/stage-updates', async (request, reply) => {
   if (isDashboardOrigin(body.updated_by)) {
     await notifyManualChange(
       'Quick Action: Stage updated',
-      `Quotation: *${body.quotation_number}*\nStage: ${body.stage}\nStatus: ${body.status}\nRemarks: ${body.remarks ?? '-'}`,
+      `Quotation: *${body.quotation_number}*\nClient: ${clientName ?? 'N/A'}\nStage: ${body.stage}\nStatus: ${body.status}\nRemarks: ${body.remarks ?? '-'}\nActor: ${actorName ?? 'dashboard'}`,
       userEmail,
     );
   }
@@ -2914,8 +2916,9 @@ app.post('/stage-updates', async (request, reply) => {
           `Client: ${order?.client_name ?? 'N/A'}\n` +
           `Stage: <b>${stageLabel}</b>\n` +
           `Status: ${body.status}\n` +
-          `Remarks: ${body.remarks ?? '-'}\n\n` +
-          `Updated via dashboard. Please check and take necessary action.`
+          `Remarks: ${body.remarks ?? '-'}\n` +
+          `Updated by: ${actorName ?? 'dashboard'}\n\n` +
+          `Please check and take necessary action.`
         );
       });
     }

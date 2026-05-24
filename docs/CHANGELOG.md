@@ -11,9 +11,10 @@
 |--------|-----------|-------------|----------|
 | `3b7767e` | Codex | fix: split production workflow handoff from actual production start | ? VPS `bb32b09` |
 | `ee87c55` | Roo (Code) | fix: deposit sync failure — remove mandatory action_token from POST /deposits, add OTP modals to all deposit flows | ✅ VPS `ee87c55` |
-| *(pending)* | Roo (Code) | fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required | ❌ |
-| `1749ed9` | Claude Sonnet 4.6 | fix: production workflow — partial_production end-to-end (auto-advance, item-level tracking, Telegram + dashboard + reminders + agent) | Not deployed yet |
-| `029adcd` | Codex | fix: restore en_route_verification in dashboard stage pipeline | Not deployed yet |
+| `a86fd7c` | Roo (Code) | fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required | ✅ VPS `a86fd7c` |
+| *(pending)* | Roo (Code) | feat: add client_name and actor_name to stage_updates table for traceability | ❌ |
+| `1749ed9` | Claude Sonnet 4.6 | fix: production workflow — partial_production end-to-end (auto-advance, item-level tracking, Telegram + dashboard + reminders + agent) | ✅ VPS `8993820` |
+| `029adcd` | Codex | fix: restore en_route_verification in dashboard stage pipeline | ✅ VPS `8993820` |
 | `9af8ae5` | Codex | chore: record OTP 502 recovery lessons and logs | ✅ Not deployed (docs/memory only; VPS recovery already verified) |
 | `1749ed9` | Roo (Code) | fix: reminder scheduler gaps for en_route_verification stage | ✅ VPS `1749ed9` |
 | `f51564b` | Roo (Code) | docs: update UPDATE_LOG — Roo deploying en_route_verification stage | ✅ VPS `f51564b` |
