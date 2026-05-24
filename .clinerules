@@ -65,3 +65,34 @@ ssh -i ~/.ssh/<your-key> root@<your-vps-ip> "<command>"
 ### ❌ WRONG key (DO NOT use)
 - `~/.ssh/id_rsa_qas` — does not exist, will cause SSH to hang indefinitely
 - `C:\Users\User\.ssh\id_rsa_qas` — does not exist, will cause SSH to hang indefinitely
+
+## 📋 Cross-Extension Logging (MANDATORY)
+
+This project uses **three** centralized log files in `docs/` for coordination across all coding extensions (Roo, Claude, Codex, Kimi).
+
+### You MUST update these files when:
+
+1. **Starting work** → [`docs/UPDATE_LOG.md`](docs/UPDATE_LOG.md)
+   - Add a row: `| YYYY-MM-DD HH:mm | YourExtension | What you're doing | 🔴 Active |`
+
+2. **Fixing a bug** → [`docs/BUG_LOG.md`](docs/BUG_LOG.md)
+   - Add a row: `| YYYY-MM-DD | Bug description | Root cause | Fix commit | YourExtension | Status |`
+
+3. **Making a commit** → [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
+   - Add a row under the current date: `| \`abc1234\` | YourExtension | feat/fix/chore: description | ✅/❌ |`
+
+4. **Finishing work** → [`docs/UPDATE_LOG.md`](docs/UPDATE_LOG.md)
+   - Update your row's status to `✅ Done`
+
+### File locations
+
+| File | Purpose |
+|------|---------|
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Commit & deployment history (one row per commit) |
+| [`docs/BUG_LOG.md`](docs/BUG_LOG.md) | Bug tracking with root cause + fix commit |
+| [`docs/UPDATE_LOG.md`](docs/UPDATE_LOG.md) | Real-time work tracking (what each extension is doing now) |
+
+### IMPORTANT
+- Always `git pull` before editing these files to avoid merge conflicts
+- Always `git add && git commit && git push` after updating them
+- If multiple extensions are working simultaneously, coordinate via `UPDATE_LOG.md`
