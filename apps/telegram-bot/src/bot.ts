@@ -3830,23 +3830,32 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     );
 
     if (!notEnRouteItem) {
-      // All items en route! Advance the order
-      await postJson(`/orders/${orderId}/production-logs`, {
-        order_item_id: null,
-        note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`,
-        log_type: 'user',
-        created_by: username ?? `user_${userId}`,
-      });
+      // Check if user said "Not Yet" to all remaining items (skip set has items)
+      // If so, don't auto-advance — just acknowledge
+      if (skipSet.size > 0) {
+        await ctx.editMessageText(
+          `⏳ *All remaining items marked as not yet en route.*\n\nOrder #${quotationNumber}\n${enRoutePct}% of qty en route.\n\nThe order will advance once items are confirmed en route.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } else {
+        // All items en route! Advance the order
+        await postJson(`/orders/${orderId}/production-logs`, {
+          order_item_id: null,
+          note: `✅ All items en route (${enRoutePct}% of qty). Auto-advancing to inventory_verification.`,
+          log_type: 'user',
+          created_by: username ?? `user_${userId}`,
+        });
 
-      await postJson(`/orders/${orderId}/confirm-en-route`, {
-        estimated_arrival_days: 28,
-      });
-      await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${quotationNumber} auto-advanced to inventory_verification` });
+        await postJson(`/orders/${orderId}/confirm-en-route`, {
+          estimated_arrival_days: 28,
+        });
+        await logAction({ chatId, userId, username, label: 'All Items En Route', details: `Order #${quotationNumber} auto-advanced to inventory_verification` });
 
-      await ctx.editMessageText(
-        `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
+        await ctx.editMessageText(
+          `✅ *All Items En Route!*\n\nOrder #${quotationNumber}\nAll items en route (${enRoutePct}% of qty).\n\nOrder has been auto-advanced to 🔍 Inventory Verification.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      }
     } else {
       // Ask about the next not-en-route item (process of elimination)
       const enRouteCount = updatedItems.filter((i: any) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
@@ -3874,7 +3883,7 @@ bot.action(/^item_en_route:(yes|no|arrived|not_arrived):([^:]+):(.+)$/, async (c
     }
   } catch (err: any) {
     const safeMsg = err.message.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
-    await ctx.reply(`❌ Error updating item en-route: ${safeMsg}`, { parse_mode: 'MarkdownV2', ...cancelButton() });
+    await ctx.reply(`❌ Error updating item en route: ${safeMsg}`, { parse_mode: 'MarkdownV2', ...cancelButton() });
   }
 });
 

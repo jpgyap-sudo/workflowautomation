@@ -3552,10 +3552,10 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
         `Quotation: <b>${order.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n\n` +
         `The client has made the downpayment and the deposit is now verified.\n\n` +
-        `❓ <b>Have you started the production workflow?</b>`,
+        `❓ <b>Do we proceed to start the production workflow?</b>`,
         [
           [
-            { text: '✅ Yes, started', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
+            { text: '✅ Yes, proceed', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
             { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${id}:${order.quotation_number}` },
           ],
         ]
@@ -3583,7 +3583,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
           id,
           'purchasing_pending',
           prodGroupChatId,
-          `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Please start the production workflow.`,
+          `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Do we proceed to start the production workflow?`,
         );
       }
     } catch (err) {
