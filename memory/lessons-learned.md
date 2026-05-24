@@ -8285,3 +8285,26 @@ When refactoring API endpoints or data structures, always cross-reference all UI
 cross-project, local-fallback
 
 ---
+
+### Lesson: Stage pipeline STAGE_ORDER regression
+
+Date: 2026-05-24
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+The /stages Stage Summary renders only stages present in dashboard STAGE_ORDER and STAGE_CONFIG. If en_route_verification disappears while backend/Telegram still know the stage, check apps/dashboard/src/lib/api.ts; commit ada6e80 removed the STAGE_CONFIG and STAGE_ORDER entries, so restore en_route_verification between en_route and inventory_verification and rebuild/deploy dashboard.
+
+#### Lesson Learned
+
+The /stages Stage Summary renders only stages present in dashboard STAGE_ORDER and STAGE_CONFIG. If en_route_verification disappears while backend/Telegram still know the stage, check apps/dashboard/src/lib/api.ts; commit ada6e80 removed the STAGE_CONFIG and STAGE_ORDER entries, so restore en_route_verification between en_route and inventory_verification and rebuild/deploy dashboard.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
