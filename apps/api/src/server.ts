@@ -1148,6 +1148,30 @@ app.patch('/orders/:id', async (request, reply) => {
     }
   }
 
+  // If delivery_date was updated, also record a stage update audit trail
+  if (body.delivery_date !== undefined) {
+    const orderRecord = rows[0];
+    const wasAlreadyScheduled = orderRecord.current_stage === 'delivery_scheduled';
+    const status = wasAlreadyScheduled ? 'rescheduled' : 'scheduled';
+    const formattedDate = body.delivery_date;
+    const auditRemarks = [
+      `${wasAlreadyScheduled ? 'Delivery rescheduled' : 'Delivery scheduled'} for ${formattedDate}`,
+    ].filter(Boolean).join(' | ');
+    await query(
+      `INSERT INTO stage_updates (order_id, quotation_number, stage, status, remarks, delivery_date, updated_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        params.id,
+        orderRecord.quotation_number,
+        'delivery_scheduled',
+        status,
+        auditRemarks,
+        body.delivery_date,
+        userEmail ?? 'dashboard',
+      ]
+    );
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: params.id });
 
@@ -4778,13 +4802,15 @@ app.post('/pay-balance', async (request, reply) => {
     const overpayment = isFullyPaid ? balanceTotal - expectedBalance : 0;
 
     // Update order summary fields (backward-compatible)
+    // Only advance to balance_verification and set balance_paid_at when FULLY paid.
+    // Partial payments keep the current stage so more payments can be recorded.
     await query(
       `UPDATE orders SET
          balance_paid=$1,
          balance_verified=FALSE,
-         balance_paid_at=COALESCE($3, NOW()),
+         balance_paid_at=CASE WHEN $1 THEN COALESCE($3, NOW()) ELSE balance_paid_at END,
          current_stage=CASE
-           WHEN current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+           WHEN $1 AND current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
            THEN 'balance_verification'
            ELSE current_stage
          END,
@@ -4801,7 +4827,7 @@ app.post('/pay-balance', async (request, reply) => {
       : `Partial balance of ₱${body.amount.toLocaleString()} recorded. Remaining: ₱${remainingBalance.toLocaleString()}`;
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-      [orderId, 'balance_verification', 'balance_paid', remarks, body.updated_by ?? null]
+      [orderId, isFullyPaid ? 'balance_verification' : 'balance_due', 'balance_paid', remarks, body.updated_by ?? null]
     );
 
     // Only complete balance_due reminders when balance is FULLY paid
@@ -4812,25 +4838,41 @@ app.post('/pay-balance', async (request, reply) => {
       );
     }
 
-    // Create a balance_verification reminder (best-effort)
-    try {
-      await query(
-        `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
-         SELECT $1, 'balance_verification', r.group_chat_id,
-                'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
-                'daily', NOW() + INTERVAL '5 minutes', 'active'
-         FROM reminders r
-         WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
-         LIMIT 1
-         ON CONFLICT DO NOTHING`,
-        [orderId]
-      );
-    } catch {
-      console.warn(`[pay-balance] Failed to create balance_verification reminder for order ${orderId}`);
-    }
+    // Create a balance_verification reminder only when FULLY paid (best-effort)
+    if (isFullyPaid) {
+      try {
+        await query(
+          `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+           SELECT $1, 'balance_verification', r.group_chat_id,
+                  'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
+                  'daily', NOW() + INTERVAL '5 minutes', 'active'
+           FROM reminders r
+           WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
+           LIMIT 1
+           ON CONFLICT DO NOTHING`,
+          [orderId]
+        );
+      } catch {
+        console.warn(`[pay-balance] Failed to create balance_verification reminder for order ${orderId}`);
+      }
 
-    // Notify collection agent immediately that balance needs verification
-    triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
+      // Notify collection agent immediately that balance needs verification
+      triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
+    } else {
+      // Partial payment: update the balance_due reminder message to reflect remaining amount
+      try {
+        await query(
+          `UPDATE reminders SET
+             message = 'Balance is partially paid. Remaining: ₱' || $2 || '. Has the client paid the rest?',
+             next_run_at = NOW() + INTERVAL '1 day',
+             updated_at = NOW()
+           WHERE order_id = $1 AND stage = 'balance_due' AND status = 'active'`,
+          [orderId, remainingBalance.toString()]
+        );
+      } catch {
+        console.warn(`[pay-balance] Failed to update balance_due reminder for order ${orderId}`);
+      }
+    }
 
     // Notify collection group
     setImmediate(() => {

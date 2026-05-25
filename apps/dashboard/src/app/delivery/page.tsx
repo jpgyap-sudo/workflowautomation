@@ -303,26 +303,13 @@ export default function DeliveryPage() {
       | undefined;
     if (!pending) return;
 
-    const { order, delivery_date, remarks } = pending;
-    const wasAlreadyScheduled = order.current_stage === 'delivery_scheduled';
-    const status = wasAlreadyScheduled ? 'rescheduled' : 'scheduled';
-    const formattedDate = formatDeliveryDate(delivery_date) ?? delivery_date;
-    const auditRemarks = [
-      `${wasAlreadyScheduled ? 'Delivery rescheduled' : 'Delivery scheduled'} for ${formattedDate}`,
-      remarks ? `Reason/remarks: ${remarks}` : null,
-    ].filter(Boolean).join(' | ');
+    const { order, delivery_date } = pending;
 
     setActionLoading(order.id);
     try {
+      // PATCH /orders/:id now records the stage update audit trail internally
+      // when delivery_date is set, so no separate recordStageUpdate() call needed.
       await updateOrder(order.id, { delivery_date, action_token: actionToken });
-      await recordStageUpdate({
-        quotation_number: order.quotation_number ?? '',
-        stage: 'delivery_scheduled',
-        status,
-        remarks: auditRemarks,
-        delivery_date,
-        action_token: actionToken,
-      });
       setSchedulingOrder(null);
       setScheduleDate('');
       setScheduleRemarks('');
