@@ -7714,15 +7714,18 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
     await logAction({ chatId, userId, username, label: 'Deposit Slip Confirmed', quotationNumber, details: `₱${depositAmount.toLocaleString()}` });
 
     const successMsg =
-      `✅ *Deposit Recorded Successfully!*\n\n` +
+      `✅ *Downpayment paid and verified*\n\n` +
       `📋 Order: *${quotationNumber}*\n` +
       `💰 Amount: ₱${depositAmount.toLocaleString()}\n` +
-      `📎 Deposit slip saved to order files.\n` +
-      `\nProduction can now proceed.`;
+      `📎 Deposit slip saved to order files.\n\n` +
+      `🏭 Production can proceed. Do you want to start the production workflow?`;
 
     await ctx.editMessageText(successMsg, {
       parse_mode: 'Markdown',
-      ...mainMenuKeyboard(),
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Yes, start production workflow', `advance:production_pending:${quotationNumber}`)],
+        [Markup.button.callback('❌ No, not yet', `advance:production_pending:no:${quotationNumber}`)],
+      ]),
     });
   } catch (error: any) {
     console.error('[deposit] Record error:', error);
