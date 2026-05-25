@@ -12,7 +12,7 @@ export interface SubUser {
 // All available dashboard tab routes
 export const ALL_TAB_ROUTES = [
   '/', '/orders', '/actions', '/clients', '/purchasing', '/production',
-  '/inventory', '/delivery', '/sales', '/collection', '/stages', '/workflow',
+  '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow',
   '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram',
   '/backup', '/vision', '/settings',
 ] as const;
@@ -73,7 +73,7 @@ function removeDeletedEmail(email: string) {
 // Default tab access for non-admin roles (editor/viewer)
 const DEFAULT_TAB_ACCESS: TabRoute[] = [
   '/', '/orders', '/actions', '/clients', '/purchasing', '/production',
-  '/inventory', '/delivery', '/sales', '/collection', '/stages', '/workflow',
+  '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow',
   '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram',
   '/backup', '/vision', '/settings',
 ];
@@ -185,6 +185,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setInitialized(true);
     });
+  }, []);
+
+  // Sync accounts across tabs when localStorage changes
+  useEffect(() => {
+    function handleStorage(e: StorageEvent) {
+      if (e.key === ACCOUNTS_STORAGE_KEY) {
+        const accts = getStoredAccounts();
+        setAccounts(accts);
+      }
+    }
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   // Step 1: validate credentials locally, then ask API to send OTP

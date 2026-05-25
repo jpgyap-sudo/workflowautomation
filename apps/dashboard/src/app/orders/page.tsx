@@ -29,6 +29,10 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   ]);
   const depositFileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // From-existing-stock toggle
+  const [fromStock, setFromStock] = useState(false);
+  const [stockPrepDays, setStockPrepDays] = useState(0); // 0 = immediate
+
   // AI extraction states
   const [extractedItems, setExtractedItems] = useState<{ name: string; quantity: number }[]>([]);
   const [extractingQuotation, setExtractingQuotation] = useState(false);
@@ -149,6 +153,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       if (salesAgent.trim()) data.sales_agent = salesAgent.trim();
       if (totalAmount.trim()) data.total_amount = parseFloat(totalAmount.replace(/,/g, ''));
       if (extractedItems.length > 0) data.items = extractedItems;
+      if (fromStock) { data.order_type = 'from_stock'; data.stock_prep_days = stockPrepDays; }
       await createOrder(data);
       results.push('✅ Order created');
 
@@ -237,6 +242,39 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600">Total Amount (₱)</label>
             <input className={inputCls} placeholder="20000" value={totalAmount} onChange={e => setTotalAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+          </div>
+
+          {/* From Existing Stock toggle */}
+          <div className={`rounded-lg border p-3 space-y-2 ${fromStock ? 'border-lime-300 bg-lime-50' : 'border-gray-200 bg-gray-50/50'}`}>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={fromStock} onChange={e => setFromStock(e.target.checked)} className="h-4 w-4 rounded border-gray-300 accent-lime-600" />
+              <span className="text-xs font-medium text-gray-700">📦 Item is from existing stock <span className="text-gray-500 font-normal">(skip production &amp; purchasing)</span></span>
+            </label>
+            {fromStock && (
+              <div className="space-y-2 pt-1">
+                <p className="text-[10px] text-lime-700">This order will go directly to <b>Stock Preparation</b> after deposit is verified.</p>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Preparation Time</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setStockPrepDays(0)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${stockPrepDays === 0 ? 'border-lime-500 bg-lime-100 text-lime-800' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      ⚡ Immediate
+                    </button>
+                    <input
+                      type="number" min={1} max={365}
+                      placeholder="Days needed"
+                      value={stockPrepDays === 0 ? '' : stockPrepDays}
+                      onChange={e => { const v = parseInt(e.target.value, 10); setStockPrepDays(isNaN(v) || v <= 0 ? 0 : v); }}
+                      className={`w-36 rounded-lg border px-3 py-2 text-xs outline-none focus:border-lime-500 focus:ring-2 focus:ring-lime-500/20 ${stockPrepDays > 0 ? 'border-lime-500 bg-lime-50' : 'border-gray-300'}`}
+                    />
+                  </div>
+                  {stockPrepDays > 0 && (
+                    <p className="text-[10px] text-lime-700">
+                      Ready by: <b>{new Date(Date.now() + stockPrepDays * 86_400_000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</b>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Quotation File */}

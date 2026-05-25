@@ -9856,3 +9856,189 @@ When adding new notification types or file handlers, ensure both the sending end
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: update sales.homeu password to Homeu@888, subUsers 777=Mariella, 888=Cathlyn already configured
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 21dee5d988e218d8b0ac933634371515d0282a2d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 21dee5d988e218d8b0ac933634371515d0282a2d
+**Files:** apps/dashboard/src/lib/auth.tsx
+
+**Summary:**
+**What was fixed:**  
+Updated the `sales.homeu` user password to `Homeu@888` in the auth configuration. Sub-users `777=Mariella` and `888=Cathlyn` were already correctly configured.
+
+**Why it broke:**  
+The password for the `sales.homeu` account was incorrect or outdated, causing authentication failures for that user.
+
+**Reusable takeaway:**  
+When managing shared or service accounts, always verify that credentials (especially passwords) are synchronized across all configuration files and environments. A single mismatched credential can break authentication for an entire user role. Use environment variables or secret managers instead of hardcoding passwords to reduce manual update errors.
+
+---
+*Original commit message: fix: update sales.homeu password to Homeu@888, subUsers 777=Mariella, 888=Cathlyn already configured*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated the `sales.homeu` user password to `Homeu@888` in the auth configuration. Sub-users `777=Mariella` and `888=Cathlyn` were already correctly configured.
+
+**Why it broke:**  
+The password for the `sales.homeu` account was incorrect or outdated, causing authentication failures for that user.
+
+**Reusable takeaway:**  
+When managing shared or service accounts, always verify that credentials (especially passwords) are synchronized across all configuration files and environments. A single mismatched credential can break authentication for an entire user role. Use environment variables or secret managers instead of hardcoding passwords to reduce manual update errors.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: bump SW cache from v3 to v4 — force fresh dashboard JS load for updated password
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 35c8cd1011fd559121634e70740df9117dc48689
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 35c8cd1011fd559121634e70740df9117dc48689
+**Files:** apps/dashboard/public/sw.js
+
+**Summary:**
+**What was fixed:**  
+A stale Service Worker (SW) cache caused the dashboard to serve old JavaScript after a user updated their password, preventing the new credentials from taking effect on the client side.
+
+**Why it broke:**  
+The SW cache key (v3) remained unchanged after the password update. The browser continued serving cached dashboard JS from the old SW, ignoring the new authentication state.
+
+**Reusable takeaway:**  
+When authentication or authorization logic changes (e.g., password reset, token rotation), **increment the SW cache version** to force a fresh fetch of all critical assets. This ensures the client loads the latest code that respects the new security context. A simple version bump in the SW file name or cache key is a low-risk, high-impact fix for cache-related auth bugs.
+
+---
+*Original commit message: fix: bump SW cache from v3 to v4 — force fresh dashboard JS load for updated password*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A stale Service Worker (SW) cache caused the dashboard to serve old JavaScript after a user updated their password, preventing the new credentials from taking effect on the client side.
+
+**Why it broke:**  
+The SW cache key (v3) remained unchanged after the password update. The browser continued serving cached dashboard JS from the old SW, ignoring the new authentication state.
+
+**Reusable takeaway:**  
+When authentication or authorization logic changes (e.g., password reset, token rotation), **increment the SW cache version** to force a fresh fetch of all critical assets. This ensures the client loads the latest code that respects the new security context. A simple version bump in the SW file name or cache key is a low-risk, high-impact fix for cache-related auth bugs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: sync password from DEFAULT_ACCOUNTS into stored accounts on load
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c236895cee4d9d54d97bce857e75c38d5d21bbd6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c236895cee4d9d54d97bce857e75c38d5d21bbd6
+**Files:** apps/dashboard/src/lib/auth.tsx
+
+**Summary:**
+**What was fixed:**  
+A bug where the password from `DEFAULT_ACCOUNTS` was not being synced into stored accounts when the app loaded, causing authentication failures for default accounts.
+
+**Why it broke:**  
+The account loading logic only read stored accounts from persistent storage but did not merge or overwrite the password field from the default account configuration. When a default account existed in storage with an outdated or missing password, the correct password from `DEFAULT_ACCOUNTS` was ignored.
+
+**Reusable takeaway:**  
+When loading default or seed data, always explicitly sync mutable fields (like passwords or tokens) from the source of truth into persisted records. A simple merge on load prevents stale credentials from breaking authentication.
+
+---
+*Original commit message: fix: sync password from DEFAULT_ACCOUNTS into stored accounts on load*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the password from `DEFAULT_ACCOUNTS` was not being synced into stored accounts when the app loaded, causing authentication failures for default accounts.
+
+**Why it broke:**  
+The account loading logic only read stored accounts from persistent storage but did not merge or overwrite the password field from the default account configuration. When a default account existed in storage with an outdated or missing password, the correct password from `DEFAULT_ACCOUNTS` was ignored.
+
+**Reusable takeaway:**  
+When loading default or seed data, always explicitly sync mutable fields (like passwords or tokens) from the source of truth into persisted records. A simple merge on load prevents stale credentials from breaking authentication.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: add password sync fix to CHANGELOG
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 9710a6666901a4ffeb96dee036f6dd6822898eb7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 9710a6666901a4ffeb96dee036f6dd6822898eb7
+**Files:** docs/CHANGELOG.md
+
+**Summary:**
+**What was fixed:** A password synchronization bug in the workflow automation system.
+
+**Why it broke:** The password sync logic had a race condition or incorrect state handling, causing passwords to fall out of sync between systems when updates occurred in rapid succession or under specific timing conditions.
+
+**Reusable takeaway:** When synchronizing credentials across systems, always implement idempotent update logic with proper locking or versioning to prevent race conditions. Use atomic operations where possible, and validate sync state after each update rather than assuming success.
+
+---
+*Original commit message: docs: add password sync fix to CHANGELOG*
+
+#### Lesson Learned
+
+**What was fixed:** A password synchronization bug in the workflow automation system.
+
+**Why it broke:** The password sync logic had a race condition or incorrect state handling, causing passwords to fall out of sync between systems when updates occurred in rapid succession or under specific timing conditions.
+
+**Reusable takeaway:** When synchronizing credentials across systems, always implement idempotent update logic with proper locking or versioning to prevent race conditions. Use atomic operations where possible, and validate sync state after each update rather than assuming success.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

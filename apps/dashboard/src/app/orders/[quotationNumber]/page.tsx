@@ -84,6 +84,22 @@ export default function OrderDetailPage() {
     }
   }
 
+  // Fetch payment history (MUST be before conditional returns — React hooks rule)
+  useEffect(() => {
+    if (!order) return;
+    let cancelled = false;
+    getOrderPayments(order.id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          setPayments(res.payments);
+          setPaymentTotals(res.totals);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [order?.id]);
+
   if (isLoading && !order) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -104,21 +120,6 @@ export default function OrderDetailPage() {
   }
 
   if (!order) return null;
-
-  // Fetch payment history
-  useEffect(() => {
-    let cancelled = false;
-    getOrderPayments(order.id)
-      .then((res) => {
-        if (cancelled) return;
-        if (res.ok) {
-          setPayments(res.payments);
-          setPaymentTotals(res.totals);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [order.id]);
 
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
   const escalation = order.escalation_level ?? 0;

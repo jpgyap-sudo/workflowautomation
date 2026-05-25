@@ -61,7 +61,7 @@ const ORDER_LIST_SELECT = `
   o.production_exception, o.production_exception_notes,
   o.production_exception_granted_at, o.production_exception_granted_by,
   o.inventory_verified_at, o.inventory_verification_pct,
-  o.order_type,
+  o.order_type, o.stock_prep_days, o.stock_prep_ready_at,
   o.created_at, o.updated_at
 `;
 
@@ -190,6 +190,8 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   deposit_pending:       ['collection-agent'],
   deposit_verification:  ['collection-agent'],
   balance_verification:  ['collection-agent'],
+  // From-stock orders — skip production/en_route/inventory; notify inventory/delivery groups
+  stock_preparation:     ['delivery-agent'],
   // Delivery
   delivery_pending:      ['delivery-agent'],
   delivery_scheduled:    ['delivery-agent'],
@@ -645,6 +647,9 @@ const createOrderSchema = z.object({
     quantity: z.number().int().positive(),
   })).optional(),
   action_token: z.string(),
+  // From-stock orders skip purchasing/production/en_route/inventory stages
+  order_type: z.enum(['from_stock']).optional(),
+  stock_prep_days: z.number().int().min(0).optional(), // 0 = immediate
 });
 
 app.post('/orders', async (request, reply) => {
@@ -666,12 +671,26 @@ app.post('/orders', async (request, reply) => {
     userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
   } catch { /* non-fatal */ }
 
+  const stockPrepDays = body.order_type === 'from_stock' ? (body.stock_prep_days ?? 0) : null;
+  const stockPrepReadyAt = stockPrepDays !== null
+    ? (stockPrepDays === 0 ? new Date() : new Date(Date.now() + stockPrepDays * 86_400_000))
+    : null;
+
   const rows = await query(
-    `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount, order_confirmed_at)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount, order_confirmed_at, order_type, stock_prep_days, stock_prep_ready_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (quotation_number) DO UPDATE SET updated_at = NOW()
      RETURNING *`,
-    [body.quotation_number ?? null, body.client_name ?? null, body.sales_agent ?? null, body.total_amount ?? null, body.order_confirmed_at ?? null]
+    [
+      body.quotation_number ?? null,
+      body.client_name ?? null,
+      body.sales_agent ?? null,
+      body.total_amount ?? null,
+      body.order_confirmed_at ?? null,
+      body.order_type ?? null,
+      stockPrepDays,
+      stockPrepReadyAt?.toISOString() ?? null,
+    ]
   );
   // Auto-link client by name
   if (body.client_name) {
@@ -1199,7 +1218,7 @@ const syncExtractedSchema = z.object({
   })).optional(),
   payment: z.object({
     amount: z.number().positive(),
-    type: z.enum(['deposit', 'balance']),
+    type: z.enum(['deposit', 'balance', 'full']),
     reference_number: z.string().optional(),
     paid_by: z.string().optional(),
     payment_date: z.string().optional(),
@@ -1231,7 +1250,7 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
     // Fetch existing order
     const orderRows = await query(
       `SELECT id, quotation_number, client_name, sales_agent, total_amount, order_confirmed_at,
-              deposit_paid, deposit_amount, balance_paid, balance_paid_at
+              deposit_paid, deposit_amount, balance_paid, balance_paid_at, current_stage
        FROM orders WHERE id=$1`,
       [params.id]
     );
@@ -1246,6 +1265,7 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
       items_skipped: { name: string; reason: string }[];
       payment_recorded?: { type: string; amount: number };
       payment_skipped?: { type: string; reason: string };
+      full_payment?: { depositPortion: number; balancePortion: number; overpayment: number };
     } = {
       order_fields: [],
       items_added: [],
@@ -1378,6 +1398,26 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
 
         // Notify
         triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
+      } else if (body.payment.type === 'full') {
+        const effectiveTotal = body.total_amount ?? order.total_amount;
+        if (effectiveTotal == null) {
+          syncReport.payment_skipped = { type: 'full', reason: 'Total amount is required before recording a full payment' };
+        } else {
+          const full = await recordFullPaymentForOrder({
+            orderId: params.id,
+            quotationNumber: body.quotation_number ?? order.quotation_number,
+            clientName: body.client_name ?? order.client_name,
+            totalAmount: Number(effectiveTotal),
+            amount: body.payment.amount,
+            paymentDate: body.payment.payment_date ?? null,
+            referenceNumber: body.payment.reference_number ?? null,
+            paidBy: body.payment.paid_by ?? null,
+            source: 'ai_sync_full_payment',
+            updatedBy: userEmail ?? 'dashboard',
+          });
+          syncReport.payment_recorded = { type: 'full', amount: body.payment.amount };
+          syncReport.full_payment = full;
+        }
       } else if (body.payment.type === 'balance') {
         if (!order.deposit_paid) {
           syncReport.payment_skipped = { type: 'balance', reason: 'Deposit must be paid first' };
@@ -1411,8 +1451,8 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
 
           // Stage updates
           const remarks = isFullyPaid
-            ? `Balance of ₱${body.payment.amount} recorded via AI sync (total: ₱${balanceTotal.toLocaleString()})`
-            : `Partial balance of ₱${body.payment.amount} recorded via AI sync. Remaining: ₱${(expectedBalance - balanceTotal).toLocaleString()}`;
+            ? `Balance of PHP ${body.payment.amount} recorded via AI sync (total: PHP ${balanceTotal.toLocaleString()})`
+            : `Partial balance of PHP ${body.payment.amount} recorded via AI sync. Remaining: PHP ${(expectedBalance - balanceTotal).toLocaleString()}`;
           await query(
             `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
              VALUES ($1, 'balance_verification', 'balance_paid', $2, $3)`,
@@ -2805,18 +2845,23 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   const tokenPayload = JSON.parse(tokenData);
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
-  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, order_type FROM orders WHERE id = $1`, [id]);
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, order_type, balance_verified FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
   if (orderRows[0].current_stage !== 'inventory_arrived') {
     return reply.code(400).send({ error: 'Order is not in inventory arrival stage' });
   }
 
-  // Stock replenishment orders complete at inventory_arrived — no balance/delivery needed
+  // Stock replenishment orders complete at inventory_arrived - no balance/delivery needed.
+  // Fully paid + balance-verified orders skip balance_due and move straight to delivery scheduling.
   const isReplenishment = orderRows[0].order_type === 'stock_replenishment';
-  const nextStage = isReplenishment ? 'completed' : 'balance_due';
+  const isBalanceAlreadyVerified = orderRows[0].balance_verified === true;
+  const nextStage = isReplenishment ? 'completed' : (isBalanceAlreadyVerified ? 'delivery_pending' : 'balance_due');
   const stageRemark = isReplenishment
     ? 'Inventory arrived and confirmed. Stock replenishment complete.'
-    : 'Inventory arrival confirmed. Proceeding to balance due.';
+    : isBalanceAlreadyVerified
+      ? 'Inventory arrival confirmed. Full payment/balance already verified; proceeding to delivery pending.'
+      : 'Inventory arrival confirmed. Proceeding to balance due.';
+
 
   await query(
     `UPDATE orders SET current_stage = $1, inventory_verified_at = NOW(),
@@ -2844,7 +2889,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   // Notify escalation group
   await notifyManualChange(
     'Inventory arrival confirmed',
-    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: ${isReplenishment ? 'Completed (stock replenishment)' : 'Balance Due'}`,
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: ${isReplenishment ? 'Completed (stock replenishment)' : (isBalanceAlreadyVerified ? 'Delivery Pending' : 'Balance Due')}`,
     userEmail,
   );
 
@@ -2858,7 +2903,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
         INVENTORY_GROUP_CHAT_ID,
         isReplenishment
           ? `✅ <b>Stock Replenishment Complete</b>\n\nRef: <b>${ref}</b>\n\nAll inventory has arrived and been confirmed. Order is now Completed.`
-          : `✅ <b>Inventory Arrival Confirmed (Dashboard)</b>\n\nQuotation: <b>${ref}</b>\nClient: ${client}\n\nAll inventory has been confirmed as arrived via dashboard. Order is now in Balance Due stage.`
+          : `✅ <b>Inventory Arrival Confirmed (Dashboard)</b>\n\nQuotation: <b>${ref}</b>\nClient: ${client}\n\nAll inventory has been confirmed as arrived via dashboard. Order is now in ${isBalanceAlreadyVerified ? 'Delivery Pending stage because full payment is verified' : 'Balance Due stage'}.`
       );
     });
   }
@@ -2866,7 +2911,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
 
-  return reply.send({ ok: true, message: isReplenishment ? 'Inventory arrived. Stock replenishment marked as completed.' : 'Inventory arrival confirmed. Advanced to balance_due.' });
+  return reply.send({ ok: true, message: isReplenishment ? 'Inventory arrived. Stock replenishment marked as completed.' : (isBalanceAlreadyVerified ? 'Inventory arrival confirmed. Advanced to delivery_pending.' : 'Inventory arrival confirmed. Advanced to balance_due.') });
 });
 
 // ── Order Items (Item-Level Production Tracking) ─────────────────────
@@ -4093,6 +4138,131 @@ async function getPaymentTotals(orderId: string): Promise<{ depositTotal: number
   };
 }
 
+
+async function recordFullPaymentForOrder(args: {
+  orderId: string;
+  quotationNumber: string | null;
+  clientName: string | null;
+  totalAmount: number;
+  amount: number;
+  paymentDate?: string | null;
+  referenceNumber?: string | null;
+  paidBy?: string | null;
+  source?: string | null;
+  updatedBy?: string | null;
+}): Promise<{ depositPortion: number; balancePortion: number; overpayment: number }> {
+  const fullAmount = Number(args.amount);
+  const totalAmount = Number(args.totalAmount);
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    throw new Error('Total amount is required before recording a full payment.');
+  }
+  if (fullAmount < totalAmount) {
+    throw new Error(`Full payment amount must be at least the total amount (PHP ${totalAmount.toLocaleString()}).`);
+  }
+
+  const existingTotals = await getPaymentTotals(args.orderId);
+  const existingPaid = existingTotals.depositTotal + existingTotals.balanceTotal;
+  const remainingToAllocate = Math.max(0, totalAmount - existingPaid);
+  const amountToAllocate = Math.min(fullAmount, remainingToAllocate);
+  const depositTarget = totalAmount * 0.5;
+  const depositNeeded = Math.max(0, depositTarget - existingTotals.depositTotal);
+  const depositPortion = Math.min(amountToAllocate, depositNeeded);
+  const balancePortion = Math.max(0, amountToAllocate - depositPortion);
+  const overpayment = Math.max(0, fullAmount - remainingToAllocate);
+
+  if (depositPortion > 0) {
+    await query(
+      `INSERT INTO payments (order_id, type, amount, reference_number, paid_by, payment_date, source)
+       VALUES ($1, 'deposit', $2, $3, $4, $5, $6)`,
+      [args.orderId, depositPortion, args.referenceNumber ?? null, args.paidBy ?? null, args.paymentDate ?? null, args.source ?? 'full_payment']
+    );
+  }
+
+  if (balancePortion > 0 || existingTotals.balanceTotal === 0) {
+    await query(
+      `INSERT INTO payments (order_id, type, amount, reference_number, paid_by, payment_date, source)
+       VALUES ($1, 'balance', $2, $3, $4, $5, $6)`,
+      [args.orderId, balancePortion, args.referenceNumber ?? null, args.paidBy ?? null, args.paymentDate ?? null, args.source ?? 'full_payment']
+    );
+  }
+
+  const totals = await getPaymentTotals(args.orderId);
+  const isFullyPaid = totals.depositTotal + totals.balanceTotal >= totalAmount;
+
+  await query(
+    `UPDATE orders SET
+       deposit_paid=TRUE,
+       deposit_verified=FALSE,
+       deposit_amount=$1,
+       deposit_paid_at=COALESCE($4, deposit_paid_at, NOW()),
+       balance_paid=$2,
+       balance_verified=FALSE,
+       balance_paid_at=CASE WHEN $2 THEN COALESCE($4, balance_paid_at, NOW()) ELSE balance_paid_at END,
+       current_stage=CASE
+         WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending', 'deposit_verification')
+         THEN 'deposit_verification'
+         WHEN $2 AND current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+         THEN 'balance_verification'
+         ELSE current_stage
+       END,
+       updated_at=NOW()
+     WHERE id=$3`,
+    [totals.depositTotal, isFullyPaid, args.orderId, args.paymentDate ?? null]
+  );
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES
+       ($1, 'deposit_verification', 'full_payment_recorded', $2, $4),
+       ($1, 'balance_verification', 'full_payment_recorded', $3, $4)`,
+    [
+      args.orderId,
+      `Full payment recorded. Deposit portion: PHP ${depositPortion.toLocaleString()}. Awaiting deposit verification.`,
+      `Full payment recorded. Balance portion: PHP ${balancePortion.toLocaleString()}${overpayment > 0 ? `; overpayment: PHP ${overpayment.toLocaleString()}` : ''}. Awaiting balance verification.`,
+      args.updatedBy ?? null,
+    ]
+  );
+
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW()
+     WHERE order_id=$1 AND status='active' AND stage IN ('deposit_pending', 'balance_due', 'inventory_arrived')`,
+    [args.orderId]
+  );
+
+  triggerAgentsForStage('deposit_verification', args.quotationNumber ?? undefined, args.clientName ?? undefined);
+  triggerAgentsForStage('balance_verification', args.quotationNumber ?? undefined, args.clientName ?? undefined);
+
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `Full Payment Recorded - Needs Verification\n\n` +
+      `Quotation: <b>${args.quotationNumber ?? args.orderId}</b>\n` +
+      `Client: ${args.clientName ?? 'N/A'}\n` +
+      `Amount received: PHP ${fullAmount.toLocaleString()}\n` +
+      `Deposit portion: PHP ${depositPortion.toLocaleString()}\n` +
+      `Balance portion: PHP ${balancePortion.toLocaleString()}\n` +
+      (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : '') +
+      `Date: ${args.paymentDate ?? 'now'}\n\n` +
+      `Please verify both deposit and balance payment records on the dashboard.`
+    );
+  });
+
+  if (PRODUCTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `Full Payment Recorded Before Production\n\n` +
+        `Quotation: <b>${args.quotationNumber ?? args.orderId}</b>\n` +
+        `Client: ${args.clientName ?? 'N/A'}\n` +
+        `Amount: PHP ${fullAmount.toLocaleString()}\n\n` +
+        `Collection must verify the payment first. Once verified, the production deposit gate is cleared.`
+      );
+    });
+  }
+
+  return { depositPortion, balancePortion, overpayment };
+}
+
 // ── Deposits ──────────────────────────────────────────────────────────
 
 const depositSchema = z.object({
@@ -4919,6 +5089,84 @@ app.post('/pay-balance', async (request, reply) => {
   }
 });
 
+const fullPaymentSchema = z.object({
+  quotation_number: z.string(),
+  amount: z.number().positive(),
+  payment_date: z.string().optional(),
+  reference_number: z.string().optional(),
+  paid_by: z.string().optional(),
+  updated_by: z.string().optional(),
+  action_token: z.string().optional(),
+});
+
+app.post('/full-payment', async (request, reply) => {
+  try {
+    const body = fullPaymentSchema.parse(request.body);
+
+    let userEmail: string | null = null;
+    if (isDashboardOrigin(body.updated_by)) {
+      if (!cacheClient?.isOpen) {
+        return reply.status(503).send({ error: 'Action verification unavailable' });
+      }
+      const tokenKey = `action_token:${body.action_token}`;
+      const tokenData = await cacheClient.get(tokenKey);
+      if (!tokenData) {
+        return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+      }
+      await cacheClient.del(tokenKey);
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    }
+
+    const orders = await query(
+      `SELECT id, quotation_number, client_name, total_amount FROM orders WHERE quotation_number=$1 AND status='active'`,
+      [body.quotation_number]
+    );
+    if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+    if (orders[0].total_amount == null) {
+      return reply.code(400).send({ error: 'Total amount is required before recording a full payment.' });
+    }
+
+    const full = await recordFullPaymentForOrder({
+      orderId: orders[0].id,
+      quotationNumber: orders[0].quotation_number,
+      clientName: orders[0].client_name,
+      totalAmount: Number(orders[0].total_amount),
+      amount: body.amount,
+      paymentDate: body.payment_date ?? null,
+      referenceNumber: body.reference_number ?? null,
+      paidBy: body.paid_by ?? null,
+      source: body.updated_by ?? 'full_payment',
+      updatedBy: userEmail ?? body.updated_by ?? null,
+    });
+
+    await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+    broadcastSSE('order_updated', { id: orders[0].id });
+
+    if (isDashboardOrigin(body.updated_by)) {
+      await notifyManualChange(
+        'Quick Action: Full payment recorded',
+        `Quotation: *${body.quotation_number}*\nAmount: PHP ${body.amount.toLocaleString()}\nDeposit portion: PHP ${full.depositPortion.toLocaleString()}\nBalance portion: PHP ${full.balancePortion.toLocaleString()}${full.overpayment > 0 ? `\nOverpayment: PHP ${full.overpayment.toLocaleString()}` : ''}`,
+        userEmail,
+      );
+    }
+
+    return reply.send({
+      ok: true,
+      quotation_number: body.quotation_number,
+      amount: body.amount,
+      is_fully_paid: true,
+      ...full,
+    });
+  } catch (err: any) {
+    console.error('[full-payment] Error recording full payment:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    return reply.status(500).send({ error: err?.message ?? 'Failed to record full payment' });
+  }
+});
+
 // ── Verify Deposit ──────────────────────────────────────────────────────
 
 /**
@@ -4955,7 +5203,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   }
 
   const orders = await query(
-    `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified
+    `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified, order_type, stock_prep_days, stock_prep_ready_at
      FROM orders WHERE id = $1 AND status = 'active'`,
     [id],
   );
@@ -4976,7 +5224,9 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     });
   }
 
-  const nextStage = 'purchasing_pending';
+  // From-stock orders skip purchasing/production/en_route/inventory — go straight to stock_preparation
+  const isFromStock = order.order_type === 'from_stock';
+  const nextStage = isFromStock ? 'stock_preparation' : 'purchasing_pending';
 
   // Mark all deposit payment records as verified
   await query(
@@ -4985,15 +5235,22 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id, body.verified_by ?? null]
   );
 
+  // For from_stock orders, also (re)calculate stock_prep_ready_at in case it wasn't set at creation
+  const prepDays = Number(order.stock_prep_days ?? 0);
+  const readyAt = isFromStock
+    ? (prepDays === 0 ? new Date() : new Date(Date.now() + prepDays * 86_400_000))
+    : null;
+
   await query(
     `UPDATE orders SET
        deposit_verified = TRUE,
        deposit_verified_at = NOW(),
        deposit_verified_by = $2,
        current_stage = $3,
+       stock_prep_ready_at = COALESCE(stock_prep_ready_at, $4),
        updated_at = NOW()
      WHERE id = $1`,
-    [id, body.verified_by ?? null, nextStage],
+    [id, body.verified_by ?? null, nextStage, readyAt?.toISOString() ?? null],
   );
 
   // Record stage updates
@@ -5004,8 +5261,12 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   );
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'purchasing_pending', 'ready', 'Downpayment verified; ready for purchasing/production preparation.', $2)`,
-    [id, body.verified_by ?? null],
+     VALUES ($1, $2, 'ready', $3, $4)`,
+    [id, nextStage,
+      isFromStock
+        ? `From-stock order — skipping production/en_route. Preparing from existing inventory.`
+        : 'Downpayment verified; ready for purchasing/production preparation.',
+      body.verified_by ?? null],
   );
 
   // Complete deposit_verification reminders
@@ -5015,76 +5276,224 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     [id],
   );
 
-
-  // Notify purchasing agent immediately that deposit is verified and order is ready for purchasing
+  // Trigger agents and send notifications based on order type
   triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
 
-  // Notify collection group immediately — deposit verified, advancing to production
-  setImmediate(() => {
-    notifyGroupChat(
-      COLLECTION_CHAT_ID,
-      `✅ <b>Deposit Verified</b>\n\n` +
-      `Quotation: <b>${order.quotation_number}</b>\n` +
-      `Client: ${order.client_name ?? 'N/A'}\n` +
-      `Verified by: ${body.verified_by ?? 'team'}\n` +
-      `Next stage: <b>Purchasing Pending</b>\n\n` +
-      `Deposit has been verified on the dashboard.`
-    );
-  });
-
-  // Notify production group — ask if production workflow has started
-  // The deposit is now verified, so the production gate is cleared.
-  setImmediate(() => {
-    const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
-    if (prodGroupChatId && _TELEGRAM_BOT_TOKEN) {
+  if (isFromStock) {
+    // From-stock: notify inventory/delivery group about stock preparation
+    const inventoryGroupChatId = process.env.INVENTORY_GROUP_CHAT_ID;
+    const prepLabel = prepDays === 0
+      ? 'Immediate — stock is ready'
+      : `${prepDays} day(s) — ready by ${readyAt!.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}`;
+    setImmediate(() => {
       notifyGroupChatWithButtons(
-        prodGroupChatId,
-        `💰 <b>Downpayment Verified</b>\n\n` +
+        inventoryGroupChatId ?? DELIVERY_CHAT_ID,
+        `📦 <b>From-Stock Order Ready for Preparation</b>\n\n` +
         `Quotation: <b>${order.quotation_number}</b>\n` +
-        `Client: ${order.client_name ?? 'N/A'}\n\n` +
-        `The client has made the downpayment and the deposit is now verified.\n\n` +
-        `❓ <b>Do we proceed to start the production workflow?</b>`,
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Deposit verified by: ${body.verified_by ?? 'team'}\n` +
+        `Preparation time: <b>${prepLabel}</b>\n\n` +
+        `Please prepare the stock for delivery.`,
         [
           [
-            { text: '✅ Yes, proceed', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
-            { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${id}:${order.quotation_number}` },
+            { text: '✅ Stock Ready', callback_data: `stock_prep:ready:${order.quotation_number}` },
+            { text: '⏳ Not Yet', callback_data: `stock_prep:delay:${order.quotation_number}` },
           ],
         ]
       );
-    }
-  });
+    });
 
-  // Notify escalation group about deposit verification (dashboard only)
+    // Create stock_preparation reminder
+    setImmediate(async () => {
+      try {
+        const groupId = process.env.INVENTORY_GROUP_CHAT_ID ?? process.env.DELIVERY_GROUP_CHAT_ID ?? '';
+        if (groupId) {
+          await upsertStageReminder(
+            id,
+            'stock_preparation',
+            groupId,
+            `📦 From-stock order #${order.quotation_number} (${order.client_name ?? 'Unknown'}) is awaiting stock preparation. ${prepDays === 0 ? 'Immediate preparation requested.' : `Ready by: ${readyAt!.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}`}`,
+          );
+        }
+      } catch (err) {
+        console.warn('[verify-deposit] Failed to upsert stock_preparation reminder:', err);
+      }
+    });
+
+    // Notify collection group
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `✅ <b>Deposit Verified (From-Stock Order)</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Verified by: ${body.verified_by ?? 'team'}\n` +
+        `Next stage: <b>Stock Preparation</b>\n\n` +
+        `No production needed — stock will be prepared from existing inventory.`
+      );
+    });
+  } else {
+    // Standard order: notify production group
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `✅ <b>Deposit Verified</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Verified by: ${body.verified_by ?? 'team'}\n` +
+        `Next stage: <b>Purchasing Pending</b>\n\n` +
+        `Deposit has been verified on the dashboard.`
+      );
+    });
+
+    setImmediate(() => {
+      const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+      if (prodGroupChatId && _TELEGRAM_BOT_TOKEN) {
+        notifyGroupChatWithButtons(
+          prodGroupChatId,
+          `💰 <b>Downpayment Verified</b>\n\n` +
+          `Quotation: <b>${order.quotation_number}</b>\n` +
+          `Client: ${order.client_name ?? 'N/A'}\n\n` +
+          `The client has made the downpayment and the deposit is now verified.\n\n` +
+          `❓ <b>Do we proceed to start the production workflow?</b>`,
+          [
+            [
+              { text: '✅ Yes, proceed', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
+              { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${id}:${order.quotation_number}` },
+            ],
+          ]
+        );
+      }
+    });
+
+    setImmediate(async () => {
+      try {
+        const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+        if (prodGroupChatId) {
+          await upsertStageReminder(
+            id,
+            'purchasing_pending',
+            prodGroupChatId,
+            `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Do we proceed to start the production workflow?`,
+          );
+        }
+      } catch (err) {
+        console.warn('[verify-deposit] Failed to upsert purchasing_pending reminder:', err);
+      }
+    });
+  }
+
+  // Notify escalation group (dashboard only)
   if (isDashboardOrigin(body.verified_by)) {
     await notifyManualChange(
       'Deposit verified',
-      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: Purchasing Pending`,
+      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${isFromStock ? 'Stock Preparation' : 'Purchasing Pending'}`,
       userEmail,
     );
   }
 
-  // Create/update the purchasing_pending reminder to point to the production group.
-  // The production team needs daily reminders to start the workflow — not just the one-time notification above.
-  // Uses upsertStageReminder so existing reminders created with the wrong group are corrected.
-  setImmediate(async () => {
-    try {
-      const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
-      if (prodGroupChatId) {
-        await upsertStageReminder(
-          id,
-          'purchasing_pending',
-          prodGroupChatId,
-          `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Do we proceed to start the production workflow?`,
-        );
-      }
-    } catch (err) {
-      console.warn('[verify-deposit] Failed to upsert purchasing_pending reminder:', err);
-    }
-  });
-
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
 
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
+});
+
+// ── Stock Preparation (from_stock orders) ──────────────────────────────
+
+/**
+ * POST /orders/:id/stock-ready
+ * Marks a from_stock order's stock as ready and advances to balance_due.
+ * Optionally deducts item quantities from inventory_items by name match.
+ */
+app.post('/orders/:id/stock-ready', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = z.object({
+    deduct_inventory: z.boolean().default(true),
+    updated_by: z.string().optional(),
+  }).parse(request.body);
+
+  const rows = await query(
+    `SELECT id, quotation_number, client_name, current_stage, order_type FROM orders WHERE id = $1 AND status = 'active'`,
+    [id],
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = rows[0];
+  if (order.current_stage !== 'stock_preparation') {
+    return reply.code(400).send({ error: `Order is not in stock_preparation stage (current: ${order.current_stage})` });
+  }
+
+  // Advance to balance_due
+  await query(
+    `UPDATE orders SET current_stage = 'balance_due', updated_at = NOW() WHERE id = $1`,
+    [id],
+  );
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'stock_preparation', 'completed', 'Stock prepared and ready for delivery.', $2)`,
+    [id, body.updated_by ?? 'system'],
+  );
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='stock_preparation' AND status='active'`,
+    [id],
+  );
+
+  // Deduct inventory quantities by item name match
+  if (body.deduct_inventory) {
+    const items = await query<{ id: string; name: string; quantity: number }>(
+      `SELECT id, name, quantity FROM order_items WHERE order_id = $1`,
+      [id],
+    );
+    for (const item of items) {
+      const invRows = await query<{ id: string; quantity: number }>(
+        `SELECT id, quantity FROM inventory_items WHERE lower(product_name) = lower($1) ORDER BY created_at ASC LIMIT 1`,
+        [item.name],
+      );
+      if (invRows[0]) {
+        await query(
+          `UPDATE inventory_items SET quantity = GREATEST(0, quantity - $1), updated_at = NOW() WHERE id = $2`,
+          [item.quantity, invRows[0].id],
+        );
+      }
+    }
+  }
+
+  triggerAgentsForStage('balance_due', order.quotation_number, order.client_name);
+
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `📦 <b>Stock Ready — Balance Collection Needed</b>\n\n` +
+      `Quotation: <b>${order.quotation_number}</b>\n` +
+      `Client: ${order.client_name ?? 'N/A'}\n` +
+      `Marked ready by: ${body.updated_by ?? 'system'}\n\n` +
+      `Stock is prepared. Please collect the balance payment from the client.`
+    );
+  });
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: 'balance_due' });
+});
+
+/**
+ * POST /orders/:id/set-stock-prep
+ * Update prep days and ready date for a from_stock order.
+ */
+app.post('/orders/:id/set-stock-prep', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = z.object({
+    stock_prep_days: z.number().int().min(0),
+    updated_by: z.string().optional(),
+  }).parse(request.body);
+
+  const readyAt = body.stock_prep_days === 0
+    ? new Date()
+    : new Date(Date.now() + body.stock_prep_days * 86_400_000);
+
+  await query(
+    `UPDATE orders SET stock_prep_days = $1, stock_prep_ready_at = $2, updated_at = NOW() WHERE id = $3`,
+    [body.stock_prep_days, readyAt.toISOString(), id],
+  );
+  await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*']);
+  return reply.send({ ok: true, stock_prep_days: body.stock_prep_days, stock_prep_ready_at: readyAt.toISOString() });
 });
 
 // ── Verify Balance ──────────────────────────────────────────────────────
@@ -5145,9 +5554,15 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   const currentStage = order.current_stage;
   const nextStage = (currentStage === 'delivered' || currentStage === 'countered')
     ? 'payment_received'
-    : 'delivery_pending';
+    : (currentStage === 'balance_due' || currentStage === 'inventory_arrived' || currentStage === 'delivery_scheduled')
+      ? 'delivery_pending'
+      : currentStage;
 
-  const stageLabel = nextStage === 'payment_received' ? 'Payment Received' : 'Delivery Pending';
+  const stageLabel = nextStage === 'payment_received'
+    ? 'Payment Received'
+    : nextStage === 'delivery_pending'
+      ? 'Delivery Pending'
+      : `Current workflow stage (${nextStage})`;
 
   // Mark all balance payment records as verified
   await query(
@@ -5181,8 +5596,9 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     [id],
   );
 
-  // Notify the relevant agent immediately
-  triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
+  // Notify the relevant agent immediately. If full payment is verified before production,
+  // keep the order in its production workflow and let inventory arrival advance to delivery later.
+  triggerAgentsForStage(nextStage === currentStage ? 'balance_verification' : nextStage, order.quotation_number, order.client_name);
 
   // Notify collection group immediately — balance verified
   setImmediate(() => {
@@ -8364,3 +8780,4 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+

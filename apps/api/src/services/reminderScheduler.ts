@@ -256,6 +256,7 @@ export async function processDueReminders(): Promise<number> {
     if ((reminder.stage === 'item_prod_midpoint' || reminder.stage === 'item_prod_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // En route verification — stale once order advances past it
     if (reminder.stage === 'en_route_verification' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'stock_preparation' && ['balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // En route timed reminders — en_route_midpoint stays active through en_route_verification (arrival still expected)
     if (reminder.stage === 'en_route_midpoint' && !['en_route', 'en_route_verification'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route_arrival' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
@@ -319,6 +320,7 @@ export async function processDueReminders(): Promise<number> {
       item_level_en_route: '🚚 Item En Route',
       item_prod_midpoint: '🏭 Item Production Midpoint',
       item_prod_due: '🏭 Item Production Due',
+      stock_preparation: '📦 Stock Preparation',
     };
 
     const stageLabel = stageLabels[reminder.stage] ?? reminder.stage;
@@ -752,6 +754,29 @@ export async function processDueReminders(): Promise<number> {
       // Inventory verification ? send the permanent per-order link and pending item list.
       const inventoryDetails = await buildInventoryVerificationReminderDetails(reminder);
       ok = await sendTelegramMessage(reminder.group_chat_id, text + inventoryDetails);
+    } else if (reminder.stage === 'stock_preparation') {
+      // From-stock order stock preparation: ask if stock is ready for delivery
+      const orderRows = await query(
+        `SELECT stock_prep_days, stock_prep_ready_at FROM orders WHERE id = $1`,
+        [reminder.order_id],
+      );
+      const prepDays = orderRows[0]?.stock_prep_days ?? 0;
+      const readyAt = orderRows[0]?.stock_prep_ready_at;
+      const readyLabel = readyAt
+        ? `Ready by: <b>${new Date(readyAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}</b>`
+        : prepDays === 0 ? 'Immediate preparation' : `${prepDays} day(s) preparation`;
+      const stockPrepText =
+        `📦 <b>Stock Preparation Reminder</b>\n\n` +
+        `Order: <b>${reminder.quotation_number ?? reminder.order_id.slice(0, 8)}</b>\n` +
+        `Client: ${reminder.client_name ?? 'Unknown'}\n` +
+        `${readyLabel}\n\n` +
+        `Is the stock ready for delivery?`;
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, stockPrepText, [
+        [
+          { text: '✅ Stock Ready', callback_data: `stock_prep:ready:${reminder.quotation_number}` },
+          { text: '⏳ Not Yet', callback_data: `stock_prep:delay:${reminder.quotation_number}` },
+        ],
+      ]);
     } else {
       // Standard reminder — plain text
       ok = await sendTelegramMessage(reminder.group_chat_id, text);

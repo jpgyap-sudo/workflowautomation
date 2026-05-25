@@ -54,6 +54,8 @@ export interface Order {
   inventory_verified_at: string | null;
   inventory_verification_pct: number | null;
   order_type: string | null;
+  stock_prep_days: number | null;
+  stock_prep_ready_at: string | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -171,10 +173,32 @@ export async function createOrder(data: {
   total_amount?: number;
   items?: Array<{ name: string; quantity: number }>;
   action_token?: string;
+  order_type?: 'from_stock';
+  stock_prep_days?: number;
 }): Promise<Order> {
   return fetchJson<Order>('/orders', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+export async function markStockReady(
+  orderId: string,
+  opts: { deduct_inventory?: boolean; updated_by?: string } = {},
+): Promise<{ ok: boolean; next_stage: string }> {
+  return fetchJson<{ ok: boolean; next_stage: string }>(`/orders/${orderId}/stock-ready`, {
+    method: 'POST',
+    body: JSON.stringify({ deduct_inventory: opts.deduct_inventory ?? true, updated_by: opts.updated_by }),
+  });
+}
+
+export async function setStockPrep(
+  orderId: string,
+  stock_prep_days: number,
+): Promise<{ ok: boolean; stock_prep_ready_at: string }> {
+  return fetchJson<{ ok: boolean; stock_prep_ready_at: string }>(`/orders/${orderId}/set-stock-prep`, {
+    method: 'POST',
+    body: JSON.stringify({ stock_prep_days }),
   });
 }
 
@@ -196,7 +220,7 @@ export interface VisionExtractResult {
   type: 'quotation' | 'payment' | 'inventory' | 'unknown';
   payment?: {
     amount?: number;
-    type?: 'deposit' | 'balance' | 'unknown';
+    type?: 'deposit' | 'balance' | 'full' | 'unknown';
     reference_number?: string;
     paid_by?: string;
     payment_date?: string;
@@ -705,6 +729,7 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   en_route_verification: { label: 'En Route Verification', color: 'bg-blue-100 text-blue-800',        icon: '🔎' },
   inventory_verification: { label: 'Inventory Verification', color: 'bg-teal-100 text-teal-800',       icon: '🔍' },
   inventory_arrived:     { label: 'Inventory Arrived',     color: 'bg-cyan-100 text-cyan-800',       icon: '📦' },
+  stock_preparation:     { label: 'Stock Preparation',      color: 'bg-lime-100 text-lime-800',       icon: '📦' },
   balance_due:           { label: 'Balance Due',            color: 'bg-violet-100 text-violet-800',   icon: '⚖️' },
   balance_verification:  { label: 'Balance Verification',  color: 'bg-fuchsia-100 text-fuchsia-800', icon: '🔍' },
   delivery_pending:      { label: 'Delivery Pending',      color: 'bg-amber-100 text-amber-800',     icon: '⏳' },

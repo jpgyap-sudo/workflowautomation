@@ -24,7 +24,7 @@ interface VisionResult {
   quotation?: ExtractedQuotation;
   payment?: {
     amount?: number;
-    type?: 'deposit' | 'balance' | 'unknown';
+    type?: 'deposit' | 'balance' | 'full' | 'unknown';
     reference_number?: string;
     paid_by?: string;
     payment_date?: string;
@@ -88,8 +88,8 @@ function getNumberStringField(record: Record<string, unknown>, key: string): str
   return '';
 }
 
-function normalizePaymentType(value: unknown): 'deposit' | 'balance' | 'unknown' {
-  return value === 'deposit' || value === 'balance' ? value : 'unknown';
+function normalizePaymentType(value: unknown): 'deposit' | 'balance' | 'full' | 'unknown' {
+  return value === 'deposit' || value === 'balance' || value === 'full' ? value : 'unknown';
 }
 
 interface UploadSummary {
@@ -132,7 +132,7 @@ function VisionPageContent() {
   const [orderDate, setOrderDate] = useState('');
   const [items, setItems] = useState<{ product_name: string; quantity: number }[]>([]);
   const [paymentQuotationNumber, setPaymentQuotationNumber] = useState('');
-  const [paymentType, setPaymentType] = useState<'deposit' | 'balance' | 'unknown'>('unknown');
+  const [paymentType, setPaymentType] = useState<'deposit' | 'balance' | 'full' | 'unknown'>('unknown');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
@@ -393,8 +393,8 @@ function VisionPageContent() {
       setError('Payment amount is required.');
       return;
     }
-    if (paymentType !== 'deposit' && paymentType !== 'balance') {
-      setError('Choose whether this is a downpayment or balance payment.');
+    if (paymentType !== 'deposit' && paymentType !== 'balance' && paymentType !== 'full') {
+      setError('Choose whether this is a downpayment, balance payment, or full payment.');
       return;
     }
     setOtpAction('recordPayment');
@@ -465,7 +465,7 @@ function VisionPageContent() {
     setShowOtp(false);
 
     try {
-      const endpoint = paymentType === 'deposit' ? '/deposits' : '/pay-balance';
+      const endpoint = paymentType === 'deposit' ? '/deposits' : paymentType === 'full' ? '/full-payment' : '/pay-balance';
       const body = paymentType === 'deposit'
         ? {
             quotation_number: paymentQuotationNumber.trim(),
@@ -478,6 +478,8 @@ function VisionPageContent() {
             quotation_number: paymentQuotationNumber.trim(),
             amount: Number(paymentAmount),
             payment_date: paymentDate || undefined,
+            reference_number: paymentReference || undefined,
+            paid_by: paymentPaidBy || undefined,
             updated_by: 'dashboard_quick_action',
             action_token: actionToken,
           };
@@ -881,12 +883,13 @@ function VisionPageContent() {
                     <label className="mb-1 block text-xs font-medium text-gray-600">Payment Type</label>
                     <select
                       value={paymentType}
-                      onChange={(e) => setPaymentType(e.target.value as 'deposit' | 'balance' | 'unknown')}
+                      onChange={(e) => setPaymentType(e.target.value as 'deposit' | 'balance' | 'full' | 'unknown')}
                       className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
                     >
                       <option value="unknown">Choose type...</option>
                       <option value="deposit">Downpayment / Deposit</option>
                       <option value="balance">Balance Payment</option>
+                      <option value="full">Full Payment (before production)</option>
                     </select>
                   </div>
                   <div>
@@ -1000,7 +1003,7 @@ function VisionPageContent() {
           )}
 
           {/* Existing Order Sync Banner */}
-          {existingOrder && result.type !== 'payment' && (
+          {existingOrder && (
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
               <h4 className="mb-1 text-sm font-semibold text-blue-800">
                 🔄 Sync Mode — Existing Order
@@ -1010,14 +1013,23 @@ function VisionPageContent() {
                 Client: <span className="font-medium">{existingOrder.client_name ?? '—'}</span>
               </p>
               <p className="mt-1 text-xs text-blue-500">
-                Only empty fields and new items will be filled in. Existing data will not be overwritten.
+                Only empty fields/new items will be filled in. Payment slips can also be synced here, including full payment before production.
               </p>
             </div>
           )}
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3">
-            {result.type === 'payment' ? (
+            {result.type === 'payment' && existingOrder ? (
+              <button
+                onClick={handleSyncToOrder}
+                disabled={!paymentAmount || paymentType === 'unknown' || syncing}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                {syncing ? 'Syncing?' : 'Sync Payment to This Order'}
+              </button>
+            ) : result.type === 'payment' ? (
               <button
                 onClick={handleRecordPayment}
                 disabled={!paymentQuotationNumber || !paymentAmount || paymentType === 'unknown'}
@@ -1110,7 +1122,7 @@ function VisionPageContent() {
           <CheckCircle className="mx-auto mb-3 h-8 w-8 text-green-600" />
           <h3 className="text-sm font-semibold text-green-800">Payment Recorded</h3>
           <p className="mt-1 text-xs text-green-700">
-            The edited {paymentType === 'deposit' ? 'downpayment' : 'balance payment'} values were recorded for {paymentQuotationNumber}.
+            The edited {paymentType === 'deposit' ? 'downpayment' : paymentType === 'full' ? 'full payment' : 'balance payment'} values were recorded for {paymentQuotationNumber}.
           </p>
           <button onClick={handleReset} className="mt-4 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700">
             Upload Another
@@ -1191,7 +1203,7 @@ function VisionPageContent() {
           otpAction === 'recordPayment'
             ? `Confirm recording the edited payment for "${paymentQuotationNumber || 'this order'}". Enter the OTP sent to your email to confirm.`
             : existingOrder
-              ? `Confirm syncing extracted data to order "${existingOrder.quotation_number || existingOrder.id}". Only empty fields and new items will be added. Enter the OTP sent to your email to confirm.`
+              ? `Confirm syncing extracted data/payment to order "${existingOrder.quotation_number || existingOrder.id}". Only empty fields and new items will be added. Enter the OTP sent to your email to confirm.`
               : `Confirm creating order "${quotationNumber || clientName || '?'}". Enter the OTP sent to your email to confirm.`
         }
         onVerified={handleOtpVerified}

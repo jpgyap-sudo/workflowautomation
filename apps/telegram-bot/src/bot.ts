@@ -561,6 +561,9 @@ const SAFE_PREFIXES = [
   'en_route:arrival_custom:',
   // Delivery day-before acknowledgement — no API call, just a confirmation message
   'delivery:ready:',
+  // Stock preparation callbacks — from_stock orders
+  'stock_prep:ready:',
+  'stock_prep:delay:',
   // Vision flow navigation (no state changes)
   'vision:type_',
   'vision:ignore',
@@ -5701,6 +5704,58 @@ function inventoryReadyKeyboard(orderId: string, quotationNumber: string) {
     [Markup.button.callback('Still Waiting', `inv_wait:${quotationNumber}`)],
   ]);
 }
+
+// ── Stock Preparation Callbacks (from_stock orders) ──────────────────────
+
+bot.action(/^stock_prep:ready:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const quotationNumber = ctx.match[1];
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `stock_prep:ready:${quotationNumber}`, direction: 'incoming' });
+  await ctx.editMessageText(`⏳ Marking stock as ready for *${quotationNumber}*...`, { parse_mode: 'Markdown' });
+
+  try {
+    const ordersRes = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+    if (!ordersRes.ok) throw new Error(`Order ${quotationNumber} not found`);
+    const orderData = await ordersRes.json();
+    const orderId = orderData.id;
+
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(orderId)}/stock-ready`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deduct_inventory: true, updated_by: username ?? userId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'API error' }));
+      throw new Error(err.error ?? `HTTP ${res.status}`);
+    }
+    await ctx.editMessageText(
+      `✅ *Stock Ready — ${quotationNumber}*\n\n` +
+      `Inventory deducted. Order advanced to *Balance Due* stage.\n\n` +
+      `Please collect the balance payment from the client.`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  } catch (err: any) {
+    await ctx.editMessageText(`❌ Failed to mark stock ready: ${err.message}`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+  }
+});
+
+bot.action(/^stock_prep:delay:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const quotationNumber = ctx.match[1];
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `stock_prep:delay:${quotationNumber}`, direction: 'incoming' });
+  await ctx.editMessageText(
+    `⏳ *Stock Not Ready Yet — ${quotationNumber}*\n\n` +
+    `Understood. The reminder will continue until the stock is prepared.\n\n` +
+    `Mark ready from the dashboard or via the next reminder.`,
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
+});
 
 // Top-level Yes / No / Partial arrival GUI.
 // Partial lists extracted quotation items; each item click marks it arrived, so future reminders
