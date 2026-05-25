@@ -96,7 +96,7 @@ const DEFAULT_ACCOUNTS: Account[] = [
   },
   {
     email: 'sales.homeu@gmail.com',
-    password: 'Sales888',
+    password: 'Homeu@888',
     name: 'Sales Team',
     role: 'editor',
     createdAt: new Date('2026-05-23').toISOString(),
