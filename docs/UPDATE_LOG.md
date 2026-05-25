@@ -26,7 +26,7 @@ When you **finish**:
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
 | 2026-05-25 07:51 | Codex | Fix: E2E inventory verification API returned no verified_qty on permanent item record; validated builds and deployed routes | Done |
-| 2026-05-25 07:51 | Roo (Code) | Feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings | 🔴 Active |
+| 2026-05-25 07:51 | Roo (Code) | Feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings | ✅ Done |
 | 2026-05-25 07:39 | Codex | Fix: inventory verification permanent link Telegram completion details and item update notification | Done |
 | 2026-05-24 20:10 | Roo (Code) | Deploy: Codex features — inventory accountability, item production dates, early inventory verification, production finished tracking | ✅ Done |
 | 2026-05-24 20:32 | Roo (Code) | Feat: replace Production Finished Actions column with notes input — users can add/view notes per order | ✅ Done |

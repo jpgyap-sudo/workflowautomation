@@ -12,7 +12,7 @@
 | `a7fd60c` | Codex | fix: close E2E workflow wiring gaps, including inventory verified_qty API exposure | Pending deploy |
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
 | `2a15dcf` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | ? VPS `2a15dcf` |
-| `pending` | Roo (Code) | feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings (deposit_pending, deposit_verification, purchasing_pending) | Pending deploy |
+| `4dbf72a` | Roo (Code) | feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings (deposit_pending, deposit_verification, purchasing_pending) | ✅ VPS `4dbf72a` |
 
 ## 2026-05-24
 
