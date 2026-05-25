@@ -10,7 +10,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `ed3dc55` | Roo (Code) | fix: order detail page React hooks violation — useEffect after conditional return caused "This page couldn't load" error. Moved useEffect before conditional returns with null guard. | ✅ VPS `ed3dc55` |
-| `a8c7cc2` | Roo (Code) | feat: Bulk Delete Clients — POST /clients/bulk-delete API endpoint with force-unlink support, bulkDeleteClients() API function, and full dashboard UI with checkboxes, select-all, force-delete confirmation, and OTP verification | 🔴 Pending |
+| `e334c67` | Roo (Code) | feat: Bulk Delete Clients — POST /clients/bulk-delete API endpoint with force-unlink support, bulkDeleteClients() API function, and full dashboard UI with checkboxes, select-all, force-delete confirmation, and OTP verification | ✅ VPS `e334c67` |
 | `897bc02` | Claude Sonnet 4.6 | fix: 8 E2E balance flow gaps — optional proof photo in bot paybalance, paybalance:skip action, preserve image on vision fallback, fix verify:balance + verify:deposit regex (strip 8-char orderId prefix), balance_verification stale check now includes current_stage | ✅ VPS `59cc9bd` |
 | `d94c009` | Claude Sonnet 4.6 | feat: support multiple deposit slips in New Order modal — dynamic slip list with per-slip file upload, AI extraction, amount, and date; loops recordDepositWithFile for each valid entry on submit | ✅ VPS `420cca9` |
 | `b97193c` | Roo (Code) | feat: add Tab Access control in Settings → User Management (Lock button + 21-tab toggle modal) + calendar tab action buttons (13 stage-advance transitions, create reminder, notify Telegram) + POST /telegram/notify API endpoint | ✅ VPS `b97193c` |

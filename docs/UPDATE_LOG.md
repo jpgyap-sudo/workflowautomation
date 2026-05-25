@@ -25,7 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
-| 2026-05-25 20:36 | Roo (Code) | Feat: Bulk Delete Clients — new POST /clients/bulk-delete API endpoint with force-unlink support, bulkDeleteClients() API function, and full dashboard UI with checkboxes, select-all, force-delete confirmation, and OTP verification | 🔴 Active |
+| 2026-05-25 20:36 | Roo (Code) | Feat: Bulk Delete Clients — new POST /clients/bulk-delete API endpoint with force-unlink support, bulkDeleteClients() API function, and full dashboard UI with checkboxes, select-all, force-delete confirmation, and OTP verification | ✅ Done |
 | | 2026-05-25 14:55 | Roo (Code) | Fix: order detail page React hooks violation — useEffect placed after conditional return caused "This page couldn't load" error. Moved useEffect before conditional returns with null guard. | ✅ Done |
 | 2026-05-25 13:21 | Roo (Code) | Feat: add sub-user management UI in Settings → User Management — modal with add/edit/delete entry codes (code + name) for each account, persists via updateAccount() | ✅ Done |
 | 2026-05-25 09:08 | Roo (Code) | Feat: add Schedule Group Chat — calendar_schedules table (migration 035), CRUD API endpoints, schedule events in calendar aggregation, schedule group chat handler with AI parsing (/agents/run/schedule-parser via Gemini 2.0 Flash), AI Vision for image→schedule/note extraction, schedule reminder scheduler, schedule API functions in dashboard, schedule type in calendar legend | ✅ Done |
