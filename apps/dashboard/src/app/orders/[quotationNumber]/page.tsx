@@ -781,11 +781,15 @@ function ItemTrackingSection({
     verifiedQty?: number;
   } | null>(null);
   const [pendingMarkArrived, setPendingMarkArrived] = useState<{ itemId: string } | null>(null);
+  const [pendingEditItem, setPendingEditItem] = useState<boolean>(false);
+  const [pendingProdStatus, setPendingProdStatus] = useState<{ itemId: string; status: 'pending' | 'in_progress' | 'finished' } | null>(null);
+  const [pendingEnRouteStatus, setPendingEnRouteStatus] = useState<{ itemId: string; status: 'not_yet' | 'en_route' | 'arrived'; estimatedArrivalDays?: number | null } | null>(null);
+  const [pendingManualItem, setPendingManualItem] = useState<boolean>(false);
   const [otpModal, setOtpModal] = useState<{
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'verify_item' | 'mark_arrived';
+    pendingAction: 'verify_item' | 'mark_arrived' | 'edit_item' | 'production_status' | 'en_route_status' | 'manual_item';
   }>({ open: false, title: '', description: '', pendingAction: 'verify_item' });
 
   // Show item tracking for all stages — items can be extracted at any point in the workflow
@@ -852,11 +856,26 @@ function ItemTrackingSection({
     });
   }
 
-  async function handleCreateManualItem() {
+  function handleCreateManualItem() {
+    const reason = manualItemForm.reason?.trim();
+    if (!reason) {
+      alert('A reason is required when manually adding item tracking.');
+      return;
+    }
+    setPendingManualItem(true);
+    setOtpModal({
+      open: true,
+      title: 'Add Manual Item',
+      description: `Add "${manualItemForm.name}" x${manualItemForm.quantity} to item tracking? Verify your identity to proceed.`,
+      pendingAction: 'manual_item',
+    });
+  }
+
+  async function executeCreateManualItem(actionToken: string) {
     setSavingManualItem(true);
     try {
       const payload = normalizeItemForm(manualItemForm);
-      await createOrderItem(orderId, payload);
+      await createOrderItem(orderId, { ...payload, action_token: actionToken });
       setManualItemForm(emptyItemForm);
       setShowManualItemForm(false);
       await refreshItemTracking();
@@ -864,15 +883,32 @@ function ItemTrackingSection({
       alert(err instanceof Error ? err.message : 'Failed to add item tracking');
     } finally {
       setSavingManualItem(false);
+      setPendingManualItem(false);
     }
   }
 
-  async function handleSaveEditItem() {
+  function handleSaveEditItem() {
+    if (!editingItemId) return;
+    const reason = editItemForm.reason?.trim();
+    if (!reason) {
+      alert('A reason is required when editing item tracking.');
+      return;
+    }
+    setPendingEditItem(true);
+    setOtpModal({
+      open: true,
+      title: 'Edit Item Tracking',
+      description: `Save changes to "${editItemForm.name}"? Verify your identity to proceed.`,
+      pendingAction: 'edit_item',
+    });
+  }
+
+  async function executeSaveEditItem(actionToken: string) {
     if (!editingItemId) return;
     setSavingEditItem(true);
     try {
       const payload = normalizeItemForm(editItemForm);
-      await updateOrderItem(orderId, editingItemId, { ...payload, require_reason: true });
+      await updateOrderItem(orderId, editingItemId, { ...payload, require_reason: true, action_token: actionToken });
       setEditingItemId(null);
       setEditItemForm(emptyItemForm);
       await refreshItemTracking();
@@ -880,6 +916,7 @@ function ItemTrackingSection({
       alert(err instanceof Error ? err.message : 'Failed to edit item tracking');
     } finally {
       setSavingEditItem(false);
+      setPendingEditItem(false);
     }
   }
 
@@ -1071,10 +1108,23 @@ function ItemTrackingSection({
     }
   }
 
-  async function handleItemProductionStatus(itemId: string, status: 'pending' | 'in_progress' | 'finished') {
+  function handleItemProductionStatus(itemId: string, status: 'pending' | 'in_progress' | 'finished') {
+    setPendingProdStatus({ itemId, status });
+    const statusLabel = status === 'in_progress' ? 'Start Production' : status === 'finished' ? 'Finish Production' : 'Reset to Pending';
+    setOtpModal({
+      open: true,
+      title: statusLabel,
+      description: `Change production status of this item to "${status}"? Verify your identity to proceed.`,
+      pendingAction: 'production_status',
+    });
+  }
+
+  async function executeItemProductionStatus(actionToken: string) {
+    if (!pendingProdStatus) return;
+    const { itemId, status } = pendingProdStatus;
     setUpdatingItemId(itemId);
     try {
-      await updateOrderItem(orderId, itemId, { production_status: status });
+      await updateOrderItem(orderId, itemId, { production_status: status, action_token: actionToken });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
       const compRes = await getItemCompletion(orderId);
@@ -1083,10 +1133,11 @@ function ItemTrackingSection({
       alert(err instanceof Error ? err.message : 'Failed to update production status');
     } finally {
       setUpdatingItemId(null);
+      setPendingProdStatus(null);
     }
   }
 
-  async function handleItemEnRouteStatus(itemId: string, status: 'not_yet' | 'en_route' | 'arrived') {
+  function handleItemEnRouteStatus(itemId: string, status: 'not_yet' | 'en_route' | 'arrived') {
     let estimatedArrivalDays: number | null = null;
     const item = items.find((i) => i.id === itemId);
     if (status === 'en_route' && !item?.estimated_arrival_days) {
@@ -1096,11 +1147,25 @@ function ItemTrackingSection({
       if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
       estimatedArrivalDays = days;
     }
+    setPendingEnRouteStatus({ itemId, status, estimatedArrivalDays });
+    const statusLabel = status === 'en_route' ? 'Mark En Route' : status === 'arrived' ? 'Mark Arrived' : 'Reset to Not Yet';
+    setOtpModal({
+      open: true,
+      title: statusLabel,
+      description: `Change en route status of this item to "${status}"? Verify your identity to proceed.`,
+      pendingAction: 'en_route_status',
+    });
+  }
+
+  async function executeItemEnRouteStatus(actionToken: string) {
+    if (!pendingEnRouteStatus) return;
+    const { itemId, status, estimatedArrivalDays } = pendingEnRouteStatus;
     setUpdatingEnRouteItemId(itemId);
     try {
       await updateOrderItem(orderId, itemId, {
         en_route_status: status,
         ...(estimatedArrivalDays != null ? { estimated_arrival_days: estimatedArrivalDays } : {}),
+        action_token: actionToken,
       });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
@@ -1110,6 +1175,7 @@ function ItemTrackingSection({
       alert(err instanceof Error ? err.message : 'Failed to update en route status');
     } finally {
       setUpdatingEnRouteItemId(null);
+      setPendingEnRouteStatus(null);
     }
   }
 
@@ -1173,11 +1239,19 @@ function ItemTrackingSection({
           onVerified={(token) => {
             if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
             else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
+            else if (otpModal.pendingAction === 'edit_item') executeSaveEditItem(token);
+            else if (otpModal.pendingAction === 'production_status') executeItemProductionStatus(token);
+            else if (otpModal.pendingAction === 'en_route_status') executeItemEnRouteStatus(token);
+            else if (otpModal.pendingAction === 'manual_item') executeCreateManualItem(token);
           }}
           onClose={() => {
             setOtpModal((prev) => ({ ...prev, open: false }));
             setPendingVerifyItem(null);
             setPendingMarkArrived(null);
+            setPendingEditItem(false);
+            setPendingProdStatus(null);
+            setPendingEnRouteStatus(null);
+            setPendingManualItem(false);
           }}
         />
       </>
