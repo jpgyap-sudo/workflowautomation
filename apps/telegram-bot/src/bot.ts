@@ -1191,7 +1191,7 @@ bot.action('schedule:list', async (ctx) => {
 
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const schedules = await getJson(`/calendar/schedules/${today}`);
+    const schedules = await getJson(`/calendar/schedules/by-date/${today}`);
 
     if (!Array.isArray(schedules) || schedules.length === 0) {
       await ctx.reply('📋 *No schedules for today.*', { parse_mode: 'Markdown' });
