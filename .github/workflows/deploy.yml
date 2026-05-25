@@ -30,17 +30,31 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           # Write key using a heredoc to preserve exact content
-          cat > ~/.ssh/deploy_key <<'KEYEOF'
+          cat > ~/.ssh/deploy_key.raw <<'KEYEOF'
           ${{ secrets.VPS_SSH_KEY }}
           KEYEOF
           # Strip leading whitespace added by YAML indentation
-          sed -i 's/^          //' ~/.ssh/deploy_key
+          sed -i 's/^          //' ~/.ssh/deploy_key.raw
+          # Detect if key is base64-encoded (single line, no spaces, length > 100)
+          RAW_LINES=$(wc -l < ~/.ssh/deploy_key.raw)
+          RAW_LEN=$(wc -c < ~/.ssh/deploy_key.raw)
+          if [ "$RAW_LINES" -le 2 ] && [ "$RAW_LEN" -gt 100 ]; then
+            echo "🔑 Detected base64-encoded key, decoding..."
+            base64 -d ~/.ssh/deploy_key.raw > ~/.ssh/deploy_key 2>/dev/null || cp ~/.ssh/deploy_key.raw ~/.ssh/deploy_key
+          else
+            cp ~/.ssh/deploy_key.raw ~/.ssh/deploy_key
+          fi
           # If the secret contains literal \n characters, convert them
           sed -i 's/\\n/\n/g' ~/.ssh/deploy_key
+          # Remove Windows CR line endings
+          sed -i 's/\r$//' ~/.ssh/deploy_key
+          # Remove trailing blank lines
+          sed -i '/^$/N;/^\n$/D' ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           # Validate key format
           echo "Key header: $(head -n1 ~/.ssh/deploy_key)"
-          ssh-keygen -l -f ~/.ssh/deploy_key || true
+          file ~/.ssh/deploy_key || true
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null 2>&1 && echo "✅ Key is valid" || echo "⚠️ Key validation failed"
           cat >> ~/.ssh/config <<EOF
           Host vps
             HostName ${{ secrets.VPS_HOST }}
