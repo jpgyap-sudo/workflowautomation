@@ -150,6 +150,7 @@ jobs:
           ssh vps "cd ${{ env.DEPLOY_PATH }} && \
            git stash --include-untracked 2>/dev/null || true && \
            git pull origin master && \
+           chmod +x scripts/*.sh && \
            echo '✅ Code pulled: \$(git rev-parse --short HEAD)'"
 
       - name: Run deploy on VPS
