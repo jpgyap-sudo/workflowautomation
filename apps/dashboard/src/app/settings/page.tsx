@@ -83,7 +83,7 @@ function RoleBadge({ role }: { role: string }) {
 
 /* ─── Main Page ─────────────────────────────────────── */
 export default function SettingsPage() {
-  const { user, accounts, createAccount, updateAccount, deleteAccount, updatePassword } = useAuth();
+  const { user, accounts, createAccount, updateAccount, deleteAccount, updatePassword, setAccountPassword } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('account');
 
   /* ── My Account ── */
@@ -153,6 +153,26 @@ export default function SettingsPage() {
     await deleteAccount(email);
     setDeleting(false);
     setDeleteTarget(null);
+  }
+
+  /* ── Set Password (admin) ── */
+  const [pwTarget, setPwTarget] = useState<string | null>(null);
+  const [newAcctPw, setNewAcctPw] = useState('');
+  const [settingAcctPw, setSettingAcctPw] = useState(false);
+  const [acctPwMsg, setAcctPwMsg] = useState('');
+
+  async function handleSetPassword(email: string) {
+    if (!newAcctPw) return;
+    setSettingAcctPw(true);
+    setAcctPwMsg('');
+    const res = await setAccountPassword(email, newAcctPw);
+    setSettingAcctPw(false);
+    if (res.success) {
+      setAcctPwMsg('Password updated');
+      setTimeout(() => { setPwTarget(null); setNewAcctPw(''); setAcctPwMsg(''); }, 1200);
+    } else {
+      setAcctPwMsg(res.error ?? 'Failed');
+    }
   }
 
   /* ── Edit Account (inline) ── */
@@ -409,6 +429,46 @@ export default function SettingsPage() {
                           <Lock className="h-4 w-4" />
                         </button>
                       )}
+                      {/* Set Password */}
+                      {pwTarget === acct.email ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="password"
+                            value={newAcctPw}
+                            onChange={(e) => setNewAcctPw(e.target.value)}
+                            placeholder="New password"
+                            className="w-32 rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef]"
+                            onKeyDown={(e) => e.key === 'Enter' && handleSetPassword(acct.email)}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSetPassword(acct.email)}
+                            disabled={settingAcctPw || !newAcctPw}
+                            className="rounded-lg bg-[#2490ef] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                          >
+                            {settingAcctPw ? '…' : acctPwMsg === 'Password updated' ? '✓' : 'Save'}
+                          </button>
+                          {acctPwMsg && (
+                            <span className={`text-xs ${acctPwMsg === 'Password updated' ? 'text-green-600' : 'text-red-500'}`}>
+                              {acctPwMsg}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => { setPwTarget(null); setNewAcctPw(''); setAcctPwMsg(''); }}
+                            className="rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-gray-100"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setPwTarget(acct.email); setDeleteTarget(null); setNewAcctPw(''); setAcctPwMsg(''); }}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-[#2490ef]"
+                          title="Change password"
+                        >
+                          <Key className="h-4 w-4" />
+                        </button>
+                      )}
                       {deleteTarget === acct.email ? (
                         <div className="flex items-center gap-1">
                           <button
@@ -427,7 +487,7 @@ export default function SettingsPage() {
                         </div>
                       ) : (
                         <button
-                          onClick={() => setDeleteTarget(acct.email)}
+                          onClick={() => { setDeleteTarget(acct.email); setPwTarget(null); }}
                           className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
                           title="Delete account"
                         >

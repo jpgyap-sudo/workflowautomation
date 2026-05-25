@@ -41,12 +41,34 @@ interface AuthContextType {
   updateAccount: (email: string, updates: Partial<Account>) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  setAccountPassword: (email: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'qas_auth';
 const ACCOUNTS_STORAGE_KEY = 'qas_accounts';
+const DELETED_ACCOUNTS_KEY = 'qas_deleted_accounts';
+
+function getDeletedEmails(): Set<string> {
+  try {
+    const stored = localStorage.getItem(DELETED_ACCOUNTS_KEY);
+    if (stored) return new Set(JSON.parse(stored));
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function addDeletedEmail(email: string) {
+  const set = getDeletedEmails();
+  set.add(email.toLowerCase());
+  localStorage.setItem(DELETED_ACCOUNTS_KEY, JSON.stringify([...set]));
+}
+
+function removeDeletedEmail(email: string) {
+  const set = getDeletedEmails();
+  set.delete(email.toLowerCase());
+  localStorage.setItem(DELETED_ACCOUNTS_KEY, JSON.stringify([...set]));
+}
 
 // Default tab access for non-admin roles (editor/viewer)
 const DEFAULT_TAB_ACCESS: TabRoute[] = [
@@ -92,23 +114,19 @@ function getStoredAccounts(): Account[] {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Merge defaults into stored accounts so password changes and new accounts
-        // from source code updates are applied to existing users
+        const deleted = getDeletedEmails();
+        // Merge defaults into stored accounts so subUsers updates from source
+        // code are applied — but NEVER re-add accounts the admin explicitly deleted.
         let changed = false;
         for (const def of DEFAULT_ACCOUNTS) {
+          if (deleted.has(def.email.toLowerCase())) continue; // respect admin deletion
           const idx = parsed.findIndex((a: Account) => a.email.toLowerCase() === def.email.toLowerCase());
           if (idx >= 0) {
-            // Merge any new fields from defaults (password, subUsers, etc.)
-            let accountChanged = false;
-            if (parsed[idx].password !== def.password) {
-              parsed[idx].password = def.password;
-              accountChanged = true;
-            }
+            // Merge subUsers from defaults (subUsers are maintained in source only)
             if (def.subUsers && JSON.stringify(parsed[idx].subUsers) !== JSON.stringify(def.subUsers)) {
               parsed[idx].subUsers = def.subUsers;
-              accountChanged = true;
+              changed = true;
             }
-            if (accountChanged) changed = true;
           } else {
             // Add new default account that doesn't exist in storage
             parsed.push(def);
@@ -290,6 +308,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'An account with this email already exists' };
     }
 
+    // Remove from deleted set so it can be re-created cleanly
+    removeDeletedEmail(account.email);
+
     const newAccount: Account = {
       ...account,
       allowedTabs: account.allowedTabs ?? (account.role === 'admin' ? undefined : [...DEFAULT_TAB_ACCESS]),
@@ -348,6 +369,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persistAccounts(updated);
     setAccounts(updated);
 
+    // Mark as hard-deleted so defaults don't re-seed this email on next load
+    addDeletedEmail(email);
+
     // If the logged-in user deleted their own account, log them out
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     if (stored) {
@@ -380,6 +404,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   }, []);
 
+  // Admin-only: set any account's password directly (no current-password required)
+  const setAccountPassword = useCallback(async (email: string, newPassword: string) => {
+    await new Promise((r) => setTimeout(r, 200));
+    if (newPassword.length < 6) return { success: false, error: 'Password must be at least 6 characters' };
+    const accts = getStoredAccounts();
+    const idx = accts.findIndex((a) => a.email.toLowerCase() === email.toLowerCase());
+    if (idx === -1) return { success: false, error: 'Account not found' };
+    accts[idx].password = newPassword;
+    persistAccounts(accts);
+    setAccounts([...accts]);
+    return { success: true };
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -394,6 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateAccount,
         deleteAccount,
         updatePassword,
+        setAccountPassword,
       }}
     >
       {children}

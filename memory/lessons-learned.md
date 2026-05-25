@@ -9718,3 +9718,45 @@ The original design conflated two concepts (delay reason vs. general remarks) an
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove stale action_token from deposit calls in orders page handleVerified() — token already consumed by createOrde
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8e712124e962ed373acd6613ed48089d753badbb
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8e712124e962ed373acd6613ed48089d753badbb
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/actions/page.tsx,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/orders/page.tsx,apps/dashboard/src/lib/api.ts,database/schema.sql,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Removed a stale `action_token` parameter from deposit-related API calls in the orders page's `handleVerified()` function.
+
+**Why it broke:** The `action_token` was being passed to deposit endpoints even though it had already been consumed by the preceding `createOrder` call. This caused deposit requests to fail because the token was no longer valid.
+
+**Reusable takeaway:** Tokens that are consumed by one operation (e.g., order creation) should not be reused in subsequent operations (e.g., deposits). Always track token lifecycle: once a token is used to authorize or authenticate an action, it becomes invalid for further use. Ensure that downstream API calls do not carry stale tokens from upstream operations.
+
+---
+*Original commit message: fix: remove stale action_token from deposit calls in orders page handleVerified() — token already consumed by createOrder*
+
+#### Lesson Learned
+
+**What was fixed:** Removed a stale `action_token` parameter from deposit-related API calls in the orders page's `handleVerified()` function.
+
+**Why it broke:** The `action_token` was being passed to deposit endpoints even though it had already been consumed by the preceding `createOrder` call. This caused deposit requests to fail because the token was no longer valid.
+
+**Reusable takeaway:** Tokens that are consumed by one operation (e.g., order creation) should not be reused in subsequent operations (e.g., deposits). Always track token lifecycle: once a token is used to authorize or authenticate an action, it becomes invalid for further use. Ensure that downstream API calls do not carry stale tokens from upstream operations.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
