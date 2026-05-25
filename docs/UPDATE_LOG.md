@@ -25,6 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
+| 2026-05-25 09:08 | Roo (Code) | Feat: add Schedule Group Chat — calendar_schedules table (migration 035), CRUD API endpoints, schedule events in calendar aggregation, schedule group chat handler with AI parsing (/agents/run/schedule-parser via Gemini 2.0 Flash), AI Vision for image→schedule/note extraction, schedule reminder scheduler, schedule API functions in dashboard, schedule type in calendar legend | 🔴 Active |
 | 2026-05-25 09:04 | Codex | Fix: E2E build gaps ? recordDepositWithFile import, createOrder items typing, Telegram bug order state union | Done |
 | 2026-05-25 08:12 | Codex | Feat: optional balance proof/deposit slip upload with AI extraction in Balance Due payment flow | Done |
 | 2026-05-25 08:10 | Roo (Code) | Feat: add Tab Access control in Settings → User Management + calendar tab action buttons (stage advance, create reminder, notify Telegram) | ✅ Done |

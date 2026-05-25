@@ -129,8 +129,84 @@ async function sendTelegramInlineKeyboard(
  * Check all active reminders and send those that are due.
  * Runs every minute via setInterval.
  */
+/**
+ * Check for due calendar schedule reminders and send Telegram notifications.
+ * Uses the reminder_at timestamp on calendar_schedules directly.
+ */
+async function processDueScheduleReminders(): Promise<number> {
+  const now = new Date().toISOString();
+  const scheduleGroupChatId = process.env.SCHEDULE_GROUP_CHAT_ID;
+
+  if (!scheduleGroupChatId) return 0;
+
+  // Fetch schedules where reminder_at <= now and reminder_sent = false
+  const dueSchedules = await query(
+    `SELECT id, title, description, schedule_date, schedule_time, end_time,
+            is_all_day, color, category, created_by, created_by_chat_id
+     FROM calendar_schedules
+     WHERE status = 'active'
+       AND reminder_at IS NOT NULL
+       AND reminder_sent = false
+       AND reminder_at <= $1
+     ORDER BY reminder_at ASC
+     LIMIT 10`,
+    [now]
+  );
+
+  if (!dueSchedules || dueSchedules.length === 0) return 0;
+
+  let sent = 0;
+
+  for (const sched of dueSchedules as any[]) {
+    const dateStr = sched.schedule_date
+      ? new Date(sched.schedule_date).toLocaleDateString('en-PH', {
+          timeZone: 'Asia/Manila',
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : 'Unknown date';
+    const timeStr = sched.schedule_time
+      ? new Date(`2000-01-01T${sched.schedule_time}`).toLocaleTimeString('en-PH', {
+          timeZone: 'Asia/Manila',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'All day';
+
+    let text = `⏰ *Schedule Reminder*\n\n`;
+    text += `📅 *${sched.title}*\n`;
+    text += `📆 ${dateStr}\n`;
+    text += `🕐 ${timeStr}\n`;
+    if (sched.description) {
+      text += `\n${sched.description}`;
+    }
+    if (sched.created_by) {
+      text += `\n\n👤 Created by: ${sched.created_by}`;
+    }
+
+    const ok = await sendTelegramMessage(scheduleGroupChatId, text);
+
+    if (ok) {
+      sent++;
+      await query(
+        `UPDATE calendar_schedules SET reminder_sent = true, updated_at = NOW() WHERE id = $1`,
+        [sched.id]
+      );
+    } else {
+      console.error(`[processDueScheduleReminders] Failed to send reminder for schedule ${sched.id}`);
+    }
+  }
+
+  return sent;
+}
+
 export async function processDueReminders(): Promise<number> {
   const now = new Date().toISOString();
+
+  // Also process calendar schedule reminders
+  const scheduleSent = await processDueScheduleReminders();
 
   // Fetch all active reminders where next_run_at <= now
   const dueReminders = await query(
@@ -718,7 +794,7 @@ export async function processDueReminders(): Promise<number> {
     }
   }
 
-  return sent;
+  return sent + scheduleSent;
 }
 
 /**
