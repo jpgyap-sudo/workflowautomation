@@ -10240,3 +10240,26 @@ This prevents filter drift and ensures consistent order visibility across the wo
 cross-project, local-fallback
 
 ---
+
+### Lesson: Clients bulk delete UI/API
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For clients bulk delete, mirror Orders selection UI: selectedIds Set, header checkbox with indeterminate state, selected action bar, OTP confirmation, and API helper. Backend should provide /clients/bulk-delete requiring action_token, reject active linked orders unless force is true, unlink order client_id when forced, invalidate clients/orders/dashboard caches, broadcast SSE, and notify manual activity.
+
+#### Lesson Learned
+
+For clients bulk delete, mirror Orders selection UI: selectedIds Set, header checkbox with indeterminate state, selected action bar, OTP confirmation, and API helper. Backend should provide /clients/bulk-delete requiring action_token, reject active linked orders unless force is true, unlink order client_id when forced, invalidate clients/orders/dashboard caches, broadcast SSE, and notify manual activity.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

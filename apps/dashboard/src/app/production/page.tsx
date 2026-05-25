@@ -1111,6 +1111,8 @@ export default function ProductionPage() {
     usePartialProductionOrders();
   const { data: confirmedOrders = [], isLoading: loadingConfirmed, error: errorConfirmed, mutate: mutateConfirmed } =
     useOrdersByStage('production_confirmed');
+  const { data: inProgressStageOrders = [], isLoading: loadingInProgress, error: errorInProgress, mutate: mutateInProgress } =
+    useOrdersByStage('production_in_progress');
   const { data: enRouteOrders = [], isLoading: loadingEnRoute, error: errorEnRoute, mutate: mutateEnRoute } =
     useOrdersByStage('en_route');
   const { data: enRouteVerificationStageOrders = [], isLoading: loadingEnRouteStage, error: errorEnRouteStage, mutate: mutateEnRouteStage } =
@@ -1164,6 +1166,7 @@ export default function ProductionPage() {
   const productionFinishedCandidateOrders = dedupeOrders([
     ...partialOrders,
     ...confirmedOrders,
+    ...inProgressStageOrders,
     ...enRouteOrders,
     ...enRouteVerificationStageOrders,
     ...inventoryVerificationOrders,
@@ -1206,8 +1209,8 @@ export default function ProductionPage() {
     const summary = productionFinishedSummaries[order.id];
     return summary?.hasFinishedProduction && !['balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
   });
-  const loadingFinished = loadingPartial || loadingConfirmed || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
-  const errorFinished = errorPartial || errorConfirmed || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
+  const loadingFinished = loadingPartial || loadingConfirmed || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
+  const errorFinished = errorPartial || errorConfirmed || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1508,7 +1511,7 @@ export default function ProductionPage() {
     }
   }
 
-  const totalActive = pendingOrders.length + partialOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
   const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
   return (
@@ -1577,15 +1580,42 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* Production In Progress */}
+      {/* Production In Progress (production_in_progress stage — all items started) */}
       <OrderSection
         icon={<Factory className="h-4 w-4 text-indigo-500" />}
         title="Production In Progress"
-        count={inProgressOrders.length}
+        count={inProgressStageOrders.length}
         countBg="bg-indigo-100" countText="text-indigo-700"
+        orders={inProgressStageOrders} isLoading={loadingInProgress} error={errorInProgress}
+        onRetry={() => mutateInProgress()}
+        emptyText="No orders in production"
+      >
+        {(order) => (
+          <>
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
+              onReportOnTime={handleReportOnTime}
+              onReportDelayed={handleReportDelayed}
+              onFinishProduction={handleFinishProduction}
+              onGrantException={handleGrantException}
+              onRevokeException={handleRevokeException}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
+      {/* Production Confirmed (production_confirmed stage — awaiting items to start) */}
+      <OrderSection
+        icon={<CheckCircle className="h-4 w-4 text-blue-500" />}
+        title="Production Confirmed"
+        count={inProgressOrders.length}
+        countBg="bg-blue-100" countText="text-blue-700"
         orders={inProgressOrders} isLoading={loadingConfirmed} error={errorConfirmed}
         onRetry={() => mutateConfirmed()}
-        emptyText="No orders in production"
+        emptyText="No orders confirmed for production"
       >
         {(order) => (
           <>

@@ -713,6 +713,10 @@ function loadSessions(): void {
         'awaiting_upload_retry',
         'awaiting_deposit_confirmation',
         'awaiting_deposit_client_name',
+        'awaiting_paybalance_amount',
+        'awaiting_schedule_vision_choice',
+        'awaiting_schedule_vision_extract',
+        'awaiting_schedule_vision_notes',
       ];
       if (imageBasedActions.includes((session.step as any).action)) {
         session.step = { action: 'idle' };

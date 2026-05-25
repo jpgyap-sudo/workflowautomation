@@ -3535,9 +3535,9 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
 
   // Auto-advance order stage based on item production_status changes
   // production_pending: any item starts -> partial_production
-  //                     all items start -> production_confirmed (skip partial)
-  // partial_production: all items start -> production_confirmed
-  // any production stage: all items finished -> production_finished/en_route
+  //                     all items start -> production_in_progress (skip partial)
+  // partial_production: all items start -> production_in_progress
+  // NOTE: Auto-advance to production_finished is REMOVED — finish is manual only
   if (body.production_status !== undefined) {
     const stageRows = await query<{ id: string; current_stage: string; quotation_number: string | null; client_name: string | null }>(
       `SELECT id, current_stage, quotation_number, client_name FROM orders WHERE id = $1`,
@@ -3552,31 +3552,24 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
       );
 
       if (allItemStatuses.length > 0) {
-        const allFinished = allItemStatuses.every((i) => i.production_status === 'finished');
         const allStarted = allItemStatuses.every((i) => i.production_status !== 'pending');
         const anyStarted = allItemStatuses.some((i) => i.production_status !== 'pending');
         const pendingNames = allItemStatuses.filter((i) => i.production_status === 'pending').map((i) => i.name);
 
-        if (allFinished) {
-          await finalizeProductionIfAllItemsFinished(
-            order_id,
-            'item_update',
-            `All ${allItemStatuses.length} production item(s) finished - auto-advanced from ${currentOrder.current_stage}`,
-          );
-        } else if (allStarted && currentOrder.current_stage !== 'production_confirmed') {
-          // All items in progress or finished - advance to production_confirmed
+        if (allStarted && currentOrder.current_stage !== 'production_confirmed') {
+          // All items in progress - advance to production_in_progress
           await query(
-            `UPDATE orders SET current_stage = 'production_confirmed', production_started = TRUE,
+            `UPDATE orders SET current_stage = 'production_in_progress', production_started = TRUE,
              production_started_at = COALESCE(production_started_at, NOW()), partial_production_items = '[]'::jsonb, updated_at = NOW()
              WHERE id = $1`,
             [order_id]
           );
           await query(
             `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-             VALUES ($1, 'production_confirmed', 'auto', $2, 'system')`,
+             VALUES ($1, 'production_in_progress', 'auto', $2, 'system')`,
             [order_id, `All items started production - auto-advanced from ${currentOrder.current_stage}`]
           );
-          triggerAgentsForStage('production_confirmed', currentOrder.quotation_number ?? undefined, currentOrder.client_name ?? undefined);
+          triggerAgentsForStage('production_in_progress', currentOrder.quotation_number ?? undefined, currentOrder.client_name ?? undefined);
         } else if (anyStarted && currentOrder.current_stage === 'production_pending') {
           // Some items started - advance to partial_production
           await query(
@@ -3941,8 +3934,9 @@ app.post('/stage-updates', async (request, reply) => {
     deposit_verification:      ['purchasing_pending'],
     purchasing_pending:        ['production_pending'],
     production_pending:        ['production_confirmed', 'partial_production'],
-    production_confirmed:      ['en_route', 'partial_production'],
-    partial_production:        ['production_confirmed', 'en_route'],
+    production_confirmed:      ['en_route', 'partial_production', 'production_in_progress'],
+    partial_production:        ['production_in_progress', 'en_route'],
+    production_in_progress:    ['en_route', 'partial_production'],
     en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due'],
@@ -3958,7 +3952,7 @@ app.post('/stage-updates', async (request, reply) => {
 
   const previousStage = order.current_stage;
   const targetStage = body.stage;
-  const productionGatedStages = new Set(['production_pending', 'production_confirmed', 'partial_production', 'en_route']);
+  const productionGatedStages = new Set(['production_pending', 'production_confirmed', 'partial_production', 'production_in_progress', 'en_route']);
   const hasProductionClearance = Boolean(order.deposit_verified || order.production_exception);
 
   // Allow transitions that are in the valid map, or if the stage hasn't changed
