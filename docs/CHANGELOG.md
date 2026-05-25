@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `PENDING` | Roo (Code) | feat: add Tab Access control in Settings → User Management (Lock button + 21-tab toggle modal) + calendar tab action buttons (13 stage-advance transitions, create reminder, notify Telegram) + POST /telegram/notify API endpoint | Pending deploy |
 | `a7fd60c` | Codex | fix: close E2E workflow wiring gaps, including inventory verified_qty API exposure | Pending deploy |
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
 | `2a15dcf` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | ? VPS `2a15dcf` |

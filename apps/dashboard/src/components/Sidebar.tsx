@@ -28,11 +28,8 @@ import {
   Smartphone,
   Bug,
 } from 'lucide-react';
-import { useState } from 'react';
-import { useAuth } from '@/lib/auth';
-
-// Routes accessible to all authenticated roles (admin, editor, viewer)
-const SHARED_ROUTES = ['/orders', '/actions', '/clients', '/purchasing', '/inventory', '/delivery', '/collection'];
+import { useState, useMemo } from 'react';
+import { useAuth, ALL_TAB_ROUTES } from '@/lib/auth';
 
 const ALL_NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -59,11 +56,23 @@ const ALL_NAV_ITEMS = [
 ];
 
 function useFilteredNavItems() {
-  const { user } = useAuth();
+  const { user, accounts } = useAuth();
   const isAdmin = user?.role === 'admin';
 
+  // Admin sees everything
   if (isAdmin) return ALL_NAV_ITEMS;
-  return ALL_NAV_ITEMS.filter((item) => SHARED_ROUTES.includes(item.href));
+
+  // For non-admin users, look up their account's allowedTabs
+  const account = accounts.find((a) => a.email === user?.email);
+  const allowedTabs = account?.allowedTabs;
+
+  // If allowedTabs is explicitly set, filter by it
+  if (allowedTabs && allowedTabs.length > 0) {
+    return ALL_NAV_ITEMS.filter((item) => allowedTabs.includes(item.href as any));
+  }
+
+  // Fallback: show all tabs
+  return ALL_NAV_ITEMS;
 }
 
 interface SidebarProps {

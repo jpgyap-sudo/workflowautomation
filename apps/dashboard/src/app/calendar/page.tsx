@@ -23,9 +23,20 @@ import {
   Flag,
   CheckCircle2,
   Ship,
+  Send,
+  MessageSquare,
+  ArrowUpCircle,
 } from 'lucide-react';
 import { useCalendarEvents, useCalendarNotes } from '@/lib/useApi';
-import { CalendarEvent, CalendarNote, createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/lib/api';
+import {
+  CalendarEvent,
+  CalendarNote,
+  createCalendarNote,
+  updateCalendarNote,
+  deleteCalendarNote,
+  recordStageUpdate,
+  sendTelegramNotification,
+} from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
 
 function startOfMonth(date: Date) {
@@ -102,11 +113,24 @@ export default function CalendarPage() {
   const [noteColor, setNoteColor] = useState('#2490ef');
   const [savingNote, setSavingNote] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete';
+    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete' | 'stageAdvance' | 'telegramNotify';
   }>({ open: false, title: '', description: '', pendingAction: 'save' });
 
+  // Stage advance action state
+  const [pendingStageAdvance, setPendingStageAdvance] = useState<{
+    quotationNumber: string; targetStage: string; label: string;
+  } | null>(null);
 
+  // Telegram notify state
+  const [showTelegramNotify, setShowTelegramNotify] = useState(false);
+  const [telegramMessage, setTelegramMessage] = useState('');
 
+  // Reminder creation state
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [reminderOrderId, setReminderOrderId] = useState('');
+  const [reminderStage, setReminderStage] = useState('');
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderFrequency, setReminderFrequency] = useState<'hourly' | 'daily' | 'once'>('daily');
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const event of events) {
@@ -241,15 +265,121 @@ export default function CalendarPage() {
     }
   }
 
-  function handleOtpVerified(actionToken: string) {
-    if (otpModal.pendingAction === 'save') handleSaveVerified(actionToken);
-    else handleDeleteVerified(actionToken);
-  }
-
   function navigateToOrder(event: CalendarEvent) {
     if (event.title && event.title !== 'Unknown') {
       router.push(`/orders/${encodeURIComponent(event.title)}`);
     }
+  }
+
+  // ── Stage Advance Actions ──────────────────────────────────────────
+  const STAGE_ADVANCE_ACTIONS: Record<string, { stage: string; label: string; icon: React.ReactNode }[]> = {
+    deposit_pending:       [{ stage: 'deposit_verification', label: 'Verify Deposit', icon: <CreditCard className="h-3 w-3" /> }],
+    deposit_verification:  [{ stage: 'purchasing_pending', label: 'Advance to Purchasing', icon: <ArrowUpCircle className="h-3 w-3" /> }],
+    purchasing_pending:    [{ stage: 'production_pending', label: 'Start Production', icon: <Factory className="h-3 w-3" /> }],
+    production_confirmed:  [{ stage: 'en_route', label: 'Mark En Route', icon: <Ship className="h-3 w-3" /> }],
+    inventory_arrived:     [{ stage: 'balance_due', label: 'Mark Arrived', icon: <CheckCircle2 className="h-3 w-3" /> }],
+    balance_due:           [{ stage: 'balance_verification', label: 'Verify Balance', icon: <Banknote className="h-3 w-3" /> }],
+    balance_verification:  [{ stage: 'delivery_pending', label: 'Proceed Delivery', icon: <Truck className="h-3 w-3" /> }],
+    delivery_pending:      [{ stage: 'delivery_scheduled', label: 'Schedule Delivery', icon: <Truck className="h-3 w-3" /> }],
+    delivery_scheduled:    [{ stage: 'delivered', label: 'Mark Delivered', icon: <CheckCircle2 className="h-3 w-3" /> }],
+    delivered:             [{ stage: 'payment_received', label: 'Payment Received', icon: <CreditCard className="h-3 w-3" /> }],
+    countered:             [{ stage: 'payment_received', label: 'Payment Received', icon: <CreditCard className="h-3 w-3" /> }],
+    payment_received:      [{ stage: 'payment_confirmed', label: 'Confirm Payment', icon: <CheckCircle2 className="h-3 w-3" /> }],
+    payment_confirmed:     [{ stage: 'completed', label: 'Complete Order', icon: <Flag className="h-3 w-3" /> }],
+  };
+
+  function handleStageAdvance(event: CalendarEvent, targetStage: string, label: string) {
+    setPendingStageAdvance({ quotationNumber: event.title, targetStage, label });
+    setOtpModal({
+      open: true,
+      title: `Advance Stage: ${label}`,
+      description: `You are about to advance order "${event.title}" to "${targetStage}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'stageAdvance',
+    });
+  }
+
+  async function executeStageAdvance(actionToken: string) {
+    if (!pendingStageAdvance) return;
+    try {
+      await recordStageUpdate({
+        quotation_number: pendingStageAdvance.quotationNumber,
+        stage: pendingStageAdvance.targetStage,
+        status: 'completed',
+        remarks: `Advanced from calendar — ${pendingStageAdvance.label}`,
+        action_token: actionToken,
+      });
+      await mutate('/calendar/events');
+      await mutate('/orders');
+    } catch (e) {
+      console.error('Failed to advance stage', e);
+    } finally {
+      setPendingStageAdvance(null);
+    }
+  }
+
+  // ── Telegram Notification ──────────────────────────────────────────
+  function openTelegramNotify() {
+    setTelegramMessage('');
+    setShowTelegramNotify(true);
+  }
+
+  function handleSendTelegramNotify() {
+    if (!telegramMessage.trim() || !selectedDate) return;
+    setOtpModal({
+      open: true,
+      title: 'Send Telegram Notification',
+      description: `You are about to send a notification to the escalation group about "${selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'telegramNotify',
+    });
+  }
+
+  async function executeTelegramNotify(actionToken: string) {
+    if (!telegramMessage.trim()) return;
+    try {
+      const dateStr = selectedDate?.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) ?? '';
+      const msg = `📅 <b>Calendar Notification — ${dateStr}</b>\n\n${telegramMessage.trim()}`;
+      await sendTelegramNotification(msg, actionToken);
+      setShowTelegramNotify(false);
+      setTelegramMessage('');
+    } catch (e) {
+      console.error('Failed to send Telegram notification', e);
+    }
+  }
+
+  // ── Reminder Creation ──────────────────────────────────────────────
+  function openReminderModal(event: CalendarEvent) {
+    setReminderOrderId(event.event_id);
+    setReminderStage(event.metadata ?? '');
+    setReminderMessage(`Reminder for order ${event.title}`);
+    setReminderFrequency('daily');
+    setShowReminderModal(true);
+  }
+
+  async function handleCreateReminder() {
+    if (!reminderOrderId || !reminderMessage.trim()) return;
+    try {
+      const { createReminder } = await import('@/lib/api');
+      await createReminder({
+        order_id: reminderOrderId,
+        stage: reminderStage || 'general',
+        group_chat_id: '',
+        message: reminderMessage.trim(),
+        frequency: reminderFrequency,
+      });
+      await mutate('/reminders');
+      await mutate('/calendar/events');
+      setShowReminderModal(false);
+    } catch (e) {
+      console.error('Failed to create reminder', e);
+    }
+  }
+
+  // ── Updated OTP handler ────────────────────────────────────────────
+  function handleOtpVerified(actionToken: string) {
+    if (otpModal.pendingAction === 'save') handleSaveVerified(actionToken);
+    else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
+    else if (otpModal.pendingAction === 'stageAdvance') executeStageAdvance(actionToken);
+    else if (otpModal.pendingAction === 'telegramNotify') executeTelegramNotify(actionToken);
   }
 
   return (
@@ -398,13 +528,22 @@ export default function CalendarPage() {
                   </p>
                 </div>
                 {selectedDate && (
-                  <button
-                    onClick={openNewNote}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
-                    title="Add note"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={openTelegramNotify}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-orange-500"
+                      title="Notify Telegram"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={openNewNote}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                      title="Add note"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -479,39 +618,74 @@ export default function CalendarPage() {
                       System Events ({selectedEvents.length})
                     </p>
                   )}
-                  {selectedEvents.map((event) => (
-                    <div
-                      key={`${event.type}-${event.event_id}`}
-                      onClick={() => navigateToOrder(event)}
-                      className={`rounded-lg border border-gray-100 bg-gray-50 p-3 ${event.title && event.title !== 'Unknown' ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-                    >
-                      <div className="flex items-start gap-2">
+                  {selectedEvents.map((event) => {
+                    const stageActions = event.metadata ? STAGE_ADVANCE_ACTIONS[event.metadata] : undefined;
+                    const hasOrderRef = event.title && event.title !== 'Unknown';
+                    return (
+                      <div
+                        key={`${event.type}-${event.event_id}`}
+                        className={`rounded-lg border border-gray-100 bg-gray-50 p-3 ${hasOrderRef ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                      >
                         <div
-                          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white"
-                          style={{ backgroundColor: event.color }}
+                          onClick={() => hasOrderRef && navigateToOrder(event)}
+                          className="flex items-start gap-2"
                         >
-                          {TYPE_ICONS[event.type] ?? <Clock className="h-3.5 w-3.5" />}
+                          <div
+                            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white"
+                            style={{ backgroundColor: event.color }}
+                          >
+                            {TYPE_ICONS[event.type] ?? <Clock className="h-3.5 w-3.5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                              {event.title}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {TYPE_LABELS[event.type] ?? event.category}
+                              {event.subtitle ? ` • ${event.subtitle}` : ''}
+                            </p>
+                            <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(event.event_date).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                              {event.metadata ? ` • ${event.metadata}` : ''}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-800 truncate">
-                            {event.title}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {TYPE_LABELS[event.type] ?? event.category}
-                            {event.subtitle ? ` • ${event.subtitle}` : ''}
-                          </p>
-                          <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(event.event_date).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                            {event.metadata ? ` • ${event.metadata}` : ''}
-                          </p>
-                        </div>
+
+                        {/* Action buttons */}
+                        {hasOrderRef && (
+                          <div className="mt-2 flex flex-wrap gap-1.5 border-t border-gray-200 pt-2">
+                            {stageActions && stageActions.map((action) => (
+                              <button
+                                key={action.stage}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStageAdvance(event, action.stage, action.label);
+                                }}
+                                className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[10px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-[#2490ef] hover:text-white hover:ring-[#2490ef] transition-colors"
+                              >
+                                {action.icon}
+                                {action.label}
+                              </button>
+                            ))}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openReminderModal(event);
+                              }}
+                              className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[10px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:ring-amber-300 transition-colors"
+                            >
+                              <Bell className="h-3 w-3" />
+                              Remind
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -656,6 +830,155 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* Telegram Notification Modal */}
+      {showTelegramNotify && selectedDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h3 className="text-sm font-semibold text-gray-800">Notify Telegram Group</h3>
+              <button
+                onClick={() => setShowTelegramNotify(false)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                <p className="text-sm text-gray-800">
+                  {selectedDate.toLocaleDateString('en-US', {
+                    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                  })}
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="tg-message" className="block text-xs font-medium text-gray-600 mb-1">
+                  Message *
+                </label>
+                <textarea
+                  id="tg-message"
+                  value={telegramMessage}
+                  onChange={(e) => setTelegramMessage(e.target.value)}
+                  placeholder="Type the notification message to send to the escalation group..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  rows={4}
+                  maxLength={2000}
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  This will be sent to the escalation Telegram group with a calendar context header.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                onClick={() => setShowTelegramNotify(false)}
+                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendTelegramNotify}
+                disabled={!telegramMessage.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Send Notification
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reminder Creation Modal */}
+      {showReminderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h3 className="text-sm font-semibold text-gray-800">Create Reminder</h3>
+              <button
+                onClick={() => setShowReminderModal(false)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Order ID</label>
+                <p className="text-sm text-gray-800 font-mono text-xs break-all">{reminderOrderId}</p>
+              </div>
+
+              <div>
+                <label htmlFor="reminder-stage" className="block text-xs font-medium text-gray-600 mb-1">
+                  Stage
+                </label>
+                <input
+                  id="reminder-stage"
+                  type="text"
+                  value={reminderStage}
+                  onChange={(e) => setReminderStage(e.target.value)}
+                  placeholder="e.g., delivery_pending"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reminder-msg" className="block text-xs font-medium text-gray-600 mb-1">
+                  Reminder Message *
+                </label>
+                <textarea
+                  id="reminder-msg"
+                  value={reminderMessage}
+                  onChange={(e) => setReminderMessage(e.target.value)}
+                  placeholder="What should the reminder say?"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  rows={2}
+                  maxLength={500}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reminder-freq" className="block text-xs font-medium text-gray-600 mb-1">
+                  Frequency
+                </label>
+                <select
+                  id="reminder-freq"
+                  value={reminderFrequency}
+                  onChange={(e) => setReminderFrequency(e.target.value as 'hourly' | 'daily' | 'once')}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="once">Once</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                onClick={() => setShowReminderModal(false)}
+                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateReminder}
+                disabled={!reminderMessage.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Bell className="h-3.5 w-3.5" />
+                Create Reminder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <OtpModal
         open={otpModal.open}
         title={otpModal.title}
@@ -665,6 +988,7 @@ export default function CalendarPage() {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingNoteData = null;
           (window as any).__pendingNoteDelete = null;
+          setPendingStageAdvance(null);
         }}
       />
     </div>

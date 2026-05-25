@@ -18,8 +18,9 @@ import {
   Eye,
   EyeOff,
   AlertTriangle,
+  Lock,
 } from 'lucide-react';
-import { useAuth, type Account } from '@/lib/auth';
+import { useAuth, type Account, ALL_TAB_ROUTES, type TabRoute } from '@/lib/auth';
 
 /* ─── Tabs ─────────────────────────────────────────── */
 type Tab = 'account' | 'users' | 'security' | 'notifications' | 'appearance' | 'system';
@@ -169,6 +170,51 @@ export default function SettingsPage() {
     await updateAccount(email, { name: editName, role: editRole });
     setEditingAccount(null);
   }
+
+  /* ── Tab Access Control ── */
+  const [tabAccessAccount, setTabAccessAccount] = useState<string | null>(null);
+  const [tabAccessTabs, setTabAccessTabs] = useState<TabRoute[]>([]);
+
+  function openTabAccess(acct: Account) {
+    setTabAccessAccount(acct.email);
+    setTabAccessTabs(acct.allowedTabs ?? [...ALL_TAB_ROUTES]);
+  }
+
+  function toggleTabAccessTab(tab: TabRoute) {
+    setTabAccessTabs((prev) =>
+      prev.includes(tab) ? prev.filter((t) => t !== tab) : [...prev, tab]
+    );
+  }
+
+  async function saveTabAccess() {
+    if (!tabAccessAccount) return;
+    await updateAccount(tabAccessAccount, { allowedTabs: tabAccessTabs });
+    setTabAccessAccount(null);
+  }
+
+  const TAB_LABELS: Record<string, string> = {
+    '/': 'Dashboard',
+    '/orders': 'All Orders',
+    '/actions': 'Quick Actions',
+    '/clients': 'Clients',
+    '/purchasing': 'Purchasing',
+    '/production': 'Production',
+    '/inventory': 'Inventory',
+    '/delivery': 'Delivery',
+    '/sales': 'Sales',
+    '/collection': 'Collection',
+    '/stages': 'Stage Pipeline',
+    '/workflow': 'Workflow',
+    '/calendar': 'Calendar',
+    '/agents': 'Agents',
+    '/logs': 'Agent Logs',
+    '/bot-logs': 'Bot Logs',
+    '/bugs': 'Bug Report',
+    '/telegram': 'Telegram',
+    '/backup': 'Backups',
+    '/vision': 'Vision Upload',
+    '/settings': 'Settings',
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -354,6 +400,15 @@ export default function SettingsPage() {
                       >
                         <Edit3 className="h-4 w-4" />
                       </button>
+                      {acct.role !== 'admin' && (
+                        <button
+                          onClick={() => openTabAccess(acct)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                          title="Configure tab access"
+                        >
+                          <Lock className="h-4 w-4" />
+                        </button>
+                      )}
                       {deleteTarget === acct.email ? (
                         <div className="flex items-center gap-1">
                           <button
@@ -385,6 +440,67 @@ export default function SettingsPage() {
               ))}
             </div>
           </SectionCard>
+
+          {/* Tab Access Modal */}
+          {tabAccessAccount && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-xl">
+                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                  <h3 className="text-sm font-semibold text-gray-800">
+                    Tab Access — {accounts.find((a) => a.email === tabAccessAccount)?.name ?? tabAccessAccount}
+                  </h3>
+                  <button
+                    onClick={() => setTabAccessAccount(null)}
+                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto p-5">
+                  <p className="mb-3 text-xs text-gray-500">
+                    Select which tabs this user can access. Unchecked tabs will be hidden from their sidebar.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ALL_TAB_ROUTES.map((route) => (
+                      <label
+                        key={route}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                          tabAccessTabs.includes(route)
+                            ? 'border-[#2490ef] bg-[#e8f4fd] text-gray-800'
+                            : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={tabAccessTabs.includes(route)}
+                          onChange={() => toggleTabAccessTab(route)}
+                          className="rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                        />
+                        {TAB_LABELS[route] ?? route}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-3">
+                  <button
+                    onClick={() => setTabAccessAccount(null)}
+                    className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveTabAccess}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Save Access
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

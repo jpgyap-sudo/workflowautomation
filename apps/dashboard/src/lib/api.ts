@@ -266,6 +266,7 @@ export async function payBalance(data: {
   quotation_number: string;
   amount: number;
   payment_date?: string;
+  reference_number?: string;
   updated_by?: string;
   action_token?: string;
 }): Promise<{ ok: boolean; overpayment?: number }> {
@@ -279,6 +280,7 @@ export async function payBalanceWithFile(data: {
   quotation_number: string;
   amount: number;
   payment_date?: string;
+  reference_number?: string;
   updated_by?: string;
   action_token?: string;
   image_base64?: string;
@@ -302,6 +304,7 @@ export async function payBalanceWithFile(data: {
       quotation_number: data.quotation_number,
       amount: data.amount,
       payment_date: data.payment_date,
+      reference_number: data.reference_number,
       updated_by: data.updated_by ?? 'dashboard_quick_action',
       action_token: data.action_token,
     }),
@@ -1246,6 +1249,27 @@ export interface Reminder {
 
 export async function getReminders(): Promise<Reminder[]> {
   return fetchJson<Reminder[]>('/reminders');
+}
+
+export async function createReminder(data: {
+  order_id: string;
+  stage: string;
+  group_chat_id: string;
+  message: string;
+  frequency: 'hourly' | 'daily' | 'once';
+  next_run_at?: string;
+}): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/reminders', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function sendTelegramNotification(message: string, actionToken?: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>('/telegram/notify', {
+    method: 'POST',
+    body: JSON.stringify({ message, action_token: actionToken }),
+  });
 }
 
 export const STAGE_ORDER = [

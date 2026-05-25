@@ -9,6 +9,16 @@ export interface SubUser {
   name: string;
 }
 
+// All available dashboard tab routes
+export const ALL_TAB_ROUTES = [
+  '/', '/orders', '/actions', '/clients', '/purchasing', '/production',
+  '/inventory', '/delivery', '/sales', '/collection', '/stages', '/workflow',
+  '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram',
+  '/backup', '/vision', '/settings',
+] as const;
+
+export type TabRoute = (typeof ALL_TAB_ROUTES)[number];
+
 export interface Account {
   email: string;
   password: string;
@@ -16,6 +26,7 @@ export interface Account {
   role: 'admin' | 'editor' | 'viewer';
   createdAt: string;
   subUsers?: SubUser[];
+  allowedTabs?: TabRoute[];
 }
 
 interface AuthContextType {
@@ -37,6 +48,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_STORAGE_KEY = 'qas_auth';
 const ACCOUNTS_STORAGE_KEY = 'qas_accounts';
 
+// Default tab access for non-admin roles (editor/viewer)
+const DEFAULT_TAB_ACCESS: TabRoute[] = [
+  '/', '/orders', '/actions', '/clients', '/purchasing', '/production',
+  '/inventory', '/delivery', '/sales', '/collection', '/stages', '/workflow',
+  '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram',
+  '/backup', '/vision', '/settings',
+];
+
 const DEFAULT_ACCOUNTS: Account[] = [
   {
     email: 'jpgyap@gmail.com',
@@ -51,6 +70,7 @@ const DEFAULT_ACCOUNTS: Account[] = [
     name: 'Quynh Mai',
     role: 'editor',
     createdAt: new Date('2026-05-20').toISOString(),
+    allowedTabs: DEFAULT_TAB_ACCESS,
   },
   {
     email: 'sales.homeu@gmail.com',
@@ -62,6 +82,7 @@ const DEFAULT_ACCOUNTS: Account[] = [
       { code: '777', name: 'Mariella Ignaco' },
       { code: '888', name: 'Cathlyn Roma' },
     ],
+    allowedTabs: DEFAULT_TAB_ACCESS,
   },
 ];
 
@@ -271,6 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newAccount: Account = {
       ...account,
+      allowedTabs: account.allowedTabs ?? (account.role === 'admin' ? undefined : [...DEFAULT_TAB_ACCESS]),
       createdAt: new Date().toISOString(),
     };
 

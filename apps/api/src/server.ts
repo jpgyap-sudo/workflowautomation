@@ -602,6 +602,36 @@ app.post('/telegram-webhook', async (request, reply) => {
   }
 });
 
+/**
+ * POST /telegram/notify
+ * Send a custom notification to the escalation group from the dashboard (e.g., calendar).
+ * Requires an action token for verification.
+ */
+app.post('/telegram/notify', async (request, reply) => {
+  const body = z
+    .object({
+      message: z.string().min(1).max(2000),
+      action_token: z.string().optional(),
+    })
+    .parse(request.body);
+
+  let actor: string | null = null;
+  if (body.action_token && cacheClient?.isOpen) {
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (tokenData) {
+      await cacheClient.del(tokenKey);
+      try {
+        const tokenPayload = JSON.parse(tokenData);
+        actor = tokenPayload.name ?? tokenPayload.email ?? null;
+      } catch { /* non-fatal */ }
+    }
+  }
+
+  await notifyManualChange('📅 Calendar Notification', body.message, actor);
+  return reply.send({ ok: true });
+});
+
 // ── Orders ──────────────────────────────────────────────────────────
 
 const createOrderSchema = z.object({
@@ -4670,6 +4700,7 @@ const payBalanceSchema = z.object({
   quotation_number: z.string(),
   amount: z.number().positive(),
   payment_date: z.string().optional(),
+  reference_number: z.string().optional(),
   updated_by: z.string().optional(),
   action_token: z.string().optional(),
 });
@@ -4714,9 +4745,9 @@ app.post('/pay-balance', async (request, reply) => {
 
     // Insert payment record into payments table (supports multiple balance payments)
     await query(
-      `INSERT INTO payments (order_id, type, amount, payment_date, source)
-       VALUES ($1, 'balance', $2, $3, $4)`,
-      [orderId, body.amount, body.payment_date ?? null, body.updated_by ?? 'api']
+      `INSERT INTO payments (order_id, type, amount, reference_number, payment_date, source)
+       VALUES ($1, 'balance', $2, $3, $4, $5)`,
+      [orderId, body.amount, body.reference_number ?? null, body.payment_date ?? null, body.updated_by ?? 'api']
     );
 
     // Recompute totals from payments table

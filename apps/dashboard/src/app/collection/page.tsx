@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFile, visionExtract } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -300,8 +300,13 @@ export default function CollectionPage() {
     open: boolean;
     order: Order | null;
     uploading: boolean;
+    extracting: boolean;
     error: string | null;
-  }>({ open: false, order: null, uploading: false, error: null });
+    extractedNote: string | null;
+  }>({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null });
+  const [balancePaymentAmount, setBalancePaymentAmount] = useState('');
+  const [balancePaymentDate, setBalancePaymentDate] = useState('');
+  const [balancePaymentReference, setBalancePaymentReference] = useState('');
   const [depositSlipFile, setDepositSlipFile] = useState<{
     name: string;
     data: string; // base64
@@ -680,7 +685,13 @@ export default function CollectionPage() {
   // ── Payment Confirmation with Deposit Slip Upload ──────────────────────
 
   function handlePaymentConfirmClick(order: Order) {
-    setPaymentModal({ open: true, order, uploading: false, error: null });
+    const totalAmount = Number(order.total_amount ?? 0);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const balance = Math.max(0, totalAmount - depositAmount);
+    setPaymentModal({ open: true, order, uploading: false, extracting: false, error: null, extractedNote: null });
+    setBalancePaymentAmount(balance > 0 ? balance.toFixed(2) : '');
+    setBalancePaymentDate(new Date().toISOString().slice(0, 10));
+    setBalancePaymentReference('');
     setDepositSlipFile(null);
   }
 
@@ -694,24 +705,68 @@ export default function CollectionPage() {
       // result is a data URL like "data:image/png;base64,iVBOR..."
       const commaIndex = result.indexOf(',');
       const base64 = commaIndex !== -1 ? result.substring(commaIndex + 1) : result;
+      const mime = file.type || 'image/jpeg';
       setDepositSlipFile({
         name: file.name,
         data: base64,
-        mime: file.type || 'image/jpeg',
+        mime,
         preview: result, // full data URL for preview
       });
+      extractBalancePaymentFromSlip(base64, mime);
     };
     reader.readAsDataURL(file);
   }
 
+  async function extractBalancePaymentFromSlip(base64: string, mimeType: string) {
+    setPaymentModal((prev) => ({ ...prev, extracting: true, error: null, extractedNote: null }));
+    try {
+      const result = await visionExtract({
+        image_base64: base64,
+        mime_type: mimeType,
+        mode: 'payment',
+      });
+      const payment = result.payment;
+      const updates: string[] = [];
+      if (payment?.amount && Number(payment.amount) > 0) {
+        setBalancePaymentAmount(String(payment.amount));
+        updates.push(`amount ?${Number(payment.amount).toLocaleString()}`);
+      }
+      if (payment?.payment_date) {
+        setBalancePaymentDate(payment.payment_date.slice(0, 10));
+        updates.push(`date ${payment.payment_date.slice(0, 10)}`);
+      }
+      if (payment?.reference_number) {
+        setBalancePaymentReference(payment.reference_number);
+        updates.push(`reference ${payment.reference_number}`);
+      }
+      setPaymentModal((prev) => ({
+        ...prev,
+        extracting: false,
+        extractedNote: updates.length
+          ? `AI extracted ${updates.join(', ')}. You can still edit before confirming.`
+          : 'AI could not find payment fields. Please enter the balance details manually.',
+      }));
+    } catch (err: any) {
+      setPaymentModal((prev) => ({
+        ...prev,
+        extracting: false,
+        error: err?.message ?? 'AI extraction failed. You can still enter the payment manually.',
+      }));
+    }
+  }
+
   function handleConfirmPayment() {
     const order = paymentModal.order;
-    if (!order || !depositSlipFile) return;
+    const amount = Number(balancePaymentAmount.replace(/,/g, ''));
+    if (!order || !Number.isFinite(amount) || amount <= 0) {
+      setPaymentModal((prev) => ({ ...prev, error: 'Enter a valid balance payment amount before confirming.' }));
+      return;
+    }
     (window as any).__pendingConfirmPaymentData = { order };
     setOtpModal({
       open: true,
-      title: 'Confirm Payment',
-      description: `Confirm payment for "${order.quotation_number ?? '—'}".`,
+      title: 'Record Balance Payment',
+      description: `Record balance payment for "${order.quotation_number ?? '?'}". This will move the order to Balance Verification, not Payment Confirmed yet.`,
       pendingAction: 'confirmPayment',
     });
   }
@@ -722,17 +777,29 @@ export default function CollectionPage() {
     const { order } = pending;
     setPaymentModal((prev) => ({ ...prev, uploading: true, error: null }));
     try {
-      await recordStageUpdate({
+      const amount = Number(balancePaymentAmount.replace(/,/g, ''));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Enter a valid balance payment amount.');
+      }
+      await payBalanceWithFile({
         quotation_number: order.quotation_number ?? '',
-        stage: 'payment_confirmed',
-        status: 'confirmed',
-        remarks: `Payment confirmed via dashboard.`,
+        amount,
+        payment_date: balancePaymentDate || undefined,
+        reference_number: balancePaymentReference || undefined,
+        image_base64: depositSlipFile?.data,
+        mime_type: depositSlipFile?.mime,
+        original_filename: depositSlipFile?.name,
+        updated_by: 'dashboard_quick_action',
         action_token: actionToken,
       });
-      setPaymentModal({ open: false, order: null, uploading: false, error: null });
+      setPaymentModal({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null });
       setDepositSlipFile(null);
+      setBalancePaymentAmount('');
+      setBalancePaymentDate('');
+      setBalancePaymentReference('');
       mutateArrived();
       mutateBalanceDue();
+      mutateBalanceVerification();
       mutateDelivered();
       mutateCountered();
       mutateReceived();
@@ -742,7 +809,7 @@ export default function CollectionPage() {
       setPaymentModal((prev) => ({
         ...prev,
         uploading: false,
-        error: err.message ?? 'Failed to confirm payment. Please try again.',
+        error: err.message ?? 'Failed to record balance payment. Please try again.',
       }));
     } finally {
       (window as any).__pendingConfirmPaymentData = null;
@@ -750,8 +817,11 @@ export default function CollectionPage() {
   }
 
   function closePaymentModal() {
-    setPaymentModal({ open: false, order: null, uploading: false, error: null });
+    setPaymentModal({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null });
     setDepositSlipFile(null);
+    setBalancePaymentAmount('');
+    setBalancePaymentDate('');
+    setBalancePaymentReference('');
   }
 
   const collectionSummaryOrders = Array.from(
@@ -1296,7 +1366,7 @@ export default function CollectionPage() {
             <div className="mb-4 flex items-center gap-3">
               <CheckCircle2 className="h-6 w-6 text-emerald-500" />
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Confirm Payment</h3>
+                <h3 className="text-base font-semibold text-gray-900">Record Balance Payment</h3>
                 <p className="text-xs text-gray-500">
                   {paymentModal.order.quotation_number ?? '—'} — {paymentModal.order.client_name ?? 'Unknown'}
                 </p>
@@ -1321,9 +1391,39 @@ export default function CollectionPage() {
               </div>
             </div>
 
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-medium text-gray-600">
+                Amount paid
+                <input
+                  value={balancePaymentAmount}
+                  onChange={(e) => setBalancePaymentAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  placeholder="Amount"
+                />
+              </label>
+              <label className="block text-xs font-medium text-gray-600">
+                Payment date
+                <input
+                  type="date"
+                  value={balancePaymentDate}
+                  onChange={(e) => setBalancePaymentDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </label>
+            </div>
+            <label className="mb-4 block text-xs font-medium text-gray-600">
+              Reference no. (optional, AI can fill this)
+              <input
+                value={balancePaymentReference}
+                onChange={(e) => setBalancePaymentReference(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                placeholder="e.g. bank/GCash reference number"
+              />
+            </label>
+
             <p className="mb-3 text-sm text-gray-600">
-              Upload the <strong>deposit slip</strong> or proof of balance payment. The file will be
-              automatically saved to the client's Google Drive folder.
+              Uploading a <strong>deposit slip / balance payment proof</strong> is optional. If provided,
+              AI will extract amount/date/reference and the proof will be saved to the order files.
             </p>
 
             {/* File upload area */}
@@ -1352,8 +1452,8 @@ export default function CollectionPage() {
               ) : (
                 <>
                   <Upload className="mb-2 h-8 w-8 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-600">Click to upload deposit slip</span>
-                  <span className="mt-1 text-[11px] text-gray-400">PNG, JPG, or PDF accepted</span>
+                  <span className="text-sm font-medium text-gray-600">Click to upload proof slip (optional)</span>
+                  <span className="mt-1 text-[11px] text-gray-400">PNG, JPG, or PDF accepted ? AI extraction runs after upload</span>
                 </>
               )}
               <input
@@ -1364,6 +1464,18 @@ export default function CollectionPage() {
                 onChange={handleDepositSlipFileSelect}
               />
             </div>
+
+            {paymentModal.extracting && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                AI is extracting amount, date, and reference from the proof...
+              </div>
+            )}
+            {paymentModal.extractedNote && !paymentModal.extracting && (
+              <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
+                {paymentModal.extractedNote}
+              </div>
+            )}
 
             {/* Error message */}
             {paymentModal.error && (
@@ -1383,18 +1495,18 @@ export default function CollectionPage() {
               </button>
               <button
                 onClick={handleConfirmPayment}
-                disabled={paymentModal.uploading || !depositSlipFile}
+                disabled={paymentModal.uploading || paymentModal.extracting || !balancePaymentAmount}
                 className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
               >
                 {paymentModal.uploading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Uploading...
+                    Recording...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Confirm Payment
+                    Record Payment
                   </>
                 )}
               </button>
