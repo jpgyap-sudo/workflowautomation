@@ -1,4 +1,4 @@
-const CACHE_NAME = 'quotation-dashboard-static-v3';
+const CACHE_NAME = 'quotation-dashboard-static-v4';
 const STATIC_PATHS = [
   '/manifest.webmanifest',
   '/icons/icon.svg',
