@@ -10155,3 +10155,88 @@ When adding full-payment-at-start support to quotation automation, keep existing
 cross-project, local-fallback
 
 ---
+
+### Lesson: Editable amount with reason workflow
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For dashboard order amount edits, require a reason before PATCHing total_amount, store previous_total_amount/amount_change_reason/change actor fields, recompute math_status immediately against computed_amount, add amount_adjustment stage audit row, and mark changed amounts in red in OrderTable. Deploy requires migration 037 before rebuilding API/dashboard.
+
+#### Lesson Learned
+
+For dashboard order amount edits, require a reason before PATCHing total_amount, store previous_total_amount/amount_change_reason/change actor fields, recompute math_status immediately against computed_amount, add amount_adjustment stage audit row, and mark changed amounts in red in OrderTable. Deploy requires migration 037 before rebuilding API/dashboard.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] feat: from-stock orders + stock prep tab + fix orders filter + sync all
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 529d593cf4359cc63e49d7ee43a416b18d36dc62
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 529d593cf4359cc63e49d7ee43a416b18d36dc62
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+- Orders filter logic (likely incorrect state or query).  
+- Stock preparation tab and "from-stock" order creation were added.  
+- "Sync all" functionality was introduced for batch operations.
+
+**Why it broke:**  
+The filter likely failed due to missing or misaligned stock status fields when orders transitioned between states (e.g., "pending" vs. "prep"). The stock prep tab and sync feature were missing, causing incomplete order lifecycle tracking.
+
+**Reusable takeaway:**  
+When adding new order states or tabs (e.g., stock prep), always update all related filters and sync mechanisms simultaneously. A partial update (e.g., adding a tab without updating the filter) creates silent data mismatches. Use a single commit to atomically update:  
+1. New state/tab logic  
+2. All filters referencing order status  
+3. Sync/batch operations that depend on those states  
+
+This prevents filter drift and ensures consistent order visibility across the workflow.
+
+---
+*Original commit message: feat: from-stock orders + stock prep tab + fix orders filter + sync all*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Orders filter logic (likely incorrect state or query).  
+- Stock preparation tab and "from-stock" order creation were added.  
+- "Sync all" functionality was introduced for batch operations.
+
+**Why it broke:**  
+The filter likely failed due to missing or misaligned stock status fields when orders transitioned between states (e.g., "pending" vs. "prep"). The stock prep tab and sync feature were missing, causing incomplete order lifecycle tracking.
+
+**Reusable takeaway:**  
+When adding new order states or tabs (e.g., stock prep), always update all related filters and sync mechanisms simultaneously. A partial update (e.g., adding a tab without updating the filter) creates silent data mismatches. Use a single commit to atomically update:  
+1. New state/tab logic  
+2. All filters referencing order status  
+3. Sync/batch operations that depend on those states  
+
+This prevents filter drift and ensures consistent order visibility across the workflow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
