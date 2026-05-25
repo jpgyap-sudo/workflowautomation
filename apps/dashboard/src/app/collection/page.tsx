@@ -3,11 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFile, visionExtract, getOrderPayments } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFile, visionExtract, getOrderPayments, getAcknowledgementReceipts, type AcknowledgementReceipt } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send, Download } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -242,6 +242,102 @@ function CollectionSummary({
   );
 }
 
+function AcknowledgementReceiptsSection({
+  receipts,
+  loading,
+}: {
+  receipts: AcknowledgementReceipt[];
+  loading: boolean;
+}) {
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-indigo-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-indigo-200 px-6 py-4">
+        <FileText className="h-4 w-4 text-indigo-500" />
+        <div>
+          <h2 className="text-base font-semibold text-gray-800">Acknowledgement Receipts</h2>
+          <p className="text-xs text-gray-500">
+            Download PDF receipts automatically generated for downpayment, balance, and full payments.
+          </p>
+        </div>
+        <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+          {receipts.length}
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-indigo-500" />
+        </div>
+      ) : receipts.length === 0 ? (
+        <div className="py-10 text-center text-sm text-gray-400">No payment receipts recorded yet</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-100 text-left text-xs">
+            <thead className="bg-indigo-50/60 text-[11px] uppercase tracking-wider text-indigo-700">
+              <tr>
+                <th className="px-6 py-3 font-semibold">Receipt #</th>
+                <th className="px-6 py-3 font-semibold">Order #</th>
+                <th className="px-6 py-3 font-semibold">Client</th>
+                <th className="px-6 py-3 font-semibold">Payment</th>
+                <th className="px-6 py-3 font-semibold">Amount</th>
+                <th className="px-6 py-3 font-semibold">Date</th>
+                <th className="px-6 py-3 font-semibold">Status</th>
+                <th className="px-6 py-3 font-semibold">PDF</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {receipts.map((receipt) => (
+                <tr key={receipt.payment_id} className="hover:bg-indigo-50/30">
+                  <td className="whitespace-nowrap px-6 py-3 font-medium text-gray-800">{receipt.receipt_number}</td>
+                  <td className="whitespace-nowrap px-6 py-3 text-[#2490ef]">{receipt.quotation_number ?? receipt.order_id.slice(0, 8)}</td>
+                  <td className="whitespace-nowrap px-6 py-3 text-gray-600">{receipt.client_name ?? 'Unknown client'}</td>
+                  <td className="whitespace-nowrap px-6 py-3">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      receipt.payment_type === 'Full Payment'
+                        ? 'bg-purple-100 text-purple-700'
+                        : receipt.payment_type === 'Balance Payment'
+                          ? 'bg-violet-100 text-violet-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {receipt.payment_type}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3 font-medium text-gray-800">
+                    ₱{Number(receipt.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3 text-gray-600">
+                    {formatCollectionDate(receipt.payment_date ?? receipt.created_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      receipt.verified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {receipt.verified ? 'Verified' : 'Pending'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-3">
+                    <a
+                      href={`${API_BASE}${receipt.download_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                    >
+                      <Download className="h-3 w-3" />
+                      Download
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CollectionPage() {
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
@@ -258,6 +354,20 @@ export default function CollectionPage() {
   // Fetch unsynced orders — balance_paid=TRUE but stage still balance_due (legacy gap)
   const [unsyncedOrders, setUnsyncedOrders] = useState<Order[]>([]);
   const [loadingUnsynced, setLoadingUnsynced] = useState(true);
+  const [acknowledgementReceipts, setAcknowledgementReceipts] = useState<AcknowledgementReceipt[]>([]);
+  const [loadingReceipts, setLoadingReceipts] = useState(true);
+
+  async function refreshAcknowledgementReceipts() {
+    setLoadingReceipts(true);
+    try {
+      const res = await getAcknowledgementReceipts(100);
+      if (res.ok) setAcknowledgementReceipts(res.receipts);
+    } catch {
+      setAcknowledgementReceipts([]);
+    } finally {
+      setLoadingReceipts(false);
+    }
+  }
 
   // Fetch unsynced payments on mount
   useEffect(() => {
@@ -266,6 +376,10 @@ export default function CollectionPage() {
       .then(r => r.ok ? r.json() : [])
       .then(data => { setUnsyncedOrders(data); setLoadingUnsynced(false); })
       .catch(() => setLoadingUnsynced(false));
+  }, []);
+
+  useEffect(() => {
+    refreshAcknowledgementReceipts();
   }, []);
 
   const loading = loadingArrived && loadingBalanceDue && loadingDelivered && loadingCountered && loadingReceived && loadingConfirmed && loadingCompleted && loadingDepositVerification && loadingBalanceVerification && loadingUnsynced;
@@ -351,6 +465,7 @@ export default function CollectionPage() {
       mutateReceived();
       mutateConfirmed();
       mutateCompleted();
+      refreshAcknowledgementReceipts();
     } catch (err: any) {
       alert('Failed to update order: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -459,6 +574,7 @@ export default function CollectionPage() {
       mutateDepositVerification();
       mutateArrived();
       mutateBalanceDue();
+      refreshAcknowledgementReceipts();
       mutateBalanceVerification();
       mutateDelivered();
       mutateCountered();
@@ -609,6 +725,7 @@ export default function CollectionPage() {
       mutateDepositVerification();
       mutateArrived();
       mutateBalanceDue();
+      refreshAcknowledgementReceipts();
     } catch (err: any) {
       alert('Failed to verify deposit: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -623,6 +740,7 @@ export default function CollectionPage() {
       await verifyBalance(pending.orderId, { verified_by: 'dashboard', action_token: actionToken });
       mutateBalanceVerification();
       mutateReceived();
+      refreshAcknowledgementReceipts();
     } catch (err: any) {
       alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -825,6 +943,7 @@ export default function CollectionPage() {
       mutateReceived();
       mutateConfirmed();
       mutateCompleted();
+      refreshAcknowledgementReceipts();
     } catch (err: any) {
       setPaymentModal((prev) => ({
         ...prev,
@@ -1085,6 +1204,11 @@ export default function CollectionPage() {
         orders={collectionSummaryOrders}
         onDateEdit={handlePaymentDateEdit}
         savingKey={paymentDateSavingKey}
+      />
+
+      <AcknowledgementReceiptsSection
+        receipts={acknowledgementReceipts}
+        loading={loadingReceipts}
       />
 
       {/* For Payment Before Delivery (Inventory Arrived + Balance Due) */}

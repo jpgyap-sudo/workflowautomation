@@ -1358,6 +1358,28 @@ export async function verifyPayment(paymentId: string, verifiedBy: string, actio
   });
 }
 
+export interface AcknowledgementReceipt {
+  payment_id: string;
+  receipt_number: string;
+  order_id: string;
+  quotation_number: string | null;
+  client_name: string | null;
+  payment_type: 'Downpayment' | 'Balance Payment' | 'Full Payment' | string;
+  amount: number;
+  payment_date: string | null;
+  reference_number: string | null;
+  source: string | null;
+  verified: boolean;
+  created_at: string;
+  download_url: string;
+}
+
+export async function getAcknowledgementReceipts(limit = 80): Promise<{ ok: boolean; receipts: AcknowledgementReceipt[] }> {
+  return fetchJson<{ ok: boolean; receipts: AcknowledgementReceipt[] }>(
+    `/payments/acknowledgement-receipts?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
 export async function runAgent(name: string, actionToken: string): Promise<{ ok: boolean; message?: string }> {
   return fetchJson<{ ok: boolean; message?: string }>(`/agents/run/${encodeURIComponent(name)}`, {
     method: 'POST',

@@ -10357,3 +10357,142 @@ For quotation-automation item tracking, preserve fast status-only workflows by a
 cross-project, local-fallback
 
 ---
+
+### Lesson: Acknowledgement receipt PDFs
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For quotation-automation payment acknowledgement receipts, avoid adding a PDF dependency when the API package has no PDF libraries: a small PDF can be generated directly with a Type1 Helvetica content stream and served as application/pdf. Expose deterministic receipt downloads from existing payments rows so old deposits/balances/full payments immediately get receipts without migrations; group full_payment split rows for display/download.
+
+#### Lesson Learned
+
+For quotation-automation payment acknowledgement receipts, avoid adding a PDF dependency when the API package has no PDF libraries: a small PDF can be generated directly with a Type1 Helvetica content stream and served as application/pdf. Expose deterministic receipt downloads from existing payments rows so old deposits/balances/full payments immediately get receipts without migrations; group full_payment split rows for display/download.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: 3 E2E gaps in Matching Verification feature
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4779f5a83f549ff14d6a6c27dc69c9712b67817e
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4779f5a83f549ff14d6a6c27dc69c9712b67817e
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/stock-prep/page.tsx
+
+**Summary:**
+**What was fixed:**  
+Three end-to-end gaps in the Matching Verification feature:  
+1. Missing API route registration in `server.ts` (feature endpoint not exposed).  
+2. Incorrect import path in `stock-prep/page.tsx` (component not found at runtime).  
+3. Unhandled edge case where verification state was `null` (caused blank UI).
+
+**Why it broke:**  
+- The API route was added to a feature module but never wired into the main server router.  
+- A refactor moved the verification component to a subdirectory, but the import path wasn’t updated.  
+- The state initializer assumed verification data would always exist, ignoring the empty/null case.
+
+**Reusable takeaway:**  
+When adding a new feature with both backend and frontend pieces, always:  
+1. Register new API routes explicitly in the main server entry point.  
+2. Update import paths after any component relocation.  
+3. Defensively handle null/undefined states in UI components—never assume data exists.  
+
+**Lesson:** *Feature completeness requires verifying every integration seam (route, import, state) across the full stack.*
+
+---
+*Original commit message: fix: 3 E2E gaps in Matching Verification feature*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Three end-to-end gaps in the Matching Verification feature:  
+1. Missing API route registration in `server.ts` (feature endpoint not exposed).  
+2. Incorrect import path in `stock-prep/page.tsx` (component not found at runtime).  
+3. Unhandled edge case where verification state was `null` (caused blank UI).
+
+**Why it broke:**  
+- The API route was added to a feature module but never wired into the main server router.  
+- A refactor moved the verification component to a subdirectory, but the import path wasn’t updated.  
+- The state initializer assumed verification data would always exist, ignoring the empty/null case.
+
+**Reusable takeaway:**  
+When adding a new feature with both backend and frontend pieces, always:  
+1. Register new API routes explicitly in the main server entry point.  
+2. Update import paths after any component relocation.  
+3. Defensively handle null/undefined states in UI components—never assume data exists.  
+
+**Lesson:** *Feature completeness requires verifying every integration seam (route, import, state) across the full stack.*
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: mark E2E gap fixes as deployed (commit 4779f5a)
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3084bd2ab1c86fca376ffa515e45136f34f358cb
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3084bd2ab1c86fca376ffa515e45136f34f358cb
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Documentation was updated to mark previously identified End-to-End (E2E) gap fixes as deployed and live in production.
+
+**Why it broke:**  
+The E2E gaps were resolved in code but not reflected in the changelog or update log, causing a mismatch between actual system state and documented state. This could lead to confusion for users or developers relying on outdated documentation.
+
+**Reusable takeaway:**  
+Always update documentation (changelogs, release notes) **immediately** when a fix is deployed. A gap between code state and documented state erodes trust and creates ambiguity. Use commit messages to explicitly link code changes to documentation updates.
+
+---
+*Original commit message: docs: mark E2E gap fixes as deployed (commit 4779f5a)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Documentation was updated to mark previously identified End-to-End (E2E) gap fixes as deployed and live in production.
+
+**Why it broke:**  
+The E2E gaps were resolved in code but not reflected in the changelog or update log, causing a mismatch between actual system state and documented state. This could lead to confusion for users or developers relying on outdated documentation.
+
+**Reusable takeaway:**  
+Always update documentation (changelogs, release notes) **immediately** when a fix is deployed. A gap between code state and documented state erodes trust and creates ambiguity. Use commit messages to explicitly link code changes to documentation updates.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
