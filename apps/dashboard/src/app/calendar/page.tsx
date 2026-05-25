@@ -82,6 +82,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   production_finish: <Flag className="h-3.5 w-3.5" />,
   en_route: <Ship className="h-3.5 w-3.5" />,
   order_confirmed: <CheckCircle2 className="h-3.5 w-3.5" />,
+  schedule: <CalendarDays className="h-3.5 w-3.5" />,
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -95,6 +96,7 @@ const TYPE_LABELS: Record<string, string> = {
   production_finish: 'Production Finished',
   en_route: 'Inventory En Route',
   order_confirmed: 'Order Confirmed',
+  schedule: 'Schedule',
 };
 
 const NOTE_COLORS = ['#2490ef', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
@@ -706,6 +708,7 @@ export default function CalendarPage() {
                   { type: 'production_finish', label: 'Production Finish', color: '#6366f1' },
                   { type: 'en_route', label: 'En Route', color: '#14b8a6' },
                   { type: 'order_confirmed', label: 'Order Confirmed', color: '#84cc16' },
+                  { type: 'schedule', label: 'Schedule', color: '#f59e0b' },
                   { type: 'note', label: 'Manual Note', color: '#10b981' },
                 ].map((item) => (
                   <div key={item.type} className="flex items-center gap-1.5">
