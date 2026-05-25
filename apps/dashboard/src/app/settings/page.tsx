@@ -212,6 +212,75 @@ export default function SettingsPage() {
     setTabAccessAccount(null);
   }
 
+  /* ── Sub-User Management ── */
+  const [subUserAccount, setSubUserAccount] = useState<string | null>(null);
+  const [subUsers, setSubUsers] = useState<{ code: string; name: string }[]>([]);
+  const [newSubUserCode, setNewSubUserCode] = useState('');
+  const [newSubUserName, setNewSubUserName] = useState('');
+  const [editingSubUserIndex, setEditingSubUserIndex] = useState<number | null>(null);
+  const [editSubUserCode, setEditSubUserCode] = useState('');
+  const [editSubUserName, setEditSubUserName] = useState('');
+  const [subUserMsg, setSubUserMsg] = useState('');
+
+  function openSubUsers(acct: Account) {
+    setSubUserAccount(acct.email);
+    setSubUsers(acct.subUsers ? [...acct.subUsers] : []);
+    setNewSubUserCode('');
+    setNewSubUserName('');
+    setEditingSubUserIndex(null);
+    setSubUserMsg('');
+  }
+
+  function addSubUser() {
+    if (!newSubUserCode.trim() || !newSubUserName.trim()) {
+      setSubUserMsg('Both code and name are required');
+      return;
+    }
+    if (subUsers.some((u) => u.code === newSubUserCode.trim())) {
+      setSubUserMsg('A user with this code already exists');
+      return;
+    }
+    setSubUsers((prev) => [...prev, { code: newSubUserCode.trim(), name: newSubUserName.trim() }]);
+    setNewSubUserCode('');
+    setNewSubUserName('');
+    setSubUserMsg('');
+  }
+
+  function startEditSubUser(index: number) {
+    setEditingSubUserIndex(index);
+    setEditSubUserCode(subUsers[index].code);
+    setEditSubUserName(subUsers[index].name);
+  }
+
+  function saveEditSubUser(index: number) {
+    if (!editSubUserCode.trim() || !editSubUserName.trim()) {
+      setSubUserMsg('Both code and name are required');
+      return;
+    }
+    if (subUsers.some((u, i) => i !== index && u.code === editSubUserCode.trim())) {
+      setSubUserMsg('A user with this code already exists');
+      return;
+    }
+    setSubUsers((prev) => {
+      const updated = [...prev];
+      updated[index] = { code: editSubUserCode.trim(), name: editSubUserName.trim() };
+      return updated;
+    });
+    setEditingSubUserIndex(null);
+    setSubUserMsg('');
+  }
+
+  function removeSubUser(index: number) {
+    setSubUsers((prev) => prev.filter((_, i) => i !== index));
+    if (editingSubUserIndex === index) setEditingSubUserIndex(null);
+  }
+
+  async function saveSubUsers() {
+    if (!subUserAccount) return;
+    await updateAccount(subUserAccount, { subUsers });
+    setSubUserAccount(null);
+  }
+
   const TAB_LABELS: Record<string, string> = {
     '/': 'Dashboard',
     '/orders': 'All Orders',
@@ -429,6 +498,13 @@ export default function SettingsPage() {
                           <Lock className="h-4 w-4" />
                         </button>
                       )}
+                      <button
+                        onClick={() => openSubUsers(acct)}
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                        title="Manage sub-users (entry codes)"
+                      >
+                        <Users className="h-4 w-4" />
+                      </button>
                       {/* Set Password */}
                       {pwTarget === acct.email ? (
                         <div className="flex items-center gap-1">
@@ -556,6 +632,147 @@ export default function SettingsPage() {
                   >
                     <Save className="h-3.5 w-3.5" />
                     Save Access
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-User Management Modal */}
+          {subUserAccount && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-xl">
+                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                  <h3 className="text-sm font-semibold text-gray-800">
+                    Entry Codes — {accounts.find((a) => a.email === subUserAccount)?.name ?? subUserAccount}
+                  </h3>
+                  <button
+                    onClick={() => setSubUserAccount(null)}
+                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto p-5">
+                  <p className="mb-3 text-xs text-gray-500">
+                    Manage personal entry codes for this account. Each sub-user can log in using their unique code.
+                  </p>
+
+                  {/* Add new sub-user */}
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      value={newSubUserCode}
+                      onChange={(e) => setNewSubUserCode(e.target.value)}
+                      placeholder="Code (e.g. 777)"
+                      className="w-24 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef]"
+                      onKeyDown={(e) => e.key === 'Enter' && addSubUser()}
+                    />
+                    <input
+                      value={newSubUserName}
+                      onChange={(e) => setNewSubUserName(e.target.value)}
+                      placeholder="Name (e.g. Mariella)"
+                      className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef]"
+                      onKeyDown={(e) => e.key === 'Enter' && addSubUser()}
+                    />
+                    <button
+                      onClick={addSubUser}
+                      className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add
+                    </button>
+                  </div>
+
+                  {subUserMsg && (
+                    <p className="mb-3 text-xs text-red-500">{subUserMsg}</p>
+                  )}
+
+                  {/* Sub-user list */}
+                  {subUsers.length === 0 ? (
+                    <div className="flex items-center justify-center py-6 text-sm text-gray-400">
+                      No entry codes configured yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {subUsers.map((su, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2"
+                        >
+                          {editingSubUserIndex === idx ? (
+                            <div className="flex flex-1 items-center gap-2">
+                              <input
+                                value={editSubUserCode}
+                                onChange={(e) => setEditSubUserCode(e.target.value)}
+                                className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[#2490ef]"
+                                placeholder="Code"
+                                autoFocus
+                              />
+                              <input
+                                value={editSubUserName}
+                                onChange={(e) => setEditSubUserName(e.target.value)}
+                                className="flex-1 rounded-lg border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[#2490ef]"
+                                placeholder="Name"
+                              />
+                              <button
+                                onClick={() => saveEditSubUser(idx)}
+                                className="rounded-lg p-1 text-green-600 hover:bg-green-50"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingSubUserIndex(null)}
+                                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-3">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#e8f4fd] text-xs font-bold text-[#2490ef]">
+                                  {su.code}
+                                </span>
+                                <span className="text-sm font-medium text-gray-800">{su.name}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => startEditSubUser(idx)}
+                                  className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                  title="Edit"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => removeSubUser(idx)}
+                                  className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                                  title="Remove"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-3">
+                  <button
+                    onClick={() => setSubUserAccount(null)}
+                    className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveSubUsers}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Save Changes
                   </button>
                 </div>
               </div>
