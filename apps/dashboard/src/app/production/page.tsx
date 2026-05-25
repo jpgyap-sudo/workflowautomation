@@ -1217,6 +1217,16 @@ export default function ProductionPage() {
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Production days modal — per-item input before starting production
+  const [prodDaysModal, setProdDaysModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    items: OrderItem[];
+    loadingItems: boolean;
+  }>({ open: false, order: null, items: [], loadingItems: false });
+  const [itemDays, setItemDays] = useState<Record<string, string>>({});
+  const [overallProductionDays, setOverallProductionDays] = useState('');
+
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
@@ -1311,6 +1321,14 @@ export default function ProductionPage() {
     const pending = (window as any).__pendingStartProductionData;
     if (!pending) return;
     try {
+      // Save per-item production days first
+      if (pending.itemDays && Object.keys(pending.itemDays).length > 0) {
+        await Promise.all(
+          Object.entries(pending.itemDays as Record<string, number>).map(([itemId, days]) =>
+            updateOrderItem(pending.orderId, itemId, { estimated_production_days: days })
+          )
+        );
+      }
       await setProduction(pending.orderId, { production_started: true, estimated_production_days: pending.days, action_token: actionToken });
       refresh();
     } catch (err: any) { alert('Failed to start production: ' + (err.message ?? 'Unknown error')); }
@@ -1391,14 +1409,45 @@ export default function ProductionPage() {
   }
 
   async function handleStartProduction(order: Order) {
-    const input = window.prompt('Estimated production days?', order.estimated_production_days?.toString() ?? '');
-    if (!input) return;
-    const days = Number(input.replace(/[^0-9]/g, ''));
-    if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    setOtpModal({ open: true, title: 'Start Production',
-      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate. Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'setProduction' });
-    (window as any).__pendingStartProductionData = { orderId: order.id, days };
+    setProdDaysModal({ open: true, order, items: [], loadingItems: true });
+    setItemDays({});
+    setOverallProductionDays(order.estimated_production_days?.toString() ?? '');
+    try {
+      const res = await getOrderItems(order.id);
+      const items = res.items ?? [];
+      const initialDays: Record<string, string> = {};
+      for (const item of items) {
+        initialDays[item.id] = item.estimated_production_days?.toString() ?? '';
+      }
+      setItemDays(initialDays);
+      // Auto-set overall to max of existing item days if no order-level days set
+      if (!order.estimated_production_days && items.length > 0) {
+        const maxDays = Math.max(0, ...Object.values(initialDays).map((v) => parseInt(v) || 0));
+        if (maxDays > 0) setOverallProductionDays(maxDays.toString());
+      }
+      setProdDaysModal({ open: true, order, items, loadingItems: false });
+    } catch {
+      setProdDaysModal({ open: true, order, items: [], loadingItems: false });
+    }
+  }
+
+  function handleProdDaysConfirm() {
+    const days = parseInt(overallProductionDays.replace(/[^0-9]/g, ''));
+    if (!days || days <= 0) { alert('Please enter a valid overall number of production days.'); return; }
+    const pendingItemDays: Record<string, number> = {};
+    for (const [id, val] of Object.entries(itemDays)) {
+      const d = parseInt(val.replace(/[^0-9]/g, ''));
+      if (d > 0) pendingItemDays[id] = d;
+    }
+    const order = prodDaysModal.order!;
+    setProdDaysModal((prev) => ({ ...prev, open: false }));
+    setOtpModal({
+      open: true,
+      title: 'Start Production',
+      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) overall estimate. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'setProduction',
+    });
+    (window as any).__pendingStartProductionData = { orderId: order.id, days, itemDays: pendingItemDays };
   }
 
   async function handleFinishProduction(order: Order) {
@@ -1718,6 +1767,110 @@ export default function ProductionPage() {
           </>
         )}
       </OrderSection>
+
+      {/* Production Days Modal */}
+      {prodDaysModal.open && prodDaysModal.order && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Start Production</h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {prodDaysModal.order.quotation_number} · {prodDaysModal.order.client_name}
+                </p>
+              </div>
+              <button
+                onClick={() => setProdDaysModal((prev) => ({ ...prev, open: false }))}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {prodDaysModal.loadingItems ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-500" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {prodDaysModal.items.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold text-gray-700">Production days per item:</p>
+                    <div className="space-y-2">
+                      {prodDaysModal.items.map((item) => (
+                        <div key={item.id} className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-gray-800">{item.name}</p>
+                            <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="1"
+                              value={itemDays[item.id] ?? ''}
+                              onChange={(e) => {
+                                const newVal = e.target.value;
+                                setItemDays((prev) => {
+                                  const updated = { ...prev, [item.id]: newVal };
+                                  // Auto-update overall to max of all item days
+                                  const maxDays = Math.max(0, ...Object.values(updated).map((v) => parseInt(v) || 0));
+                                  if (maxDays > 0) setOverallProductionDays(maxDays.toString());
+                                  return updated;
+                                });
+                              }}
+                              placeholder="Days"
+                              className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-center text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                            />
+                            <span className="text-xs text-gray-500">days</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-700">
+                    Overall estimated production days
+                    {prodDaysModal.items.length > 0 && (
+                      <span className="ml-1 font-normal text-gray-400">(auto-set to longest item)</span>
+                    )}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      value={overallProductionDays}
+                      onChange={(e) => setOverallProductionDays(e.target.value)}
+                      placeholder="e.g. 30"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                    />
+                    <span className="shrink-0 text-xs text-gray-500">days</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setProdDaysModal((prev) => ({ ...prev, open: false }))}
+                    className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleProdDaysConfirm}
+                    disabled={!overallProductionDays || parseInt(overallProductionDays) <= 0}
+                    className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <OtpModal
         open={otpModal.open} title={otpModal.title} description={otpModal.description}

@@ -592,6 +592,7 @@ export async function updateOrderItem(
     production_status?: string;
     en_route_status?: string;
     estimated_arrival_days?: number | null;
+    estimated_production_days?: number | null;
     action_token?: string;
   }
 ): Promise<{ ok: boolean; item: OrderItem }> {
