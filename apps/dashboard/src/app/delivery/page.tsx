@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, recordStageUpdate } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, recordStageUpdate, getOrderPayments } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -61,11 +61,11 @@ function ScheduleForm({ order, value, remarks, onValueChange, onRemarksChange, o
         />
       </div>
       <div className="min-w-[220px] flex-1">
-        <label className="mb-1 block text-[11px] font-medium text-purple-700">Delay reason / remarks</label>
+        <label className="mb-1 block text-[11px] font-medium text-purple-700">Remarks</label>
         <input
           value={remarks}
           onChange={(e) => onRemarksChange(e.target.value)}
-          placeholder={`Optional reason for ${order.delivery_date ? 'delay/reschedule' : 'schedule'}`}
+          placeholder="Optional remarks"
           className="w-full rounded-lg border border-purple-200 px-3 py-1.5 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
         />
       </div>
@@ -75,7 +75,7 @@ function ScheduleForm({ order, value, remarks, onValueChange, onRemarksChange, o
         disabled={saving || !value.trim()}
         className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
       >
-        {saving ? 'Saving…' : order.delivery_date ? 'Save Reschedule' : 'Save Schedule'}
+        {saving ? 'Saving…' : 'Save Schedule'}
       </button>
       <button
         type="button"
@@ -184,6 +184,8 @@ export default function DeliveryPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [payAmount, setPayAmount] = useState('');
+  const [payRemaining, setPayRemaining] = useState<number | null>(null);
+  const [payResult, setPayResult] = useState<string | null>(null);
   const [schedulingOrder, setSchedulingOrder] = useState<Order | null>(null);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleRemarks, setScheduleRemarks] = useState('');
@@ -225,9 +227,18 @@ export default function DeliveryPage() {
     try {
       // payBalance() records the payment AND advances stage from balance_due → balance_verification.
       // The action_token is single-use (consumed by payBalance), so do NOT reuse it for a second call.
-      await payBalance({ quotation_number: order.quotation_number ?? '', amount, action_token: actionToken });
+      const res = await payBalance({ quotation_number: order.quotation_number ?? '', amount, action_token: actionToken });
+      let msg = `Payment of ₱${amount.toLocaleString()} recorded.`;
+      if (res.is_fully_paid) {
+        msg += ' Balance fully paid.';
+        if (res.overpayment && res.overpayment > 0) msg += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
+      } else {
+        msg += ` Remaining: ₱${res.remaining_balance?.toLocaleString() ?? 'unknown'}.`;
+      }
+      setPayResult(msg);
       setPayingOrder(null);
       setPayAmount('');
+      setPayRemaining(null);
       mutateBalanceDue();
       mutateBalanceVerification();
     } catch (err: any) {
@@ -687,6 +698,18 @@ export default function DeliveryPage() {
         </div>
       </div>
 
+      {/* Payment result toast */}
+      {payResult && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" />
+          <div>
+            <p className="text-sm font-medium text-emerald-800">Payment Recorded</p>
+            <p className="text-xs text-emerald-700">{payResult}</p>
+            <button onClick={() => setPayResult(null)} className="mt-1 text-xs text-emerald-600 hover:underline">Dismiss</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Inventory Arrived ──────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
@@ -796,7 +819,19 @@ export default function DeliveryPage() {
                       )}
                       <StageBadge stage={order.current_stage} />
                       <button
-                        onClick={() => { setPayingOrder(order); setPayAmount(String(balance)); }}
+                        onClick={async () => {
+                          setPayingOrder(order);
+                          setPayResult(null);
+                          try {
+                            const payments = await getOrderPayments(order.id);
+                            const remaining = payments.totals.remaining_balance ?? Math.max(0, totalAmount - depositAmount);
+                            setPayRemaining(remaining);
+                            setPayAmount(String(remaining));
+                          } catch {
+                            setPayRemaining(Math.max(0, totalAmount - depositAmount));
+                            setPayAmount(String(balance));
+                          }
+                        }}
                         disabled={actionLoading === order.id}
                         className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
                         title="Record payment"
@@ -839,8 +874,8 @@ export default function DeliveryPage() {
                     <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
                   )}
                   {payingOrder?.id === order.id && (
-                    <div className="flex items-center gap-2 border-t border-gray-100 bg-emerald-50/50 px-6 py-3">
-                      <span className="text-xs font-medium text-emerald-700">Amount:</span>
+                    <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-emerald-50/50 px-6 py-3">
+                      <span className="text-xs font-medium text-emerald-700">Amount{payRemaining != null ? ` (remaining ₱${payRemaining.toLocaleString()})` : ''}:</span>
                       <input
                         value={payAmount}
                         onChange={(e) => setPayAmount(e.target.value.replace(/[^0-9.]/g, ''))}
@@ -851,7 +886,7 @@ export default function DeliveryPage() {
                         className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                         {actionLoading === order.id ? 'Processing…' : 'Confirm Payment'}
                       </button>
-                      <button onClick={() => { setPayingOrder(null); setPayAmount(''); }}
+                      <button onClick={() => { setPayingOrder(null); setPayAmount(''); setPayRemaining(null); setPayResult(null); }}
                         className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-300">
                         Cancel
                       </button>
