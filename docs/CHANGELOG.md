@@ -27,6 +27,7 @@
 | `21dee5d` | Roo (Code) | fix: update sales.homeu password to Homeu@888 (subUsers 777=Mariella, 888=Cathlyn already configured) | ✅ VPS `21dee5d` |
 | `30abe22` | Roo (Code) | feat: add sub-user management UI in Settings → User Management — modal with add/edit/delete entry codes (code + name) per account, persists via updateAccount() | ✅ VPS `30abe22` |
 | `35c8cd1` | Roo (Code) | fix: bump SW cache from v3 to v4 — force fresh dashboard JS load for updated password | ✅ VPS `35c8cd1` |
+| `c236895` | Roo (Code) | fix: sync password from DEFAULT_ACCOUNTS into stored accounts on load — getStoredAccounts() now updates password when source changes | ✅ VPS `c236895` |
 
 ## 2026-05-24
 
