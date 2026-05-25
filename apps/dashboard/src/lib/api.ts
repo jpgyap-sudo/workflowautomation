@@ -1300,7 +1300,7 @@ export async function getCalendarSchedules(): Promise<CalendarSchedule[]> {
 }
 
 export async function getCalendarSchedulesByDate(date: string): Promise<CalendarSchedule[]> {
-  return fetchJson<CalendarSchedule[]>(`/calendar/schedules/${date}`);
+  return fetchJson<CalendarSchedule[]>(`/calendar/schedules/by-date/${date}`);
 }
 
 export async function createCalendarSchedule(data: {

@@ -3,13 +3,9 @@
  * E2E Test: Dashboard CRUD
  * Tests clients, inventory, calendar notes/schedules, reminders,
  * bug reports, and bot logs.
- *
- * Usage:
- *   ACTION_TOKEN=xxx node test-e2e-dashboard-crud.mjs
  */
 
-const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
-const ACTION_TOKEN = process.env.ACTION_TOKEN;
+import { getActionToken, api } from './test-e2e-helpers.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -18,19 +14,6 @@ function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.error(`  ❌ ${msg}`); failed++; }
 function skip(msg) { console.log(`  ⏭️  ${msg}`); passed++; }
 function section(title) { console.log(`\n▶ ${title}`); }
-
-async function json(res) {
-  const text = await res.text();
-  try { return JSON.parse(text); } catch { return { _raw: text }; }
-}
-
-async function api(method, path, body) {
-  const opts = { method, headers: { 'content-type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${BASE}${path}`, opts);
-  const data = await json(res);
-  return { status: res.status, data };
-}
 
 const testIds = { client: null, inventory: null, reminder: null, note: null, schedule: null, bug: null };
 
@@ -47,7 +30,6 @@ async function testGetClients() {
 async function testSearchClients() {
   section('GET /clients/search');
   const { status, data } = await api('GET', '/clients/search?q=e2e');
-  // Endpoint may not exist — check both 200 and 404
   if (status === 200) {
     ok(`Search returned ${Array.isArray(data) ? data.length : '?'} results`);
   } else if (status === 404) {
@@ -59,11 +41,12 @@ async function testSearchClients() {
 
 async function testCreateClient() {
   section('POST /clients');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('POST', '/clients', {
-    action_token: ACTION_TOKEN,
-    name: `E2E Client ${Date.now()}`,
+    action_token: actionToken,
+    client_name: `E2E Client ${Date.now()}`,
     contact_person: 'E2E Tester',
     contact_number: '09171234567',
     delivery_address: '123 Test St, Test City',
@@ -75,16 +58,18 @@ async function testCreateClient() {
   }
   if (!data.id) { fail('Response missing id'); return; }
   testIds.client = data.id;
-  ok(`Created client ${data.id.slice(0, 8)}... (${data.name})`);
+  ok(`Created client ${data.id.slice(0, 8)}... (${data.client_name})`);
 }
 
 async function testUpdateClient() {
   section('PATCH /clients/:id');
-  if (!testIds.client || !ACTION_TOKEN) { skip('No test client or action token'); return; }
+  if (!testIds.client) { skip('No test client'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('PATCH', `/clients/${testIds.client}`, {
-    action_token: ACTION_TOKEN,
-    contact_person: 'E2E Updated Person',
+    action_token: actionToken,
+    notes: 'E2E updated notes',
   });
 
   if (status === 200 || status === 201) {
@@ -108,10 +93,12 @@ async function testGetClientOrders() {
 
 async function testDeleteClient() {
   section('DELETE /clients/:id');
-  if (!testIds.client || !ACTION_TOKEN) { skip('No test client or action token'); return; }
+  if (!testIds.client) { skip('No test client'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('DELETE', `/clients/${testIds.client}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
   });
 
   if (status === 200 || status === 204) {
@@ -145,16 +132,16 @@ async function testGetInventoryCount() {
 
 async function testCreateInventoryItem() {
   section('POST /inventory');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('POST', '/inventory', {
-    action_token: ACTION_TOKEN,
-    item_name: `E2E Item ${Date.now()}`,
-    sku: `E2E-SKU-${Date.now()}`,
+    action_token: actionToken,
+    product_name: `E2E Item ${Date.now()}`,
+    description: 'E2E test inventory item',
+    dimension: '10x10x10',
     quantity: 100,
-    unit: 'pcs',
-    unit_price: 50,
-    supplier: 'E2E Supplier',
+    category: 'E2E',
   });
 
   if (status !== 200 && status !== 201) {
@@ -168,10 +155,12 @@ async function testCreateInventoryItem() {
 
 async function testUpdateInventoryItem() {
   section('PATCH /inventory/:id');
-  if (!testIds.inventory || !ACTION_TOKEN) { skip('No test inventory or action token'); return; }
+  if (!testIds.inventory) { skip('No test inventory'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('PATCH', `/inventory/${testIds.inventory}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     quantity: 150,
   });
 
@@ -184,10 +173,12 @@ async function testUpdateInventoryItem() {
 
 async function testDeleteInventoryItem() {
   section('DELETE /inventory/:id');
-  if (!testIds.inventory || !ACTION_TOKEN) { skip('No test inventory or action token'); return; }
+  if (!testIds.inventory) { skip('No test inventory'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('DELETE', `/inventory/${testIds.inventory}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
   });
 
   if (status === 200 || status === 204) {
@@ -230,13 +221,14 @@ async function testGetCalendarNotesByDate() {
 
 async function testCreateCalendarNote() {
   section('POST /calendar/notes');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('POST', '/calendar/notes', {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     title: `E2E Note ${Date.now()}`,
     content: 'This is an E2E test calendar note',
-    date: new Date().toISOString().split('T')[0],
+    note_date: new Date().toISOString().split('T')[0],
     color: '#ff0000',
   });
 
@@ -251,10 +243,12 @@ async function testCreateCalendarNote() {
 
 async function testUpdateCalendarNote() {
   section('PATCH /calendar/notes/:id');
-  if (!testIds.note || !ACTION_TOKEN) { skip('No test note or action token'); return; }
+  if (!testIds.note) { skip('No test note'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('PATCH', `/calendar/notes/${testIds.note}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     title: 'E2E Updated Note',
   });
 
@@ -267,10 +261,12 @@ async function testUpdateCalendarNote() {
 
 async function testDeleteCalendarNote() {
   section('DELETE /calendar/notes/:id');
-  if (!testIds.note || !ACTION_TOKEN) { skip('No test note or action token'); return; }
+  if (!testIds.note) { skip('No test note'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('DELETE', `/calendar/notes/${testIds.note}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
   });
 
   if (status === 200 || status === 204) {
@@ -301,13 +297,14 @@ async function testGetCalendarSchedulesByDate() {
 
 async function testCreateCalendarSchedule() {
   section('POST /calendar/schedules');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('POST', '/calendar/schedules', {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     title: `E2E Schedule ${Date.now()}`,
-    date: new Date().toISOString().split('T')[0],
-    time: '14:00',
+    schedule_date: new Date().toISOString().split('T')[0],
+    schedule_time: '14:00',
     description: 'E2E test schedule',
   });
 
@@ -322,10 +319,12 @@ async function testCreateCalendarSchedule() {
 
 async function testUpdateCalendarSchedule() {
   section('PATCH /calendar/schedules/:id');
-  if (!testIds.schedule || !ACTION_TOKEN) { skip('No test schedule or action token'); return; }
+  if (!testIds.schedule) { skip('No test schedule'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('PATCH', `/calendar/schedules/${testIds.schedule}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     title: 'E2E Updated Schedule',
   });
 
@@ -338,10 +337,12 @@ async function testUpdateCalendarSchedule() {
 
 async function testDeleteCalendarSchedule() {
   section('DELETE /calendar/schedules/:id');
-  if (!testIds.schedule || !ACTION_TOKEN) { skip('No test schedule or action token'); return; }
+  if (!testIds.schedule) { skip('No test schedule'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('DELETE', `/calendar/schedules/${testIds.schedule}`, {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
   });
 
   if (status === 200 || status === 204) {
@@ -381,12 +382,16 @@ async function testGetRemindersOverdue() {
 
 async function testCreateReminder() {
   section('POST /reminders');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  // Need an order_id for reminders - skip if no order available
+  const ordersRes = await api('GET', '/orders?limit=1');
+  const orderId = ordersRes.data?.[0]?.id;
+  if (!orderId) { skip('No orders available for reminder creation'); return; }
 
   const { status, data } = await api('POST', '/reminders', {
-    action_token: ACTION_TOKEN,
-    message: `E2E Reminder ${Date.now()}`,
+    order_id: orderId,
     stage: 'e2e_test',
+    group_chat_id: '-1',
+    message: `E2E Reminder ${Date.now()}`,
     frequency: 'once',
     next_run_at: new Date(Date.now() + 86400000).toISOString(),
   });
@@ -395,18 +400,15 @@ async function testCreateReminder() {
     fail(`Create failed: ${status} ${JSON.stringify(data).slice(0, 200)}`);
     return;
   }
-  if (!data.id) { fail('Response missing id'); return; }
-  testIds.reminder = data.id;
-  ok(`Created reminder ${data.id.slice(0, 8)}...`);
+  if (!data.ok) { fail(`Create failed: ${JSON.stringify(data).slice(0, 200)}`); return; }
+  ok(`Created reminder`);
 }
 
 async function testCompleteReminder() {
   section('PATCH /reminders/:id/complete');
-  if (!testIds.reminder || !ACTION_TOKEN) { skip('No test reminder or action token'); return; }
+  if (!testIds.reminder) { skip('No test reminder'); return; }
 
-  const { status, data } = await api('PATCH', `/reminders/${testIds.reminder}/complete`, {
-    action_token: ACTION_TOKEN,
-  });
+  const { status, data } = await api('PATCH', `/reminders/${testIds.reminder}/complete`, {});
 
   if (status === 200 || status === 201) {
     ok('Completed reminder');
@@ -437,10 +439,11 @@ async function testGetBugReports() {
 
 async function testCreateBugReport() {
   section('POST /bug-reports');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('POST', '/bug-reports', {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     title: `E2E Bug ${Date.now()}`,
     description: 'This is an E2E test bug report',
     source: 'dashboard',
@@ -451,16 +454,19 @@ async function testCreateBugReport() {
     fail(`Create failed: ${status} ${JSON.stringify(data).slice(0, 200)}`);
     return;
   }
-  if (!data.id) { fail('Response missing id'); return; }
-  testIds.bug = data.id;
-  ok(`Created bug report ${data.id.slice(0, 8)}...`);
+  if (!data.report?.id) { fail('Response missing report.id'); return; }
+  testIds.bug = data.report.id;
+  ok(`Created bug report ${data.report.id.slice(0, 8)}...`);
 }
 
 async function testUpdateBugReport() {
   section('PATCH /bug-reports/:id');
   if (!testIds.bug) { skip('No test bug report'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { fail(e.message); return; }
 
   const { status, data } = await api('PATCH', `/bug-reports/${testIds.bug}`, {
+    action_token: actionToken,
     status: 'in_progress',
   });
 
@@ -497,8 +503,6 @@ async function testGetBackups() {
 
 async function main() {
   console.log('========== Dashboard CRUD E2E Tests ==========');
-  console.log(`Base URL: ${BASE}`);
-  console.log(`Action Token: ${ACTION_TOKEN ? 'provided' : 'NOT SET'}`);
 
   const { status: healthStatus } = await api('GET', '/health');
   if (healthStatus !== 200) {

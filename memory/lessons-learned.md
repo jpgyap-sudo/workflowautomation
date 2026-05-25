@@ -9340,3 +9340,51 @@ When building multi-service workflows, explicitly verify that all frontend-to-ba
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: resolve 8 E2E gaps in schedule group chat feature
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 786087addbf6f7856c87611c5abb9ad287abf7ec
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 786087addbf6f7856c87611c5abb9ad287abf7ec
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/calendar/page.tsx,apps/telegram-bot/src/bot.ts,docker-compose.yml,docs/UPDATE_LOG.md,test-e2e-agent-triggers.mjs,test-e2e-auth-flow.mjs,test-e2e-dashboard-crud.mjs,test-e2e-file-upload-api.mjs,test-e2e-order-lifecycle.mjs,test-e2e-sse.mjs,test-e2e-telegram-bot.mjs,test-e2e-vision-extraction.mjs
+
+**Summary:**
+**What was fixed:**  
+8 end-to-end test gaps in the schedule group chat feature across API, dashboard, Telegram bot, Docker config, and test suites.
+
+**Why it broke:**  
+The feature was developed incrementally without corresponding E2E tests for each integration point. Missing test coverage allowed regressions to go undetected when changes were made to the API, bot, or UI.
+
+**Reusable takeaway:**  
+When adding a cross-cutting feature (spanning API, UI, bot, and infra), write E2E tests **in parallel** with feature code—not after. Each integration point (server, dashboard, bot, Docker) should have at least one E2E test that validates the full user flow. This prevents gaps that accumulate when features are built in silos.
+
+---
+*Original commit message: fix: resolve 8 E2E gaps in schedule group chat feature*
+
+#### Lesson Learned
+
+**What was fixed:**  
+8 end-to-end test gaps in the schedule group chat feature across API, dashboard, Telegram bot, Docker config, and test suites.
+
+**Why it broke:**  
+The feature was developed incrementally without corresponding E2E tests for each integration point. Missing test coverage allowed regressions to go undetected when changes were made to the API, bot, or UI.
+
+**Reusable takeaway:**  
+When adding a cross-cutting feature (spanning API, UI, bot, and infra), write E2E tests **in parallel** with feature code—not after. Each integration point (server, dashboard, bot, Docker) should have at least one E2E test that validates the full user flow. This prevents gaps that accumulate when features are built in silos.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

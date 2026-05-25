@@ -6909,9 +6909,10 @@ app.get('/calendar/schedules/:id', async (request, reply) => {
 });
 
 /**
- * GET /calendar/schedules/:date — Get schedules for a specific date
+ * GET /calendar/schedules/by-date/:date — Get schedules for a specific date
+ * Named differently from /:id to avoid Fastify duplicate-route error.
  */
-app.get('/calendar/schedules/:date', async (request, reply) => {
+app.get('/calendar/schedules/by-date/:date', async (request, reply) => {
   const params = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(request.params);
   const rows = await query(
     `SELECT id, title, description, schedule_date, schedule_time, end_time,

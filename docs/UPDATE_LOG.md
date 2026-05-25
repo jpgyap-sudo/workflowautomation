@@ -27,6 +27,7 @@ When you **finish**:
 |-----------|-----------|------|--------|
 | 2026-05-25 09:08 | Roo (Code) | Feat: add Schedule Group Chat — calendar_schedules table (migration 035), CRUD API endpoints, schedule events in calendar aggregation, schedule group chat handler with AI parsing (/agents/run/schedule-parser via Gemini 2.0 Flash), AI Vision for image→schedule/note extraction, schedule reminder scheduler, schedule API functions in dashboard, schedule type in calendar legend | ✅ Done |
 | 2026-05-25 09:59 | Roo (Code) | Fix: E2E gap analysis — found 8 bugs (wrong API endpoint for schedule:reminder, fake action_token in PATCH, missing OpenRouter fallback for schedule-parser, lost extractedText in vision flows, no schedule management UI on dashboard, missing SCHEDULE_GROUP env vars in docker-compose). Fixed all 8, built clean, deployed to VPS. | ✅ Done |
+| 2026-05-25 10:55 | Roo (Code) | Feat: add schedule dots to calendar grid cells (small squares with schedule color, positioned between note dots and event dots, up to 2 slots, overflow count includes schedules) | 🔴 Active |
 | 2026-05-25 09:04 | Codex | Fix: E2E build gaps ? recordDepositWithFile import, createOrder items typing, Telegram bug order state union | Done |
 | 2026-05-25 08:12 | Codex | Feat: optional balance proof/deposit slip upload with AI extraction in Balance Due payment flow | Done |
 | 2026-05-25 08:10 | Roo (Code) | Feat: add Tab Access control in Settings → User Management + calendar tab action buttons (stage advance, create reminder, notify Telegram) | ✅ Done |

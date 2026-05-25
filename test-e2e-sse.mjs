@@ -9,8 +9,9 @@
  *   ACTION_TOKEN=xxx node test-e2e-sse.mjs
  */
 
+import { getActionToken, api } from './test-e2e-helpers.mjs';
+
 const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
-const ACTION_TOKEN = process.env.ACTION_TOKEN;
 
 let passed = 0;
 let failed = 0;
@@ -25,13 +26,7 @@ async function json(res) {
   try { return JSON.parse(text); } catch { return { _raw: text }; }
 }
 
-async function api(method, path, body) {
-  const opts = { method, headers: { 'content-type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${BASE}${path}`, opts);
-  const data = await json(res);
-  return { status: res.status, data };
-}
+
 
 async function testSseEndpointAccessible() {
   section('GET /events — endpoint accessible');
@@ -79,7 +74,6 @@ async function testSseEndpointAccessible() {
 
 async function testSseWithMutation() {
   section('SSE — mutation triggers broadcast (indirect check)');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
 
   // We can't easily verify SSE broadcast from a mutation in an e2e test
   // without a persistent connection. Instead, we verify the broadcast
@@ -115,7 +109,8 @@ async function testSseWithMutation() {
 
 async function testSseOrderCreatedEvent() {
   section('SSE — create order while listening for events');
-  if (!ACTION_TOKEN) { skip('ACTION_TOKEN not set'); return; }
+  let actionToken;
+  try { actionToken = await getActionToken(); } catch (e) { skip(e.message); return; }
 
   // Start SSE connection
   const controller = new AbortController();
@@ -161,7 +156,7 @@ async function testSseOrderCreatedEvent() {
 
   const qn = `E2E-SSE-${Date.now()}`;
   const createRes = await api('POST', '/orders', {
-    action_token: ACTION_TOKEN,
+    action_token: actionToken,
     quotation_number: qn,
     client_name: 'E2E SSE Client',
     sales_agent: 'E2E Bot',
@@ -190,7 +185,7 @@ async function testSseOrderCreatedEvent() {
 
   // Cleanup
   if (createRes.data.id) {
-    await api('DELETE', `/orders/${createRes.data.id}`, { action_token: ACTION_TOKEN });
+    await api('DELETE', `/orders/${createRes.data.id}`, { action_token: actionToken });
   }
 }
 

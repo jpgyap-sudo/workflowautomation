@@ -597,6 +597,7 @@ export default function CalendarPage() {
                 const key = formatDateKey(date);
                 const dayEvents = eventsByDay.get(key) ?? [];
                 const dayNotes = notesByDay.get(key) ?? [];
+                const daySchedules = schedulesByDay.get(key) ?? [];
                 const isToday = isSameDay(date, today);
                 const isSelected = selectedDate && isSameDay(date, selectedDate);
 
@@ -620,8 +621,8 @@ export default function CalendarPage() {
                       {date.getDate()}
                     </span>
 
-                    {/* Event dots + Note dots */}
-                    {(dayEvents.length > 0 || dayNotes.length > 0) && (
+                    {/* Event dots + Note dots + Schedule dots */}
+                    {(dayEvents.length > 0 || dayNotes.length > 0 || daySchedules.length > 0) && (
                       <div className="mt-auto flex w-full flex-wrap gap-1 pt-1">
                         {/* Note dots (shown as small squares) */}
                         {dayNotes.slice(0, 2).map((n, i) => (
@@ -632,8 +633,17 @@ export default function CalendarPage() {
                             title={`Note: ${n.title}`}
                           />
                         ))}
+                        {/* Schedule dots (shown as small squares with amber color) */}
+                        {daySchedules.slice(0, Math.max(0, 2 - dayNotes.length)).map((s, i) => (
+                          <span
+                            key={`sched-${i}`}
+                            className="inline-block h-1.5 w-1.5 rounded-sm"
+                            style={{ backgroundColor: s.color }}
+                            title={`Schedule: ${s.title}`}
+                          />
+                        ))}
                         {/* Event dots (shown as circles) */}
-                        {dayEvents.slice(0, Math.max(0, 4 - dayNotes.length)).map((e, i) => (
+                        {dayEvents.slice(0, Math.max(0, 4 - dayNotes.length - daySchedules.length)).map((e, i) => (
                           <span
                             key={`evt-${i}`}
                             className="inline-block h-1.5 w-1.5 rounded-full"
@@ -641,9 +651,9 @@ export default function CalendarPage() {
                             title={e.category}
                           />
                         ))}
-                        {(dayEvents.length + dayNotes.length) > 4 && (
+                        {(dayEvents.length + dayNotes.length + daySchedules.length) > 4 && (
                           <span className="text-[10px] leading-3 text-gray-400">
-                            +{dayEvents.length + dayNotes.length - 4}
+                            +{dayEvents.length + dayNotes.length + daySchedules.length - 4}
                           </span>
                         )}
                       </div>
@@ -670,7 +680,7 @@ export default function CalendarPage() {
                       : 'Select a date'}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {selectedEvents.length + selectedNotes.length} item{selectedEvents.length + selectedNotes.length !== 1 ? 's' : ''}
+                    {selectedEvents.length + selectedNotes.length + selectedSchedules.length} item{selectedEvents.length + selectedNotes.length + selectedSchedules.length !== 1 ? 's' : ''}
                   </p>
                 </div>
                 {selectedDate && (
