@@ -24,6 +24,8 @@
 | `a9c538a` | Roo (Code) | fix: delivery schedule OTP error — PATCH /orders/:id now records stage update internally when delivery_date is set, removing double-token consumption | ✅ VPS `a9c538a` |
 | `8e71212` | Roo (Code) | fix: remove stale action_token from deposit calls in orders page handleVerified() — token already consumed by createOrder | ✅ VPS `8e71212` |
 | `59cc9bd` | Roo (Code) | fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType from 'deposit' to 'balance_proof' | ✅ VPS `59cc9bd` |
+| `21dee5d` | Roo (Code) | fix: update sales.homeu password to Homeu@888 (subUsers 777=Mariella, 888=Cathlyn already configured) | ✅ VPS `21dee5d` |
+| `30abe22` | Roo (Code) | feat: add sub-user management UI in Settings → User Management — modal with add/edit/delete entry codes (code + name) per account, persists via updateAccount() | ✅ VPS `30abe22` |
 
 ## 2026-05-24
 
