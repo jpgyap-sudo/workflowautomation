@@ -5640,6 +5640,212 @@ app.post('/pay-balance', async (request, reply) => {
   }
 });
 
+// ── Pay Balance Bulk ─────────────────────────────────────────────────
+// Accepts multiple payment slips in one authenticated call.
+// Validates action_token once, inserts all valid slips, recomputes totals.
+
+const payBalanceBulkSchema = z.object({
+  quotation_number: z.string(),
+  slips: z.array(z.object({
+    amount: z.number().positive(),
+    payment_date: z.string().optional(),
+    reference_number: z.string().optional(),
+  })).min(1),
+  updated_by: z.string().optional(),
+  action_token: z.string().optional(),
+});
+
+app.post('/pay-balance-bulk', async (request, reply) => {
+  try {
+    const body = payBalanceBulkSchema.parse(request.body);
+
+    // Validate action token once
+    let userEmail: string | null = null;
+    if (isDashboardOrigin(body.updated_by)) {
+      if (!cacheClient?.isOpen) {
+        return reply.status(503).send({ error: 'Action verification unavailable' });
+      }
+      const tokenKey = `action_token:${body.action_token}`;
+      const tokenData = await cacheClient.get(tokenKey);
+      if (!tokenData) {
+        return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+      }
+      await cacheClient.del(tokenKey);
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    }
+
+    const orders = await query(
+      `SELECT id, total_amount, deposit_amount, deposit_paid, balance_paid, client_name FROM orders WHERE quotation_number=$1`,
+      [body.quotation_number]
+    );
+    if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+    const order = orders[0];
+
+    if (!order.deposit_paid) {
+      return reply.code(400).send({ error: 'Deposit must be paid before balance payment can be processed.' });
+    }
+    if (order.total_amount == null) {
+      return reply.code(400).send({ error: 'Total amount not set for this order.' });
+    }
+
+    const orderId = order.id;
+    const totalAmount = Number(order.total_amount);
+
+    // Server-side duplicate check: reject slips with same amount+date within this batch
+    const seen = new Set<string>();
+    for (const slip of body.slips) {
+      const key = `${slip.amount}|${slip.payment_date ?? 'nodate'}`;
+      if (seen.has(key)) {
+        return reply.status(400).send({ error: `Duplicate slip detected: amount ${slip.amount} on ${slip.payment_date ?? 'no date'}. Each slip must have a unique amount+date combination.` });
+      }
+      seen.add(key);
+    }
+
+    // Insert all slip records
+    for (const slip of body.slips) {
+      await query(
+        `INSERT INTO payments (order_id, type, amount, reference_number, payment_date, source)
+         VALUES ($1, 'balance', $2, $3, $4, $5)`,
+        [orderId, slip.amount, slip.reference_number ?? null, slip.payment_date ?? null, body.updated_by ?? 'api']
+      );
+    }
+
+    // Recompute totals from payments table
+    const { depositTotal, balanceTotal } = await getPaymentTotals(orderId);
+    const expectedBalance = totalAmount - depositTotal;
+    const remainingBalance = Math.max(0, expectedBalance - balanceTotal);
+    const isFullyPaid = balanceTotal >= expectedBalance;
+    const overpayment = isFullyPaid ? balanceTotal - expectedBalance : 0;
+    const totalThisSubmission = body.slips.reduce((s, sl) => s + sl.amount, 0);
+
+    // Update order
+    const latestDate = body.slips
+      .map(s => s.payment_date)
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null;
+
+    await query(
+      `UPDATE orders SET
+         balance_paid=$1,
+         balance_verified=FALSE,
+         balance_paid_at=CASE WHEN $1 THEN COALESCE($3, NOW()) ELSE balance_paid_at END,
+         current_stage=CASE
+           WHEN $1 AND current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+           THEN 'balance_verification'
+           ELSE current_stage
+         END,
+         updated_at=NOW()
+       WHERE id=$2`,
+      [isFullyPaid, orderId, latestDate]
+    );
+
+    // Stage update
+    const slipCount = body.slips.length;
+    const remarks = isFullyPaid
+      ? (overpayment > 0
+          ? `${slipCount} balance slip(s) recorded totalling ₱${totalThisSubmission.toLocaleString()} (total balance: ₱${balanceTotal.toLocaleString()}, overpayment: ₱${overpayment.toLocaleString()})`
+          : `${slipCount} balance slip(s) recorded totalling ₱${totalThisSubmission.toLocaleString()} (total balance: ₱${balanceTotal.toLocaleString()})`)
+      : `${slipCount} balance slip(s) recorded totalling ₱${totalThisSubmission.toLocaleString()}. Remaining: ₱${remainingBalance.toLocaleString()}`;
+
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
+      [orderId, isFullyPaid ? 'balance_verification' : 'balance_due', 'balance_paid', remarks, body.updated_by ?? null]
+    );
+
+    if (isFullyPaid) {
+      await query(
+        `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage IN ('balance_due', 'inventory_arrived') AND status='active'`,
+        [orderId]
+      );
+      try {
+        await query(
+          `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+           SELECT $1, 'balance_verification', r.group_chat_id,
+                  'Balance payment has been submitted but not yet verified. Please check if the payment went through and verify.',
+                  'daily', NOW() + INTERVAL '5 minutes', 'active'
+           FROM reminders r
+           WHERE r.order_id = $1 AND r.stage = 'balance_due' AND r.status = 'completed'
+           LIMIT 1
+           ON CONFLICT DO NOTHING`,
+          [orderId]
+        );
+      } catch {
+        console.warn(`[pay-balance-bulk] Failed to create balance_verification reminder for order ${orderId}`);
+      }
+      triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name, body.updated_by ?? undefined);
+    } else {
+      try {
+        await query(
+          `UPDATE reminders SET
+             message = 'Balance is partially paid. Remaining: ₱' || $2 || '. Has the client paid the rest?',
+             next_run_at = NOW() + INTERVAL '1 day',
+             updated_at = NOW()
+           WHERE order_id = $1 AND stage = 'balance_due' AND status = 'active'`,
+          [orderId, remainingBalance.toString()]
+        );
+      } catch {
+        console.warn(`[pay-balance-bulk] Failed to update balance_due reminder for order ${orderId}`);
+      }
+    }
+
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `💳 <b>Balance Payment Recorded — Needs Verification</b>\n\n` +
+        `Quotation: <b>${body.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Slips submitted: ${slipCount}\n` +
+        `This submission: PHP ${totalThisSubmission.toLocaleString()}\n` +
+        `Total balance paid: PHP ${balanceTotal.toLocaleString()}\n` +
+        `Expected balance: PHP ${expectedBalance.toLocaleString()}\n` +
+        (isFullyPaid
+          ? (overpayment > 0 ? `Overpayment: PHP ${overpayment.toLocaleString()}\n` : 'Balance fully paid ✅\n')
+          : `Remaining balance: PHP ${remainingBalance.toLocaleString()}\n`) +
+        `Recorded by: ${body.updated_by ?? 'dashboard'}\n\n` +
+        `Please verify the balance payment on the dashboard.`
+      );
+    });
+
+    try {
+      await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+    } catch {
+      console.warn(`[pay-balance-bulk] Cache invalidation failed for ${body.quotation_number}`);
+    }
+
+    if (isDashboardOrigin(body.updated_by)) {
+      await notifyManualChange(
+        `Quick Action: ${slipCount} balance slip(s) recorded`,
+        `Quotation: *${body.quotation_number}*\n` +
+        `Slips submitted: ${slipCount}\n` +
+        `This submission: PHP ${totalThisSubmission.toLocaleString()}\n` +
+        `Total balance: PHP ${balanceTotal.toLocaleString()} / PHP ${expectedBalance.toLocaleString()}\n` +
+        (isFullyPaid ? 'Status: Fully paid' : `Remaining: PHP ${remainingBalance.toLocaleString()}`),
+        userEmail,
+      );
+    }
+
+    return reply.send({
+      ok: true,
+      quotation_number: body.quotation_number,
+      slips_recorded: slipCount,
+      total_this_submission: totalThisSubmission,
+      expected_balance: expectedBalance,
+      balance_total: balanceTotal,
+      remaining_balance: remainingBalance,
+      is_fully_paid: isFullyPaid,
+      overpayment: overpayment,
+    });
+  } catch (err: any) {
+    console.error('[pay-balance-bulk] Error:', err);
+    if (err instanceof z.ZodError) {
+      return reply.status(400).send({ error: `Validation error: ${err.errors.map(e => e.message).join(', ')}` });
+    }
+    return reply.status(500).send({ error: `Failed to record balance payments: ${err?.message ?? 'Unknown error'}` });
+  }
+});
+
 const fullPaymentSchema = z.object({
   quotation_number: z.string(),
   amount: z.number().positive(),

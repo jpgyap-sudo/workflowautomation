@@ -379,6 +379,49 @@ export async function payBalanceWithFile(data: {
   });
 }
 
+export async function payBalanceWithFileBulk(data: {
+  quotation_number: string;
+  slips: {
+    amount: number;
+    payment_date?: string;
+    reference_number?: string;
+    image_base64?: string;
+    mime_type?: string;
+    original_filename?: string;
+  }[];
+  updated_by?: string;
+  action_token?: string;
+}): Promise<{ ok: boolean; slips_recorded?: number; total_this_submission?: number; expected_balance?: number; balance_total?: number; remaining_balance?: number; is_fully_paid?: boolean; overpayment?: number }> {
+  // Upload proof files first (parallel, no action_token needed)
+  await Promise.all(
+    data.slips
+      .filter(s => s.image_base64 && s.original_filename)
+      .map(s =>
+        uploadOrderFile({
+          quotation_number: data.quotation_number,
+          file_type: 'balance_proof',
+          original_filename: s.original_filename!,
+          mime_type: s.mime_type ?? 'image/jpeg',
+          file_data: s.image_base64!,
+        }).catch(err => console.warn('[payBalanceWithFileBulk] File upload failed:', err))
+      )
+  );
+
+  return fetchJson<{ ok: boolean; slips_recorded?: number; total_this_submission?: number; expected_balance?: number; balance_total?: number; remaining_balance?: number; is_fully_paid?: boolean; overpayment?: number }>('/pay-balance-bulk', {
+    method: 'POST',
+    body: JSON.stringify({
+      quotation_number: data.quotation_number,
+      slips: data.slips.map(s => ({
+        amount: s.amount,
+        payment_date: s.payment_date,
+        reference_number: s.reference_number,
+      })),
+      updated_by: data.updated_by ?? 'dashboard_quick_action',
+      action_token: data.action_token,
+    }),
+  });
+}
+
 export async function verifyDeposit(
   id: string,
   data: { verified_by?: string; action_token: string },
