@@ -3239,12 +3239,11 @@ function buildAcknowledgementReceiptPdf(data: {
   clientName: string;
   paymentType: string;
   amount: number;
-  referenceNumber?: string | null;
-  paidBy?: string | null;
   salesAgent?: string | null;
   totalAmount?: number | null;
   verified: boolean;
   verifiedBy?: string | null;
+  items?: { name: string; quantity: number }[];
 }): Buffer {
   const width = 595;
   const height = 842;
@@ -3265,11 +3264,13 @@ function buildAcknowledgementReceiptPdf(data: {
   text(60, 752, 10, 'This document acknowledges receipt of payment for the order stated below.');
   line(60, 735, 535, 735);
 
+  // Header: receipt number + date
   text(60, 706, 10, 'Receipt No.', 'F2');
   text(160, 706, 10, data.receiptNumber);
   text(340, 706, 10, 'Date', 'F2');
   text(405, 706, 10, data.receiptDate);
 
+  // Order info
   text(60, 682, 10, 'Order / Quotation No.', 'F2');
   text(200, 682, 10, data.orderNumber);
   text(60, 658, 10, 'Client', 'F2');
@@ -3277,24 +3278,54 @@ function buildAcknowledgementReceiptPdf(data: {
   text(60, 634, 10, 'Payment Type', 'F2');
   text(200, 634, 10, data.paymentType);
 
+  // Amount box
   rect(60, 555, 475, 55);
   text(80, 588, 11, 'Amount Received', 'F2');
   text(80, 566, 22, `PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'F2');
 
-  text(60, 520, 10, 'Reference No.', 'F2');
-  text(200, 520, 10, data.referenceNumber || 'N/A');
-  text(60, 496, 10, 'Paid By / Source', 'F2');
-  text(200, 496, 10, data.paidBy || 'N/A');
-  text(60, 472, 10, 'Sales Agent', 'F2');
-  text(200, 472, 10, data.salesAgent || 'N/A');
-  text(60, 448, 10, 'Order Total', 'F2');
-  text(200, 448, 10, data.totalAmount != null ? `PHP ${data.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A');
-  text(60, 424, 10, 'Verification', 'F2');
-  text(200, 424, 10, data.verified ? `Verified${data.verifiedBy ? ` by ${data.verifiedBy}` : ''}` : 'Pending verification');
+  // Details (no Reference No. or Paid By)
+  text(60, 520, 10, 'Sales Agent', 'F2');
+  text(200, 520, 10, data.salesAgent || 'N/A');
+  text(60, 496, 10, 'Order Total', 'F2');
+  text(200, 496, 10, data.totalAmount != null ? `PHP ${data.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A');
+  text(60, 472, 10, 'Verification Status', 'F2');
+  text(200, 472, 10, data.verified ? 'Verified' : 'Pending Verification');
 
+  // Order items summary
+  let itemsBottomY = 430;
+  const orderItems = data.items ?? [];
+  if (orderItems.length > 0) {
+    text(60, 448, 10, 'Order Summary', 'F2');
+    line(60, 444, 535, 444);
+    // Column headers
+    text(60, 430, 9, 'Product / Item', 'F2');
+    text(460, 430, 9, 'Qty', 'F2');
+    line(60, 426, 535, 426);
+    let rowY = 412;
+    for (const item of orderItems.slice(0, 8)) {
+      const itemName = item.name.length > 55 ? item.name.slice(0, 52) + '...' : item.name;
+      text(60, rowY, 9, itemName);
+      text(460, rowY, 9, String(item.quantity));
+      rowY -= 16;
+    }
+    if (orderItems.length > 8) {
+      text(60, rowY, 9, `... and ${orderItems.length - 8} more item(s)`);
+      rowY -= 16;
+    }
+    line(60, rowY + 4, 535, rowY + 4);
+    itemsBottomY = rowY - 8;
+  }
+
+  // Acknowledgement text
   const acknowledgement = `Received from ${data.clientName} the amount of PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} as ${data.paymentType.toLowerCase()} for order ${data.orderNumber}.`;
-  text(60, 380, 10, 'Acknowledgement', 'F2');
-  wrapText(acknowledgement, 80).forEach((wrapped, index) => text(60, 360 - index * 16, 10, wrapped));
+  text(60, itemsBottomY - 8, 10, 'Acknowledgement', 'F2');
+  wrapText(acknowledgement, 80).forEach((wrapped, index) => text(60, itemsBottomY - 28 - index * 16, 10, wrapped));
+
+  // Balance payment notice (only shown for downpayment receipts)
+  if (data.paymentType === 'Downpayment') {
+    const noticeY = itemsBottomY - 76;
+    text(60, noticeY, 9, 'Important: Balance payment must be settled in full before delivery can be arranged.', 'F2');
+  }
 
   line(60, 205, 250, 205);
   text(60, 188, 10, 'Authorized Representative', 'F2');
@@ -3412,6 +3443,13 @@ app.get('/payments/:id/acknowledgement-receipt.pdf', async (request, reply) => {
   const amount = await getReceiptAmount(payment);
   const receiptNumber = receiptNumberForPayment(payment);
   const orderNumber = payment.quotation_number ?? `Order ${payment.order_id.slice(0, 8)}`;
+
+  // Fetch order items for the summary section
+  const itemRows = await query<{ name: string; quantity: number }>(
+    `SELECT name, quantity FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [payment.order_id]
+  );
+
   const pdf = buildAcknowledgementReceiptPdf({
     receiptNumber,
     receiptDate: formatReceiptDate(payment.payment_date ?? payment.created_at),
@@ -3419,12 +3457,11 @@ app.get('/payments/:id/acknowledgement-receipt.pdf', async (request, reply) => {
     clientName: payment.client_name ?? 'Unknown Client',
     paymentType: paymentKindLabel(payment),
     amount,
-    referenceNumber: payment.reference_number,
-    paidBy: payment.paid_by ?? payment.source,
     salesAgent: payment.sales_agent,
     totalAmount: payment.total_amount != null ? Number(payment.total_amount) : null,
     verified: payment.verified,
     verifiedBy: payment.verified_by,
+    items: itemRows,
   });
 
   return reply
