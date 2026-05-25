@@ -22,19 +22,20 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   // File upload states
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [orderConfirmFile, setOrderConfirmFile] = useState<File | null>(null);
-  const [depositFile, setDepositFile] = useState<File | null>(null);
+
+  // Multi-slip deposit state
+  const [depositEntries, setDepositEntries] = useState<{ file: File | null; amount: string; date: string; extracting: boolean }[]>([
+    { file: null, amount: '', date: '', extracting: false },
+  ]);
+  const depositFileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // AI extraction states
   const [extractedItems, setExtractedItems] = useState<{ name: string; quantity: number }[]>([]);
-  const [depositAmount, setDepositAmount] = useState('');
-  const [depositPaidAt, setDepositPaidAt] = useState('');
   const [extractingQuotation, setExtractingQuotation] = useState(false);
-  const [extractingDeposit, setExtractingDeposit] = useState(false);
   const [extractResult, setExtractResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const quotationFileRef = useRef<HTMLInputElement>(null);
   const orderConfirmFileRef = useRef<HTMLInputElement>(null);
-  const depositFileRef = useRef<HTMLInputElement>(null);
 
   function fileToBase64(f: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -76,24 +77,45 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     }
   }
 
-  async function handleDepositExtract() {
-    if (!depositFile) return;
-    setExtractingDeposit(true);
+  function addDepositEntry() {
+    setDepositEntries(prev => [...prev, { file: null, amount: '', date: '', extracting: false }]);
+  }
+
+  function removeDepositEntry(idx: number) {
+    setDepositEntries(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateDepositEntry(idx: number, field: 'amount' | 'date', value: string) {
+    setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+  }
+
+  function setDepositEntryFile(idx: number, file: File | null) {
+    setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, file } : e));
+  }
+
+  async function handleDepositExtract(idx: number) {
+    const entry = depositEntries[idx];
+    if (!entry?.file) return;
+    setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, extracting: true } : e));
     setExtractResult(null);
     try {
-      const base64 = await fileToBase64(depositFile);
-      const res = await visionExtract({ image_base64: base64, mime_type: depositFile.type, mode: 'payment' });
+      const base64 = await fileToBase64(entry.file);
+      const res = await visionExtract({ image_base64: base64, mime_type: entry.file.type, mode: 'payment' });
       if (res.ok && res.payment?.amount) {
-        setDepositAmount(String(res.payment.amount));
-        if (res.payment.payment_date && !depositPaidAt) setDepositPaidAt(res.payment.payment_date.slice(0, 10));
-        setExtractResult({ ok: true, message: `AI extracted deposit: ₱${res.payment.amount.toLocaleString()}` });
+        setDepositEntries(prev => prev.map((e, i) => i === idx ? {
+          ...e,
+          amount: String(res.payment!.amount),
+          date: res.payment!.payment_date && !e.date ? res.payment!.payment_date.slice(0, 10) : e.date,
+          extracting: false,
+        } : e));
+        setExtractResult({ ok: true, message: `Slip ${idx + 1}: AI extracted ₱${res.payment.amount?.toLocaleString()}` });
       } else {
-        setExtractResult({ ok: false, message: 'AI could not extract deposit amount.' });
+        setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, extracting: false } : e));
+        setExtractResult({ ok: false, message: `Slip ${idx + 1}: AI could not extract deposit amount.` });
       }
     } catch (err: any) {
+      setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, extracting: false } : e));
       setExtractResult({ ok: false, message: err.message ?? 'AI extraction failed' });
-    } finally {
-      setExtractingDeposit(false);
     }
   }
 
@@ -145,21 +167,31 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           results.push('✅ Order confirmation uploaded');
         } catch (err: any) { results.push(`⚠️ Order confirmation upload failed: ${err.message}`); }
       }
-      if (depositFile) {
+      // 3. Record each deposit slip
+      const validDeposits = depositEntries.filter(e => {
+        const amt = parseFloat(e.amount.replace(/,/g, ''));
+        return !isNaN(amt) && amt > 0;
+      });
+      for (let i = 0; i < validDeposits.length; i++) {
+        const entry = validDeposits[i];
+        const depositAmt = parseFloat(entry.amount.replace(/,/g, ''));
         try {
-          const base64 = await fileToBase64(depositFile);
-          await uploadOrderFile({ quotation_number: qn.trim(), file_type: 'deposit', original_filename: depositFile.name, mime_type: depositFile.type, file_data: base64 });
-          results.push('✅ Deposit proof uploaded');
-        } catch (err: any) { results.push(`⚠️ Deposit upload failed: ${err.message}`); }
-      }
-
-      // 3. Record deposit if amount provided
-      const depositAmt = parseFloat(depositAmount.replace(/,/g, ''));
-      if (!isNaN(depositAmt) && depositAmt > 0) {
-        try {
-          await recordDeposit({ quotation_number: qn.trim(), amount: depositAmt, deposit_paid_at: depositPaidAt || undefined, action_token: actionToken });
-          results.push('✅ Deposit recorded');
-        } catch (err: any) { results.push(`⚠️ Deposit recording failed: ${err.message}`); }
+          if (entry.file) {
+            const base64 = await fileToBase64(entry.file);
+            await recordDepositWithFile({
+              quotation_number: qn.trim(),
+              amount: depositAmt,
+              deposit_paid_at: entry.date || undefined,
+              image_base64: base64,
+              mime_type: entry.file.type,
+              original_filename: entry.file.name,
+              action_token: actionToken,
+            });
+          } else {
+            await recordDeposit({ quotation_number: qn.trim(), amount: depositAmt, deposit_paid_at: entry.date || undefined, action_token: actionToken });
+          }
+          results.push(`✅ Deposit slip ${i + 1} recorded (₱${depositAmt.toLocaleString()})`);
+        } catch (err: any) { results.push(`⚠️ Deposit slip ${i + 1} failed: ${err.message}`); }
       }
 
       onCreated();
@@ -255,31 +287,52 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             </div>
           </div>
 
-          {/* Deposit Proof */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
+          {/* Deposit Proof — multiple slips */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-3">
             <label className="text-xs font-medium text-gray-700">💰 Downpayment Deposit</label>
-            <div className="flex gap-2">
-              <input ref={depositFileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={e => setDepositFile(e.target.files?.[0] ?? null)} />
-              <button type="button" onClick={() => depositFileRef.current?.click()} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
-                {depositFile ? depositFile.name : 'Choose file'}
-              </button>
-              {depositFile && (
-                <button type="button" onClick={handleDepositExtract} disabled={extractingDeposit} className="flex items-center gap-1 rounded-lg bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50">
-                  {extractingDeposit ? <Loader2 className="h-3 w-3 animate-spin" /> : <SparklesIcon className="h-3 w-3" />}
-                  AI Extract
-                </button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1 space-y-1">
-                <label className="text-[10px] font-medium text-gray-500">Amount (₱)</label>
-                <input className={inputCls} placeholder="10000" value={depositAmount} onChange={e => setDepositAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+            {depositEntries.map((entry, idx) => (
+              <div key={idx} className="space-y-2 rounded-lg border border-gray-200 bg-white p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-medium text-gray-500">Slip {idx + 1}</span>
+                  {depositEntries.length > 1 && (
+                    <button type="button" onClick={() => removeDepositEntry(idx)} className="rounded p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-500">
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    ref={el => { depositFileRefs.current[idx] = el; }}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={e => setDepositEntryFile(idx, e.target.files?.[0] ?? null)}
+                  />
+                  <button type="button" onClick={() => depositFileRefs.current[idx]?.click()} className="flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600 hover:bg-gray-100 truncate text-left">
+                    {entry.file ? entry.file.name : 'Choose file (optional)'}
+                  </button>
+                  {entry.file && (
+                    <button type="button" onClick={() => handleDepositExtract(idx)} disabled={entry.extracting} className="flex items-center gap-1 rounded-lg bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50 shrink-0">
+                      {entry.extracting ? <Loader2 className="h-3 w-3 animate-spin" /> : <SparklesIcon className="h-3 w-3" />}
+                      AI Extract
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-[10px] font-medium text-gray-500">Amount (₱)</label>
+                    <input className={inputCls} placeholder="10000" value={entry.amount} onChange={e => updateDepositEntry(idx, 'amount', e.target.value.replace(/[^0-9.,]/g, ''))} />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <label className="text-[10px] font-medium text-gray-500">Date</label>
+                    <input className={inputCls} type="date" value={entry.date} onChange={e => updateDepositEntry(idx, 'date', e.target.value)} />
+                  </div>
+                </div>
               </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-[10px] font-medium text-gray-500">Date</label>
-                <input className={inputCls} type="date" value={depositPaidAt} onChange={e => setDepositPaidAt(e.target.value)} />
-              </div>
-            </div>
+            ))}
+            <button type="button" onClick={addDepositEntry} className="flex items-center gap-1 text-xs font-medium text-[#2490ef] hover:underline">
+              <Plus className="h-3 w-3" /> Add another slip
+            </button>
           </div>
 
           <div className="flex gap-3 pt-2">
