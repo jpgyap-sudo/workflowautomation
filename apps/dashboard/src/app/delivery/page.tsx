@@ -283,7 +283,7 @@ export default function DeliveryPage() {
   // ── Mark delivered ──────────────────────────────────────────────────────
 
 
-  // Schedule / reschedule delivery
+  // Schedule delivery
   function handleOpenSchedule(order: Order) {
     setSchedulingOrder(order);
     setScheduleDate(toDateTimeLocalValue(order.delivery_date));
@@ -302,7 +302,7 @@ export default function DeliveryPage() {
     };
     setOtpModal({
       open: true,
-      title: order.delivery_date ? 'Reschedule Delivery' : 'Schedule Delivery',
+      title: 'Schedule Delivery',
       description: `Confirm the delivery schedule for "${order.quotation_number ?? '-'}". Enter the OTP sent to your email to continue.`,
       pendingAction: 'schedule_delivery',
     });
@@ -314,19 +314,24 @@ export default function DeliveryPage() {
       | undefined;
     if (!pending) return;
 
-    const { order, delivery_date } = pending;
+    const { order, delivery_date, remarks } = pending;
 
     setActionLoading(order.id);
     try {
-      // PATCH /orders/:id now records the stage update audit trail internally
-      // when delivery_date is set, so no separate recordStageUpdate() call needed.
-      await updateOrder(order.id, { delivery_date, action_token: actionToken });
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'delivery_scheduled',
+        status: 'scheduled',
+        remarks: remarks || delivery_date,
+        delivery_date,
+        action_token: actionToken,
+      });
       setSchedulingOrder(null);
       setScheduleDate('');
       setScheduleRemarks('');
       mutateAll();
     } catch (err: any) {
-      alert('Failed to update delivery schedule: ' + (err.message ?? 'Unknown error'));
+      alert('Failed to schedule delivery: ' + (err.message ?? 'Unknown error'));
     } finally {
       setActionLoading(null);
       (window as any).__pendingScheduleData = null;
@@ -1087,9 +1092,9 @@ export default function DeliveryPage() {
                         onClick={() => handleOpenSchedule(order)}
                         disabled={actionLoading === order.id}
                         className="rounded-lg px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
-                        title={order.delivery_date ? 'Reschedule delivery' : 'Schedule delivery'}
+                        title='Schedule delivery'
                       >
-                        {order.delivery_date ? 'Reschedule' : 'Schedule'}
+                        Schedule
                       </button>
                       <button
                         onClick={() => handleMarkDelivered(order)}

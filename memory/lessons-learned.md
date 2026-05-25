@@ -9760,3 +9760,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: user management — deleted accounts tombstone + admin set-password
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6ca1c7f7e0b5216030350b4a84eb272820e6134d
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 6ca1c7f7e0b5216030350b4a84eb272820e6134d
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Two bugs in user management: deleted accounts left no tombstone (causing orphan references), and admin set-password failed silently for non-existent users.
+
+**Why it broke:**  
+Deletion removed the user record entirely without a tombstone marker, breaking foreign key integrity. The set-password endpoint lacked a null-check for user existence before attempting the update.
+
+**Reusable takeaway:**  
+Always use soft-delete (tombstone) for user accounts to preserve referential integrity and audit trails. Validate entity existence before performing mutations—fail fast with a clear error rather than silently succeeding on a no-op.
+
+---
+*Original commit message: fix: user management — deleted accounts tombstone + admin set-password*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Two bugs in user management: deleted accounts left no tombstone (causing orphan references), and admin set-password failed silently for non-existent users.
+
+**Why it broke:**  
+Deletion removed the user record entirely without a tombstone marker, breaking foreign key integrity. The set-password endpoint lacked a null-check for user existence before attempting the update.
+
+**Reusable takeaway:**  
+Always use soft-delete (tombstone) for user accounts to preserve referential integrity and audit trails. Validate entity existence before performing mutations—fail fast with a clear error rather than silently succeeding on a no-op.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

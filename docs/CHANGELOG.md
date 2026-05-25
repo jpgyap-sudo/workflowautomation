@@ -26,6 +26,7 @@
 | `1714399` | Roo (Code) | fix: delivery tab Record Payment — remove redundant recordStageUpdate() call that reused consumed action_token (payBalance already advances stage) | ✅ VPS `1714399` |
 | `a9c538a` | Roo (Code) | fix: delivery schedule OTP error — PATCH /orders/:id now records stage update internally when delivery_date is set, removing double-token consumption | ✅ VPS `a9c538a` |
 | `8e71212` | Roo (Code) | fix: remove stale action_token from deposit calls in orders page handleVerified() — token already consumed by createOrder | ✅ VPS `8e71212` |
+| `PENDING` | Roo (Code) | fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType from 'deposit' to 'balance_proof' | Pending |
 
 ## 2026-05-24
 

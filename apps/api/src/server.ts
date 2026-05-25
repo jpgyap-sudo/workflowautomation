@@ -3775,19 +3775,10 @@ app.post('/stage-updates', async (request, reply) => {
     });
   }
 
-  // Guard: Block delivery_scheduled if balance is not paid
-  if (body.stage === 'delivery_scheduled' && !order.balance_paid) {
-    if (order.total_amount == null) {
-      return reply.code(400).send({
-        error: 'Cannot schedule delivery: total amount not set for this order. Please set the total amount first.',
-      });
-    }
-    const totalAmount = Number(order.total_amount);
-    const depositAmount = Number(order.deposit_amount ?? 0);
-    const balance = totalAmount - depositAmount;
+  // Guard: Block delivery_scheduled if total amount is not set
+  if (body.stage === 'delivery_scheduled' && order.total_amount == null) {
     return reply.code(400).send({
-      error: `Cannot schedule delivery: balance not yet paid. Balance due: ₱${balance.toLocaleString()}`,
-      balance_due: balance,
+      error: 'Cannot schedule delivery: total amount not set for this order. Please set the total amount first.',
     });
   }
 
@@ -6469,6 +6460,15 @@ app.post('/files/upload', async (request, reply) => {
       notifyGroupChat(
         COLLECTION_CHAT_ID,
         `<b>${label} Uploaded</b>\n\nQuotation: <b>${ref}</b>\nFile: ${body.original_filename}\n\nDeposit proof submitted for verification.`
+      );
+    });
+  }
+
+  if (body.file_type === 'balance_proof' && COLLECTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `<b>${label} Uploaded</b>\n\nQuotation: <b>${ref}</b>\nFile: ${body.original_filename}\n\nBalance proof submitted for verification.`
       );
     });
   }

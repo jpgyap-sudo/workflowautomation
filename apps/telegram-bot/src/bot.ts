@@ -7667,7 +7667,7 @@ bot.action(/^balance:confirm_yes:(.+)$/, async (ctx) => {
           mimeType: mimeType ?? 'image/jpeg',
           fileName: fileName ?? `payment-${quotationNumber}.jpg`,
           quotationNumber,
-          fileType: 'deposit',
+          fileType: 'balance_proof',
         });
       } catch (uploadErr) {
         // Non-blocking — balance was already recorded
