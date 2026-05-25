@@ -86,6 +86,8 @@ const ALLOWED_GROUP_IDS = new Set<string>(
     process.env.ESCALATION_GROUP_ID,
     process.env.PRODUCTION_GROUP_CHAT_ID,
     process.env.PRODUCTION_GROUP_ID,
+    process.env.SCHEDULE_GROUP_CHAT_ID,
+    process.env.SCHEDULE_GROUP_ID,
   ].filter((v): v is string => Boolean(v))
 );
 
@@ -651,7 +653,15 @@ type UserStep =
   // Bug report interactive flow
   | { action: 'awaiting_bug_title' }
   | { action: 'awaiting_bug_description'; title: string }
-  | { action: 'awaiting_bug_order_pick'; title: string; description: string };
+  | { action: 'awaiting_bug_order_pick'; title: string; description: string }
+  // Schedule group chat flow
+  | { action: 'awaiting_schedule_date'; scheduleText: string }
+  | { action: 'awaiting_schedule_time'; scheduleText: string; scheduleDate: string }
+  | { action: 'awaiting_schedule_confirm'; scheduleText: string; scheduleDate: string; scheduleTime?: string }
+  | { action: 'awaiting_schedule_vision_choice'; imageBase64: string; mimeType: string; fileName: string }
+  | { action: 'awaiting_schedule_vision_extract'; imageBase64: string; mimeType: string; fileName: string }
+  | { action: 'awaiting_schedule_vision_notes'; imageBase64: string; mimeType: string; fileName: string; extractedText: string }
+  | { action: 'awaiting_schedule_reminder'; scheduleId: string; scheduleTitle: string; scheduleDate: string };
 
 interface DepositCandidate {
   quotation_number: string;
@@ -1061,6 +1071,144 @@ bot.action('confirm_action:cancel', async (ctx) => {
     } catch {
       // Message may no longer be editable — ignore
     }
+  }
+});
+
+// ── Schedule Actions ──────────────────────────────────────────────────
+
+/**
+ * schedule:confirm — User confirmed a schedule entry. Create it via API.
+ */
+bot.action('schedule:confirm', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  await ctx.answerCbQuery('✅ Confirmed');
+
+  if (session.step.action !== 'awaiting_schedule_confirm') {
+    await ctx.reply('❌ No pending schedule to confirm.');
+    return;
+  }
+
+  const { scheduleText, scheduleDate, scheduleTime } = session.step;
+  const username = ctx.from?.username ?? String(ctx.from?.id ?? '');
+  const title = scheduleText.length > 200 ? scheduleText.substring(0, 197) + '...' : scheduleText;
+
+  try {
+    const result = await postJson('/calendar/schedules', {
+      title,
+      description: scheduleText,
+      schedule_date: scheduleDate,
+      schedule_time: scheduleTime ?? null,
+      created_by: username,
+      created_by_chat_id: chatId,
+    });
+
+    resetStep(chatId);
+
+    const timeStr = scheduleTime ? ` at ${scheduleTime}` : '';
+    await ctx.reply(
+      `✅ *Schedule Added!*\n\n📅 *${title}*\n📆 ${scheduleDate}${timeStr}\n\nWant to set a reminder?`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('⏰ Set Reminder', `schedule:reminder:${result.id}`),
+            Markup.button.callback('✅ No, thanks', 'action:cancel'),
+          ],
+        ]),
+      }
+    );
+  } catch (err: any) {
+    console.error('[bot] Failed to create schedule:', err);
+    await ctx.reply(`❌ Failed to create schedule: ${err.message}`, { ...cancelButton() });
+  }
+});
+
+/**
+ * schedule:edit_date — User wants to change the date of a detected schedule.
+ */
+bot.action('schedule:edit_date', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  await ctx.answerCbQuery('🔄 Edit date');
+
+  if (session.step.action !== 'awaiting_schedule_confirm') {
+    await ctx.reply('❌ No pending schedule to edit.');
+    return;
+  }
+
+  const { scheduleText, scheduleTime } = session.step;
+  setStep(chatId, {
+    action: 'awaiting_schedule_date',
+    scheduleText,
+  });
+
+  await ctx.reply(
+    `📝 What date should this be on?\n(e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`, or a day name)`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
+/**
+ * schedule:reminder:<id> — Set a reminder for a schedule.
+ */
+bot.action(/^schedule:reminder:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const scheduleId = ctx.match[1];
+  await ctx.answerCbQuery('⏰ Set reminder');
+
+  // Get schedule details
+  try {
+    const schedule = await getJson(`/calendar/schedules/${scheduleId}`);
+    if (!schedule) {
+      await ctx.reply('❌ Schedule not found.');
+      return;
+    }
+
+    setStep(chatId, {
+      action: 'awaiting_schedule_reminder',
+      scheduleId,
+      scheduleTitle: schedule.title,
+      scheduleDate: schedule.schedule_date,
+    });
+
+    await ctx.reply(
+      `⏰ *Set Reminder for:* ${schedule.title}\n📆 ${schedule.schedule_date}\n\nWhen should I remind you?\n(e.g., \`1 hour before\`, \`30 minutes before\`, \`1 day before\`, \`at 08:00\`)`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  } catch (err: any) {
+    console.error('[bot] Failed to get schedule:', err);
+    await ctx.reply(`❌ Failed to get schedule: ${err.message}`, { ...cancelButton() });
+  }
+});
+
+/**
+ * schedule:list — Show today's schedules.
+ */
+bot.action('schedule:list', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  await ctx.answerCbQuery('📋 Loading schedules...');
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const schedules = await getJson(`/calendar/schedules/${today}`);
+
+    if (!Array.isArray(schedules) || schedules.length === 0) {
+      await ctx.reply('📋 *No schedules for today.*', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const lines = schedules.map((s: any, i: number) =>
+      `${i + 1}. ${s.schedule_time ? `🕐 ${s.schedule_time.slice(0, 5)}` : '📅'} *${s.title}*${s.description ? `\n   ${s.description}` : ''}`
+    );
+
+    await ctx.reply(
+      `📋 *Today's Schedules (${today})*\n\n${lines.join('\n')}`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err: any) {
+    console.error('[bot] Failed to list schedules:', err);
+    await ctx.reply(`❌ Failed to load schedules: ${err.message}`);
   }
 });
 
@@ -1631,6 +1779,166 @@ bot.on(message('text'), async (ctx) => {
 
       // Always show/update the persistent control panel after any message in the production chat
       await showOrUpdatePanel(ctx, chatId);
+      return;
+    }
+
+    // ── Schedule group chat ──────────────────────────────────────────
+    // When a user sends a message to the schedule group while idle,
+    // treat it as a potential schedule entry. Use Hermes AI to parse
+    // natural language into a structured schedule, then ask for confirmation.
+    const SCHEDULE_CHAT_ID = process.env.SCHEDULE_GROUP_CHAT_ID ?? process.env.SCHEDULE_GROUP_ID ?? '';
+    const isScheduleChat = SCHEDULE_CHAT_ID && chatId === SCHEDULE_CHAT_ID;
+
+    if (isScheduleChat) {
+      // Try AI schedule parsing first
+      try {
+        const res = await fetch(`${apiBaseUrl}/agents/run/schedule-parser`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text, username: username ?? null }),
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (res.ok) {
+          const data = await res.json() as {
+            parsed: boolean;
+            title?: string;
+            date?: string;
+            time?: string;
+            description?: string;
+            reply?: string;
+          };
+
+          if (data.parsed && data.title && data.date) {
+            // AI successfully parsed — ask user to confirm
+            const dateStr = data.date;
+            const timeStr = data.time ? ` at ${data.time}` : '';
+            const descStr = data.description ? `\n📝 ${data.description}` : '';
+            const confirmText = `📅 *New Schedule Detected*
+
+*Title:* ${data.title}
+*Date:* ${dateStr}${timeStr}${descStr}
+
+Is this correct?`;
+
+            setStep(chatId, {
+              action: 'awaiting_schedule_confirm',
+              scheduleText: text,
+              scheduleDate: dateStr,
+              scheduleTime: data.time,
+            });
+
+            await ctx.reply(confirmText, {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [
+                  Markup.button.callback('✅ Confirm & Add', 'schedule:confirm'),
+                  Markup.button.callback('🔄 Edit Date', 'schedule:edit_date'),
+                ],
+                [
+                  Markup.button.callback('❌ Cancel', 'action:cancel'),
+                ],
+              ]),
+            });
+            return;
+          } else if (data.reply) {
+            // AI has a response but couldn't parse — show it
+            await ctx.reply(data.reply, { parse_mode: 'Markdown' });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('[bot] Schedule parser error:', err);
+        // Fall through to manual parsing
+      }
+
+      // Fallback: manual date parsing
+      const dateMatch = text.match(/\b(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?\b/);
+      const dayNames = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|today|tomorrow)\b/i;
+      const dayMatch = text.match(dayNames);
+
+      if (dateMatch || dayMatch) {
+        // Has a date reference — ask for confirmation
+        let detectedDate = '';
+        if (dateMatch) {
+          const [, m, d, y] = dateMatch;
+          const year = y ? (y.length === 2 ? `20${y}` : y) : String(new Date().getFullYear());
+          detectedDate = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        } else if (dayMatch) {
+          const dayStr = dayMatch[0].toLowerCase();
+          if (dayStr === 'today') {
+            detectedDate = new Date().toISOString().slice(0, 10);
+          } else if (dayStr === 'tomorrow') {
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            detectedDate = d.toISOString().slice(0, 10);
+          } else {
+            // Find next occurrence of that day
+            const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const targetDay = days.findIndex(d => d.startsWith(dayStr.slice(0, 3)));
+            if (targetDay >= 0) {
+              const today = new Date();
+              const currentDay = today.getDay();
+              let diff = targetDay - currentDay;
+              if (diff <= 0) diff += 7;
+              const d = new Date();
+              d.setDate(d.getDate() + diff);
+              detectedDate = d.toISOString().slice(0, 10);
+            }
+          }
+        }
+
+        if (detectedDate) {
+          const timeMatch = text.match(/\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/i);
+          const detectedTime = timeMatch
+            ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
+            : undefined;
+
+          setStep(chatId, {
+            action: 'awaiting_schedule_confirm',
+            scheduleText: text,
+            scheduleDate: detectedDate,
+            scheduleTime: detectedTime,
+          });
+
+          const timeStr = detectedTime ? ` at ${detectedTime}` : '';
+          await ctx.reply(
+            `📅 *Schedule Detected*
+
+*Text:* ${text}
+*Date:* ${detectedDate}${timeStr}
+
+Is this correct?`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [
+                  Markup.button.callback('✅ Confirm & Add', 'schedule:confirm'),
+                  Markup.button.callback('🔄 Edit Date', 'schedule:edit_date'),
+                ],
+                [
+                  Markup.button.callback('❌ Cancel', 'action:cancel'),
+                ],
+              ]),
+            }
+          );
+          return;
+        }
+      }
+
+      // No date detected — ask user for the date
+      setStep(chatId, {
+        action: 'awaiting_schedule_date',
+        scheduleText: text,
+      });
+
+      await ctx.reply(
+        `📝 *Schedule Entry*
+
+I'll save this as a schedule. What date should this be on?
+(e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`, or a day name like \`Monday\`)`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
       return;
     }
 
@@ -2879,6 +3187,247 @@ bot.on(message('text'), async (ctx) => {
       } catch (err: any) {
         console.error('[bot] Failed to submit bug report:', err);
         await ctx.reply('❌ Failed to submit bug report. Please try again later.', { ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── Schedule Vision: Awaiting Extract (user types schedule text manually) ──
+    case 'awaiting_schedule_vision_extract': {
+      // User typed schedule details manually after vision failed or chose to type
+      // Treat this as a schedule text and try to parse it
+      const scheduleText = text;
+
+      // Try to detect a date in the text
+      const dateMatch = text.match(/\b(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?\b/);
+      const dayNames = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|today|tomorrow)\b/i;
+      const dayMatch = text.match(dayNames);
+
+      if (dateMatch || dayMatch) {
+        let detectedDate = '';
+        if (dateMatch) {
+          const [, m, d, y] = dateMatch;
+          const year = y ? (y.length === 2 ? `20${y}` : y) : String(new Date().getFullYear());
+          detectedDate = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        } else if (dayMatch) {
+          const dayStr = dayMatch[0].toLowerCase();
+          if (dayStr === 'today') {
+            detectedDate = new Date().toISOString().slice(0, 10);
+          } else if (dayStr === 'tomorrow') {
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            detectedDate = d.toISOString().slice(0, 10);
+          } else {
+            const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const targetDay = days.findIndex(d => d.startsWith(dayStr.slice(0, 3)));
+            if (targetDay >= 0) {
+              const today = new Date();
+              const currentDay = today.getDay();
+              let diff = targetDay - currentDay;
+              if (diff <= 0) diff += 7;
+              const d = new Date();
+              d.setDate(d.getDate() + diff);
+              detectedDate = d.toISOString().slice(0, 10);
+            }
+          }
+        }
+
+        if (detectedDate) {
+          const timeMatch = text.match(/\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/i);
+          const detectedTime = timeMatch
+            ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
+            : undefined;
+
+          setStep(chatId, {
+            action: 'awaiting_schedule_confirm',
+            scheduleText: text,
+            scheduleDate: detectedDate,
+            scheduleTime: detectedTime,
+          });
+
+          const timeStr = detectedTime ? ` at ${detectedTime}` : '';
+          await ctx.reply(
+            `📅 *Schedule Detected*
+            
+*Text:* ${text}
+*Date:* ${detectedDate}${timeStr}
+
+Is this correct?`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [
+                  Markup.button.callback('✅ Confirm & Add', 'schedule:confirm'),
+                  Markup.button.callback('🔄 Edit Date', 'schedule:edit_date'),
+                ],
+                [
+                  Markup.button.callback('❌ Cancel', 'action:cancel'),
+                ],
+              ]),
+            }
+          );
+          return;
+        }
+      }
+
+      // No date detected — ask for date
+      setStep(chatId, {
+        action: 'awaiting_schedule_date',
+        scheduleText: text,
+      });
+
+      await ctx.reply(
+        `📝 *Schedule Entry*
+        
+I'll save this as a schedule. What date should this be on?
+(e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`, or a day name like \`Monday\`)`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+      break;
+    }
+
+    // ── Schedule Vision: Awaiting Notes (user provides title for calendar note) ──
+    case 'awaiting_schedule_vision_notes': {
+      const { extractedText } = session.step;
+      const noteTitle = text.trim();
+
+      if (noteTitle.length === 0) {
+        await ctx.reply('❌ Please provide a non-empty title for the note.', { ...cancelButton() });
+        return;
+      }
+
+      // Create a calendar note for today with the extracted text
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        await postJson('/calendar/notes', {
+          note_date: today,
+          title: noteTitle.substring(0, 200),
+          content: extractedText || noteTitle,
+          color: '#f59e0b',
+        });
+
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Calendar Note Created!*\n\n📝 *${noteTitle}*\n📆 ${today}\n\nThe note has been added to the calendar.`,
+          { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        );
+      } catch (err: any) {
+        console.error('[schedule_vision] Failed to create note:', err);
+        await ctx.reply(`❌ Failed to create note: ${err.message}`, { ...cancelButton() });
+      }
+      break;
+    }
+
+    // ── Schedule: Awaiting Date ──────────────────────────────────────
+    case 'awaiting_schedule_date': {
+      const { scheduleText } = session.step;
+      let detectedDate = '';
+
+      const dateMatch = text.match(/\b(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?\b/);
+      const dayStr = text.toLowerCase().trim();
+
+      if (dateMatch) {
+        const [, m, d, y] = dateMatch;
+        const year = y ? (y.length === 2 ? `20${y}` : y) : String(new Date().getFullYear());
+        detectedDate = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      } else if (dayStr === 'today') {
+        detectedDate = new Date().toISOString().slice(0, 10);
+      } else if (dayStr === 'tomorrow') {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        detectedDate = d.toISOString().slice(0, 10);
+      } else {
+        // Try day name
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const targetDay = days.findIndex(d => d.startsWith(dayStr.slice(0, 3)));
+        if (targetDay >= 0) {
+          const today = new Date();
+          const currentDay = today.getDay();
+          let diff = targetDay - currentDay;
+          if (diff <= 0) diff += 7;
+          const d = new Date();
+          d.setDate(d.getDate() + diff);
+          detectedDate = d.toISOString().slice(0, 10);
+        }
+      }
+
+      if (!detectedDate) {
+        await ctx.reply(
+          '❌ Could not understand that date. Please try again:\n(e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`, \`Monday\`)',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      setStep(chatId, {
+        action: 'awaiting_schedule_confirm',
+        scheduleText,
+        scheduleDate: detectedDate,
+      });
+
+      await ctx.reply(
+        `📅 *Schedule:* ${scheduleText}\n📆 *Date:* ${detectedDate}\n\nIs this correct?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [
+              Markup.button.callback('✅ Confirm & Add', 'schedule:confirm'),
+              Markup.button.callback('🔄 Edit Date', 'schedule:edit_date'),
+            ],
+            [
+              Markup.button.callback('❌ Cancel', 'action:cancel'),
+            ],
+          ]),
+        }
+      );
+      break;
+    }
+
+    // ── Schedule: Awaiting Reminder ──────────────────────────────────
+    case 'awaiting_schedule_reminder': {
+      const { scheduleId, scheduleTitle, scheduleDate } = session.step;
+
+      // Parse reminder time
+      let reminderAt: string | null = null;
+      const beforeMatch = text.match(/(\d+)\s*(minute|hour|day)s?\s*before/i);
+      const atMatch = text.match(/at\s*(\d{1,2}):(\d{2})/i);
+
+      if (beforeMatch) {
+        const amount = parseInt(beforeMatch[1], 10);
+        const unit = beforeMatch[2].toLowerCase();
+        const scheduleDateTime = new Date(`${scheduleDate}T09:00:00`);
+        if (unit === 'minute') scheduleDateTime.setMinutes(scheduleDateTime.getMinutes() - amount);
+        else if (unit === 'hour') scheduleDateTime.setHours(scheduleDateTime.getHours() - amount);
+        else if (unit === 'day') scheduleDateTime.setDate(scheduleDateTime.getDate() - amount);
+        reminderAt = scheduleDateTime.toISOString();
+      } else if (atMatch) {
+        const hours = atMatch[1].padStart(2, '0');
+        const mins = atMatch[2].padStart(2, '0');
+        const reminderDate = new Date(`${scheduleDate}T${hours}:${mins}:00`);
+        reminderAt = reminderDate.toISOString();
+      }
+
+      if (!reminderAt) {
+        await ctx.reply(
+          '❌ Could not understand that. Please specify like:\n- \`1 hour before\`\n- \`30 minutes before\`\n- \`at 08:00\`',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      try {
+        await patchJson(`/calendar/schedules/${scheduleId}`, {
+          reminder_at: reminderAt,
+          action_token: 'telegram-bot', // Simplified — bot has direct DB access via API
+        });
+
+        resetStep(chatId);
+        await ctx.reply(
+          `✅ *Reminder Set!*\n\n📅 *${scheduleTitle}*\n📆 ${scheduleDate}\n⏰ I'll remind you at the specified time.`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (err: any) {
+        console.error('[bot] Failed to set reminder:', err);
+        await ctx.reply(`❌ Failed to set reminder: ${err.message}`, { ...cancelButton() });
       }
       break;
     }
@@ -7444,6 +7993,257 @@ bot.action('vision:ignore', async (ctx) => {
   });
 });
 
+/**
+ * schedule_vision:extract — User wants to extract calendar schedule info from an image.
+ * Calls Gemini Vision to extract structured schedule data, then asks for confirmation.
+ */
+bot.action('schedule_vision:extract', async (ctx) => {
+  try {
+    await ctx.answerCbQuery('🤖 Analyzing image...');
+  } catch {
+    // Non-critical
+  }
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  if (session.step.action !== 'awaiting_schedule_vision_choice') {
+    return ctx.editMessageText('⏳ Session expired. Please send the image again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: `schedule_vision:extract: ${fileName}`,
+    metadata: { mimeType, fileName },
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(`🤖 Analyzing image with AI Vision to extract schedule info...`);
+
+  try {
+    // Call Gemini Vision to extract schedule data
+    const visionResult: any = await postJson('/vision/extract', {
+      image_base64: imageBase64,
+      mime_type: mimeType,
+      mode: 'auto',
+    });
+
+    const extractedText = visionResult?.raw_text ?? visionResult?.description ?? '';
+
+    if (extractedText) {
+      setStep(chatId, {
+        action: 'awaiting_schedule_vision_extract',
+        imageBase64,
+        mimeType,
+        fileName,
+      });
+
+      await ctx.reply(
+        `📅 *Extracted Text from Image:*\n\n${escapeMarkdown(extractedText.substring(0, 1000))}\n\n` +
+        `What would you like to do with this?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📅 Create Calendar Schedule', 'schedule_vision:create_schedule')],
+            [Markup.button.callback('📝 Add as Calendar Note', 'schedule_vision:create_note')],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
+      );
+    } else {
+      // No text extracted — ask user to type manually
+      setStep(chatId, {
+        action: 'awaiting_schedule_vision_extract',
+        imageBase64,
+        mimeType,
+        fileName,
+      });
+
+      await ctx.reply(
+        `⚠️ Could not extract any text from the image.\n\n` +
+        `Please type the schedule details manually (e.g., \`Meeting with client on Monday at 2pm\`)`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+    }
+  } catch (err: any) {
+    console.error('[schedule_vision] Extract error:', err);
+    setStep(chatId, {
+      action: 'awaiting_schedule_vision_extract',
+      imageBase64,
+      mimeType,
+      fileName,
+    });
+    await ctx.reply(
+      `⚠️ AI Vision analysis failed: ${err.message}\n\n` +
+      `Please type the schedule details manually (e.g., \`Meeting with client on Monday at 2pm\`)`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  }
+});
+
+/**
+ * schedule_vision:note — User wants to add the image content as a calendar note.
+ * Extracts text from the image and creates a calendar note.
+ */
+bot.action('schedule_vision:note', async (ctx) => {
+  try {
+    await ctx.answerCbQuery('📝 Adding as note...');
+  } catch {
+    // Non-critical
+  }
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+
+  if (session.step.action !== 'awaiting_schedule_vision_choice') {
+    return ctx.editMessageText('⏳ Session expired. Please send the image again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+
+  botLog({
+    chatId, userId, username,
+    messageType: 'vision',
+    content: `schedule_vision:note: ${fileName}`,
+    metadata: { mimeType, fileName },
+    direction: 'incoming',
+  });
+
+  await ctx.editMessageText(`🤖 Analyzing image with AI Vision to extract text for calendar note...`);
+
+  try {
+    // Call Gemini Vision to extract text
+    const visionResult: any = await postJson('/vision/extract', {
+      image_base64: imageBase64,
+      mime_type: mimeType,
+      mode: 'auto',
+    });
+
+    const extractedText = visionResult?.raw_text ?? visionResult?.description ?? '';
+
+    if (extractedText) {
+      setStep(chatId, {
+        action: 'awaiting_schedule_vision_notes',
+        imageBase64,
+        mimeType,
+        fileName,
+        extractedText,
+      });
+
+      await ctx.reply(
+        `📝 *Extracted Text:*\n\n${escapeMarkdown(extractedText.substring(0, 1000))}\n\n` +
+        `Please provide a *title* for this calendar note, or type \`cancel\` to skip.`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+    } else {
+      // No text extracted — ask user to type manually
+      setStep(chatId, {
+        action: 'awaiting_schedule_vision_notes',
+        imageBase64,
+        mimeType,
+        fileName,
+        extractedText: '',
+      });
+
+      await ctx.reply(
+        `⚠️ Could not extract any text from the image.\n\n` +
+        `Please type the note content manually, or type \`cancel\` to skip.`,
+        { parse_mode: 'Markdown', ...cancelButton() }
+      );
+    }
+  } catch (err: any) {
+    console.error('[schedule_vision] Note error:', err);
+    setStep(chatId, {
+      action: 'awaiting_schedule_vision_notes',
+      imageBase64,
+      mimeType,
+      fileName,
+      extractedText: '',
+    });
+    await ctx.reply(
+      `⚠️ AI Vision analysis failed: ${err.message}\n\n` +
+      `Please type the note content manually, or type \`cancel\` to skip.`,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+  }
+});
+
+/**
+ * schedule_vision:create_schedule — User confirmed extracted text should become a schedule.
+ * Transitions to the schedule text parsing flow with the extracted text.
+ */
+bot.action('schedule_vision:create_schedule', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  await ctx.answerCbQuery('📅 Creating schedule...');
+
+  if (session.step.action !== 'awaiting_schedule_vision_extract') {
+    return ctx.editMessageText('⏳ Session expired. Please send the image again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  const { imageBase64, mimeType, fileName } = session.step;
+
+  // Reset to idle and trigger the schedule text handler by simulating a text message
+  // Instead, just ask the user to type the schedule details
+  setStep(chatId, {
+    action: 'awaiting_schedule_date',
+    scheduleText: 'Schedule from image',
+  });
+
+  await ctx.editMessageText(
+    `📅 *Create Calendar Schedule*\n\n` +
+    `Please type the schedule details (e.g., \`Meeting with client on Monday at 2pm\`)\n\n` +
+    `Or type the *date* for this schedule (e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`)`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
+/**
+ * schedule_vision:create_note — User confirmed extracted text should become a calendar note.
+ * Creates the note directly with the extracted text.
+ */
+bot.action('schedule_vision:create_note', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const session = getSession(chatId);
+  await ctx.answerCbQuery('📝 Creating note...');
+
+  if (session.step.action !== 'awaiting_schedule_vision_extract') {
+    return ctx.editMessageText('⏳ Session expired. Please send the image again.', {
+      parse_mode: 'Markdown',
+      ...mainMenuKeyboard(),
+    });
+  }
+
+  // Ask user for a title and date for the note
+  setStep(chatId, {
+    action: 'awaiting_schedule_vision_notes',
+    imageBase64: session.step.imageBase64,
+    mimeType: session.step.mimeType,
+    fileName: session.step.fileName,
+    extractedText: '',
+  });
+
+  await ctx.editMessageText(
+    `📝 *Add Calendar Note*\n\n` +
+    `Please type the *title* for this note, or type \`cancel\` to skip.`,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
 // Retry extraction after a vision API failure
 bot.action('vision:retry_extract', async (ctx) => {
   try {
@@ -8247,6 +9047,44 @@ bot.on(['document', 'photo'], async (ctx) => {
 Tap Retry upload to try again.`, {
           ...retryUploadKeyboard(),
         });
+      }
+      return;
+    }
+
+    // ── Schedule group: vision for calendar entries ──────────────────
+    // When a photo is sent to the schedule group, offer to extract info
+    // for the calendar (as a schedule entry) or add as notes.
+    const SCHEDULE_CHAT_ID = process.env.SCHEDULE_GROUP_CHAT_ID ?? process.env.SCHEDULE_GROUP_ID ?? '';
+    const isScheduleChat = SCHEDULE_CHAT_ID && chatId === SCHEDULE_CHAT_ID;
+
+    if (isScheduleChat && (session.step.action === 'idle' || !session.step.action)) {
+      const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
+      if (isProcessable) {
+        setStep(chatId, {
+          action: 'awaiting_schedule_vision_choice',
+          imageBase64: imageBase64!,
+          mimeType,
+          fileName,
+        });
+
+        await ctx.reply(
+          `📎 *Image received:* ${escapeMarkdown(fileName)}
+
+What would you like to do with this?`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('📅 Extract for Calendar Schedule', 'schedule_vision:extract')],
+              [Markup.button.callback('📝 Add as Calendar Note', 'schedule_vision:note')],
+              [Markup.button.callback('❌ Cancel', 'action:cancel')],
+            ]),
+          }
+        );
+      } else {
+        await ctx.reply(
+          `❌ Please send a **photo** or **PDF** for schedule-related content.`,
+          { parse_mode: 'Markdown' }
+        );
       }
       return;
     }

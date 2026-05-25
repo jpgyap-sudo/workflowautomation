@@ -136,6 +136,7 @@ export async function processDueReminders(): Promise<number> {
   const dueReminders = await query(
     `SELECT r.*, o.quotation_number, o.client_name, o.current_stage, o.deposit_paid, o.balance_paid,
             o.deposit_verified, o.balance_verified, o.production_started, o.delivery_date,
+            o.order_type,
             COALESCE(o.partial_production_items, '[]'::jsonb) AS partial_production_items
      FROM reminders r
      JOIN orders o ON o.id = r.order_id

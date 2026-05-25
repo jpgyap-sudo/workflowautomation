@@ -50,6 +50,7 @@ export interface OrderRow {
   production_exception_granted_by: string | null;
   inventory_verified_at: string | null;
   inventory_verification_pct: number | null;
+  order_type: string | null;
   created_at: string;
   updated_at: string;
 }

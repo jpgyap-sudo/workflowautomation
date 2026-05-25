@@ -155,7 +155,8 @@ async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
 
     // ⛔ Guard: Do NOT auto-advance if deposit has not been verified
     // Exception: production_exception allows production to proceed without verified downpayment
-    if (!order.deposit_verified && !order.production_exception) {
+    // Exception: stock_replenishment orders have no deposit requirement
+    if (!order.deposit_verified && !order.production_exception && order.order_type !== 'stock_replenishment') {
       const result: AgentResult = {
         status: 'blocked',
         message: `⏸️ Deposit not yet verified for #${order.quotation_number ?? 'unknown'}. Production cannot proceed until downpayment is verified on the dashboard.`,

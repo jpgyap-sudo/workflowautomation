@@ -712,6 +712,23 @@ app.post('/orders', async (request, reply) => {
     userEmail,
   );
 
+  // Notify production group about new order
+  if (PRODUCTION_CHAT_ID) {
+    const itemCount = body.items?.length ?? 0;
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `📋 <b>New Order Created (Dashboard)</b>\n\n` +
+        `Quotation: <b>${newOrder.quotation_number ?? 'N/A'}</b>\n` +
+        `Client: ${newOrder.client_name ?? 'Unknown'}\n` +
+        `Sales Agent: ${newOrder.sales_agent ?? '—'}\n` +
+        `Amount: ${newOrder.total_amount != null ? `PHP ${Number(newOrder.total_amount).toLocaleString()}` : '—'}\n` +
+        `Items: ${itemCount > 0 ? `${itemCount} item(s) extracted` : 'No items yet'}\n\n` +
+        `Status: <b>Order Confirmation Received</b>`
+      );
+    });
+  }
+
   return reply.send(newOrder);
 });
 
@@ -1547,13 +1564,16 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   }
 
   const existingRows = await query(
-    `SELECT id, quotation_number, current_stage, deposit_verified, production_exception FROM orders WHERE id = $1`,
+    `SELECT id, quotation_number, current_stage, deposit_verified, production_exception, order_type FROM orders WHERE id = $1`,
     [id]
   );
   if (!existingRows[0]) return reply.code(404).send({ error: 'Order not found' });
   const previousStage = existingRows[0].current_stage;
 
-  if (body.production_started && !existingRows[0].deposit_verified && !existingRows[0].production_exception) {
+  // Stock replenishment orders have no deposit — skip the deposit guard entirely
+  const isReplenishmentOrder = existingRows[0].order_type === 'stock_replenishment';
+
+  if (body.production_started && !isReplenishmentOrder && !existingRows[0].deposit_verified && !existingRows[0].production_exception) {
     return reply.code(400).send({
       error: 'Cannot start production: downpayment must be verified first, unless a production special-case exception is granted.',
       current_stage: previousStage,
@@ -6203,6 +6223,41 @@ app.post('/files/upload', async (request, reply) => {
     }
   }
 
+  // Notify Telegram group chats about uploaded file
+  const fileTypeLabels: Record<string, string> = {
+    quotation: '📄 Quotation',
+    order_confirmation: '📝 Order Confirmation',
+    deposit: '💰 Deposit Proof',
+    balance_proof: '💳 Balance Proof',
+  };
+  const label = fileTypeLabels[body.file_type] ?? body.file_type;
+  const ref = body.quotation_number ?? `Order #${resolvedOrderId?.slice(0, 8) ?? '?'}`;
+
+  setImmediate(() => {
+    notifyGroupChat(
+      ESCALATION_CHAT_ID,
+      `<b>${label} Uploaded</b>\n\nQuotation: <b>${ref}</b>\nFile: ${body.original_filename}`
+    );
+  });
+
+  if (body.file_type === 'order_confirmation' && PRODUCTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `<b>${label} Uploaded</b>\n\nQuotation: <b>${ref}</b>\nFile: ${body.original_filename}\n\nProduction may proceed.`
+      );
+    });
+  }
+
+  if (body.file_type === 'deposit' && COLLECTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `<b>${label} Uploaded</b>\n\nQuotation: <b>${ref}</b>\nFile: ${body.original_filename}\n\nDeposit proof submitted for verification.`
+      );
+    });
+  }
+
   return reply.send({
     ok: true,
     file: fileRecord[0],
@@ -6444,6 +6499,21 @@ app.get('/calendar/events', async () => {
        AND o.order_confirmed_at > NOW() - INTERVAL '1 year'`
   );
 
+  const scheduleEvents = await query(
+    `SELECT
+       cs.id AS event_id,
+       'schedule' AS type,
+       cs.category AS category,
+       cs.title AS title,
+       cs.description AS subtitle,
+       cs.schedule_date::TEXT || ' ' || COALESCE(cs.schedule_time::TEXT, '00:00:00') AS event_date,
+       cs.schedule_time::TEXT AS metadata
+     FROM calendar_schedules cs
+     WHERE cs.status = 'active'
+       AND cs.schedule_date >= NOW() - INTERVAL '1 month'
+       AND cs.schedule_date <= NOW() + INTERVAL '3 months'`
+  );
+
   const allEvents = [
     ...orderEvents.map((e: any) => ({ ...e, color: '#3b82f6' })),               // blue
     ...stageEvents.map((e: any) => ({ ...e, color: '#8b5cf6' })),               // purple
@@ -6455,6 +6525,7 @@ app.get('/calendar/events', async () => {
     ...productionFinishEvents.map((e: any) => ({ ...e, color: '#6366f1' })),    // indigo
     ...enRouteEvents.map((e: any) => ({ ...e, color: '#14b8a6' })),             // teal
     ...orderConfirmedEvents.map((e: any) => ({ ...e, color: '#84cc16' })),      // lime
+    ...scheduleEvents.map((e: any) => ({ ...e, color: '#f59e0b' })),            // amber
   ].sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
 
   await cacheSet('calendar:events', allEvents, 30);
@@ -6619,6 +6690,214 @@ app.delete('/calendar/notes/:id', async (request, reply) => {
   await notifyManualChange(
     '🗑️ Calendar note deleted',
     `Note ID: *${params.id.slice(0, 8)}...*\nTitle: ${rows[0].title ?? 'N/A'}`,
+    userEmail,
+  );
+  return reply.send({ ok: true });
+});
+
+// ── Calendar Schedules ──────────────────────────────────────────────
+
+/**
+ * GET /calendar/schedules — List all active schedules
+ */
+app.get('/calendar/schedules', async () => {
+  const rows = await query(
+    `SELECT id, title, description, schedule_date, schedule_time, end_time,
+            is_all_day, color, category, created_by, created_by_chat_id,
+            telegram_message_id, reminder_at, reminder_sent, status,
+            created_at, updated_at
+     FROM calendar_schedules
+     WHERE status = 'active'
+     ORDER BY schedule_date DESC, schedule_time ASC NULLS LAST
+     LIMIT 500`
+  );
+  return rows;
+});
+
+/**
+ * GET /calendar/schedules/:date — Get schedules for a specific date
+ */
+app.get('/calendar/schedules/:date', async (request, reply) => {
+  const params = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(request.params);
+  const rows = await query(
+    `SELECT id, title, description, schedule_date, schedule_time, end_time,
+            is_all_day, color, category, created_by, created_by_chat_id,
+            telegram_message_id, reminder_at, reminder_sent, status,
+            created_at, updated_at
+     FROM calendar_schedules
+     WHERE schedule_date = $1::date AND status = 'active'
+     ORDER BY schedule_time ASC NULLS FIRST`,
+    [params.date]
+  );
+  return rows;
+});
+
+const createScheduleSchema = z.object({
+  title: z.string().min(1).max(500),
+  description: z.string().max(2000).default(''),
+  schedule_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  schedule_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+  is_all_day: z.boolean().default(false),
+  color: z.string().default('#f59e0b'),
+  category: z.string().default('general'),
+  reminder_at: z.string().datetime().optional().nullable(),
+  action_token: z.string().optional(),
+  // Telegram-specific fields (no token required when coming from bot)
+  created_by: z.string().optional(),
+  created_by_chat_id: z.string().optional(),
+  telegram_message_id: z.string().optional(),
+});
+
+/**
+ * POST /calendar/schedules — Create a new schedule
+ * Supports both dashboard (with action_token) and Telegram bot (with telegram fields)
+ */
+app.post('/calendar/schedules', async (request, reply) => {
+  const body = createScheduleSchema.parse(request.body);
+
+  let userEmail: string | null = null;
+
+  // If action_token provided, verify it (dashboard flow)
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  }
+
+  const rows = await query(
+    `INSERT INTO calendar_schedules (title, description, schedule_date, schedule_time, end_time, is_all_day, color, category, reminder_at, created_by, created_by_chat_id, telegram_message_id)
+     VALUES ($1, $2, $3::date, $4::time, $5::time, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING *`,
+    [
+      body.title,
+      body.description,
+      body.schedule_date,
+      body.schedule_time ?? null,
+      body.end_time ?? null,
+      body.is_all_day,
+      body.color,
+      body.category,
+      body.reminder_at ?? null,
+      body.created_by ?? userEmail ?? null,
+      body.created_by_chat_id ?? null,
+      body.telegram_message_id ?? null,
+    ]
+  );
+  await invalidateCache(['calendar:*']);
+  await notifyManualChange(
+    '📅 Schedule created',
+    `Date: *${body.schedule_date}*\nTitle: ${body.title}${body.schedule_time ? `\nTime: ${body.schedule_time}` : ''}`,
+    userEmail ?? body.created_by ?? null,
+  );
+  return reply.send(rows[0]);
+});
+
+const updateScheduleSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  description: z.string().max(2000).optional(),
+  schedule_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  schedule_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  is_all_day: z.boolean().optional(),
+  color: z.string().optional(),
+  category: z.string().optional(),
+  reminder_at: z.string().datetime().optional().nullable(),
+  status: z.enum(['active', 'cancelled', 'completed']).optional(),
+  action_token: z.string(),
+});
+
+/**
+ * PATCH /calendar/schedules/:id — Update a schedule
+ */
+app.patch('/calendar/schedules/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = updateScheduleSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  const sets: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (body.title !== undefined) { sets.push(`title = $${idx++}`); values.push(body.title); }
+  if (body.description !== undefined) { sets.push(`description = $${idx++}`); values.push(body.description); }
+  if (body.schedule_date !== undefined) { sets.push(`schedule_date = $${idx++}::date`); values.push(body.schedule_date); }
+  if (body.schedule_time !== undefined) { sets.push(`schedule_time = $${idx++}::time`); values.push(body.schedule_time); }
+  if (body.end_time !== undefined) { sets.push(`end_time = $${idx++}::time`); values.push(body.end_time); }
+  if (body.is_all_day !== undefined) { sets.push(`is_all_day = $${idx++}`); values.push(body.is_all_day); }
+  if (body.color !== undefined) { sets.push(`color = $${idx++}`); values.push(body.color); }
+  if (body.category !== undefined) { sets.push(`category = $${idx++}`); values.push(body.category); }
+  if (body.reminder_at !== undefined) { sets.push(`reminder_at = $${idx++}`); values.push(body.reminder_at); }
+  if (body.status !== undefined) { sets.push(`status = $${idx++}`); values.push(body.status); }
+  sets.push(`updated_at = NOW()`);
+
+  if (sets.length === 1) return reply.code(400).send({ error: 'No fields to update' });
+
+  values.push(params.id);
+  const rows = await query(
+    `UPDATE calendar_schedules SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Schedule not found' });
+  await invalidateCache(['calendar:*']);
+  await notifyManualChange(
+    '✏️ Schedule updated',
+    `Schedule ID: *${params.id.slice(0, 8)}...*${body.title ? `\nTitle: ${body.title}` : ''}`,
+    userEmail,
+  );
+  return reply.send(rows[0]);
+});
+
+/**
+ * DELETE /calendar/schedules/:id — Soft-delete a schedule (set status to cancelled)
+ */
+app.delete('/calendar/schedules/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = (request.body ?? {}) as any;
+
+  if (!body.action_token) {
+    return reply.status(400).send({ error: 'action_token is required' });
+  }
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  const rows = await query(
+    `UPDATE calendar_schedules SET status = 'cancelled', updated_at = NOW() WHERE id = $1 RETURNING id, title`,
+    [params.id]
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Schedule not found' });
+  await invalidateCache(['calendar:*']);
+  await notifyManualChange(
+    '🗑️ Schedule cancelled',
+    `Schedule ID: *${params.id.slice(0, 8)}...*\nTitle: ${rows[0].title ?? 'N/A'}`,
     userEmail,
   );
   return reply.send({ ok: true });

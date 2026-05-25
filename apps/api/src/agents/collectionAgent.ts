@@ -36,6 +36,8 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
   for (const order of depositOrders) {
     // Only process orders that haven't paid deposit yet
     if (order.deposit_paid) continue;
+    // Stock replenishment orders never need a deposit — skip entirely
+    if ((order as any).order_type === 'stock_replenishment') continue;
 
     const result = await checkDepositCollection(order);
     if (result.reminder_needed) {

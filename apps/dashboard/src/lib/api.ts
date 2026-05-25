@@ -169,6 +169,7 @@ export async function createOrder(data: {
   client_name?: string;
   sales_agent?: string;
   total_amount?: number;
+  items?: Array<{ name: string; quantity: number }>;
   action_token?: string;
 }): Promise<Order> {
   return fetchJson<Order>('/orders', {
