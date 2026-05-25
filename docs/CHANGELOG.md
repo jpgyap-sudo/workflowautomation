@@ -9,6 +9,8 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `897bc02` | Claude Sonnet 4.6 | fix: 8 E2E balance flow gaps — optional proof photo in bot paybalance, paybalance:skip action, preserve image on vision fallback, fix verify:balance + verify:deposit regex (strip 8-char orderId prefix), balance_verification stale check now includes current_stage | Pending |
+| `d94c009` | Claude Sonnet 4.6 | feat: support multiple deposit slips in New Order modal — dynamic slip list with per-slip file upload, AI extraction, amount, and date; loops recordDepositWithFile for each valid entry on submit | ✅ VPS `420cca9` |
 | `ade97b0` | Codex | fix: E2E build gaps for order file/deposit flow and Telegram bug state union | Pending deploy |
 | `b97193c` | Codex | feat: optional balance proof upload with AI extraction in Balance Due payment flow | Pending deploy |
 | `b97193c` | Roo (Code) | feat: add Tab Access control in Settings → User Management (Lock button + 21-tab toggle modal) + calendar tab action buttons (13 stage-advance transitions, create reminder, notify Telegram) + POST /telegram/notify API endpoint | ✅ VPS `b97193c` |
@@ -21,6 +23,8 @@
 | `786087a` | Roo (Code) | fix: resolve 8 E2E gaps in schedule group chat feature (wrong API endpoint for schedule:reminder, fake action_token in PATCH, OpenRouter fallback for schedule-parser, lost extractedText in vision flows, schedule management UI on dashboard, docker-compose env vars) | ✅ VPS `786087a` |
 | `957807c` | Roo (Code) | feat: add schedule dots to calendar grid cells (small squares with schedule color, between note dots and event dots) | ✅ VPS `957807c` |
 | `420cca9` | Roo (Code) | fix: rename GET /calendar/schedules/:date → /calendar/schedules/by-date/:date to resolve Fastify duplicate-route crash | ✅ VPS `420cca9` |
+| `1714399` | Roo (Code) | fix: delivery tab Record Payment — remove redundant recordStageUpdate() call that reused consumed action_token (payBalance already advances stage) | ✅ VPS `1714399` |
+| `a9c538a` | Roo (Code) | fix: delivery schedule OTP error — PATCH /orders/:id now records stage update internally when delivery_date is set, removing double-token consumption | ✅ VPS `a9c538a` |
 
 ## 2026-05-24
 
