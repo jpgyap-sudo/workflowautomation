@@ -18,6 +18,9 @@
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
 | `2a15dcf` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | ? VPS `2a15dcf` |
 | `4dbf72a` | Roo (Code) | feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings (deposit_pending, deposit_verification, purchasing_pending) | ✅ VPS `4dbf72a` |
+| `786087a` | Roo (Code) | fix: resolve 8 E2E gaps in schedule group chat feature (wrong API endpoint for schedule:reminder, fake action_token in PATCH, OpenRouter fallback for schedule-parser, lost extractedText in vision flows, schedule management UI on dashboard, docker-compose env vars) | ✅ VPS `786087a` |
+| `957807c` | Roo (Code) | feat: add schedule dots to calendar grid cells (small squares with schedule color, between note dots and event dots) | ✅ VPS `957807c` |
+| `420cca9` | Roo (Code) | fix: rename GET /calendar/schedules/:date → /calendar/schedules/by-date/:date to resolve Fastify duplicate-route crash | ✅ VPS `420cca9` |
 
 ## 2026-05-24
 
