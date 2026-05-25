@@ -26,7 +26,7 @@ When you **finish**:
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
 | 2026-05-25 08:12 | Codex | Feat: optional balance proof/deposit slip upload with AI extraction in Balance Due payment flow | Done |
-| 2026-05-25 08:10 | Roo (Code) | Feat: add Tab Access control in Settings → User Management + calendar tab action buttons (stage advance, create reminder, notify Telegram) | 🔴 Active |
+| 2026-05-25 08:10 | Roo (Code) | Feat: add Tab Access control in Settings → User Management + calendar tab action buttons (stage advance, create reminder, notify Telegram) | ✅ Done |
 | 2026-05-25 07:51 | Codex | Fix: E2E inventory verification API returned no verified_qty on permanent item record; validated builds and deployed routes | Done |
 | 2026-05-25 07:51 | Roo (Code) | Feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings | ✅ Done |
 | 2026-05-25 07:39 | Codex | Fix: inventory verification permanent link Telegram completion details and item update notification | Done |

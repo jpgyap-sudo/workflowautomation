@@ -10,7 +10,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `b97193c` | Codex | feat: optional balance proof upload with AI extraction in Balance Due payment flow | Pending deploy |
-| `b97193c` | Roo (Code) | feat: add Tab Access control in Settings → User Management (Lock button + 21-tab toggle modal) + calendar tab action buttons (13 stage-advance transitions, create reminder, notify Telegram) + POST /telegram/notify API endpoint | Pending deploy |
+| `b97193c` | Roo (Code) | feat: add Tab Access control in Settings → User Management (Lock button + 21-tab toggle modal) + calendar tab action buttons (13 stage-advance transitions, create reminder, notify Telegram) + POST /telegram/notify API endpoint | ✅ VPS `b97193c` |
 | `647441a`–`111511c` | Claude Sonnet 4.6 | feat: stock replenishment order type — new `order_type` DB column, `POST /orders/stock-replenishment` endpoint (AI extraction from CSV/PDF/image), dashboard modal on Production page, `inventory_arrived` → `completed` path for replenishment orders | ✅ VPS `a865dae` |
 | `a7fd60c` | Codex | fix: close E2E workflow wiring gaps, including inventory verified_qty API exposure | Pending deploy |
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
