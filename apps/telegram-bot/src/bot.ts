@@ -659,7 +659,7 @@ type UserStep =
   | { action: 'awaiting_schedule_time'; scheduleText: string; scheduleDate: string }
   | { action: 'awaiting_schedule_confirm'; scheduleText: string; scheduleDate: string; scheduleTime?: string }
   | { action: 'awaiting_schedule_vision_choice'; imageBase64: string; mimeType: string; fileName: string }
-  | { action: 'awaiting_schedule_vision_extract'; imageBase64: string; mimeType: string; fileName: string }
+  | { action: 'awaiting_schedule_vision_extract'; imageBase64: string; mimeType: string; fileName: string; extractedText?: string }
   | { action: 'awaiting_schedule_vision_notes'; imageBase64: string; mimeType: string; fileName: string; extractedText: string }
   | { action: 'awaiting_schedule_reminder'; scheduleId: string; scheduleTitle: string; scheduleDate: string };
 
@@ -3417,7 +3417,7 @@ I'll save this as a schedule. What date should this be on?
       try {
         await patchJson(`/calendar/schedules/${scheduleId}`, {
           reminder_at: reminderAt,
-          action_token: 'telegram-bot', // Simplified — bot has direct DB access via API
+          created_by_chat_id: chatId, // Bot bypass — no action_token needed
         });
 
         resetStep(chatId);
@@ -8043,6 +8043,7 @@ bot.action('schedule_vision:extract', async (ctx) => {
         imageBase64,
         mimeType,
         fileName,
+        extractedText, // Store extracted text so downstream handlers can use it
       });
 
       await ctx.reply(
@@ -8064,6 +8065,7 @@ bot.action('schedule_vision:extract', async (ctx) => {
         imageBase64,
         mimeType,
         fileName,
+        extractedText: '', // Store empty so downstream handlers know extraction failed
       });
 
       await ctx.reply(
@@ -8079,6 +8081,7 @@ bot.action('schedule_vision:extract', async (ctx) => {
       imageBase64,
       mimeType,
       fileName,
+      extractedText: '', // Store empty so downstream handlers know extraction failed
     });
     await ctx.reply(
       `⚠️ AI Vision analysis failed: ${err.message}\n\n` +
@@ -8195,19 +8198,21 @@ bot.action('schedule_vision:create_schedule', async (ctx) => {
     });
   }
 
-  const { imageBase64, mimeType, fileName } = session.step;
+  const { imageBase64, mimeType, fileName, extractedText } = session.step;
 
-  // Reset to idle and trigger the schedule text handler by simulating a text message
-  // Instead, just ask the user to type the schedule details
+  // Pass the extracted text from vision as the schedule text
+  const scheduleText = extractedText || 'Schedule from image';
+
   setStep(chatId, {
     action: 'awaiting_schedule_date',
-    scheduleText: 'Schedule from image',
+    scheduleText,
   });
 
   await ctx.editMessageText(
     `📅 *Create Calendar Schedule*\n\n` +
-    `Please type the schedule details (e.g., \`Meeting with client on Monday at 2pm\`)\n\n` +
-    `Or type the *date* for this schedule (e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`)`,
+    `Extracted text: ${escapeMarkdown(scheduleText.substring(0, 200))}\n\n` +
+    `Please type the *date* for this schedule (e.g., \`today\`, \`tomorrow\`, \`2026-06-15\`, \`Monday\`)\n` +
+    `Or type the full schedule details to re-parse.`,
     { parse_mode: 'Markdown', ...cancelButton() }
   );
 });
@@ -8228,17 +8233,20 @@ bot.action('schedule_vision:create_note', async (ctx) => {
     });
   }
 
-  // Ask user for a title and date for the note
+  // Pass the extracted text from vision as the note content
+  const extractedText = session.step.extractedText || '';
+
   setStep(chatId, {
     action: 'awaiting_schedule_vision_notes',
     imageBase64: session.step.imageBase64,
     mimeType: session.step.mimeType,
     fileName: session.step.fileName,
-    extractedText: '',
+    extractedText,
   });
 
   await ctx.editMessageText(
     `📝 *Add Calendar Note*\n\n` +
+    `Extracted text: ${escapeMarkdown(extractedText.substring(0, 200))}\n\n` +
     `Please type the *title* for this note, or type \`cancel\` to skip.`,
     { parse_mode: 'Markdown', ...cancelButton() }
   );

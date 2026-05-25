@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { mutate } from 'swr';
 import {
@@ -32,9 +32,13 @@ import { useCalendarEvents, useCalendarNotes } from '@/lib/useApi';
 import {
   CalendarEvent,
   CalendarNote,
+  CalendarSchedule,
   createCalendarNote,
   updateCalendarNote,
   deleteCalendarNote,
+  createCalendarSchedule,
+  updateCalendarSchedule,
+  deleteCalendarSchedule,
   recordStageUpdate,
   sendTelegramNotification,
 } from '@/lib/api';
@@ -116,8 +120,22 @@ export default function CalendarPage() {
   const [noteColor, setNoteColor] = useState('#2490ef');
   const [savingNote, setSavingNote] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete' | 'stageAdvance' | 'telegramNotify';
+    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete' | 'stageAdvance' | 'telegramNotify' | 'scheduleSave' | 'scheduleDelete';
   }>({ open: false, title: '', description: '', pendingAction: 'save' });
+
+  // Schedule state
+  const [schedules, setSchedules] = useState<CalendarSchedule[]>([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<CalendarSchedule | null>(null);
+  const [scheduleTitle, setScheduleTitle] = useState('');
+  const [scheduleDescription, setScheduleDescription] = useState('');
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleEndTime, setScheduleEndTime] = useState('');
+  const [scheduleIsAllDay, setScheduleIsAllDay] = useState(false);
+  const [scheduleColor, setScheduleColor] = useState('#f59e0b');
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   // Stage advance action state
   const [pendingStageAdvance, setPendingStageAdvance] = useState<{
@@ -377,12 +395,137 @@ export default function CalendarPage() {
     }
   }
 
+  // ── Schedule CRUD ──────────────────────────────────────────────────
+  useEffect(() => {
+    async function loadSchedules() {
+      setSchedulesLoading(true);
+      try {
+        const { getCalendarSchedules } = await import('@/lib/api');
+        const data = await getCalendarSchedules();
+        setSchedules(data);
+      } catch (e) {
+        console.error('Failed to load schedules', e);
+      } finally {
+        setSchedulesLoading(false);
+      }
+    }
+    loadSchedules();
+  }, []);
+
+  const schedulesByDay = useMemo(() => {
+    const map = new Map<string, CalendarSchedule[]>();
+    for (const s of schedules) {
+      const key = s.schedule_date;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    }
+    return map;
+  }, [schedules]);
+
+  const selectedSchedules = selectedDateKey ? schedulesByDay.get(selectedDateKey) ?? [] : [];
+
+  function openNewSchedule() {
+    if (!selectedDate) return;
+    setEditingSchedule(null);
+    setScheduleTitle('');
+    setScheduleDescription('');
+    setScheduleDate(formatDateKey(selectedDate));
+    setScheduleTime('');
+    setScheduleEndTime('');
+    setScheduleIsAllDay(false);
+    setScheduleColor('#f59e0b');
+    setShowScheduleEditor(true);
+  }
+
+  function openEditSchedule(schedule: CalendarSchedule) {
+    setEditingSchedule(schedule);
+    setScheduleTitle(schedule.title);
+    setScheduleDescription(schedule.description);
+    setScheduleDate(schedule.schedule_date);
+    setScheduleTime(schedule.schedule_time?.slice(0, 5) ?? '');
+    setScheduleEndTime(schedule.end_time?.slice(0, 5) ?? '');
+    setScheduleIsAllDay(schedule.is_all_day);
+    setScheduleColor(schedule.color);
+    setShowScheduleEditor(true);
+  }
+
+  function handleSaveSchedule() {
+    if (!scheduleTitle.trim() || !scheduleDate) return;
+    setOtpModal({
+      open: true,
+      title: editingSchedule ? 'Edit Schedule' : 'Save Schedule',
+      description: `You are about to ${editingSchedule ? 'edit' : 'create'} the schedule "${scheduleTitle.trim()}" on ${scheduleDate}. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'scheduleSave',
+    });
+  }
+
+  async function handleScheduleSaveVerified(actionToken: string) {
+    if (!scheduleTitle.trim() || !scheduleDate) return;
+    setSavingSchedule(true);
+    try {
+      const data: any = {
+        title: scheduleTitle.trim(),
+        description: scheduleDescription,
+        schedule_date: scheduleDate,
+        is_all_day: scheduleIsAllDay,
+        color: scheduleColor,
+        action_token: actionToken,
+      };
+      if (scheduleTime) data.schedule_time = scheduleTime;
+      if (scheduleEndTime) data.end_time = scheduleEndTime;
+
+      if (editingSchedule) {
+        await updateCalendarSchedule(editingSchedule.id, data);
+      } else {
+        await createCalendarSchedule(data);
+      }
+      // Reload schedules
+      const { getCalendarSchedules } = await import('@/lib/api');
+      const updated = await getCalendarSchedules();
+      setSchedules(updated);
+      await mutate('/calendar/events');
+      setShowScheduleEditor(false);
+    } catch (e) {
+      console.error('Failed to save schedule', e);
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
+  function handleDeleteSchedule(scheduleId: string) {
+    const schedule = schedules.find((s) => s.id === scheduleId);
+    setOtpModal({
+      open: true,
+      title: 'Delete Schedule',
+      description: `You are about to delete the schedule "${schedule?.title ?? scheduleId}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'scheduleDelete',
+    });
+    (window as any).__pendingScheduleDelete = scheduleId;
+  }
+
+  async function handleScheduleDeleteVerified(actionToken: string) {
+    const scheduleId = (window as any).__pendingScheduleDelete;
+    if (!scheduleId) return;
+    try {
+      await deleteCalendarSchedule(scheduleId, actionToken);
+      const { getCalendarSchedules } = await import('@/lib/api');
+      const updated = await getCalendarSchedules();
+      setSchedules(updated);
+      await mutate('/calendar/events');
+      (window as any).__pendingScheduleDelete = null;
+    } catch (e) {
+      console.error('Failed to delete schedule', e);
+    }
+  }
+
   // ── Updated OTP handler ────────────────────────────────────────────
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'save') handleSaveVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
     else if (otpModal.pendingAction === 'stageAdvance') executeStageAdvance(actionToken);
     else if (otpModal.pendingAction === 'telegramNotify') executeTelegramNotify(actionToken);
+    else if (otpModal.pendingAction === 'scheduleSave') handleScheduleSaveVerified(actionToken);
+    else if (otpModal.pendingAction === 'scheduleDelete') handleScheduleDeleteVerified(actionToken);
   }
 
   return (
@@ -540,6 +683,13 @@ export default function CalendarPage() {
                       <Send className="h-4 w-4" />
                     </button>
                     <button
+                      onClick={openNewSchedule}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-amber-500"
+                      title="Add schedule"
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                    </button>
+                    <button
                       onClick={openNewNote}
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
                       title="Add note"
@@ -607,6 +757,63 @@ export default function CalendarPage() {
                       <p className="text-[10px] text-gray-400 mt-1.5">
                         <StickyNote className="h-3 w-3 inline mr-0.5" />
                         Manual note
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Schedules section */}
+              {selectedSchedules.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-1">
+                    Schedules ({selectedSchedules.length})
+                  </p>
+                  {selectedSchedules.map((schedule) => (
+                    <div
+                      key={schedule.id}
+                      className="group rounded-lg border border-gray-100 p-3 hover:border-gray-200"
+                      style={{ borderLeftColor: schedule.color, borderLeftWidth: 3 }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-800 truncate">{schedule.title}</p>
+                          {schedule.description && (
+                            <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap line-clamp-3">{schedule.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1.5">
+                            {schedule.schedule_time && (
+                              <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                <Clock className="h-3 w-3" />
+                                {schedule.schedule_time?.slice(0, 5)}
+                                {schedule.end_time ? ` - ${schedule.end_time?.slice(0, 5)}` : ''}
+                              </span>
+                            )}
+                            {schedule.is_all_day && (
+                              <span className="text-[10px] text-gray-400">All day</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openEditSchedule(schedule)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                            title="Edit schedule"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSchedule(schedule.id)}
+                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                            title="Delete schedule"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1.5">
+                        <CalendarDays className="h-3 w-3 inline mr-0.5" />
+                        Schedule
                       </p>
                     </div>
                   ))}
@@ -827,6 +1034,158 @@ export default function CalendarPage() {
                   className="rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingNote ? 'Saving…' : editingNote ? 'Update' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Editor Modal */}
+      {showScheduleEditor && selectedDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h3 className="text-sm font-semibold text-gray-800">
+                {editingSchedule ? 'Edit Schedule' : 'Add Schedule'}
+              </h3>
+              <button
+                onClick={() => setShowScheduleEditor(false)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label htmlFor="schedule-title" className="block text-xs font-medium text-gray-600 mb-1">
+                  Title *
+                </label>
+                <input
+                  id="schedule-title"
+                  type="text"
+                  value={scheduleTitle}
+                  onChange={(e) => setScheduleTitle(e.target.value)}
+                  placeholder="e.g., Team meeting"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  maxLength={200}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="schedule-desc" className="block text-xs font-medium text-gray-600 mb-1">
+                  Description (optional)
+                </label>
+                <textarea
+                  id="schedule-desc"
+                  value={scheduleDescription}
+                  onChange={(e) => setScheduleDescription(e.target.value)}
+                  placeholder="Add details about this schedule..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  rows={2}
+                  maxLength={2000}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="schedule-date" className="block text-xs font-medium text-gray-600 mb-1">
+                    Date *
+                  </label>
+                  <input
+                    id="schedule-date"
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="schedule-time" className="block text-xs font-medium text-gray-600 mb-1">
+                    Start time
+                  </label>
+                  <input
+                    id="schedule-time"
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    disabled={scheduleIsAllDay}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="schedule-endtime" className="block text-xs font-medium text-gray-600 mb-1">
+                    End time
+                  </label>
+                  <input
+                    id="schedule-endtime"
+                    type="time"
+                    value={scheduleEndTime}
+                    onChange={(e) => setScheduleEndTime(e.target.value)}
+                    disabled={scheduleIsAllDay}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={scheduleIsAllDay}
+                      onChange={(e) => setScheduleIsAllDay(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                    />
+                    <span className="text-xs font-medium text-gray-600">All day</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Color</label>
+                <div className="flex flex-wrap gap-2">
+                  {NOTE_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setScheduleColor(c)}
+                      className={`h-7 w-7 rounded-lg transition-transform ${
+                        scheduleColor === c ? 'scale-110 ring-2 ring-offset-1 ring-gray-400' : 'hover:scale-105'
+                      }`}
+                      style={{ backgroundColor: c }}
+                      title={c}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-gray-200 px-5 py-3">
+              {editingSchedule ? (
+                <button
+                  onClick={() => handleDeleteSchedule(editingSchedule.id)}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowScheduleEditor(false)}
+                  className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveSchedule}
+                  disabled={!scheduleTitle.trim() || !scheduleDate || savingSchedule}
+                  className="rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingSchedule ? 'Saving…' : editingSchedule ? 'Update' : 'Save'}
                 </button>
               </div>
             </div>

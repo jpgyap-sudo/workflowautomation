@@ -6000,9 +6000,7 @@ app.post('/agents/run/schedule-parser', async (request, reply) => {
     return reply.code(400).send({ parsed: false, reply: '❌ No text provided.' });
   }
 
-  try {
-    // Use Gemini to parse the schedule from natural language
-    const prompt = `You are a smart schedule parser. Extract schedule information from the following text.
+  const prompt = `You are a smart schedule parser. Extract schedule information from the following text.
 
 Rules:
 - Extract the title/event name
@@ -6026,52 +6024,134 @@ Respond ONLY with a valid JSON object (no markdown, no code fences):
 
 Text to parse: "${text.substring(0, 1000)}"`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
-        }),
-        signal: AbortSignal.timeout(10_000),
+  /**
+   * Try calling an AI provider to parse the schedule text.
+   * Falls back through Gemini → OpenRouter → manual.
+   */
+  async function callAiParser(): Promise<{ parsed: boolean; title?: string; date?: string; time?: string; description?: string; reply: string } | null> {
+    const errors: string[] = [];
+
+    // Try Gemini first
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
+            }),
+            signal: AbortSignal.timeout(10_000),
+          }
+        );
+
+        if (response.ok) {
+          const geminiData = await response.json() as any;
+          const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.parsed && parsed.title && parsed.date) {
+              return {
+                parsed: true,
+                title: parsed.title,
+                date: parsed.date,
+                time: parsed.time || undefined,
+                description: parsed.description || undefined,
+                reply: parsed.reply || `📅 Detected: *${parsed.title}* on ${parsed.date}${parsed.time ? ` at ${parsed.time}` : ''}`,
+              };
+            }
+            // AI couldn't fully parse — return its reply
+            return {
+              parsed: false,
+              reply: parsed.reply || '❌ Could not understand that. Please specify a date (e.g., "Meeting on Monday" or "Event tomorrow at 2pm").',
+            };
+          }
+          console.error('[schedule-parser] No JSON found in Gemini response:', rawText);
+          errors.push('Gemini returned non-JSON response');
+        } else {
+          const errText = await response.text().catch(() => 'unknown error');
+          console.error('[schedule-parser] Gemini API error:', response.status, errText);
+          errors.push(`Gemini error ${response.status}`);
+        }
+      } catch (err: any) {
+        console.warn('[schedule-parser] Gemini failed; trying OpenRouter fallback:', err.message);
+        errors.push(`Gemini: ${err.message}`);
       }
-    );
-
-    if (!response.ok) {
-      console.error('[schedule-parser] Gemini API error:', response.status, await response.text());
-      return { parsed: false, reply: '❌ AI parsing unavailable. Please specify the date manually.' };
+    } else {
+      errors.push('GEMINI_API_KEY not configured');
     }
 
-    const geminiData = await response.json() as any;
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    // Try OpenRouter as fallback
+    const openRouterKey = process.env.OPENROUTER_API_KEY;
+    if (openRouterKey) {
+      try {
+        const response = await fetch(
+          process.env.OPENROUTER_API_BASE || 'https://openrouter.ai/api/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openRouterKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': process.env.DASHBOARD_BASE_URL || 'https://track.abcx124.xyz',
+              'X-Title': 'Quotation Automation System',
+            },
+            body: JSON.stringify({
+              model: process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.1,
+              max_tokens: 300,
+            }),
+            signal: AbortSignal.timeout(10_000),
+          }
+        );
 
-    // Extract JSON from the response
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('[schedule-parser] No JSON found in response:', rawText);
-      return { parsed: false, reply: '❌ Could not parse your message. Please specify the date manually.' };
+        if (response.ok) {
+          const data = await response.json() as any;
+          const rawText = data?.choices?.[0]?.message?.content ?? '';
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.parsed && parsed.title && parsed.date) {
+              return {
+                parsed: true,
+                title: parsed.title,
+                date: parsed.date,
+                time: parsed.time || undefined,
+                description: parsed.description || undefined,
+                reply: parsed.reply || `📅 Detected: *${parsed.title}* on ${parsed.date}${parsed.time ? ` at ${parsed.time}` : ''}`,
+              };
+            }
+            return {
+              parsed: false,
+              reply: parsed.reply || '❌ Could not understand that. Please specify a date.',
+            };
+          }
+          errors.push('OpenRouter returned non-JSON response');
+        } else {
+          const errText = await response.text().catch(() => 'unknown error');
+          console.error('[schedule-parser] OpenRouter API error:', response.status, errText);
+          errors.push(`OpenRouter error ${response.status}`);
+        }
+      } catch (err: any) {
+        console.warn('[schedule-parser] OpenRouter also failed:', err.message);
+        errors.push(`OpenRouter: ${err.message}`);
+      }
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    console.error('[schedule-parser] All AI providers failed:', errors.join(' | '));
+    return null;
+  }
 
-    if (parsed.parsed && parsed.title && parsed.date) {
-      return {
-        parsed: true,
-        title: parsed.title,
-        date: parsed.date,
-        time: parsed.time || undefined,
-        description: parsed.description || undefined,
-        reply: parsed.reply || `📅 Detected: *${parsed.title}* on ${parsed.date}${parsed.time ? ` at ${parsed.time}` : ''}`,
-      };
+  try {
+    const result = await callAiParser();
+    if (result) {
+      return result;
     }
-
-    // AI couldn't fully parse — return its reply
-    return {
-      parsed: false,
-      reply: parsed.reply || '❌ Could not understand that. Please specify a date (e.g., "Meeting on Monday" or "Event tomorrow at 2pm").',
-    };
+    return { parsed: false, reply: '❌ AI parsing unavailable. Please specify the date manually.' };
   } catch (err: any) {
     console.error('[schedule-parser] Error:', err);
     return { parsed: false, reply: '❌ AI parsing error. Please specify the date manually.' };
@@ -6808,6 +6888,27 @@ app.get('/calendar/schedules', async () => {
 });
 
 /**
+ * GET /calendar/schedules/:id — Get a single schedule by UUID
+ * IMPORTANT: This route MUST be registered before the :date route
+ * to avoid Fastify matching a UUID as a date string.
+ */
+app.get('/calendar/schedules/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const rows = await query(
+    `SELECT id, title, description, schedule_date, schedule_time, end_time,
+            is_all_day, color, category, created_by, created_by_chat_id,
+            telegram_message_id, reminder_at, reminder_sent, status,
+            created_at, updated_at
+     FROM calendar_schedules
+     WHERE id = $1 AND status = 'active'
+     LIMIT 1`,
+    [params.id]
+  );
+  if (!rows[0]) return reply.code(404).send({ error: 'Schedule not found' });
+  return rows[0];
+});
+
+/**
  * GET /calendar/schedules/:date — Get schedules for a specific date
  */
 app.get('/calendar/schedules/:date', async (request, reply) => {
@@ -6905,28 +7006,39 @@ const updateScheduleSchema = z.object({
   category: z.string().optional(),
   reminder_at: z.string().datetime().optional().nullable(),
   status: z.enum(['active', 'cancelled', 'completed']).optional(),
-  action_token: z.string(),
+  action_token: z.string().optional(),
+  // Telegram bot fields (no token required when coming from bot)
+  created_by_chat_id: z.string().optional(),
 });
 
 /**
  * PATCH /calendar/schedules/:id — Update a schedule
+ * Supports both dashboard (with action_token) and Telegram bot (with created_by_chat_id)
  */
 app.patch('/calendar/schedules/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = updateScheduleSchema.parse(request.body);
 
-  // Verify action token
-  if (!cacheClient?.isOpen) {
-    return reply.status(503).send({ error: 'Action verification unavailable' });
+  let userEmail: string | null = null;
+
+  // If action_token provided, verify it (dashboard flow)
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  } else if (!body.created_by_chat_id) {
+    // Neither action_token nor created_by_chat_id provided — reject
+    return reply.status(401).send({ error: 'action_token or created_by_chat_id is required' });
   }
-  const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
-  if (!tokenData) {
-    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
-  }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+  // If created_by_chat_id is present (Telegram bot flow), skip token verification
 
   const sets: string[] = [];
   const values: any[] = [];
