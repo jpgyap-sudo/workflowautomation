@@ -26,6 +26,7 @@
 | `59cc9bd` | Roo (Code) | fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType from 'deposit' to 'balance_proof' | ✅ VPS `59cc9bd` |
 | `21dee5d` | Roo (Code) | fix: update sales.homeu password to Homeu@888 (subUsers 777=Mariella, 888=Cathlyn already configured) | ✅ VPS `21dee5d` |
 | `30abe22` | Roo (Code) | feat: add sub-user management UI in Settings → User Management — modal with add/edit/delete entry codes (code + name) per account, persists via updateAccount() | ✅ VPS `30abe22` |
+| `35c8cd1` | Roo (Code) | fix: bump SW cache from v3 to v4 — force fresh dashboard JS load for updated password | ✅ VPS `35c8cd1` |
 
 ## 2026-05-24
 
