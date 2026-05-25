@@ -151,11 +151,13 @@ export async function processDueReminders(): Promise<number> {
 
   let sent = 0;
 
-  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean; deposit_verified: boolean; balance_verified: boolean; production_started: boolean })[]) {
+  for (const reminder of dueReminders as (Reminder & { current_stage: string; deposit_paid: boolean; balance_paid: boolean; deposit_verified: boolean; balance_verified: boolean; production_started: boolean; order_type?: string })[]) {
     // ── Auto-complete stale reminders ──────────────────────────────────
     // Skip + complete reminders that are no longer relevant based on order state
     let stale = false;
     if (reminder.stage === 'deposit_pending' && reminder.deposit_paid) stale = true;
+    // Stock replenishment orders never need a deposit — any deposit reminder on them is stale
+    if (reminder.stage === 'deposit_pending' && reminder.order_type === 'stock_replenishment') stale = true;
     if (reminder.stage === 'deposit_verification' && reminder.deposit_paid && reminder.deposit_verified) stale = true;
     if ((reminder.stage === 'balance_due' || reminder.stage === 'delivered' || reminder.stage === 'countered') && reminder.balance_paid) stale = true;
     if (reminder.stage === 'balance_verification' && reminder.balance_paid && reminder.balance_verified) stale = true;

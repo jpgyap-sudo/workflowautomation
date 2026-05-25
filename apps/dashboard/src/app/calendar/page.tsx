@@ -26,6 +26,7 @@ import {
   Send,
   MessageSquare,
   ArrowUpCircle,
+  CalendarDays,
 } from 'lucide-react';
 import { useCalendarEvents, useCalendarNotes } from '@/lib/useApi';
 import {

@@ -56,3 +56,10 @@
 - **Symptom:** `/orders/:id/items` returned item arrival timestamps but omitted `verified_qty`, so permanent inventory verification links could render verified records as `0/qty`.
 - **Fix:** Include `COALESCE(verified_qty, 0) AS verified_qty` in the item API response.
 - **Status:** Fixed; pending deploy verification.
+
+## 2026-05-25 09:04 - E2E build gaps in dashboard/telegrambot after payment and schedule updates
+
+- **Found by:** Codex E2E build test
+- **Symptoms:** Dashboard build failed because `orders/page.tsx` used `recordDepositWithFile` without importing it and createOrder typing omitted `items`; Telegram bot build failed because `awaiting_bug_order_pick` was used but missing from the `UserStep` union.
+- **Fix:** Added the missing dashboard import, typed `createOrder.items`, and added `awaiting_bug_order_pick` to the Telegram bot state union.
+- **Status:** Fixed locally; builds pass.

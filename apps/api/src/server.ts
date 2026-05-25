@@ -5985,6 +5985,99 @@ app.post('/agents/escalation', async (request, reply) => {
   return result;
 });
 
+/**
+ * POST /agents/run/schedule-parser — Parse natural language into a structured schedule entry
+ * Used by the Telegram bot's schedule group chat to intelligently parse user messages.
+ * Body: { text, username }
+ * Returns: { parsed: boolean, title?, date?, time?, description?, reply? }
+ */
+app.post('/agents/run/schedule-parser', async (request, reply) => {
+  const body = request.body as any;
+  const text: string = body?.text ?? '';
+  const username: string | null = body?.username ?? null;
+
+  if (!text) {
+    return reply.code(400).send({ parsed: false, reply: '❌ No text provided.' });
+  }
+
+  try {
+    // Use Gemini to parse the schedule from natural language
+    const prompt = `You are a smart schedule parser. Extract schedule information from the following text.
+
+Rules:
+- Extract the title/event name
+- Extract the date (if mentioned). Return in YYYY-MM-DD format.
+- Extract the time (if mentioned). Return in HH:MM format (24-hour).
+- Extract any additional description/notes.
+- If the text mentions "today", use ${new Date().toISOString().slice(0, 10)}.
+- If the text mentions "tomorrow", use ${new Date(Date.now() + 86400000).toISOString().slice(0, 10)}.
+- If no date is found, DO NOT guess — return date as empty string.
+- If no time is found, return time as empty string.
+
+Respond ONLY with a valid JSON object (no markdown, no code fences):
+{
+  "parsed": true/false,
+  "title": "string or empty",
+  "date": "YYYY-MM-DD or empty",
+  "time": "HH:MM or empty",
+  "description": "string or empty",
+  "reply": "A friendly message to the user confirming what was detected, or asking for clarification if something is missing"
+}
+
+Text to parse: "${text.substring(0, 1000)}"`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[schedule-parser] Gemini API error:', response.status, await response.text());
+      return { parsed: false, reply: '❌ AI parsing unavailable. Please specify the date manually.' };
+    }
+
+    const geminiData = await response.json() as any;
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+    // Extract JSON from the response
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[schedule-parser] No JSON found in response:', rawText);
+      return { parsed: false, reply: '❌ Could not parse your message. Please specify the date manually.' };
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    if (parsed.parsed && parsed.title && parsed.date) {
+      return {
+        parsed: true,
+        title: parsed.title,
+        date: parsed.date,
+        time: parsed.time || undefined,
+        description: parsed.description || undefined,
+        reply: parsed.reply || `📅 Detected: *${parsed.title}* on ${parsed.date}${parsed.time ? ` at ${parsed.time}` : ''}`,
+      };
+    }
+
+    // AI couldn't fully parse — return its reply
+    return {
+      parsed: false,
+      reply: parsed.reply || '❌ Could not understand that. Please specify a date (e.g., "Meeting on Monday" or "Event tomorrow at 2pm").',
+    };
+  } catch (err: any) {
+    console.error('[schedule-parser] Error:', err);
+    return { parsed: false, reply: '❌ AI parsing error. Please specify the date manually.' };
+  }
+});
+
 // ── Dashboard Stats ─────────────────────────────────────────────────
 
 app.get('/dashboard/stats', async () => {
