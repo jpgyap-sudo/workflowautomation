@@ -595,7 +595,7 @@ type UserStep =
   | { action: 'awaiting_order_number_for_deposit' }
   | { action: 'awaiting_deposit_amount'; quotationNumber: string }
   | { action: 'awaiting_order_number_for_paybalance' }
-  | { action: 'awaiting_paybalance_amount'; quotationNumber: string }
+  | { action: 'awaiting_paybalance_amount'; quotationNumber: string; imageBase64?: string; mimeType?: string; fileName?: string }
   | { action: 'awaiting_delivery_date'; quotationNumber: string }
   | { action: 'awaiting_order_number_for_delivered' }
   | { action: 'awaiting_order_number_for_mark_delivered' }
@@ -1376,13 +1376,23 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
         const order: any = await res.json();
         const totalAmount = Number(order.total_amount ?? 0);
         const depositAmount = Number(order.deposit_amount ?? 0);
-        const balance = totalAmount - depositAmount;
+        // Fetch actual remaining balance for accurate display
+        let remainingBalance = Math.max(totalAmount - depositAmount, 0);
+        let balancePaidSoFar = 0;
+        try {
+          const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
+          if (paymentsRes.ok) {
+            const paymentsData = await paymentsRes.json();
+            remainingBalance = paymentsData.totals?.remaining_balance ?? remainingBalance;
+            balancePaidSoFar = paymentsData.totals?.balance ?? 0;
+          }
+        } catch { /* use computed fallback */ }
         let msg =
           `📋 *${order.quotation_number}*\n` +
           `Stage: ${order.current_stage}\nStatus: ${order.status}\nMath: ${order.math_status}\n` +
           `Total: ₱${totalAmount.toLocaleString()}\n` +
           `Downpayment: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
-          `Balance: ${order.balance_paid ? '✅ Paid' : `⏳ ₱${balance.toLocaleString()}`}`;
+          `Balance: ${order.balance_paid ? '✅ Paid' : (balancePaidSoFar > 0 ? `⏳ ₱${remainingBalance.toLocaleString()} remaining (paid ₱${balancePaidSoFar.toLocaleString()})` : `⏳ ₱${remainingBalance.toLocaleString()}`)}`;
         const client = order.client_name ? await lookupClient(order.client_name) : null;
         if (client || order.delivery_address) {
           msg += `\n\n🚚 *Delivery Info:*`;
@@ -1418,10 +1428,24 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
     }
 
     case 'paybalance': {
-      setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+      // Fetch order to get its DB id for the proof-photo step
+      let orderId = '';
+      try {
+        const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
+        if (res.ok) { const o: any = await res.json(); orderId = String(o.id ?? ''); }
+      } catch { /* non-fatal — orderId can be empty */ }
+      setStep(chatId, { action: 'awaiting_balance_proof_photo', orderId, quotationNumber });
       await ctx.editMessageText(
-        `💰 *Balance Payment for ${quotationNumber}*\n\nEnter the balance amount in PHP:\n\nExample: \`15000\``,
-        { parse_mode: 'Markdown', ...cancelButton() }
+        `💰 *Balance Payment for ${quotationNumber}*\n\n` +
+        `📸 Send a **photo of the payment slip** and the AI will extract the amount automatically.\n\n` +
+        `Or tap *Skip* to enter the amount manually.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('⏭ Skip — enter manually', `paybalance:skip:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
       );
       break;
     }
@@ -1432,16 +1456,26 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
         order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
         const totalAmount = Number(order.total_amount ?? 0);
         const depositAmount = Number(order.deposit_amount ?? 0);
-        const balance = totalAmount - depositAmount;
-        if (!order.balance_paid && balance > 0) {
-          resetStep(chatId);
-          await ctx.editMessageText(
-            `❌ *Balance not yet paid for ${quotationNumber}*\n\n` +
-            `Total: ₱${totalAmount.toLocaleString()}\nDeposit: ₱${depositAmount.toLocaleString()}\nBalance Due: ₱${balance.toLocaleString()}\n\n` +
-            `Please pay the balance first via *Pay Balance*.`,
-            { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+        // Fetch actual remaining balance from payments API
+        let remainingBalance = Math.max(totalAmount - depositAmount, 0);
+        try {
+          const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
+          if (paymentsRes.ok) {
+            const paymentsData = await paymentsRes.json();
+            remainingBalance = paymentsData.totals?.remaining_balance ?? remainingBalance;
+          }
+        } catch { /* use computed fallback */ }
+        if (remainingBalance > 0) {
+          // Allow scheduling but warn about remaining balance
+          await ctx.reply(
+            `⚠️ *Balance Not Fully Paid*\n\n` +
+            `Order: *${quotationNumber}*\n` +
+            `Total: ₱${totalAmount.toLocaleString()}\n` +
+            `Deposit: ₱${depositAmount.toLocaleString()}\n` +
+            `Remaining Balance: ₱${remainingBalance.toLocaleString()}\n\n` +
+            `You may still schedule delivery, but the client still owes ₱${remainingBalance.toLocaleString()}.`,
+            { parse_mode: 'Markdown', ...cancelButton() }
           );
-          return;
         }
       } catch {
         resetStep(chatId);
@@ -2014,7 +2048,17 @@ I'll save this as a schedule. What date should this be on?
         const order: any = await res.json();
         const totalAmount = Number(order.total_amount ?? 0);
         const depositAmount = Number(order.deposit_amount ?? 0);
-        const balance = totalAmount - depositAmount;
+        // Fetch actual remaining balance for accurate display
+        let remainingBalance = Math.max(totalAmount - depositAmount, 0);
+        let balancePaidSoFar = 0;
+        try {
+          const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
+          if (paymentsRes.ok) {
+            const paymentsData = await paymentsRes.json();
+            remainingBalance = paymentsData.totals?.remaining_balance ?? remainingBalance;
+            balancePaidSoFar = paymentsData.totals?.balance ?? 0;
+          }
+        } catch { /* use computed fallback */ }
         let msg =
           `📋 *${order.quotation_number}*\n` +
           `Stage: ${order.current_stage}\n` +
@@ -2022,7 +2066,7 @@ I'll save this as a schedule. What date should this be on?
           `Math: ${order.math_status}\n` +
           `Total: ₱${totalAmount.toLocaleString()}\n` +
           `Downpayment: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
-          `Balance: ${order.balance_paid ? '✅ Paid' : `⏳ ₱${balance.toLocaleString()}`}`;
+          `Balance: ${order.balance_paid ? '✅ Paid' : (balancePaidSoFar > 0 ? `⏳ ₱${remainingBalance.toLocaleString()} remaining (paid ₱${balancePaidSoFar.toLocaleString()})` : `⏳ ₱${remainingBalance.toLocaleString()}`)}`;
 
         // Auto-detect client delivery info
         const client = order.client_name ? await lookupClient(order.client_name) : null;
@@ -2208,6 +2252,7 @@ I'll save this as a schedule. What date should this be on?
     // ── Pay Balance ─────────────────────────────────────────────────
     case 'awaiting_order_number_for_paybalance': {
       const quotationNumber = text;
+      let orderId = '';
       try {
         const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(quotationNumber)}`);
         if (!res.ok) {
@@ -2217,6 +2262,8 @@ I'll save this as a schedule. What date should this be on?
           });
           return;
         }
+        const o: any = await res.json();
+        orderId = String(o.id ?? '');
       } catch {
         await ctx.reply(`❌ Error checking order *${quotationNumber}*.`, {
           parse_mode: 'Markdown',
@@ -2224,10 +2271,18 @@ I'll save this as a schedule. What date should this be on?
         });
         return;
       }
-      setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+      setStep(chatId, { action: 'awaiting_balance_proof_photo', orderId, quotationNumber });
       await ctx.reply(
-        `💰 *Balance Payment for ${quotationNumber}*\n\nEnter the balance amount in PHP:\n\nExample: \`15000\``,
-        { parse_mode: 'Markdown', ...cancelButton() }
+        `💰 *Balance Payment for ${quotationNumber}*\n\n` +
+        `📸 Send a **photo of the payment slip** and the AI will extract the amount automatically.\n\n` +
+        `Or tap *Skip* to enter the amount manually.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('⏭ Skip — enter manually', `paybalance:skip:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
       );
       break;
     }
@@ -2241,38 +2296,45 @@ I'll save this as a schedule. What date should this be on?
         });
         return;
       }
-      const { quotationNumber } = session.step;
+      const { quotationNumber, imageBase64: proofBase64, mimeType: proofMime, fileName: proofFileName } = session.step;
       try {
         const result: any = await postJson('/pay-balance', {
           quotation_number: quotationNumber,
           amount,
           updated_by: ctx.from?.username ?? String(ctx.from?.id),
         });
+        // If user sent a proof image earlier (vision fallback) — save it now
+        if (proofBase64 && proofFileName) {
+          uploadFileAndRecord({
+            chatId,
+            imageBase64: proofBase64,
+            mimeType: proofMime ?? 'image/jpeg',
+            fileName: proofFileName,
+            quotationNumber,
+            telegramMessageId: String(ctx.message.message_id),
+            uploadedBy: username ?? userId,
+            fileType: 'balance_proof',
+          }).catch((err: any) => console.error('[paybalance] Failed to save proof image:', err));
+        }
         await logAction({ chatId, userId, username, label: 'Pay Balance', quotationNumber, details: `₱${amount.toLocaleString()}` });
         resetStep(chatId);
-        let msg = `✅ *Balance Paid*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}`;
-        if (result.overpayment > 0) {
-          msg += `\n⚠️ Overpayment of ₱${result.overpayment.toLocaleString()}`;
+        let msg;
+        if (result.is_fully_paid) {
+          msg = `✅ *Balance Fully Paid*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}`;
+          if (result.overpayment > 0) {
+            msg += `\n⚠️ Overpayment of ₱${result.overpayment.toLocaleString()}`;
+          }
+          msg += `\n\n🚚 You can now schedule delivery.`;
+        } else {
+          msg = `✅ *Partial Balance Recorded*\n\nOrder: *${quotationNumber}*\nThis payment: ₱${amount.toLocaleString()}\nTotal paid: ₱${result.balance_total.toLocaleString()} / ₱${result.expected_balance.toLocaleString()}\nRemaining: ₱${result.remaining_balance.toLocaleString()}\n\n💡 The client still has a remaining balance. Record another payment when they pay more.`;
         }
-        msg += `\n\n🚚 You can now schedule delivery.`;
         await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
       } catch (err: any) {
         const errorData = err?.response?.data;
-        if (errorData?.lacking_amount) {
-          await ctx.reply(
-            `❌ *Insufficient Payment*\n\n` +
-            `Expected balance: ₱${Number(errorData.expected_balance).toLocaleString()}\n` +
-            `Received: ₱${amount.toLocaleString()}\n` +
-            `Still lacking: ₱${Number(errorData.lacking_amount).toLocaleString()}\n\n` +
-            `Please pay the full remaining balance.`,
-            { parse_mode: 'Markdown', ...cancelButton() }
-          );
-        } else {
-          await ctx.reply(`❌ Error: ${errorData?.error ?? err.message}`, {
-            parse_mode: 'Markdown',
-            ...cancelButton(),
-          });
-        }
+        await ctx.reply(`❌ Error: ${errorData?.error ?? err.message}`, {
+          parse_mode: 'Markdown',
+          ...cancelButton(),
+        });
       }
       break;
     }
@@ -2280,13 +2342,12 @@ I'll save this as a schedule. What date should this be on?
     // ── Schedule Delivery ───────────────────────────────────────────
     case 'awaiting_order_number_for_delivered': {
       const quotationNumber = text;
-      // Check balance first
+      // Check balance first (allow delivery with warning if partially paid)
       let order: any;
       try {
         order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
         const totalAmount = Number(order.total_amount ?? 0);
         const depositAmount = Number(order.deposit_amount ?? 0);
-        const balance = totalAmount - depositAmount;
 
         if (order.total_amount == null) {
           await ctx.reply(
@@ -2296,16 +2357,27 @@ I'll save this as a schedule. What date should this be on?
           return;
         }
 
-        if (!order.balance_paid && balance > 0) {
+        // Fetch actual remaining balance from payments API
+        let remainingBalance = Math.max(totalAmount - depositAmount, 0);
+        try {
+          const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
+          if (paymentsRes.ok) {
+            const paymentsData = await paymentsRes.json();
+            remainingBalance = paymentsData.totals?.remaining_balance ?? remainingBalance;
+          }
+        } catch { /* use computed fallback */ }
+
+        if (remainingBalance > 0) {
+          // Allow scheduling but warn about remaining balance
           await ctx.reply(
-            `❌ *Balance not yet paid for ${quotationNumber}*\n\n` +
+            `⚠️ *Balance Not Fully Paid*\n\n` +
+            `Order: *${quotationNumber}*\n` +
             `Total: ₱${totalAmount.toLocaleString()}\n` +
             `Deposit: ₱${depositAmount.toLocaleString()}\n` +
-            `Balance Due: ₱${balance.toLocaleString()}\n\n` +
-            `Please pay the balance first using the Main Menu → Pay Balance.`,
+            `Remaining Balance: ₱${remainingBalance.toLocaleString()}\n\n` +
+            `You may still schedule delivery, but the client still owes ₱${remainingBalance.toLocaleString()}.`,
             { parse_mode: 'Markdown', ...cancelButton() }
           );
-          return;
         }
       } catch {
         await ctx.reply(`❌ Order *${quotationNumber}* not found.`, {
@@ -4358,15 +4430,26 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
 
     // If the order is still in balance collection, these payment-status buttons should not
     // jump to payment_received/payment_confirmed. Ask for the balance amount instead.
-    if (!order?.balance_paid && ['balance_due', 'inventory_arrived', 'delivery_scheduled'].includes(currentStage)) {
-      const totalAmount = Number(order?.total_amount ?? 0);
-      const depositAmount = Number(order?.deposit_amount ?? 0);
-      const balance = Math.max(totalAmount - depositAmount, 0);
+    if (!order?.balance_paid && ['balance_due', 'inventory_arrived', 'delivery_scheduled', 'balance_verification'].includes(currentStage)) {
+      // Fetch actual remaining balance from payments API for accuracy
+      let remainingBalance = 0;
+      try {
+        const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
+        if (paymentsRes.ok) {
+          const paymentsData = await paymentsRes.json();
+          remainingBalance = paymentsData.totals?.remaining_balance ?? 0;
+        }
+      } catch { /* fallback below */ }
+      if (remainingBalance <= 0) {
+        const totalAmount = Number(order?.total_amount ?? 0);
+        const depositAmount = Number(order?.deposit_amount ?? 0);
+        remainingBalance = Math.max(totalAmount - depositAmount, 0);
+      }
       setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
       await ctx.editMessageText(
         `*Balance Payment for ${escapeMarkdown(quotationNumber)}*\n\n` +
-        `This order is still at *Balance Due*. Enter the balance amount in PHP to record the payment.\n\n` +
-        (balance > 0 ? `Expected balance: *PHP ${balance.toLocaleString()}*\n\n` : '') +
+        `This order is still at *Balance Due*. Enter the amount the client paid in PHP.\n\n` +
+        (remainingBalance > 0 ? `Remaining balance: *PHP ${remainingBalance.toLocaleString()}*\n\n` : '') +
         `Example: \`15000\``,
         { parse_mode: 'Markdown', ...cancelButton() }
       );
@@ -6561,6 +6644,17 @@ bot.action(/^balance:paid:(.+):(.+)$/, async (ctx) => {
   );
 });
 
+// User chose to skip proof upload and enter amount manually
+bot.action(/^paybalance:skip:(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const quotationNumber = ctx.match[1];
+  setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+  await ctx.editMessageText(
+    `💰 *Balance Payment for ${quotationNumber}*\n\nEnter the amount the client paid in PHP:\n\nExample: \`15000\``,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
 // User said client has NOT paid yet
 bot.action(/^balance:not_paid:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
@@ -7677,10 +7771,11 @@ bot.action('deposit:confirm_no', async (ctx) => {
 // ── Verify Deposit Callback Handler ──────────────────────────────────
 
 // Team member clicked "Verify Deposit" from collection agent reminder
-bot.action(/^verify:deposit:(.+)$/, async (ctx) => {
+bot.action(/^verify:deposit:(?:[0-9a-f]{8}:)?(.+)$/i, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+  // match[1] strips the optional 8-char orderId prefix added by reminderScheduler/escalationAgent
   const quotationNumber = ctx.match[1];
 
   botLog({
@@ -7749,10 +7844,11 @@ bot.action(/^verify:deposit:(.+)$/, async (ctx) => {
 // ── Verify Balance Callback Handler ──────────────────────────────────
 
 // Team member clicked "Verify Balance" from collection agent reminder
-bot.action(/^verify:balance:(.+)$/, async (ctx) => {
+bot.action(/^verify:balance:(?:[0-9a-f]{8}:)?(.+)$/i, async (ctx) => {
   const chatId = String(ctx.chat!.id);
   const userId = String(ctx.from?.id ?? '');
   const username = ctx.from?.username;
+  // match[1] strips the optional 8-char orderId prefix added by reminderScheduler/escalationAgent
   const quotationNumber = ctx.match[1];
 
   botLog({
@@ -8767,34 +8863,34 @@ bot.on(['document', 'photo'], async (ctx) => {
               fileType: 'balance_proof',
             }).catch((err: any) => console.error('[balance-proof] Failed to save image:', err));
 
-            // Advance stage to delivery_scheduled
-            await postJson('/stage-updates', {
-              quotation_number: quotationNumber,
-              stage: 'delivery_scheduled',
-              status: 'auto_advanced',
-              remarks: 'Balance paid — ready for delivery scheduling',
-              updated_by: 'delivery-agent',
-            });
-
             resetStep(chatId);
 
-            let msg = `✅ *Balance Payment Recorded!*\n\n`;
-            msg += `Order: *${quotationNumber}*\n`;
-            msg += `Amount: ₱${Number(paymentAmount).toLocaleString()}`;
-            if (paymentDate) {
-              msg += `\nDate: ${paymentDate}`;
+            let msg;
+            if (payResult.is_fully_paid) {
+              msg = `✅ *Balance Fully Paid!*\n\n`;
+              msg += `Order: *${quotationNumber}*\n`;
+              msg += `Amount: ₱${Number(paymentAmount).toLocaleString()}`;
+              if (paymentDate) {
+                msg += `\nDate: ${paymentDate}`;
+              }
+              if (payResult.overpayment > 0) {
+                msg += `\n⚠️ Overpayment of ₱${Number(payResult.overpayment).toLocaleString()}`;
+              }
+              msg += `\n\n🚚 You can now schedule delivery.`;
+            } else {
+              msg = `✅ *Partial Balance Recorded!*\n\n`;
+              msg += `Order: *${quotationNumber}*\n`;
+              msg += `This payment: ₱${Number(paymentAmount).toLocaleString()}\n`;
+              msg += `Total paid: ₱${Number(payResult.balance_total).toLocaleString()} / ₱${Number(payResult.expected_balance).toLocaleString()}\n`;
+              msg += `Remaining: ₱${Number(payResult.remaining_balance).toLocaleString()}\n\n`;
+              msg += `💡 The client still has a remaining balance. Record another payment when they pay more.`;
             }
-            if (payResult.overpayment > 0) {
-              msg += `\n⚠️ Overpayment of ₱${Number(payResult.overpayment).toLocaleString()}`;
-            }
-            msg += `\n\n🚚 *Delivery Scheduling*\n\n`;
-            msg += `The stage has been advanced to *Delivery Scheduled*.\n`;
-            msg += `Please set the delivery schedule using the /deliverydate command.`;
 
             await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
           } else {
-            // Vision couldn't extract amount — ask user to enter manually
-            setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+            // Vision couldn't extract amount — preserve image, ask user to enter manually
+            const safeFileName = `balance_proof_${quotationNumber}_${Date.now()}.${mimeType.includes('pdf') ? 'pdf' : 'jpg'}`;
+            setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber, imageBase64: imageBase64 ?? undefined, mimeType, fileName: safeFileName });
             await ctx.reply(
               `⚠️ Could not automatically detect the payment amount from the image.\n\n` +
               `💰 Please enter the balance amount in PHP manually:\n\nExample: \`15000\``,
@@ -8802,8 +8898,9 @@ bot.on(['document', 'photo'], async (ctx) => {
             );
           }
         } catch (err: any) {
-          // Vision API failed — fall back to manual entry
-          setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber });
+          // Vision API failed — preserve image, fall back to manual entry
+          const safeFileName = `balance_proof_${quotationNumber}_${Date.now()}.${mimeType.includes('pdf') ? 'pdf' : 'jpg'}`;
+          setStep(chatId, { action: 'awaiting_paybalance_amount', quotationNumber, imageBase64: imageBase64 ?? undefined, mimeType, fileName: safeFileName });
           await ctx.reply(
             `⚠️ Could not process the image: ${err.message}\n\n` +
             `💰 Please enter the balance amount in PHP manually:\n\nExample: \`15000\``,

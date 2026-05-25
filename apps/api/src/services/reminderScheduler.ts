@@ -236,7 +236,10 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'deposit_pending' && reminder.order_type === 'stock_replenishment') stale = true;
     if (reminder.stage === 'deposit_verification' && reminder.deposit_paid && reminder.deposit_verified) stale = true;
     if ((reminder.stage === 'balance_due' || reminder.stage === 'delivered' || reminder.stage === 'countered') && reminder.balance_paid) stale = true;
-    if (reminder.stage === 'balance_verification' && reminder.balance_paid && reminder.balance_verified) stale = true;
+    if (reminder.stage === 'balance_verification' && (
+      (reminder.balance_paid && reminder.balance_verified) ||
+      ['delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)
+    )) stale = true;
     if (reminder.stage === 'delivery_scheduled' && ['delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'inventory_verification' && ['inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
