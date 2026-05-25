@@ -1158,15 +1158,13 @@ app.patch('/orders/:id', async (request, reply) => {
       `${wasAlreadyScheduled ? 'Delivery rescheduled' : 'Delivery scheduled'} for ${formattedDate}`,
     ].filter(Boolean).join(' | ');
     await query(
-      `INSERT INTO stage_updates (order_id, quotation_number, stage, status, remarks, delivery_date, updated_by, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, $2, $3, $4, $5)`,
       [
         params.id,
-        orderRecord.quotation_number,
         'delivery_scheduled',
         status,
         auditRemarks,
-        body.delivery_date,
         userEmail ?? 'dashboard',
       ]
     );

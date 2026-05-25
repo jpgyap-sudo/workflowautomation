@@ -9808,3 +9808,51 @@ Always use soft-delete (tombstone) for user accounts to preserve referential int
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType fro
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 59cc9bd5c2ffec520bf0c2d8776748d0e98988a3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 59cc9bd5c2ffec520bf0c2d8776748d0e98988a3
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/telegram-bot/src/bot.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A missing `balance_proof` notification in `COLLECTION_CHAT_ID` (server.ts) and a wrong fileType handler in `bot.ts` (changed from `'deposit'` to `'balance_proof'`).
+
+**Why it broke:**  
+The server was not sending balance proof notifications to the collection chat, and the bot was incorrectly treating balance proof files as deposit files, causing misrouting or failed processing.
+
+**Reusable takeaway:**  
+When adding new notification types or file handlers, ensure both the sending endpoint (server) and receiving handler (bot) are updated consistently. A mismatch in event type or fileType can silently break downstream logic. Always cross-check the event name and handler mapping across all services.
+
+---
+*Original commit message: fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType from 'deposit' to 'balance_proof'*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing `balance_proof` notification in `COLLECTION_CHAT_ID` (server.ts) and a wrong fileType handler in `bot.ts` (changed from `'deposit'` to `'balance_proof'`).
+
+**Why it broke:**  
+The server was not sending balance proof notifications to the collection chat, and the bot was incorrectly treating balance proof files as deposit files, causing misrouting or failed processing.
+
+**Reusable takeaway:**  
+When adding new notification types or file handlers, ensure both the sending endpoint (server) and receiving handler (bot) are updated consistently. A mismatch in event type or fileType can silently break downstream logic. Always cross-check the event name and handler mapping across all services.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

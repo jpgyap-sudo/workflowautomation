@@ -9,14 +9,11 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `897bc02` | Claude Sonnet 4.6 | fix: 8 E2E balance flow gaps — optional proof photo in bot paybalance, paybalance:skip action, preserve image on vision fallback, fix verify:balance + verify:deposit regex (strip 8-char orderId prefix), balance_verification stale check now includes current_stage | Pending |
+| `897bc02` | Claude Sonnet 4.6 | fix: 8 E2E balance flow gaps — optional proof photo in bot paybalance, paybalance:skip action, preserve image on vision fallback, fix verify:balance + verify:deposit regex (strip 8-char orderId prefix), balance_verification stale check now includes current_stage | ✅ VPS `59cc9bd` |
 | `d94c009` | Claude Sonnet 4.6 | feat: support multiple deposit slips in New Order modal — dynamic slip list with per-slip file upload, AI extraction, amount, and date; loops recordDepositWithFile for each valid entry on submit | ✅ VPS `420cca9` |
-| `ade97b0` | Codex | fix: E2E build gaps for order file/deposit flow and Telegram bug state union | Pending deploy |
-| `b97193c` | Codex | feat: optional balance proof upload with AI extraction in Balance Due payment flow | Pending deploy |
 | `b97193c` | Roo (Code) | feat: add Tab Access control in Settings → User Management (Lock button + 21-tab toggle modal) + calendar tab action buttons (13 stage-advance transitions, create reminder, notify Telegram) + POST /telegram/notify API endpoint | ✅ VPS `b97193c` |
 | `339c22b` | Roo (Code) | feat: add Schedule Group Chat — calendar_schedules table (migration 035), CRUD API endpoints, schedule events in calendar aggregation, schedule group chat handler with AI parsing (/agents/run/schedule-parser via Gemini 2.0 Flash), AI Vision for image→schedule/note extraction, schedule reminder scheduler, schedule API functions in dashboard, schedule type in calendar legend | ✅ VPS `339c22b` |
 | `647441a`–`111511c` | Claude Sonnet 4.6 | feat: stock replenishment order type — new `order_type` DB column, `POST /orders/stock-replenishment` endpoint (AI extraction from CSV/PDF/image), dashboard modal on Production page, `inventory_arrived` → `completed` path for replenishment orders | ✅ VPS `a865dae` |
-| `a7fd60c` | Codex | fix: close E2E workflow wiring gaps, including inventory verified_qty API exposure | Pending deploy |
 | `45a144b` | Roo (Code) | feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ VPS `45a144b` |
 | `2a15dcf` | Codex | fix: send permanent inventory verification link and verified item quantities in Telegram completion notifications | ? VPS `2a15dcf` |
 | `4dbf72a` | Roo (Code) | feat: add requesting user name to escalation group verification code notifications + collections page manual buttons (countered→payment_received→payment_confirmed→completed) + purchasing page Mark Deposit Paid button + stage-to-group mappings (deposit_pending, deposit_verification, purchasing_pending) | ✅ VPS `4dbf72a` |
@@ -26,7 +23,7 @@
 | `1714399` | Roo (Code) | fix: delivery tab Record Payment — remove redundant recordStageUpdate() call that reused consumed action_token (payBalance already advances stage) | ✅ VPS `1714399` |
 | `a9c538a` | Roo (Code) | fix: delivery schedule OTP error — PATCH /orders/:id now records stage update internally when delivery_date is set, removing double-token consumption | ✅ VPS `a9c538a` |
 | `8e71212` | Roo (Code) | fix: remove stale action_token from deposit calls in orders page handleVerified() — token already consumed by createOrder | ✅ VPS `8e71212` |
-| `PENDING` | Roo (Code) | fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType from 'deposit' to 'balance_proof' | Pending |
+| `59cc9bd` | Roo (Code) | fix: add balance_proof notification to COLLECTION_CHAT_ID in server.ts + fix bot.ts balance confirm handler fileType from 'deposit' to 'balance_proof' | ✅ VPS `59cc9bd` |
 
 ## 2026-05-24
 
