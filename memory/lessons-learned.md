@@ -10263,3 +10263,51 @@ For clients bulk delete, mirror Orders selection UI: selectedIds Set, header che
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] ci: fix SSH key formatting in deploy workflow
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3b7dd1464714cf1bf2d54b1833ed8b7c7ee0c9b7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3b7dd1464714cf1bf2d54b1833ed8b7c7ee0c9b7
+**Files:** .github/workflows/deploy.yml
+
+**Summary:**
+**What was fixed:**  
+An SSH key was being passed to a deploy step with incorrect formatting (e.g., missing newlines or wrong quoting), causing authentication failures during deployment.
+
+**Why it broke:**  
+The SSH private key, stored as a GitHub secret, was injected directly into a shell command without proper line-break preservation. Multi-line secrets require explicit handling (e.g., using `|` in YAML or base64 encoding) to avoid being collapsed into a single line.
+
+**Reusable takeaway:**  
+When using multi-line secrets (especially SSH keys) in CI workflows, always preserve their format by using YAML block scalars (`|`) or encoding them (e.g., base64). Never pass them directly into shell commands without ensuring line breaks are intact.
+
+---
+*Original commit message: ci: fix SSH key formatting in deploy workflow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+An SSH key was being passed to a deploy step with incorrect formatting (e.g., missing newlines or wrong quoting), causing authentication failures during deployment.
+
+**Why it broke:**  
+The SSH private key, stored as a GitHub secret, was injected directly into a shell command without proper line-break preservation. Multi-line secrets require explicit handling (e.g., using `|` in YAML or base64 encoding) to avoid being collapsed into a single line.
+
+**Reusable takeaway:**  
+When using multi-line secrets (especially SSH keys) in CI workflows, always preserve their format by using YAML block scalars (`|`) or encoding them (e.g., base64). Never pass them directly into shell commands without ensuring line breaks are intact.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

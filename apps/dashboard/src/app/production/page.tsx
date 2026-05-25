@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
@@ -795,6 +795,377 @@ function OrderSection({
   );
 }
 
+// ── Item Status Badge ─────────────────────────────────────────────────
+
+function ItemStatusBadge({ status }: { status: string | null | undefined }) {
+  if (status === 'pending' || !status) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500">
+        <Clock className="h-3 w-3" /> Pending Production
+      </span>
+    );
+  }
+  if (status === 'in_progress') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+        <Factory className="h-3 w-3" /> Production Started
+      </span>
+    );
+  }
+  if (status === 'finished') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-[11px] font-semibold text-green-700">
+        <CheckCircle className="h-3 w-3" /> Finished
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500">
+      {status ?? 'Unknown'}
+    </span>
+  );
+}
+
+/** Compute estimated finish date for an item based on its production days */
+function getItemEstimatedFinishDate(item: OrderItem): Date | null {
+  if (!item.estimated_production_days || item.production_status === 'pending') return null;
+  // Use updated_at as a proxy for when production started on this item
+  const startDate = item.production_status === 'in_progress' && item.updated_at
+    ? new Date(item.updated_at)
+    : new Date();
+  if (Number.isNaN(startDate.getTime())) return null;
+  const d = new Date(startDate);
+  d.setDate(d.getDate() + item.estimated_production_days);
+  return d;
+}
+
+// ── Production Item Section (for Partial Production & Production In Progress) ──
+
+interface ProductionItemSectionProps {
+  icon: React.ReactNode;
+  title: string;
+  count: number;
+  countBg: string;
+  countText: string;
+  orders: Order[];
+  isLoading: boolean;
+  error?: Error;
+  onRetry?: () => void;
+  emptyText: string;
+  /** Filter function to determine which items to show for an order */
+  itemFilter: (item: OrderItem) => boolean;
+  /** Show Start button for items */
+  showStartButton?: boolean;
+  /** Show Finished button for items */
+  showFinishedButton?: boolean;
+  /** Show Delayed button for items */
+  showDelayedButton?: boolean;
+  /** Callback when Start is clicked for an item */
+  onItemStart?: (order: Order, item: OrderItem) => void;
+  /** Callback when Finished is clicked for an item */
+  onItemFinished?: (order: Order, item: OrderItem) => void;
+  /** Callback when Delayed is clicked for an item */
+  onItemDelayed?: (order: Order, item: OrderItem) => void;
+  /** Callback to view files */
+  onViewFiles?: (o: Order) => void;
+  /** Callback to edit */
+  onEdit?: (o: Order) => void;
+  /** Callback to delete */
+  onDelete?: (o: Order) => void;
+  /** Currently updating item ID */
+  updatingItemId?: string | null;
+}
+
+function ProductionItemSection({
+  icon, title, count, countBg, countText,
+  orders, isLoading, error, onRetry, emptyText,
+  itemFilter,
+  showStartButton, showFinishedButton, showDelayedButton,
+  onItemStart, onItemFinished, onItemDelayed,
+  onViewFiles, onEdit, onDelete,
+  updatingItemId,
+}: ProductionItemSectionProps) {
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
+  const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
+  // Per-item start production modal
+  const [startItemModal, setStartItemModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    item: OrderItem | null;
+    productionDays: string;
+  }>({ open: false, order: null, item: null, productionDays: '' });
+
+  async function toggleOrder(order: Order) {
+    if (expandedOrderId === order.id) {
+      setExpandedOrderId(null);
+      return;
+    }
+    setExpandedOrderId(order.id);
+    if (!itemsByOrder[order.id]) {
+      setLoadingItemsForOrder(order.id);
+      try {
+        const res = await getOrderItems(order.id);
+        setItemsByOrder((prev) => ({ ...prev, [order.id]: res.items ?? [] }));
+      } catch {
+        setItemsByOrder((prev) => ({ ...prev, [order.id]: [] }));
+      } finally {
+        setLoadingItemsForOrder(null);
+      }
+    }
+  }
+
+  function handleStartClick(order: Order, item: OrderItem) {
+    setStartItemModal({
+      open: true,
+      order,
+      item,
+      productionDays: item.estimated_production_days?.toString() ?? '',
+    });
+  }
+
+  async function handleStartConfirm() {
+    const modal = startItemModal;
+    if (!modal.order || !modal.item) return;
+    const days = parseInt(modal.productionDays.replace(/[^0-9]/g, ''));
+    if (!days || days <= 0) { alert('Please enter a valid number of production days.'); return; }
+    setStartItemModal({ ...modal, open: false });
+    // First save the production days, then update the status
+    try {
+      await updateOrderItem(modal.order.id, modal.item.id, {
+        estimated_production_days: days,
+        production_status: 'in_progress',
+      });
+      // Refresh items for this order
+      const res = await getOrderItems(modal.order.id);
+      if (res.ok) {
+        setItemsByOrder((prev) => ({ ...prev, [modal.order!.id]: res.items }));
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to start production for item');
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+        {icon}
+        <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+        <span className={`ml-auto rounded-full ${countBg} px-2 py-0.5 text-xs font-medium ${countText}`}>{count}</span>
+      </div>
+      {isLoading && orders.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center gap-3 py-12">
+          <AlertTriangle className="h-8 w-8 text-red-400" />
+          <p className="text-sm text-red-500">Failed to load: {error.message}</p>
+          {onRetry && (
+            <button onClick={onRetry}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9]">
+              <RefreshCw className="h-3.5 w-3.5" /> Retry
+            </button>
+          )}
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="py-12 text-center text-sm text-gray-400">{emptyText}</div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {orders.map((order) => {
+            const isExpanded = expandedOrderId === order.id;
+            const orderItems = itemsByOrder[order.id] ?? [];
+            const filteredItems = orderItems.filter(itemFilter);
+            const hasRelevantItems = filteredItems.length > 0;
+
+            return (
+              <div key={order.id}>
+                {/* Order header row */}
+                <button
+                  onClick={() => toggleOrder(order)}
+                  className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
+                      {order.client_name && (
+                        <span className="text-xs text-gray-500">— {order.client_name}</span>
+                      )}
+                    </div>
+                    {order.sales_agent && (
+                      <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <DaysAgo updatedAt={order.updated_at} />
+                    <StageBadge stage={order.current_stage} />
+                    <div className="flex items-center gap-1">
+                      {onEdit && (
+                        <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(order); }}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                  </div>
+                </button>
+
+                {/* Expanded items table */}
+                {isExpanded && (
+                  <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
+                    {loadingItemsForOrder === order.id ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                      </div>
+                    ) : !hasRelevantItems ? (
+                      <p className="py-2 text-center text-xs text-gray-400">
+                        {orderItems.length === 0 ? 'No items found for this order.' : `No items match the current section criteria.`}
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                              <th className="px-3 py-2">Item</th>
+                              <th className="px-3 py-2">Qty</th>
+                              <th className="px-3 py-2">Status</th>
+                              <th className="px-3 py-2">Est. Finish Date</th>
+                              <th className="px-3 py-2">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {filteredItems.map((item) => {
+                              const estFinishDate = getItemEstimatedFinishDate(item);
+                              return (
+                                <tr key={item.id} className="hover:bg-gray-50">
+                                  <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                  <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                  <td className="px-3 py-2">
+                                    <ItemStatusBadge status={item.production_status} />
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-600">
+                                    {estFinishDate ? (
+                                      <span className="text-[11px]">{formatDate(estFinishDate)}</span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-400">—</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {showStartButton && item.production_status === 'pending' && (
+                                        <button
+                                          type="button"
+                                          disabled={updatingItemId === item.id}
+                                          onClick={(e) => { e.stopPropagation(); handleStartClick(order, item); }}
+                                          className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition-colors"
+                                        >
+                                          {updatingItemId === item.id ? 'Starting...' : '▶ Start'}
+                                        </button>
+                                      )}
+                                      {showFinishedButton && item.production_status !== 'pending' && (
+                                        <button
+                                          type="button"
+                                          disabled={updatingItemId === item.id || item.production_status === 'finished'}
+                                          onClick={(e) => { e.stopPropagation(); onItemFinished?.(order, item); }}
+                                          className="rounded-md border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
+                                        >
+                                          {updatingItemId === item.id ? 'Saving...' : item.production_status === 'finished' ? '✓ Finished' : '✓ Finish'}
+                                        </button>
+                                      )}
+                                      {showDelayedButton && item.production_status !== 'pending' && item.production_status !== 'finished' && (
+                                        <button
+                                          type="button"
+                                          disabled={updatingItemId === item.id}
+                                          onClick={(e) => { e.stopPropagation(); onItemDelayed?.(order, item); }}
+                                          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                        >
+                                          {updatingItemId === item.id ? 'Saving...' : '⚠ Delayed'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Per-item Start Production Modal */}
+      {startItemModal.open && startItemModal.order && startItemModal.item && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Start Item Production</h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {startItemModal.order.quotation_number} · {startItemModal.item.name}
+                </p>
+              </div>
+              <button
+                onClick={() => setStartItemModal((prev) => ({ ...prev, open: false }))}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">
+                  Estimated production days for this item
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    value={startItemModal.productionDays}
+                    onChange={(e) => setStartItemModal((prev) => ({ ...prev, productionDays: e.target.value }))}
+                    placeholder="e.g. 14"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                  />
+                  <span className="shrink-0 text-xs text-gray-500">days</span>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStartItemModal((prev) => ({ ...prev, open: false }))}
+                  className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartConfirm}
+                  disabled={!startItemModal.productionDays || parseInt(startItemModal.productionDays) <= 0}
+                  className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  Start Production
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────
 
 interface ProductionFinishedSummary {
@@ -1242,7 +1613,10 @@ export default function ProductionPage() {
   const [stockReplSuccess, setStockReplSuccess] = useState<{ ref: string; itemCount: number; items: Array<{ name: string; quantity: number }> } | null>(null);
   const stockReplFileRef = useRef<HTMLInputElement>(null);
 
-  function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); }
+  // Per-item production action state
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+
+  function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -1560,6 +1934,39 @@ export default function ProductionPage() {
     }
   }
 
+  // ── Per-item production action handlers ──────────────────────────────
+
+  async function handleItemFinish(order: Order, item: OrderItem) {
+    setUpdatingItemId(item.id);
+    try {
+      await updateOrderItem(order.id, item.id, { production_status: 'finished' });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to finish item: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setUpdatingItemId(null);
+    }
+  }
+
+  async function handleItemDelayed(order: Order, item: OrderItem) {
+    const input = window.prompt('How many days delayed for this item?', '1');
+    if (!input) return;
+    const days = Number(input.replace(/[^0-9]/g, ''));
+    if (!Number.isInteger(days) || days < 0) { alert('Please enter a valid delay in days.'); return; }
+    setOtpModal({
+      open: true,
+      title: 'Report Item Delay',
+      description: `You are about to report item "${item.name}" in order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s). Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'reportStatus',
+    });
+    (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: false, delay_days: days } };
+  }
+
+  // Merge partial_production orders into Production In Progress section too,
+  // so the same order# can appear in both Partial Production (pending items)
+  // and Production In Progress (started/finished items)
+  const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
+
   const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
   const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
@@ -1609,52 +2016,49 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* Partial Production */}
-      <OrderSection
+      {/* Partial Production — shows only items that are still pending (not started) */}
+      <ProductionItemSection
         icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
         title="Partial Production"
         count={partialOrders.length}
         countBg="bg-amber-100" countText="text-amber-700"
-        orders={partialOrders} isLoading={loadingPartial} error={errorPartial}
+        orders={partialOrders}
+        isLoading={loadingPartial}
+        error={errorPartial}
         onRetry={() => mutatePartial()}
         emptyText="No orders with partial production pending"
-      >
-        {(order) => (
-          <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
+        itemFilter={(item) => item.production_status === 'pending'}
+        showStartButton={true}
+        showFinishedButton={false}
+        showDelayedButton={false}
+        onViewFiles={handleViewFiles}
+        onEdit={handleEdit}
+        onDelete={handleDeleteClick}
+        updatingItemId={updatingItemId}
+      />
 
-      {/* Production In Progress (production_in_progress stage — all items started) */}
-      <OrderSection
+      {/* Production In Progress — shows only started/finished items from both production_in_progress AND partial_production stages */}
+      <ProductionItemSection
         icon={<Factory className="h-4 w-4 text-indigo-500" />}
         title="Production In Progress"
-        count={inProgressStageOrders.length}
+        count={inProgressMergedOrders.length}
         countBg="bg-indigo-100" countText="text-indigo-700"
-        orders={inProgressStageOrders} isLoading={loadingInProgress} error={errorInProgress}
-        onRetry={() => mutateInProgress()}
+        orders={inProgressMergedOrders}
+        isLoading={loadingInProgress || loadingPartial}
+        error={errorInProgress || errorPartial}
+        onRetry={() => { mutateInProgress(); mutatePartial(); }}
         emptyText="No orders in production"
-      >
-        {(order) => (
-          <>
-            <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
-              onReportOnTime={handleReportOnTime}
-              onReportDelayed={handleReportDelayed}
-              onFinishProduction={handleFinishProduction}
-              onGrantException={handleGrantException}
-              onRevokeException={handleRevokeException}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
+        itemFilter={(item) => item.production_status !== 'pending'}
+        showStartButton={false}
+        showFinishedButton={true}
+        showDelayedButton={true}
+        onItemFinished={handleItemFinish}
+        onItemDelayed={handleItemDelayed}
+        onViewFiles={handleViewFiles}
+        onEdit={handleEdit}
+        onDelete={handleDeleteClick}
+        updatingItemId={updatingItemId}
+      />
 
       {/* Production Confirmed (production_confirmed stage — awaiting items to start) */}
       <OrderSection

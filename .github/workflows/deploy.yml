@@ -73,8 +73,15 @@ jobs:
 
       - name: Sync .env and credentials to VPS
         run: |
-          # Create .env on VPS from GitHub secrets
-          ssh vps "cat > ${{ env.DEPLOY_PATH }}/.env" << 'ENVEOF'
+          # Only sync .env if it DOESN'T already exist on the VPS.
+          # This prevents overwriting production secrets with empty values
+          # when GitHub secrets are not configured.
+          ENV_EXISTS=$(ssh vps "test -f ${{ env.DEPLOY_PATH }}/.env && echo EXISTS || echo MISSING")
+          if [ "$ENV_EXISTS" = "EXISTS" ]; then
+            echo "⚠️  .env already exists on VPS — skipping overwrite to preserve production secrets"
+          else
+            # Create .env on VPS from GitHub secrets
+            ssh vps "cat > ${{ env.DEPLOY_PATH }}/.env" << 'ENVEOF'
           # Core
           TZ=Asia/Manila
           GENERIC_TIMEZONE=Asia/Manila
@@ -131,7 +138,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_BACKUP_BUCKET=${{ secrets.SUPABASE_BACKUP_BUCKET }}
           ENVEOF
-          echo "✅ .env synced to VPS"
+            echo "✅ .env synced to VPS"
+          fi
 
       - name: Sync credentials directory
         run: |

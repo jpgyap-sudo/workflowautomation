@@ -25,7 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
-| 2026-05-25 21:11 | Roo (Code) | Feat: remove auto-advance to production_finished, add production_in_progress stage — when all items start production, order advances to production_in_progress (not production_confirmed). Production finished is now manual only. New production_in_progress section on production page. | ✅ Done |
+| 2026-05-25 21:52 | Roo (Code) | Feat: redesign Partial Production and Production In Progress sections — Partial Production shows only pending items with Start button + "Pending Production" status badge; Production In Progress shows only started/finished items with Finish/Delayed buttons + "Production Started" status badge. Same order# can appear in both sections if it has mixed item statuses. Per-item Start Production modal with production days input and estimated finish date column. | 🔴 Active |
 | 2026-05-25 20:36 | Roo (Code) | Feat: Bulk Delete Clients — new POST /clients/bulk-delete API endpoint with force-unlink support, bulkDeleteClients() API function, and full dashboard UI with checkboxes, select-all, force-delete confirmation, and OTP verification | ✅ Done |
 | | 2026-05-25 14:55 | Roo (Code) | Fix: order detail page React hooks violation — useEffect placed after conditional return caused "This page couldn't load" error. Moved useEffect before conditional returns with null guard. | ✅ Done |
 | 2026-05-25 13:21 | Roo (Code) | Feat: add sub-user management UI in Settings → User Management — modal with add/edit/delete entry codes (code + name) for each account, persists via updateAccount() | ✅ Done |
