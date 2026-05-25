@@ -1273,6 +1273,83 @@ export async function sendTelegramNotification(message: string, actionToken?: st
   });
 }
 
+// ── Calendar Schedules ──────────────────────────────────────────────
+
+export interface CalendarSchedule {
+  id: string;
+  title: string;
+  description: string;
+  schedule_date: string;
+  schedule_time: string | null;
+  end_time: string | null;
+  is_all_day: boolean;
+  color: string;
+  category: string;
+  created_by: string | null;
+  created_by_chat_id: string | null;
+  telegram_message_id: string | null;
+  reminder_at: string | null;
+  reminder_sent: boolean;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getCalendarSchedules(): Promise<CalendarSchedule[]> {
+  return fetchJson<CalendarSchedule[]>('/calendar/schedules');
+}
+
+export async function getCalendarSchedulesByDate(date: string): Promise<CalendarSchedule[]> {
+  return fetchJson<CalendarSchedule[]>(`/calendar/schedules/${date}`);
+}
+
+export async function createCalendarSchedule(data: {
+  title: string;
+  description?: string;
+  schedule_date: string;
+  schedule_time?: string;
+  end_time?: string;
+  is_all_day?: boolean;
+  color?: string;
+  category?: string;
+  reminder_at?: string;
+  action_token?: string;
+}): Promise<CalendarSchedule> {
+  return fetchJson<CalendarSchedule>('/calendar/schedules', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCalendarSchedule(
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    schedule_date?: string;
+    schedule_time?: string | null;
+    end_time?: string | null;
+    is_all_day?: boolean;
+    color?: string;
+    category?: string;
+    reminder_at?: string | null;
+    status?: string;
+    action_token: string;
+  }
+): Promise<CalendarSchedule> {
+  return fetchJson<CalendarSchedule>(`/calendar/schedules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCalendarSchedule(id: string, actionToken: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/calendar/schedules/${id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ action_token: actionToken }),
+  });
+}
+
 export const STAGE_ORDER = [
   'order_confirmation_received',
   'math_verified',
