@@ -957,6 +957,17 @@ export async function deleteClient(
   });
 }
 
+export async function bulkDeleteClients(
+  ids: string[],
+  force = false,
+  actionToken: string,
+): Promise<{ ok: boolean; deleted: number; active_order_count: number; forced: boolean }> {
+  return fetchJson<{ ok: boolean; deleted: number; active_order_count: number; forced: boolean }>('/clients/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids, force, action_token: actionToken }),
+  });
+}
+
 // ── Inventory ─────────────────────────────────────────────────────────
 
 export interface InventoryItem {

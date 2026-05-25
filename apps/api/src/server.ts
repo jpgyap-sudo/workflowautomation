@@ -8139,6 +8139,77 @@ app.patch('/clients/:id', async (request, reply) => {
   return reply.send(updated);
 });
 
+app.post('/clients/bulk-delete', async (request, reply) => {
+  const body = z.object({
+    ids: z.array(z.string().uuid()).min(1).max(200),
+    force: z.boolean().optional().default(false),
+    action_token: z.string(),
+  }).parse(request.body);
+
+  if (!cacheClient?.isOpen) return reply.status(503).send({ error: 'Action verification unavailable' });
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  await cacheClient.del(tokenKey);
+  let userEmail: string | null = null;
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
+
+  const ids = Array.from(new Set(body.ids));
+  const clientRows = await query(
+    `SELECT id, client_name FROM clients WHERE id = ANY($1::uuid[]) ORDER BY client_name ASC`,
+    [ids],
+  );
+  if (clientRows.length === 0) {
+    return reply.code(404).send({ error: 'No matching clients found' });
+  }
+
+  const activeRows = await query(
+    `SELECT client_id, COUNT(*)::int AS count
+     FROM orders
+     WHERE client_id = ANY($1::uuid[]) AND status = 'active'
+     GROUP BY client_id`,
+    [ids],
+  );
+  const activeOrderCount = activeRows.reduce((sum: number, row: any) => sum + Number(row.count ?? 0), 0);
+  if (activeOrderCount > 0 && !body.force) {
+    return reply.code(409).send({
+      error: 'Cannot delete selected clients with active linked orders',
+      active_order_count: activeOrderCount,
+      force_available: true,
+    });
+  }
+
+  if (body.force) {
+    await query(`UPDATE orders SET client_id=NULL, updated_at=NOW() WHERE client_id = ANY($1::uuid[])`, [ids]);
+  }
+
+  const deletedRows = await query(
+    `DELETE FROM clients WHERE id = ANY($1::uuid[]) RETURNING id, client_name`,
+    [ids],
+  );
+
+  await invalidateCache(['clients:*', '/clients', 'orders:*', 'dashboard:*']);
+  broadcastSSE('clients_bulk_deleted', { ids: deletedRows.map((row: any) => row.id) });
+  const preview = deletedRows.map((row: any) => row.client_name).slice(0, 8).join(', ');
+  const more = deletedRows.length > 8 ? ` and ${deletedRows.length - 8} more` : '';
+  await notifyManualChange(
+    `Clients bulk deleted via dashboard`,
+    `Deleted: *${deletedRows.length}* client(s)\nClients: ${preview}${more}${body.force ? `\nForced: active orders unlinked (${activeOrderCount})` : ''}`,
+    userEmail,
+  );
+
+  return reply.send({
+    ok: true,
+    deleted: deletedRows.length,
+    clients: deletedRows,
+    active_order_count: activeOrderCount,
+    forced: body.force,
+  });
+});
+
 app.delete('/clients/:id', async (request, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const queryParams = z.object({ force: z.string().optional() }).parse(request.query);
