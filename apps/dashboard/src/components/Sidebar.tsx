@@ -69,7 +69,7 @@ function useFilteredNavItems() {
   const allowedTabs = account?.allowedTabs;
 
   // If allowedTabs is explicitly set, filter by it
-  if (allowedTabs && allowedTabs.length > 0) {
+  if (allowedTabs !== undefined) {
     return ALL_NAV_ITEMS.filter((item) => allowedTabs.includes(item.href as any));
   }
 

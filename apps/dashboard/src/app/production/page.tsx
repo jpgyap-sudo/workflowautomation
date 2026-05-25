@@ -67,9 +67,19 @@ function formatStatusLabel(value: string | null | undefined): string {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function getEnRouteVerificationText(order: Order): string {
+function getEnRouteVerificationText(order: Order, items?: OrderItem[]): string {
   if (order.en_route_confirmed || order.current_stage === 'en_route_verification' || order.current_stage === 'inventory_verification' || order.current_stage === 'inventory_arrived') {
     return order.en_route_confirmed_at ? `Verified ${formatDate(new Date(order.en_route_confirmed_at))}` : 'Verified';
+  }
+  // Item-level status for partial production
+  if (items && items.length > 0) {
+    const finishedItems = items.filter((i) => i.production_status === 'finished');
+    const enRouteCount = finishedItems.filter((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived').length;
+    const totalFinished = finishedItems.length;
+    if (totalFinished > 0) {
+      if (enRouteCount === totalFinished) return `${enRouteCount}/${totalFinished} en route`;
+      return `${enRouteCount}/${totalFinished} en route`;
+    }
   }
   return 'Pending';
 }
@@ -1203,6 +1213,7 @@ function ProductionFinishedTrackingSection({
   error,
   onRetry,
   onViewFiles,
+  onItemEnRouteStatus,
 }: {
   orders: Order[];
   summaries: Record<string, ProductionFinishedSummary>;
@@ -1210,6 +1221,7 @@ function ProductionFinishedTrackingSection({
   error: any;
   onRetry: () => void;
   onViewFiles?: (o: Order) => void;
+  onItemEnRouteStatus?: (orderId: string, item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
 }) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1311,9 +1323,9 @@ function ProductionFinishedTrackingSection({
               {orders.map((order) => {
                 const summary = summaries[order.id];
                 const estimatedArrival = getEstimatedInventoryArrivalDate(order);
-                const enRouteVerified = getEnRouteVerificationText(order) !== 'Pending';
-                const isExpanded = expandedOrderId === order.id;
                 const orderItems = itemsByOrder[order.id] ?? [];
+                const enRouteVerified = getEnRouteVerificationText(order, orderItems) !== 'Pending';
+                const isExpanded = expandedOrderId === order.id;
                 const orderNotes = notesByOrder[order.id] ?? [];
                 const isNotesLoading = notesLoading[order.id];
                 const isSaving = savingNote[order.id];
@@ -1451,9 +1463,23 @@ function ProductionFinishedTrackingSection({
                                           {itemProductionFinishedDate ? formatDate(itemProductionFinishedDate) : <span className="text-gray-400">Not finished</span>}
                                         </td>
                                         <td className="px-3 py-2">
-                                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}>
-                                            {formatStatusLabel(item.en_route_status)}
-                                          </span>
+                                          <div className="flex items-center gap-2">
+                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' : item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}>
+                                              {formatStatusLabel(item.en_route_status)}
+                                            </span>
+                                            {item.production_status === 'finished' && item.en_route_status !== 'arrived' && onItemEnRouteStatus && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  onItemEnRouteStatus(order.id, item, item.en_route_status === 'en_route' ? 'not_yet' : 'en_route');
+                                                }}
+                                                className="rounded px-1.5 py-0.5 text-[10px] font-medium text-sky-600 hover:bg-sky-50"
+                                                title={item.en_route_status === 'en_route' ? 'Mark not en route' : 'Mark en route'}
+                                              >
+                                                {item.en_route_status === 'en_route' ? 'Undo' : 'Mark En Route'}
+                                              </button>
+                                            )}
+                                          </div>
                                         </td>
                                         <td className="px-3 py-2 text-gray-600">{item.estimated_arrival_days ? `${item.estimated_arrival_days} day(s)` : '\u2014'}</td>
                                         <td className="px-3 py-2 text-gray-700">
@@ -2275,6 +2301,7 @@ export default function ProductionPage() {
         error={errorFinished}
         onRetry={refresh}
         onViewFiles={handleViewFiles}
+        onItemEnRouteStatus={handleItemEnRouteStatusAction}
       />
 
       {/* En Route Verification — some items still not confirmed en route */}

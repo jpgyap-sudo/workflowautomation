@@ -3633,6 +3633,16 @@ function boardCategory(order: BoardOrder): BoardCategory {
     const allEnRoute = order.items.every((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
     return allEnRoute || order.en_route_confirmed ? 'en_route' : 'en_route_verification';
   }
+  // Partial production: finished items can go en-route individually
+  const finishedItems = order.items.filter((i) => i.production_status === 'finished');
+  if (finishedItems.length > 0) {
+    const allFinishedEnRoute = finishedItems.every((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
+    if (!allFinishedEnRoute) {
+      return 'en_route_verification';
+    }
+    // All finished items are en-route, but not all items are finished yet
+    return 'en_route';
+  }
   if (order.production_started || anyItemStarted(order) || order.current_stage === 'production_confirmed' || order.current_stage === 'partial_production') {
     return 'in_progress';
   }
@@ -3674,9 +3684,9 @@ async function showItemLevelEnRoute(ctx: any, orderId: string, quotationNumber: 
 
   if (!notEnRouteItem) {
     const maxDays = Math.max(...finishedItems.map((i: any) => i.estimated_arrival_days ?? 28));
-    if (allItemsFinished) {
-      await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
-    }
+    // Start en-route tracking whenever all finished items are en-route
+    // (even if not all order items are finished yet)
+    await postJson(`/orders/${orderId}/start-en-route-tracking`, { estimated_inventory_arrival_days: maxDays });
     const statusLine = allItemsFinished
       ? `All items completed and already en route (${enRoutePct}% of qty).`
       : `All finished items are en route (${enRoutePct}% of finished qty). Production still in progress for other items.`;

@@ -194,10 +194,15 @@ export default function SettingsPage() {
   /* ── Tab Access Control ── */
   const [tabAccessAccount, setTabAccessAccount] = useState<string | null>(null);
   const [tabAccessTabs, setTabAccessTabs] = useState<TabRoute[]>([]);
+  const [tabAccessSaving, setTabAccessSaving] = useState(false);
+  const [tabAccessMsg, setTabAccessMsg] = useState('');
+  const [tabAccessNotice, setTabAccessNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   function openTabAccess(acct: Account) {
     setTabAccessAccount(acct.email);
     setTabAccessTabs(acct.allowedTabs ?? [...ALL_TAB_ROUTES]);
+    setTabAccessMsg('');
+    setTabAccessNotice(null);
   }
 
   function toggleTabAccessTab(tab: TabRoute) {
@@ -208,8 +213,18 @@ export default function SettingsPage() {
 
   async function saveTabAccess() {
     if (!tabAccessAccount) return;
-    await updateAccount(tabAccessAccount, { allowedTabs: tabAccessTabs });
-    setTabAccessAccount(null);
+    setTabAccessSaving(true);
+    setTabAccessMsg('');
+    const res = await updateAccount(tabAccessAccount, { allowedTabs: tabAccessTabs });
+    setTabAccessSaving(false);
+    if (res.success) {
+      setTabAccessNotice({ type: 'success', message: `Tab access saved for ${accounts.find((a) => a.email === tabAccessAccount)?.name ?? tabAccessAccount}.` });
+      setTabAccessAccount(null);
+    } else {
+      const message = res.error ?? 'Failed to save tab access';
+      setTabAccessMsg(message);
+      setTabAccessNotice({ type: 'error', message });
+    }
   }
 
   /* ── Sub-User Management ── */
@@ -434,6 +449,15 @@ export default function SettingsPage() {
 
           {/* Account List */}
           <SectionCard title={`All Accounts (${accounts.length})`} desc="Manage existing user accounts">
+            {tabAccessNotice && (
+              <div className={`mb-3 rounded-lg border px-3 py-2 text-xs ${
+                tabAccessNotice.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'
+              }`}>
+                {tabAccessNotice.message}
+              </div>
+            )}
             <div className="space-y-3">
               {accounts.map((acct) => (
                 <div
@@ -617,21 +641,28 @@ export default function SettingsPage() {
                       </label>
                     ))}
                   </div>
+                  {tabAccessMsg && (
+                    <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      {tabAccessMsg}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-3">
                   <button
                     onClick={() => setTabAccessAccount(null)}
+                    disabled={tabAccessSaving}
                     className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={saveTabAccess}
-                    className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
+                    disabled={tabAccessSaving}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
-                    Save Access
+                    {tabAccessSaving ? 'Saving...' : 'Save Access'}
                   </button>
                 </div>
               </div>

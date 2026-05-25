@@ -543,17 +543,34 @@ app.post('/auth/verify-action-code', async (request, reply) => {
 
 // ── Dashboard Accounts (server-side tab access + sub-users) ────────
 
-app.get('/dashboard-accounts', async () => {
-  const rows = await query(`SELECT email, name, role, allowed_tabs, sub_users, created_at, updated_at FROM dashboard_accounts ORDER BY created_at DESC`);
-  return rows.map((r: any) => ({
+function parseDashboardJsonArray(value: unknown): unknown {
+  if (Array.isArray(value) || value == null) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parseDashboardJsonArray(parsed);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function serializeDashboardAccount(r: any) {
+  return {
     email: r.email,
     name: r.name,
     role: r.role,
-    allowedTabs: r.allowed_tabs,
-    subUsers: r.sub_users,
+    allowedTabs: parseDashboardJsonArray(r.allowed_tabs),
+    subUsers: parseDashboardJsonArray(r.sub_users),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-  }));
+  };
+}
+
+app.get('/dashboard-accounts', async () => {
+  const rows = await query(`SELECT email, name, role, allowed_tabs, sub_users, created_at, updated_at FROM dashboard_accounts ORDER BY created_at DESC`);
+  return rows.map(serializeDashboardAccount);
 });
 
 app.post('/dashboard-accounts', async (request, reply) => {
@@ -568,14 +585,20 @@ app.post('/dashboard-accounts', async (request, reply) => {
   try {
     await query(
       `INSERT INTO dashboard_accounts (email, name, role, allowed_tabs, sub_users)
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
        ON CONFLICT (email) DO UPDATE SET
          name=COALESCE(EXCLUDED.name, dashboard_accounts.name),
          role=COALESCE(EXCLUDED.role, dashboard_accounts.role),
          allowed_tabs=COALESCE(EXCLUDED.allowed_tabs, dashboard_accounts.allowed_tabs),
          sub_users=COALESCE(EXCLUDED.sub_users, dashboard_accounts.sub_users),
          updated_at=NOW()`,
-      [body.email, body.name ?? null, body.role ?? 'editor', body.allowedTabs ?? null, body.subUsers ?? null]
+      [
+        body.email,
+        body.name ?? null,
+        body.role ?? 'editor',
+        body.allowedTabs !== undefined ? JSON.stringify(body.allowedTabs) : null,
+        body.subUsers !== undefined ? JSON.stringify(body.subUsers) : null,
+      ]
     );
     return reply.send({ ok: true });
   } catch (err: any) {
@@ -598,8 +621,8 @@ app.patch('/dashboard-accounts/:email', async (request, reply) => {
 
   if (body.name !== undefined) { fields.push(`name=$${idx++}`); values.push(body.name); }
   if (body.role !== undefined) { fields.push(`role=$${idx++}`); values.push(body.role); }
-  if (body.allowedTabs !== undefined) { fields.push(`allowed_tabs=$${idx++}`); values.push(body.allowedTabs); }
-  if (body.subUsers !== undefined) { fields.push(`sub_users=$${idx++}`); values.push(body.subUsers); }
+  if (body.allowedTabs !== undefined) { fields.push(`allowed_tabs=$${idx++}::jsonb`); values.push(body.allowedTabs === null ? null : JSON.stringify(body.allowedTabs)); }
+  if (body.subUsers !== undefined) { fields.push(`sub_users=$${idx++}::jsonb`); values.push(body.subUsers === null ? null : JSON.stringify(body.subUsers)); }
 
   if (fields.length === 0) {
     return reply.status(400).send({ error: 'No fields to update' });
@@ -608,12 +631,17 @@ app.patch('/dashboard-accounts/:email', async (request, reply) => {
   fields.push('updated_at=NOW()');
   values.push(params.email);
 
-  await query(
-    `UPDATE dashboard_accounts SET ${fields.join(', ')} WHERE email=$${idx}`,
+  const updatedRows = await query(
+    `UPDATE dashboard_accounts SET ${fields.join(', ')} WHERE email=$${idx}
+     RETURNING email, name, role, allowed_tabs, sub_users, created_at, updated_at`,
     values
   );
 
-  return reply.send({ ok: true });
+  if (!updatedRows[0]) {
+    return reply.status(404).send({ error: 'Dashboard account not found' });
+  }
+
+  return reply.send({ ok: true, account: serializeDashboardAccount(updatedRows[0]) });
 });
 
 app.delete('/dashboard-accounts/:email', async (request, reply) => {
@@ -2140,7 +2168,7 @@ app.get('/production/board', async (_request, reply) => {
             production_started, production_finished, en_route_confirmed,
             estimated_production_days, production_started_at
      FROM orders
-     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending', 'partial_production', 'en_route')
+     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending', 'partial_production', 'production_in_progress', 'en_route')
        AND status = 'active'
      ORDER BY updated_at DESC
      LIMIT 30`,

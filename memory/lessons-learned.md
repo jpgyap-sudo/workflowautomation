@@ -10544,3 +10544,166 @@ For any sensitive data mutation (e.g., tracking edits, manual creation), enforce
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: production tab gap analysis — 7 OTP/security gaps fixed
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 83a6f56cbde531bed44da7b69ccae7fd0b1dc300
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 83a6f56cbde531bed44da7b69ccae7fd0b1dc300
+**Files:** apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/components/OtpModal.tsx,apps/dashboard/src/lib/api.ts,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+7 OTP/security gaps in production tab gap analysis, including fixes to inventory and production pages, OTP modal, API layer, and documentation updates.
+
+**Why it broke:**  
+Inconsistent handling of OTP verification across components and API endpoints led to security gaps in production workflows.
+
+**Reusable takeaway:**  
+When implementing OTP-based security across multiple UI components and API routes, centralize OTP validation logic in a single service/module. This prevents gaps from inconsistent checks, reduces duplication, and ensures all entry points enforce the same security policy. Always update documentation and lesson logs alongside code changes to maintain traceability.
+
+---
+*Original commit message: fix: production tab gap analysis — 7 OTP/security gaps fixed*
+
+#### Lesson Learned
+
+**What was fixed:**  
+7 OTP/security gaps in production tab gap analysis, including fixes to inventory and production pages, OTP modal, API layer, and documentation updates.
+
+**Why it broke:**  
+Inconsistent handling of OTP verification across components and API endpoints led to security gaps in production workflows.
+
+**Reusable takeaway:**  
+When implementing OTP-based security across multiple UI components and API routes, centralize OTP validation logic in a single service/module. This prevents gaps from inconsistent checks, reduces duplication, and ensures all entry points enforce the same security policy. Always update documentation and lesson logs alongside code changes to maintain traceability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Dashboard tab access persistence
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When saving dashboard account allowedTabs/subUsers to PostgreSQL JSONB through node-postgres, stringify arrays before binding (and cast PATCH params to ::jsonb) or the server save can silently fail while localStorage appears updated. Frontend updateAccount should surface non-OK server responses and roll back local state; Sidebar should treat an explicit empty allowedTabs array as no access, not fallback to all tabs.
+
+#### Lesson Learned
+
+When saving dashboard account allowedTabs/subUsers to PostgreSQL JSONB through node-postgres, stringify arrays before binding (and cast PATCH params to ::jsonb) or the server save can silently fail while localStorage appears updated. Frontend updateAccount should surface non-OK server responses and roll back local state; Sidebar should treat an explicit empty allowedTabs array as no access, not fallback to all tabs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Dashboard tab access persistence
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For quotation-automation dashboard account permissions, allowedTabs/subUsers are PostgreSQL JSONB fields. Store arrays using JSON.stringify and cast PATCH params to ::jsonb; parse/normalize server values on the frontend; surface server save errors and roll back localStorage if persistence fails; Sidebar must treat an explicit empty allowedTabs array as no tabs, not fallback to all tabs.
+
+#### Lesson Learned
+
+For quotation-automation dashboard account permissions, allowedTabs/subUsers are PostgreSQL JSONB fields. Store arrays using JSON.stringify and cast PATCH params to ::jsonb; parse/normalize server values on the frontend; surface server save errors and roll back localStorage if persistence fails; Sidebar must treat an explicit empty allowedTabs array as no tabs, not fallback to all tabs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Payment acknowledgement receipt PDFs
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For collection receipts in quotation-automation, generate acknowledgement PDF downloads directly from existing payments rows so historical downpayment/balance/full payments are immediately downloadable without a new migration. For full_payment source rows, group the split deposit/balance payment records for display/download so the user sees one Full Payment receipt amount.
+
+#### Lesson Learned
+
+For collection receipts in quotation-automation, generate acknowledgement PDF downloads directly from existing payments rows so historical downpayment/balance/full payments are immediately downloadable without a new migration. For full_payment source rows, group the split deposit/balance payment records for display/download so the user sees one Full Payment receipt amount.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Item tracking edit audit
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For item-level tracking in quotation-automation, use a separate manual append endpoint rather than the bulk replace /orders/:id/items endpoint. Require edit_reason from dashboard add/edit forms, log before/after fields in production_update_logs, and keep fast operational status updates from Telegram/dashboard compatible by using an explicit require_reason flag only for full edit forms.
+
+#### Lesson Learned
+
+For item-level tracking in quotation-automation, use a separate manual append endpoint rather than the bulk replace /orders/:id/items endpoint. Require edit_reason from dashboard add/edit forms, log before/after fields in production_update_logs, and keep fast operational status updates from Telegram/dashboard compatible by using an explicit require_reason flag only for full edit forms.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Tab access backend wiring
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For dashboard tab access, the backend PATCH /dashboard-accounts/:email should RETURNING the updated row and the frontend should normalize and persist that returned account. This verifies the server accepted allowedTabs. Add visible success/error notifications in Settings; on server failure roll back localStorage so the UI does not pretend saved permissions persisted.
+
+#### Lesson Learned
+
+For dashboard tab access, the backend PATCH /dashboard-accounts/:email should RETURNING the updated row and the frontend should normalize and persist that returned account. This verifies the server accepted allowedTabs. Add visible success/error notifications in Settings; on server failure roll back localStorage so the UI does not pretend saved permissions persisted.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

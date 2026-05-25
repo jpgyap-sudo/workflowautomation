@@ -156,6 +156,51 @@ function persistAccounts(accounts: Account[]) {
   localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
 }
 
+function normalizeTabRoutes(value: unknown): TabRoute[] | undefined {
+  if (value == null) return undefined;
+  if (Array.isArray(value)) {
+    return value.filter((tab): tab is TabRoute =>
+      typeof tab === 'string' && (ALL_TAB_ROUTES as readonly string[]).includes(tab),
+    );
+  }
+  if (typeof value === 'string') {
+    try {
+      return normalizeTabRoutes(JSON.parse(value));
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function normalizeServerAccount(s: any): Partial<Account> {
+  return {
+    email: s.email,
+    name: s.name,
+    role: s.role,
+    allowedTabs: normalizeTabRoutes(s.allowedTabs),
+    subUsers: normalizeSubUsers(s.subUsers),
+    createdAt: s.createdAt,
+  };
+}
+
+function normalizeSubUsers(value: unknown): SubUser[] | undefined {
+  if (value == null) return undefined;
+  if (Array.isArray(value)) {
+    return value.filter((user): user is SubUser =>
+      Boolean(user) && typeof user.code === 'string' && typeof user.name === 'string',
+    );
+  }
+  if (typeof value === 'string') {
+    try {
+      return normalizeSubUsers(JSON.parse(value));
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 // Fetch accounts from server (source of truth for allowedTabs + subUsers)
 async function fetchServerAccounts(): Promise<Partial<Account>[] | null> {
   try {
@@ -163,14 +208,7 @@ async function fetchServerAccounts(): Promise<Partial<Account>[] | null> {
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data)) return null;
-    return data.map((s: any) => ({
-      email: s.email,
-      name: s.name,
-      role: s.role,
-      allowedTabs: s.allowedTabs,
-      subUsers: s.subUsers,
-      createdAt: s.createdAt,
-    }));
+    return data.map(normalizeServerAccount);
   } catch {
     return null;
   }
@@ -430,6 +468,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const previousAccounts = accts.map((acct) => ({ ...acct }));
     accts[idx] = { ...accts[idx], ...updates };
     persistAccounts(accts);
     setAccounts([...accts]);
@@ -454,12 +493,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (Object.keys(serverBody).length > 0) {
       try {
-        await fetch(`${API_BASE}/dashboard-accounts/${encodeURIComponent(email)}`, {
+        const res = await fetch(`${API_BASE}/dashboard-accounts/${encodeURIComponent(email)}`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(serverBody),
         });
-      } catch { /* non-fatal */ }
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          persistAccounts(previousAccounts);
+          setAccounts(previousAccounts);
+          return { success: false, error: data.error ?? 'Failed to save account settings on server' };
+        }
+        const data = (await res.json().catch(() => ({}))) as { account?: Partial<Account> };
+        if (data.account) {
+          const serverAccount = normalizeServerAccount(data.account);
+          const confirmed = accts.map((acct) =>
+            acct.email.toLowerCase() === email.toLowerCase()
+              ? {
+                  ...acct,
+                  ...updates,
+                  allowedTabs: serverAccount.allowedTabs !== undefined ? serverAccount.allowedTabs : acct.allowedTabs,
+                  subUsers: serverAccount.subUsers !== undefined ? serverAccount.subUsers : acct.subUsers,
+                  name: serverAccount.name ?? acct.name,
+                  role: (serverAccount.role as Account['role']) ?? acct.role,
+                }
+              : acct,
+          );
+          persistAccounts(confirmed);
+          setAccounts(confirmed);
+        }
+      } catch {
+        persistAccounts(previousAccounts);
+        setAccounts(previousAccounts);
+        return { success: false, error: 'Could not reach server to save account settings' };
+      }
     }
 
     return { success: true };
