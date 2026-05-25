@@ -127,6 +127,11 @@ function getStoredAccounts(): Account[] {
               parsed[idx].subUsers = def.subUsers;
               changed = true;
             }
+            // Sync password from defaults (source of truth for default accounts)
+            if (parsed[idx].password !== def.password) {
+              parsed[idx].password = def.password;
+              changed = true;
+            }
           } else {
             // Add new default account that doesn't exist in storage
             parsed.push(def);
