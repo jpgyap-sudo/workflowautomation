@@ -125,7 +125,13 @@ function ItemCompletionBar({ pct, label, color }: { pct: number; label: string; 
 
 // ── Production Info Cards ─────────────────────────────────────────────
 
-function ProductionInfoCards({ order }: { order: Order }) {
+interface ProductionInfoCardsProps {
+  order: Order;
+  onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished') => void;
+  onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
+}
+
+function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatus }: ProductionInfoCardsProps) {
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [loadingCompletion, setLoadingCompletion] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -174,14 +180,19 @@ function ProductionInfoCards({ order }: { order: Order }) {
     item: OrderItem,
     productionStatus: 'pending' | 'in_progress' | 'finished'
   ) {
-    setUpdatingItemId(item.id);
-    try {
-      await updateOrderItem(order.id, item.id, { production_status: productionStatus });
-      await refreshItemState();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update item production status');
-    } finally {
-      setUpdatingItemId(null);
+    if (onItemProductionStatus) {
+      onItemProductionStatus(item, productionStatus);
+    } else {
+      // Fallback: direct call without OTP
+      setUpdatingItemId(item.id);
+      try {
+        await updateOrderItem(order.id, item.id, { production_status: productionStatus });
+        await refreshItemState();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to update item production status');
+      } finally {
+        setUpdatingItemId(null);
+      }
     }
   }
 
@@ -189,25 +200,29 @@ function ProductionInfoCards({ order }: { order: Order }) {
     item: OrderItem,
     enRouteStatus: 'not_yet' | 'en_route' | 'arrived'
   ) {
-    let estimatedArrivalDays: number | null = item.estimated_arrival_days ?? null;
-    if (enRouteStatus === 'en_route' && !estimatedArrivalDays) {
-      const input = window.prompt(`Estimated arrival days for "${item.name}"?`, '28');
-      if (input === null) return; // cancelled
-      const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
-      if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
-      estimatedArrivalDays = days;
-    }
-    setUpdatingEnRouteItemId(item.id);
-    try {
-      await updateOrderItem(order.id, item.id, {
-        en_route_status: enRouteStatus,
-        ...(estimatedArrivalDays != null ? { estimated_arrival_days: estimatedArrivalDays } : {}),
-      });
-      await refreshItemState();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update en route status');
-    } finally {
-      setUpdatingEnRouteItemId(null);
+    if (onItemEnRouteStatus) {
+      onItemEnRouteStatus(item, enRouteStatus);
+    } else {
+      let estimatedArrivalDays: number | null = item.estimated_arrival_days ?? null;
+      if (enRouteStatus === 'en_route' && !estimatedArrivalDays) {
+        const input = window.prompt(`Estimated arrival days for "${item.name}"?`, '28');
+        if (input === null) return;
+        const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+        if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
+        estimatedArrivalDays = days;
+      }
+      setUpdatingEnRouteItemId(item.id);
+      try {
+        await updateOrderItem(order.id, item.id, {
+          en_route_status: enRouteStatus,
+          ...(estimatedArrivalDays != null ? { estimated_arrival_days: estimatedArrivalDays } : {}),
+        });
+        await refreshItemState();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to update en route status');
+      } finally {
+        setUpdatingEnRouteItemId(null);
+      }
     }
   }
 
@@ -515,9 +530,11 @@ interface OrderRowProps {
   onProceedInventoryVerification?: (o: Order) => void;
   onGrantException?: (o: Order) => void;
   onRevokeException?: (o: Order) => void;
+  onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished') => void;
+  onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -634,7 +651,7 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
 
       {expanded && (
         <>
-          <ProductionInfoCards order={order} />
+          <ProductionInfoCards order={order} onItemProductionStatus={onItemProductionStatus} onItemEnRouteStatus={onItemEnRouteStatus} />
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
             {/* Start Production button for production_pending orders */}
             {onStartProduction && !order.production_started && (
@@ -862,6 +879,8 @@ interface ProductionItemSectionProps {
   showDelayedButton?: boolean;
   /** Callback when Start is clicked for an item */
   onItemStart?: (order: Order, item: OrderItem) => void;
+  /** Callback when Start is confirmed with production days */
+  onItemStartConfirm?: (order: Order, item: OrderItem, days: number) => void;
   /** Callback when Finished is clicked for an item */
   onItemFinished?: (order: Order, item: OrderItem) => void;
   /** Callback when Delayed is clicked for an item */
@@ -881,7 +900,7 @@ function ProductionItemSection({
   orders, isLoading, error, onRetry, emptyText,
   itemFilter,
   showStartButton, showFinishedButton, showDelayedButton,
-  onItemStart, onItemFinished, onItemDelayed,
+  onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
 }: ProductionItemSectionProps) {
@@ -930,19 +949,22 @@ function ProductionItemSection({
     const days = parseInt(modal.productionDays.replace(/[^0-9]/g, ''));
     if (!days || days <= 0) { alert('Please enter a valid number of production days.'); return; }
     setStartItemModal({ ...modal, open: false });
-    // First save the production days, then update the status
-    try {
-      await updateOrderItem(modal.order.id, modal.item.id, {
-        estimated_production_days: days,
-        production_status: 'in_progress',
-      });
-      // Refresh items for this order
-      const res = await getOrderItems(modal.order.id);
-      if (res.ok) {
-        setItemsByOrder((prev) => ({ ...prev, [modal.order!.id]: res.items }));
+    if (onItemStartConfirm) {
+      onItemStartConfirm(modal.order, modal.item, days);
+    } else {
+      // Fallback: direct call without OTP
+      try {
+        await updateOrderItem(modal.order.id, modal.item.id, {
+          estimated_production_days: days,
+          production_status: 'in_progress',
+        });
+        const res = await getOrderItems(modal.order.id);
+        if (res.ok) {
+          setItemsByOrder((prev) => ({ ...prev, [modal.order!.id]: res.items }));
+        }
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to start production for item');
       }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to start production for item');
     }
   }
 
@@ -1601,7 +1623,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -1659,6 +1681,11 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'grantProductionException') handleGrantExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'stockReplenishment') handleStockReplVerified(actionToken);
+    else if (otpModal.pendingAction === 'itemFinish') handleItemFinishVerified(actionToken);
+    else if (otpModal.pendingAction === 'itemDelayed') handleItemDelayedVerified(actionToken);
+    else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
+    else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
+    else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
   }
 
   async function handleGrantExceptionVerified(actionToken: string) {
@@ -1937,14 +1964,27 @@ export default function ProductionPage() {
   // ── Per-item production action handlers ──────────────────────────────
 
   async function handleItemFinish(order: Order, item: OrderItem) {
-    setUpdatingItemId(item.id);
+    setOtpModal({
+      open: true,
+      title: 'Finish Item Production',
+      description: `You are about to mark item "${item.name}" in order "${order.quotation_number ?? '—'}" as finished. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'itemFinish',
+    });
+    (window as any).__pendingItemFinishData = { orderId: order.id, itemId: item.id };
+  }
+
+  async function handleItemFinishVerified(actionToken: string) {
+    const pending = (window as any).__pendingItemFinishData;
+    if (!pending) return;
+    setUpdatingItemId(pending.itemId);
     try {
-      await updateOrderItem(order.id, item.id, { production_status: 'finished' });
+      await updateOrderItem(pending.orderId, pending.itemId, { production_status: 'finished', action_token: actionToken });
       refresh();
     } catch (err: any) {
       alert('Failed to finish item: ' + (err.message ?? 'Unknown error'));
     } finally {
       setUpdatingItemId(null);
+      (window as any).__pendingItemFinishData = null;
     }
   }
 
@@ -1957,9 +1997,143 @@ export default function ProductionPage() {
       open: true,
       title: 'Report Item Delay',
       description: `You are about to report item "${item.name}" in order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s). Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'reportStatus',
+      pendingAction: 'itemDelayed',
     });
-    (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: false, delay_days: days } };
+    (window as any).__pendingItemDelayedData = { orderId: order.id, itemId: item.id, delayDays: days };
+  }
+
+  async function handleItemDelayedVerified(actionToken: string) {
+    const pending = (window as any).__pendingItemDelayedData;
+    if (!pending) return;
+    setUpdatingItemId(pending.itemId);
+    try {
+      await updateOrderItem(pending.orderId, pending.itemId, {
+        production_status: 'in_progress',
+        action_token: actionToken,
+      } as any);
+      // Note: delay tracking is done via the order-level reportProductionStatus API.
+      // For item-level, we just keep the item in in_progress status with the OTP audit trail.
+      refresh();
+    } catch (err: any) {
+      alert('Failed to report item delay: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setUpdatingItemId(null);
+      (window as any).__pendingItemDelayedData = null;
+    }
+  }
+
+  // ── Item production status (from ProductionInfoCards) ────────────────
+
+  // These are called from ProductionInfoCards which has access to the order
+  // We store the orderId alongside the item data
+  function handleItemProductionStatusAction(orderId: string, item: OrderItem, status: 'pending' | 'in_progress' | 'finished') {
+    setOtpModal({
+      open: true,
+      title: 'Update Item Production Status',
+      description: `You are about to change production status of item "${item.name}" to "${status}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'itemProductionStatus',
+    });
+    (window as any).__pendingItemProductionStatusData = { orderId, item, status };
+  }
+
+  async function handleItemProductionStatusVerified(actionToken: string) {
+    const pending = (window as any).__pendingItemProductionStatusData;
+    if (!pending) return;
+    const { orderId, item, status } = pending as { orderId: string; item: OrderItem; status: 'pending' | 'in_progress' | 'finished' };
+    setUpdatingItemId(item.id);
+    try {
+      await updateOrderItem(orderId, item.id, { production_status: status, action_token: actionToken });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to update item production status: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setUpdatingItemId(null);
+      (window as any).__pendingItemProductionStatusData = null;
+    }
+  }
+
+  function handleItemEnRouteStatusAction(orderId: string, item: OrderItem, enRouteStatus: 'not_yet' | 'en_route' | 'arrived') {
+    let estimatedArrivalDays: number | null = item.estimated_arrival_days ?? null;
+    if (enRouteStatus === 'en_route' && !estimatedArrivalDays) {
+      const input = window.prompt(`Estimated arrival days for "${item.name}"?`, '28');
+      if (input === null) return;
+      const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+      if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
+      estimatedArrivalDays = days;
+    }
+    setOtpModal({
+      open: true,
+      title: 'Update Item En Route Status',
+      description: `You are about to change en route status of item "${item.name}" to "${enRouteStatus}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'itemEnRouteStatus',
+    });
+    (window as any).__pendingItemEnRouteStatusData = { orderId, item, enRouteStatus, estimatedArrivalDays };
+  }
+
+  async function handleItemEnRouteStatusVerified(actionToken: string) {
+    const pending = (window as any).__pendingItemEnRouteStatusData;
+    if (!pending) return;
+    const { orderId, item, enRouteStatus, estimatedArrivalDays } = pending as {
+      orderId: string; item: OrderItem; enRouteStatus: 'not_yet' | 'en_route' | 'arrived'; estimatedArrivalDays: number | null;
+    };
+    setUpdatingItemId(item.id);
+    try {
+      await updateOrderItem(orderId, item.id, {
+        en_route_status: enRouteStatus,
+        ...(estimatedArrivalDays != null ? { estimated_arrival_days: estimatedArrivalDays } : {}),
+        action_token: actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to update en route status: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setUpdatingItemId(null);
+      (window as any).__pendingItemEnRouteStatusData = null;
+    }
+  }
+
+  // ── Item start confirm (from ProductionItemSection) ──────────────────
+
+  function handleItemStartConfirm(order: Order, item: OrderItem, days: number) {
+    setOtpModal({
+      open: true,
+      title: 'Start Item Production',
+      description: `You are about to start production for item "${item.name}" in order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'itemStartConfirm',
+    });
+    (window as any).__pendingItemStartConfirmData = { orderId: order.id, itemId: item.id, days };
+  }
+
+  async function handleItemStartConfirmVerified(actionToken: string) {
+    const pending = (window as any).__pendingItemStartConfirmData;
+    if (!pending) return;
+    setUpdatingItemId(pending.itemId);
+    try {
+      await updateOrderItem(pending.orderId, pending.itemId, {
+        estimated_production_days: pending.days,
+        production_status: 'in_progress',
+        action_token: actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to start production for item: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setUpdatingItemId(null);
+      (window as any).__pendingItemStartConfirmData = null;
+    }
+  }
+
+  // ── Wrapper callbacks for OrderRow → ProductionInfoCards ──────────────
+  // These capture the order ID so ProductionInfoCards can trigger OTP-based item actions
+  function makeItemProductionStatusHandler(order: Order) {
+    return (item: OrderItem, status: 'pending' | 'in_progress' | 'finished') => {
+      handleItemProductionStatusAction(order.id, item, status);
+    };
+  }
+  function makeItemEnRouteStatusHandler(order: Order) {
+    return (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => {
+      handleItemEnRouteStatusAction(order.id, item, status);
+    };
   }
 
   // Merge partial_production orders into Production In Progress section too,
@@ -2008,7 +2182,10 @@ export default function ProductionPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onStartProduction={handleStartProduction} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onStartProduction={handleStartProduction}
+              onItemProductionStatus={makeItemProductionStatusHandler(order)}
+              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
+            />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -2031,6 +2208,7 @@ export default function ProductionPage() {
         showStartButton={true}
         showFinishedButton={false}
         showDelayedButton={false}
+        onItemStartConfirm={handleItemStartConfirm}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
@@ -2079,6 +2257,8 @@ export default function ProductionPage() {
               onFinishProduction={handleFinishProduction}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
+              onItemProductionStatus={makeItemProductionStatusHandler(order)}
+              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
@@ -2114,6 +2294,8 @@ export default function ProductionPage() {
               onConfirmEnRoute={handleConfirmEnRoute}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
+              onItemProductionStatus={makeItemProductionStatusHandler(order)}
+              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
@@ -2139,6 +2321,8 @@ export default function ProductionPage() {
               onConfirmEnRoute={handleConfirmEnRoute}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
+              onItemProductionStatus={makeItemProductionStatusHandler(order)}
+              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
@@ -2164,6 +2348,8 @@ export default function ProductionPage() {
               onProceedInventoryVerification={handleProceedInventoryVerification}
               onGrantException={handleGrantException}
               onRevokeException={handleRevokeException}
+              onItemProductionStatus={makeItemProductionStatusHandler(order)}
+              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />

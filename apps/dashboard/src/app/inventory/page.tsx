@@ -15,6 +15,9 @@ import {
   approveAllInventoryDrafts,
   rejectInventoryDraft,
   clearProcessedDrafts,
+  bulkDeleteInventoryDrafts,
+  deleteAllInventoryDrafts,
+  bulkDeleteInventoryItems,
   getInventoryImageUrl,
   getItemCompletion,
   getOrderItems,
@@ -114,9 +117,17 @@ export default function InventoryPage() {
   // Edit item inline
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
+  type OtpPendingAction =
+    | 'add' | 'edit' | 'delete' | 'bulk-upload'
+    | 'approve-selected' | 'approve-all' | 'reject-draft' | 'clear-drafts'
+    | 'bulk-delete-drafts' | 'delete-all-drafts' | 'bulk-delete-items';
+
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete' | 'bulk-upload' | 'approve-selected' | 'approve-all' | 'reject-draft' | 'clear-drafts';
+    open: boolean; title: string; description: string; pendingAction: OtpPendingAction; targetEmail?: string;
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  // Selected inventory items for bulk actions
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
   // Initialize draft edits when drafts load
   useEffect(() => {
@@ -482,7 +493,9 @@ export default function InventoryPage() {
     else if (otpModal.pendingAction === 'approve-all') handleApproveAllVerified(actionToken);
     else if (otpModal.pendingAction === 'reject-draft') handleRejectDraftVerified(actionToken);
     else if (otpModal.pendingAction === 'clear-drafts') handleClearDraftsVerified(actionToken);
-
+    else if (otpModal.pendingAction === 'bulk-delete-drafts') handleBulkDeleteDraftsVerified(actionToken);
+    else if (otpModal.pendingAction === 'delete-all-drafts') handleDeleteAllDraftsVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulk-delete-items') handleBulkDeleteItemsVerified(actionToken);
   }
 
   async function handleClearDraftsVerified(actionToken: string) {
@@ -491,6 +504,101 @@ export default function InventoryPage() {
       mutateDrafts();
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Clear failed');
+    }
+  }
+
+  // ── Bulk Delete Drafts ──
+  function handleBulkDeleteDrafts() {
+    if (selectedDrafts.size === 0) return;
+    setOtpModal({
+      open: true,
+      title: 'Delete Selected Drafts',
+      description: `You are about to permanently delete ${selectedDrafts.size} selected draft(s). This cannot be undone.`,
+      pendingAction: 'bulk-delete-drafts',
+      targetEmail: 'jpgyap@gmail.com',
+    });
+  }
+
+  async function handleBulkDeleteDraftsVerified(actionToken: string) {
+    setApproving(true);
+    setDraftError('');
+    try {
+      await bulkDeleteInventoryDrafts(Array.from(selectedDrafts), actionToken);
+      mutateDrafts();
+      setSelectedDrafts(new Set());
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Bulk delete failed');
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  function handleDeleteAllDrafts() {
+    setOtpModal({
+      open: true,
+      title: 'Delete All Pending Drafts',
+      description: `You are about to permanently delete ALL ${drafts.length} pending draft(s). This cannot be undone.`,
+      pendingAction: 'delete-all-drafts',
+      targetEmail: 'jpgyap@gmail.com',
+    });
+  }
+
+  async function handleDeleteAllDraftsVerified(actionToken: string) {
+    setApproving(true);
+    setDraftError('');
+    try {
+      await deleteAllInventoryDrafts(actionToken);
+      mutateDrafts();
+      setSelectedDrafts(new Set());
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Delete all failed');
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  // ── Inventory Item Selection & Bulk Delete ──
+  function toggleItemSelect(id: string) {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllItems() {
+    if (selectedItems.size === filteredItems.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(filteredItems.map((i) => i.id)));
+    }
+  }
+
+  function handleBulkDeleteItems() {
+    if (selectedItems.size === 0) return;
+    const names = filteredItems
+      .filter((i) => selectedItems.has(i.id))
+      .map((i) => i.product_name)
+      .slice(0, 3)
+      .join(', ');
+    const more = selectedItems.size > 3 ? ` and ${selectedItems.size - 3} more` : '';
+    setOtpModal({
+      open: true,
+      title: 'Delete Selected Items',
+      description: `You are about to permanently delete ${selectedItems.size} inventory item(s) (${names}${more}). This cannot be undone.`,
+      pendingAction: 'bulk-delete-items',
+      targetEmail: 'jpgyap@gmail.com',
+    });
+  }
+
+  async function handleBulkDeleteItemsVerified(actionToken: string) {
+    try {
+      await bulkDeleteInventoryItems(Array.from(selectedItems), actionToken);
+      mutateItems();
+      setSelectedItems(new Set());
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Bulk delete failed');
     }
   }
 
@@ -576,6 +684,24 @@ export default function InventoryPage() {
             {filteredItems.length}
           </span>
         </div>
+        {selectedItems.size > 0 && (
+          <div className="flex items-center gap-2 border-b border-gray-100 bg-amber-50/50 px-6 py-2">
+            <span className="text-xs font-medium text-gray-600">{selectedItems.size} selected</span>
+            <button
+              onClick={handleBulkDeleteItems}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete Selected
+            </button>
+            <button
+              onClick={() => setSelectedItems(new Set())}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
         {itemsLoading && items.length === 0 ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-[#2490ef]" />
@@ -589,6 +715,15 @@ export default function InventoryPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 text-xs font-medium text-gray-500">
                 <tr>
+                  <th className="px-4 py-3 w-10">
+                    <button onClick={toggleAllItems} className="text-gray-400 hover:text-gray-600">
+                      {selectedItems.size === filteredItems.length && filteredItems.length > 0 ? (
+                        <CheckSquare className="h-5 w-5 text-[#2490ef]" />
+                      ) : (
+                        <Square className="h-5 w-5" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-4 py-3">Image</th>
                   <th className="px-4 py-3">Product Name</th>
                   <th className="px-4 py-3">Description</th>
@@ -601,6 +736,11 @@ export default function InventoryPage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredItems.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <button onClick={() => toggleItemSelect(item.id)} className="text-gray-400 hover:text-gray-600">
+                        {selectedItems.has(item.id) ? <CheckSquare className="h-5 w-5 text-[#2490ef]" /> : <Square className="h-5 w-5" />}
+                      </button>
+                    </td>
                     <td className="px-4 py-3">
                       {item.image_url ? (
                         <img
@@ -925,7 +1065,7 @@ export default function InventoryPage() {
               ) : (
                 <div className="space-y-4">
                   {/* Bulk Actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={toggleAllDrafts}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
@@ -947,6 +1087,22 @@ export default function InventoryPage() {
                       className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
                     >
                       Approve All
+                    </button>
+                    <button
+                      onClick={handleBulkDeleteDrafts}
+                      disabled={selectedDrafts.size === 0 || approving}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete Selected ({selectedDrafts.size})
+                    </button>
+                    <button
+                      onClick={handleDeleteAllDrafts}
+                      disabled={approving || drafts.length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete All Pending
                     </button>
                   </div>
 
@@ -1098,6 +1254,7 @@ export default function InventoryPage() {
           (window as any).__pendingInventoryDelete = null;
           (window as any).__pendingRejectDraft = null;
         }}
+        targetEmail={otpModal.targetEmail}
       />
     </div>
   );

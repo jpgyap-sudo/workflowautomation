@@ -10496,3 +10496,51 @@ Always update documentation (changelogs, release notes) **immediately** when a f
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add OTP verification for item-level tracking edits + Telegram notifications for item tracking edits and manual item
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ed3d58d61ef594145a0388b125130020936911cd
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ed3d58d61ef594145a0388b125130020936911cd
+**Files:** apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/lib/api.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Added OTP verification for item-level tracking edits, plus Telegram notifications for tracking edits and manual item creation.
+
+**Why it broke:**  
+Previously, tracking edits lacked authentication and notification coverage, allowing unauthorized changes and leaving stakeholders uninformed.
+
+**Reusable takeaway:**  
+For any sensitive data mutation (e.g., tracking edits, manual creation), enforce two-factor verification and real-time notifications to prevent unauthorized actions and ensure visibility. Always pair access control with alerting.
+
+---
+*Original commit message: fix: add OTP verification for item-level tracking edits + Telegram notifications for item tracking edits and manual item creation*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added OTP verification for item-level tracking edits, plus Telegram notifications for tracking edits and manual item creation.
+
+**Why it broke:**  
+Previously, tracking edits lacked authentication and notification coverage, allowing unauthorized changes and leaving stakeholders uninformed.
+
+**Reusable takeaway:**  
+For any sensitive data mutation (e.g., tracking edits, manual creation), enforce two-factor verification and real-time notifications to prevent unauthorized actions and ensure visibility. Always pair access control with alerting.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

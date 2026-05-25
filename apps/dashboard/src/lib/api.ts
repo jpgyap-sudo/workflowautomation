@@ -1262,6 +1262,27 @@ export async function clearProcessedDrafts(actionToken: string): Promise<{ ok: b
   });
 }
 
+export async function bulkDeleteInventoryDrafts(ids: string[], actionToken: string): Promise<{ ok: boolean; deleted_count: number }> {
+  return fetchJson<{ ok: boolean; deleted_count: number }>('/inventory/drafts/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids, action_token: actionToken }),
+  });
+}
+
+export async function deleteAllInventoryDrafts(actionToken: string): Promise<{ ok: boolean; deleted_count: number }> {
+  return fetchJson<{ ok: boolean; deleted_count: number }>('/inventory/drafts/delete-all', {
+    method: 'POST',
+    body: JSON.stringify({ action_token: actionToken }),
+  });
+}
+
+export async function bulkDeleteInventoryItems(ids: string[], actionToken: string): Promise<{ ok: boolean; deleted_count: number }> {
+  return fetchJson<{ ok: boolean; deleted_count: number }>('/inventory/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids, action_token: actionToken }),
+  });
+}
+
 // ── Bug Reports ────────────────────────────────────────────────────────
 
 export interface BugReport {

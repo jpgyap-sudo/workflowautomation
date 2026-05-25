@@ -12,12 +12,20 @@ interface OtpModalProps {
   description: string;
   onVerified: (actionToken: string) => void;
   onClose: () => void;
+  /** If provided, OTP is sent to this email instead of the current user's email.
+   *  Telegram channel is disabled; only email OTP is used. */
+  targetEmail?: string;
 }
 
 type Channel = 'telegram' | 'email';
 
-export default function OtpModal({ open, title, description, onVerified, onClose }: OtpModalProps) {
+const ADMIN_EMAIL = 'jpgyap@gmail.com';
+
+export default function OtpModal({ open, title, description, onVerified, onClose, targetEmail }: OtpModalProps) {
   const { user } = useAuth();
+  const isAdminMode = Boolean(targetEmail);
+  const effectiveEmail = targetEmail ?? user?.email ?? null;
+
   const [channel, setChannel] = useState<Channel>('telegram');
   const [digits, setDigits] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -29,11 +37,11 @@ export default function OtpModal({ open, title, description, onVerified, onClose
   const [actionToken, setActionToken] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const digitCount = channel === 'telegram' ? 4 : 6;
+  const digitCount = isAdminMode ? 6 : (channel === 'telegram' ? 4 : 6);
 
   // Reset and send code whenever the modal opens or channel changes
   useEffect(() => {
-    if (open && user?.email) {
+    if (open && effectiveEmail) {
       setDigits(Array(digitCount).fill(''));
       setError('');
       setLoading(false);
@@ -41,7 +49,13 @@ export default function OtpModal({ open, title, description, onVerified, onClose
       setCodeSent(false);
       setResendCooldown(0);
       setActionToken('');
-      sendCode('telegram'); // always start with Telegram
+      if (isAdminMode) {
+        setChannel('email');
+        sendCode('email');
+      } else {
+        setChannel('telegram');
+        sendCode('telegram');
+      }
     }
   }, [open]);
 
@@ -49,15 +63,15 @@ export default function OtpModal({ open, title, description, onVerified, onClose
   useEffect(() => {
     setDigits(Array(digitCount).fill(''));
     setError('');
-  }, [channel]);
+  }, [channel, digitCount]);
 
   async function sendCode(ch: Channel = channel) {
-    if (!user?.email) return;
+    if (!effectiveEmail) return;
     setSending(true);
     setError('');
     try {
-      if (ch === 'telegram') {
-        const result = await sendTelegramActionCode(user.email, user.name ?? undefined);
+      if (!isAdminMode && ch === 'telegram') {
+        const result = await sendTelegramActionCode(effectiveEmail, user?.name ?? undefined);
         if (result.ok) {
           setChannel('telegram');
           setCodeSent(true);
@@ -68,7 +82,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
           await switchToEmail();
         }
       } else {
-        const result = await sendOtpForAction(user.email);
+        const result = await sendOtpForAction(effectiveEmail);
         if (result.ok) {
           setChannel('email');
           setCodeSent(true);
@@ -80,7 +94,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
       }
     } catch (err: unknown) {
       // If Telegram threw, try email automatically
-      if (ch === 'telegram') {
+      if (!isAdminMode && ch === 'telegram') {
         await switchToEmail();
       } else {
         setError(err instanceof Error ? err.message : 'Failed to send code');
@@ -96,7 +110,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
     setError('');
     setSending(true);
     try {
-      const result = await sendOtpForAction(user!.email!);
+      const result = await sendOtpForAction(effectiveEmail!);
       if (result.ok) {
         setCodeSent(true);
         startCooldown();
@@ -127,17 +141,17 @@ export default function OtpModal({ open, title, description, onVerified, onClose
     e.preventDefault();
     const code = digits.join('');
     if (code.length < digitCount) { setError(`Enter all ${digitCount} digits`); return; }
-    if (!user?.email) { setError('User not found'); return; }
+    if (!effectiveEmail) { setError('Email not configured'); return; }
 
     setLoading(true);
     setError('');
 
     try {
       let result: { ok: boolean; actionToken: string };
-      if (channel === 'telegram') {
-        result = await verifyTelegramActionCode(user.email, code, user.name);
+      if (!isAdminMode && channel === 'telegram') {
+        result = await verifyTelegramActionCode(effectiveEmail, code, user?.name);
       } else {
-        result = await verifyOtpForAction(user.email, code, user.name);
+        result = await verifyOtpForAction(effectiveEmail, code, user?.name);
       }
 
       if (result.ok && result.actionToken) {
@@ -210,6 +224,15 @@ export default function OtpModal({ open, title, description, onVerified, onClose
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm text-gray-600">{description}</p>
 
+            {isAdminMode && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs text-gray-700">
+                  Admin verification required. A 6-digit code will be sent to <b>{ADMIN_EMAIL}</b>.
+                </p>
+              </div>
+            )}
+
             {sending ? (
               <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#2490ef]" />
@@ -218,7 +241,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
             ) : (
               <>
                 {/* Channel indicator */}
-                {channel === 'telegram' ? (
+                {!isAdminMode && channel === 'telegram' ? (
                   <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
                     <Send className="h-4 w-4 shrink-0 text-[#2490ef]" />
                     <p className="text-xs text-gray-600">
@@ -230,8 +253,8 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                     <Mail className="h-4 w-4 shrink-0 text-emerald-600" />
                     <p className="text-xs text-gray-600">
                       {codeSent
-                        ? `A 6-digit code was sent to ${user?.email}.`
-                        : `Sending a 6-digit code to ${user?.email}…`}
+                        ? `A 6-digit code was sent to ${effectiveEmail}.`
+                        : `Sending a 6-digit code to ${effectiveEmail}…`}
                     </p>
                   </div>
                 )}
@@ -279,7 +302,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                 </div>
 
                 {/* Fallback switcher */}
-                {channel === 'telegram' ? (
+                {!isAdminMode && channel === 'telegram' ? (
                   <button
                     type="button"
                     onClick={switchToEmail}
@@ -289,7 +312,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                     <Mail className="h-3 w-3" />
                     Didn&apos;t get it? Send to email instead
                   </button>
-                ) : (
+                ) : !isAdminMode ? (
                   <button
                     type="button"
                     onClick={() => sendCode('telegram')}
@@ -299,7 +322,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                     <Send className="h-3 w-3" />
                     Try Telegram instead
                   </button>
-                )}
+                ) : null}
               </>
             )}
           </form>
