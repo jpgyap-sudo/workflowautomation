@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `pending` | Roo (Code) | feat: Matching Verification — new section on Stock Prep page for from-stock orders. Auto-suggests nearest inventory match per order item via local fuzzy matching algorithm. Manual search with search tabs. One-click confirm. Visual stock indicator. New API endpoints: GET /inventory/search, POST /inventory/match, PATCH /orders/:order_id/items/:item_id/match-inventory. Migration 039 adds matched_inventory_item_id + inventory_match_verified to order_items. | ❌ Pending deploy |
 | `ed3dc55` | Roo (Code) | fix: order detail page React hooks violation — useEffect after conditional return caused "This page couldn't load" error. Moved useEffect before conditional returns with null guard. | ✅ VPS `ed3dc55` |
 | `e334c67` | Roo (Code) | feat: Bulk Delete Clients — POST /clients/bulk-delete API endpoint with force-unlink support, bulkDeleteClients() API function, and full dashboard UI with checkboxes, select-all, force-delete confirmation, and OTP verification | ✅ VPS `e334c67` |
 | `963018d` | Roo (Code) | feat: remove auto-advance to production_finished, add production_in_progress stage — all items start → production_in_progress (not production_confirmed). Production finished is manual only. New section on production page. | ✅ VPS `963018d` |

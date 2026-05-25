@@ -582,6 +582,8 @@ export interface OrderItem {
   verified_qty: number;
   delivered_qty: number;
   delivered_at: string | null;
+  matched_inventory_item_id: string | null;
+  inventory_match_verified: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1147,6 +1149,55 @@ export async function bulkUploadInventory(file_data: string, mime_type: string, 
     method: 'POST',
     body: JSON.stringify({ file_data, mime_type, original_filename, action_token }),
   });
+}
+
+// ── Inventory Search & Matching ─────────────────────────────────────────
+
+export interface InventoryMatchResult {
+  item: InventoryItem;
+  score: number;
+}
+
+export interface InventoryMatchResponse {
+  matches: InventoryMatchResult[];
+}
+
+/**
+ * Search inventory items by name/description/dimension/category.
+ */
+export async function searchInventory(q: string, limit = 20): Promise<InventoryItem[]> {
+  return fetchJson<InventoryItem[]>(
+    `/inventory/search?q=${encodeURIComponent(q)}&limit=${limit}`
+  );
+}
+
+/**
+ * Fuzzy-match an order item name against all inventory items.
+ * Returns top 5 matches with scores.
+ */
+export async function matchInventoryItem(name: string): Promise<InventoryMatchResponse> {
+  return fetchJson<InventoryMatchResponse>('/inventory/match', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+/**
+ * Save or clear the matched inventory item for an order item.
+ * Pass inventoryItemId = null to clear the match.
+ */
+export async function setOrderItemMatch(
+  orderId: string,
+  itemId: string,
+  inventoryItemId: string | null
+): Promise<{ ok: boolean; matched_inventory_item_id: string | null }> {
+  return fetchJson<{ ok: boolean; matched_inventory_item_id: string | null }>(
+    `/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}/match-inventory`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ inventory_item_id: inventoryItemId }),
+    }
+  );
 }
 
 export async function createStockReplenishmentOrder(

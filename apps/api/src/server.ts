@@ -5751,6 +5751,50 @@ app.post('/orders/:id/set-stock-prep', async (request, reply) => {
   return reply.send({ ok: true, stock_prep_days: body.stock_prep_days, stock_prep_ready_at: readyAt.toISOString() });
 });
 
+/**
+ * PATCH /orders/:order_id/items/:item_id/match-inventory
+ * Save or update the matched inventory item for a given order item.
+ * Also marks inventory_match_verified = TRUE.
+ *
+ * Request body: { inventory_item_id: string | null }
+ *   - Pass a valid UUID to set the match
+ *   - Pass null to clear the match
+ */
+app.patch('/orders/:order_id/items/:item_id/match-inventory', async (request, reply) => {
+  const { order_id, item_id } = request.params as { order_id: string; item_id: string };
+  const body = z.object({
+    inventory_item_id: z.string().uuid().nullable(),
+  }).parse(request.body);
+
+  // Verify the order item exists
+  const itemRows = await query(
+    `SELECT id, name, order_id FROM order_items WHERE id = $1 AND order_id = $2`,
+    [item_id, order_id]
+  );
+  if (!itemRows[0]) return reply.code(404).send({ error: 'Order item not found' });
+
+  // If setting a match, verify the inventory item exists
+  if (body.inventory_item_id) {
+    const invRows = await query(
+      `SELECT id FROM inventory_items WHERE id = $1`,
+      [body.inventory_item_id]
+    );
+    if (!invRows[0]) return reply.code(404).send({ error: 'Inventory item not found' });
+  }
+
+  await query(
+    `UPDATE order_items
+     SET matched_inventory_item_id = $1,
+         inventory_match_verified = TRUE,
+         updated_at = NOW()
+     WHERE id = $2 AND order_id = $3`,
+    [body.inventory_item_id, item_id, order_id]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`]);
+  return reply.send({ ok: true, matched_inventory_item_id: body.inventory_item_id });
+});
+
 // ── Verify Balance ──────────────────────────────────────────────────────
 
 /**
@@ -8407,6 +8451,112 @@ app.get('/inventory', async (request, _reply) => {
 app.get('/inventory/count', async (_request, _reply) => {
   const rows = await query(`SELECT COUNT(*)::int AS total FROM inventory_items`);
   return { total: rows[0].total };
+});
+
+/**
+ * GET /inventory/search?q=...
+ * Full-text search across inventory_items by product_name, description, dimension, category.
+ * Returns up to 50 results ranked by relevance.
+ */
+app.get('/inventory/search', async (request, reply) => {
+  const queryParams = request.query as Record<string, string>;
+  const q = (queryParams.q ?? '').trim();
+  if (!q) return reply.code(400).send({ error: 'Search query "q" is required' });
+  const limit = Math.min(Math.max(parseInt(queryParams.limit) || 20, 1), 50);
+
+  const searchTerm = `%${q}%`;
+  const rows = await query(
+    `SELECT * FROM inventory_items
+     WHERE product_name ILIKE $1
+        OR description ILIKE $1
+        OR dimension ILIKE $1
+        OR category ILIKE $1
+     ORDER BY
+       CASE
+         WHEN LOWER(product_name) = LOWER($2) THEN 0
+         WHEN LOWER(product_name) LIKE LOWER($3) THEN 1
+         WHEN LOWER(description) LIKE LOWER($3) THEN 2
+         WHEN LOWER(category) LIKE LOWER($3) THEN 3
+         ELSE 4
+       END,
+       product_name ASC
+     LIMIT $4`,
+    [searchTerm, q, `%${q}%`, limit]
+  );
+  return rows;
+});
+
+/**
+ * POST /inventory/match
+ * Fuzzy-match an order item name against all inventory items using a local
+ * string similarity algorithm (no AI API cost). Returns top 5 matches.
+ *
+ * Request body: { name: string }
+ * Response: { matches: Array<{ item: InventoryItem, score: number }> }
+ */
+app.post('/inventory/match', async (request, reply) => {
+  const body = z.object({
+    name: z.string().min(1),
+  }).parse(request.body);
+
+  const name = body.name.trim().toLowerCase();
+  if (!name) return reply.code(400).send({ error: 'Item name is required' });
+
+  // Fetch all inventory items (cached-friendly, typically < 1000 items)
+  const items = await query(
+    `SELECT * FROM inventory_items ORDER BY product_name ASC`
+  );
+
+  // ── Scoring function ──────────────────────────────────────────────
+  function score(itemName: string, candidate: any): number {
+    const cn = (candidate.product_name ?? '').toLowerCase();
+    const cd = (candidate.description ?? '').toLowerCase();
+    const cc = (candidate.category ?? '').toLowerCase();
+
+    let s = 0;
+
+    // Exact match → highest score
+    if (cn === name) s += 100;
+    else if (cn.includes(name) || name.includes(cn)) s += 60;
+
+    // Token overlap (word-level matching)
+    const nameTokens = name.split(/\s+/).filter(Boolean);
+    const cnTokens = cn.split(/\s+/).filter(Boolean);
+    const cdTokens = cd.split(/\s+/).filter(Boolean);
+
+    let nameOverlap = 0;
+    for (const nt of nameTokens) {
+      if (cnTokens.some((t: string) => t.includes(nt) || nt.includes(t))) nameOverlap++;
+    }
+    if (nameTokens.length > 0) s += (nameOverlap / nameTokens.length) * 30;
+
+    // Description overlap (weaker weight)
+    let descOverlap = 0;
+    for (const nt of nameTokens) {
+      if (cdTokens.some((t: string) => t.includes(nt) || nt.includes(t))) descOverlap++;
+    }
+    if (nameTokens.length > 0) s += (descOverlap / nameTokens.length) * 15;
+
+    // Category match
+    if (cc && nameTokens.some((t: string) => cc.includes(t) || t.includes(cc))) s += 10;
+
+    // Dimension match (if item has dimension info)
+    const dim = (candidate.dimension ?? '').toLowerCase();
+    if (dim && nameTokens.some((t: string) => dim.includes(t))) s += 5;
+
+    // Penalize very short matches (likely noise)
+    if (s > 0 && name.length <= 2) s *= 0.5;
+
+    return Math.round(s);
+  }
+
+  const scored = items
+    .map((item: any) => ({ item, score: score(name, item) }))
+    .filter((m: any) => m.score > 0)
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, 5);
+
+  return { matches: scored };
 });
 
 app.get('/inventory/:id', async (request, reply) => {

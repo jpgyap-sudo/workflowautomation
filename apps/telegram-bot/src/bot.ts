@@ -236,12 +236,14 @@ bot.use(async (ctx, next) => {
   const originalText = (ctx.callbackQuery.message as any)?.text ?? (ctx.callbackQuery.message as any)?.caption ?? '';
   const chatInstance = (cq as any).chat_instance ?? '';
 
+  const currentStep = getSession(chatId).step;
   setStep(chatId, {
     action: 'awaiting_confirmation',
     callbackData,
     messageId: messageId ?? 0,
     originalText,
     chatInstance,
+    previousStep: currentStep,
   });
 
   await ctx.editMessageText(
@@ -619,7 +621,7 @@ const confirmedCallbacks = new Set<string>();
 
 type UserStep =
   | { action: 'idle' }
-  | { action: 'awaiting_confirmation'; callbackData: string; messageId: number; originalText: string; chatInstance?: string }
+  | { action: 'awaiting_confirmation'; callbackData: string; messageId: number; originalText: string; chatInstance?: string; previousStep: UserStep }
   | { action: 'awaiting_order_number_for_status' }
   | { action: 'awaiting_order_number_for_produce'; status: string }
   | { action: 'awaiting_produce_status'; quotationNumber: string }
@@ -1066,8 +1068,11 @@ bot.action('confirm_action:yes', async (ctx) => {
 
   if (session.step.action !== 'awaiting_confirmation') return;
 
-  const { callbackData, messageId, originalText, chatInstance } = session.step;
-  resetStep(chatId);
+  const { callbackData, messageId, originalText, chatInstance, previousStep } = session.step;
+
+  // Restore the original session step so the re-dispatched handler can access
+  // flow-specific data (e.g. depositAmount, imageBase64 from awaiting_deposit_confirmation)
+  setStep(chatId, previousStep);
 
   const confirmKey = `${callbackData}:${chatId}`;
   confirmedCallbacks.add(confirmKey);
@@ -1101,8 +1106,8 @@ bot.action('confirm_action:cancel', async (ctx) => {
   await ctx.answerCbQuery('❌ Cancelled');
 
   if (session.step.action === 'awaiting_confirmation') {
-    const { messageId, originalText } = session.step;
-    resetStep(chatId);
+    const { messageId, originalText, previousStep } = session.step;
+    setStep(chatId, previousStep);
     try {
       await ctx.telegram.editMessageText(chatId, messageId, undefined, originalText, { parse_mode: 'HTML' });
     } catch {
@@ -2032,11 +2037,11 @@ I'll save this as a schedule. What date should this be on?
     // When a user clicks a consequential button, the middleware asks them
     // to type 888 to confirm. This handler processes that confirmation.
     case 'awaiting_confirmation': {
-      const { callbackData, messageId, originalText, chatInstance } = session.step;
+      const { callbackData, messageId, originalText, chatInstance, previousStep } = session.step;
 
       if (text === CONFIRMATION_CODE) {
-        // Confirmed — re-dispatch the original callback
-        resetStep(chatId);
+        // Confirmed — restore the original session step and re-dispatch the callback
+        setStep(chatId, previousStep);
 
         // Add to confirmed set so the middleware skips this re-dispatch
         const confirmKey = `${callbackData}:${chatId}`;
@@ -2063,8 +2068,8 @@ I'll save this as a schedule. What date should this be on?
           console.error('[bot] Error re-dispatching confirmed callback:', err);
         });
       } else {
-        // Cancelled — restore the original message
-        resetStep(chatId);
+        // Cancelled — restore the original step and message
+        setStep(chatId, previousStep);
         await ctx.reply('❌ Action cancelled.', { parse_mode: 'Markdown' }).catch(() => {});
         // Try to restore the original message text
         try {
