@@ -413,17 +413,27 @@ function MatchCard({ order, item, suggestedMatch, suggestedScore, onConfirm, con
 }
 
 function MatchingVerificationSection({ onUpdated }: { onUpdated: () => void }) {
-  const { data: orders, isLoading, mutate } = useOrdersByStage('stock_preparation');
+  const { data: allOrders, isLoading, mutate } = useOrdersByStage('stock_preparation');
+  // Only show from-stock orders in Matching Verification
+  const orders = allOrders?.filter((o: Order) => o.order_type === 'from_stock') ?? [];
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
   const [suggestedMatches, setSuggestedMatches] = useState<Record<string, { item: InventoryItem; score: number } | null>>({});
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
   const [confirmingItems, setConfirmingItems] = useState<Record<string, boolean>>({});
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
 
+  // Track which orders we've already loaded items for (prevents re-fetch on every render)
+  const [loadedOrderIds, setLoadedOrderIds] = useState<Set<string>>(new Set());
+
   // Load items for each order and auto-suggest matches
   useEffect(() => {
     if (!orders || orders.length === 0) return;
-    orders.forEach(async (order) => {
+    const newOrderIds = orders.filter(o => !loadedOrderIds.has(o.id)).map(o => o.id);
+    if (newOrderIds.length === 0) return; // already loaded all orders
+    setLoadedOrderIds(prev => new Set([...prev, ...newOrderIds]));
+
+    newOrderIds.forEach(async (orderId) => {
+      const order = orders.find(o => o.id === orderId)!;
       setLoadingItems(prev => ({ ...prev, [order.id]: true }));
       try {
         const res = await getOrderItems(order.id);
@@ -475,12 +485,14 @@ function MatchingVerificationSection({ onUpdated }: { onUpdated: () => void }) {
           return next;
         });
       }
+      // Refresh parent
+      onUpdated();
     } catch {
       // silently fail
     } finally {
       setConfirmingItems(prev => ({ ...prev, [matchKey]: false }));
     }
-  }, []);
+  }, [onUpdated]);
 
   const toggleOrder = useCallback((orderId: string) => {
     setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));

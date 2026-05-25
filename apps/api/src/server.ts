@@ -3174,6 +3174,264 @@ app.get('/orders/:id/payments', async (request, reply) => {
   });
 });
 
+type ReceiptPaymentRow = {
+  id: string;
+  order_id: string;
+  type: 'deposit' | 'balance';
+  amount: number | string;
+  reference_number: string | null;
+  paid_by: string | null;
+  payment_date: string | null;
+  image_url: string | null;
+  source: string | null;
+  verified: boolean;
+  verified_at: string | null;
+  verified_by: string | null;
+  created_at: string;
+  quotation_number: string | null;
+  client_name: string | null;
+  sales_agent: string | null;
+  total_amount: number | string | null;
+};
+
+function formatReceiptDate(value: string | Date | null | undefined): string {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date().toLocaleDateString('en-PH');
+  return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function receiptNumberForPayment(payment: { id: string; created_at?: string | null; source?: string | null }): string {
+  const date = payment.created_at ? new Date(payment.created_at) : new Date();
+  const year = Number.isNaN(date.getTime()) ? new Date().getFullYear() : date.getFullYear();
+  return `AR-${year}-${payment.id.slice(0, 8).toUpperCase()}`;
+}
+
+function paymentKindLabel(payment: { type: string; source?: string | null }): string {
+  if (payment.source === 'full_payment') return 'Full Payment';
+  return payment.type === 'deposit' ? 'Downpayment' : 'Balance Payment';
+}
+
+function escapePdfText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').replace(/[\r\n]+/g, ' ');
+}
+
+function wrapText(value: string, maxChars = 78): string[] {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    if ((line + ' ' + word).trim().length > maxChars) {
+      if (line) lines.push(line);
+      line = word;
+    } else {
+      line = (line + ' ' + word).trim();
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
+}
+
+function buildAcknowledgementReceiptPdf(data: {
+  receiptNumber: string;
+  receiptDate: string;
+  orderNumber: string;
+  clientName: string;
+  paymentType: string;
+  amount: number;
+  referenceNumber?: string | null;
+  paidBy?: string | null;
+  salesAgent?: string | null;
+  totalAmount?: number | null;
+  verified: boolean;
+  verifiedBy?: string | null;
+}): Buffer {
+  const width = 595;
+  const height = 842;
+  const lines: string[] = [];
+  const text = (x: number, y: number, size: number, value: string, font = 'F1') => {
+    lines.push(`BT /${font} ${size} Tf ${x} ${y} Td (${escapePdfText(value)}) Tj ET`);
+  };
+  const line = (x1: number, y1: number, x2: number, y2: number) => {
+    lines.push(`${x1} ${y1} m ${x2} ${y2} l S`);
+  };
+  const rect = (x: number, y: number, w: number, h: number) => {
+    lines.push(`${x} ${y} ${w} ${h} re S`);
+  };
+
+  lines.push('0.8 w');
+  rect(42, 48, width - 84, height - 96);
+  text(60, 775, 18, 'ACKNOWLEDGEMENT RECEIPT', 'F2');
+  text(60, 752, 10, 'This document acknowledges receipt of payment for the order stated below.');
+  line(60, 735, 535, 735);
+
+  text(60, 706, 10, 'Receipt No.', 'F2');
+  text(160, 706, 10, data.receiptNumber);
+  text(340, 706, 10, 'Date', 'F2');
+  text(405, 706, 10, data.receiptDate);
+
+  text(60, 682, 10, 'Order / Quotation No.', 'F2');
+  text(200, 682, 10, data.orderNumber);
+  text(60, 658, 10, 'Client', 'F2');
+  text(200, 658, 10, data.clientName);
+  text(60, 634, 10, 'Payment Type', 'F2');
+  text(200, 634, 10, data.paymentType);
+
+  rect(60, 555, 475, 55);
+  text(80, 588, 11, 'Amount Received', 'F2');
+  text(80, 566, 22, `PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'F2');
+
+  text(60, 520, 10, 'Reference No.', 'F2');
+  text(200, 520, 10, data.referenceNumber || 'N/A');
+  text(60, 496, 10, 'Paid By / Source', 'F2');
+  text(200, 496, 10, data.paidBy || 'N/A');
+  text(60, 472, 10, 'Sales Agent', 'F2');
+  text(200, 472, 10, data.salesAgent || 'N/A');
+  text(60, 448, 10, 'Order Total', 'F2');
+  text(200, 448, 10, data.totalAmount != null ? `PHP ${data.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A');
+  text(60, 424, 10, 'Verification', 'F2');
+  text(200, 424, 10, data.verified ? `Verified${data.verifiedBy ? ` by ${data.verifiedBy}` : ''}` : 'Pending verification');
+
+  const acknowledgement = `Received from ${data.clientName} the amount of PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} as ${data.paymentType.toLowerCase()} for order ${data.orderNumber}.`;
+  text(60, 380, 10, 'Acknowledgement', 'F2');
+  wrapText(acknowledgement, 80).forEach((wrapped, index) => text(60, 360 - index * 16, 10, wrapped));
+
+  line(60, 205, 250, 205);
+  text(60, 188, 10, 'Authorized Representative', 'F2');
+  line(345, 205, 535, 205);
+  text(345, 188, 10, 'Client Signature');
+  text(60, 115, 8, 'Generated by Quotation Automation System. This acknowledgement receipt is system-generated.');
+
+  const content = lines.join('\n');
+  const objects: string[] = [];
+  objects.push('<< /Type /Catalog /Pages 2 0 R >>');
+  objects.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>`);
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+  objects.push(`<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`);
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((obj, index) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${index + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i < offsets.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+async function getReceiptPaymentById(paymentId: string): Promise<ReceiptPaymentRow | null> {
+  const rows = await query<ReceiptPaymentRow>(
+    `SELECT p.id, p.order_id, p.type, p.amount, p.reference_number, p.paid_by, p.payment_date,
+            p.image_url, p.source, p.verified, p.verified_at, p.verified_by, p.created_at,
+            o.quotation_number, o.client_name, o.sales_agent, o.total_amount
+     FROM payments p
+     JOIN orders o ON o.id = p.order_id
+     WHERE p.id = $1`,
+    [paymentId]
+  );
+  return rows[0] ?? null;
+}
+
+async function getReceiptAmount(payment: ReceiptPaymentRow): Promise<number> {
+  if (payment.source !== 'full_payment') return Number(payment.amount);
+  const rows = await query<{ total: string | number }>(
+    `SELECT COALESCE(SUM(amount), 0) AS total
+     FROM payments
+     WHERE order_id = $1
+       AND source = 'full_payment'
+       AND COALESCE(reference_number, '') = COALESCE($2, '')
+       AND COALESCE(payment_date::text, '') = COALESCE($3::text, '')
+       AND ABS(EXTRACT(EPOCH FROM (created_at - $4::timestamptz))) < 5`,
+    [payment.order_id, payment.reference_number ?? '', payment.payment_date ?? '', payment.created_at]
+  );
+  return Number(rows[0]?.total ?? payment.amount);
+}
+
+// GET /payments/acknowledgement-receipts — List downloadable acknowledgement receipts for recorded payments
+app.get('/payments/acknowledgement-receipts', async (request, reply) => {
+  const limit = Math.min(Math.max(Number((request.query as any)?.limit ?? 50), 1), 200);
+  const rows = await query<ReceiptPaymentRow & { full_group_total?: string | number; has_full_deposit_pair?: boolean }>(
+    `WITH full_groups AS (
+       SELECT order_id, COALESCE(reference_number, '') AS ref_key, COALESCE(payment_date::text, '') AS date_key,
+              date_trunc('second', created_at) AS created_second,
+              SUM(amount) AS full_group_total,
+              BOOL_OR(type = 'deposit') AS has_deposit
+       FROM payments
+       WHERE source = 'full_payment'
+       GROUP BY order_id, COALESCE(reference_number, ''), COALESCE(payment_date::text, ''), date_trunc('second', created_at)
+     )
+     SELECT p.id, p.order_id, p.type, p.amount, p.reference_number, p.paid_by, p.payment_date,
+            p.image_url, p.source, p.verified, p.verified_at, p.verified_by, p.created_at,
+            o.quotation_number, o.client_name, o.sales_agent, o.total_amount,
+            fg.full_group_total,
+            COALESCE(fg.has_deposit, FALSE) AS has_full_deposit_pair
+     FROM payments p
+     JOIN orders o ON o.id = p.order_id
+     LEFT JOIN full_groups fg ON fg.order_id = p.order_id
+       AND fg.ref_key = COALESCE(p.reference_number, '')
+       AND fg.date_key = COALESCE(p.payment_date::text, '')
+       AND fg.created_second = date_trunc('second', p.created_at)
+     WHERE NOT (p.source = 'full_payment' AND p.type = 'balance' AND COALESCE(fg.has_deposit, FALSE))
+     ORDER BY p.created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  const receipts = rows.map((p) => ({
+    payment_id: p.id,
+    receipt_number: receiptNumberForPayment(p),
+    order_id: p.order_id,
+    quotation_number: p.quotation_number,
+    client_name: p.client_name,
+    payment_type: paymentKindLabel(p),
+    amount: p.source === 'full_payment' ? Number(p.full_group_total ?? p.amount) : Number(p.amount),
+    payment_date: p.payment_date,
+    reference_number: p.reference_number,
+    source: p.source,
+    verified: p.verified,
+    created_at: p.created_at,
+    download_url: `/payments/${p.id}/acknowledgement-receipt.pdf`,
+  }));
+
+  return reply.send({ ok: true, receipts });
+});
+
+// GET /payments/:id/acknowledgement-receipt.pdf — Download a PDF acknowledgement receipt for a payment
+app.get('/payments/:id/acknowledgement-receipt.pdf', async (request, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+  const payment = await getReceiptPaymentById(id);
+  if (!payment) return reply.code(404).send({ error: 'Payment not found' });
+
+  const amount = await getReceiptAmount(payment);
+  const receiptNumber = receiptNumberForPayment(payment);
+  const orderNumber = payment.quotation_number ?? `Order ${payment.order_id.slice(0, 8)}`;
+  const pdf = buildAcknowledgementReceiptPdf({
+    receiptNumber,
+    receiptDate: formatReceiptDate(payment.payment_date ?? payment.created_at),
+    orderNumber,
+    clientName: payment.client_name ?? 'Unknown Client',
+    paymentType: paymentKindLabel(payment),
+    amount,
+    referenceNumber: payment.reference_number,
+    paidBy: payment.paid_by ?? payment.source,
+    salesAgent: payment.sales_agent,
+    totalAmount: payment.total_amount != null ? Number(payment.total_amount) : null,
+    verified: payment.verified,
+    verifiedBy: payment.verified_by,
+  });
+
+  return reply
+    .header('Content-Type', 'application/pdf')
+    .header('Content-Disposition', `attachment; filename="${receiptNumber}-${orderNumber.replace(/[^a-zA-Z0-9_-]+/g, '_')}.pdf"`)
+    .send(pdf);
+});
+
 // PATCH /payments/:id/verify — Verify a specific payment record
 app.patch('/payments/:id/verify', async (request, reply) => {
   try {
@@ -5691,21 +5949,26 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
     [id],
   );
 
-  // Deduct inventory quantities by item name match
+  // Deduct inventory quantities — prefer matched_inventory_item_id, fall back to name match
   if (body.deduct_inventory) {
-    const items = await query<{ id: string; name: string; quantity: number }>(
-      `SELECT id, name, quantity FROM order_items WHERE order_id = $1`,
+    const items = await query<{ id: string; name: string; quantity: number; matched_inventory_item_id: string | null }>(
+      `SELECT id, name, quantity, matched_inventory_item_id FROM order_items WHERE order_id = $1`,
       [id],
     );
     for (const item of items) {
-      const invRows = await query<{ id: string; quantity: number }>(
-        `SELECT id, quantity FROM inventory_items WHERE lower(product_name) = lower($1) ORDER BY created_at ASC LIMIT 1`,
-        [item.name],
-      );
-      if (invRows[0]) {
+      // Use matched_inventory_item_id if available (set via Matching Verification), otherwise fall back to name match
+      let invId: string | null = item.matched_inventory_item_id;
+      if (!invId) {
+        const invRows = await query<{ id: string; quantity: number }>(
+          `SELECT id, quantity FROM inventory_items WHERE lower(product_name) = lower($1) ORDER BY created_at ASC LIMIT 1`,
+          [item.name],
+        );
+        invId = invRows[0]?.id ?? null;
+      }
+      if (invId) {
         await query(
           `UPDATE inventory_items SET quantity = GREATEST(0, quantity - $1), updated_at = NOW() WHERE id = $2`,
-          [item.quantity, invRows[0].id],
+          [item.quantity, invId],
         );
       }
     }
