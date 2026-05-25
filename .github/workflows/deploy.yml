@@ -12,9 +12,6 @@ on:
         type: boolean
 
 env:
-  # Tailscale configuration
-  TAILSCALE_IP: 100.86.182.7
-  TAILSCALE_SSH_USER: root
   DEPLOY_PATH: /opt/quotation-automation
 
 jobs:
@@ -22,58 +19,51 @@ jobs:
     runs-on: ubuntu-latest
     # Only run on the primary repo, not forks
     if: github.repository == 'jpgyap-sudo/workflowautomation'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for rollback tagging
 
-      - name: Install Tailscale
-        uses: tailscale/github-action@v3
-        with:
-          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
-          tags: tag:ci
-
-      - name: Wait for Tailscale to be ready
+      - name: Setup SSH
         run: |
-          for i in $(seq 1 10); do
-            if tailscale status 2>/dev/null | grep -q "${{ env.TAILSCALE_IP }}"; then
-              echo "✅ Tailscale connected, VPS reachable"
-              break
-            fi
-            echo "Waiting for Tailscale... ($i/10)"
-            sleep 3
-          done
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat >> ~/.ssh/config <<EOF
+          Host vps
+            HostName ${{ secrets.VPS_HOST }}
+            User ${{ secrets.VPS_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking accept-new
+            ConnectTimeout 15
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          EOF
+          chmod 600 ~/.ssh/config
 
       - name: Test SSH connectivity
         run: |
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "echo 'SSH OK' && hostname && docker --version"
+          ssh vps "echo 'SSH OK' && hostname && docker --version"
 
       - name: Sync .env and credentials to VPS
         run: |
           # Create .env on VPS from GitHub secrets
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "cat > ${{ env.DEPLOY_PATH }}/.env" << 'ENVEOF'
+          ssh vps "cat > ${{ env.DEPLOY_PATH }}/.env" << 'ENVEOF'
           # Core
           TZ=Asia/Manila
           GENERIC_TIMEZONE=Asia/Manila
-          
+
           # Postgres
           POSTGRES_USER=${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          
+
           # Telegram
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           PUBLIC_WEBHOOK_BASE_URL=${{ secrets.PUBLIC_WEBHOOK_BASE_URL }}
-          
+
           # Agent Group Chat IDs
           PURCHASING_GROUP_CHAT_ID=${{ secrets.PURCHASING_GROUP_CHAT_ID }}
           PRODUCTION_GROUP_CHAT_ID=${{ secrets.PRODUCTION_GROUP_CHAT_ID }}
@@ -82,7 +72,7 @@ jobs:
           COLLECTION_GROUP_CHAT_ID=${{ secrets.COLLECTION_GROUP_CHAT_ID }}
           ESCALATION_GROUP_CHAT_ID=${{ secrets.ESCALATION_GROUP_CHAT_ID }}
           QUOTATION_GROUP_CHAT_ID=${{ secrets.QUOTATION_GROUP_CHAT_ID }}
-          
+
           # Legacy Group IDs (telegram-bot authorization)
           PURCHASING_GROUP_ID=${{ secrets.PURCHASING_GROUP_ID }}
           PRODUCTION_GROUP_ID=${{ secrets.PRODUCTION_GROUP_ID }}
@@ -91,27 +81,27 @@ jobs:
           COLLECTION_GROUP_ID=${{ secrets.COLLECTION_GROUP_ID }}
           ESCALATION_GROUP_ID=${{ secrets.ESCALATION_GROUP_ID }}
           QUOTATION_GROUP_ID=${{ secrets.QUOTATION_GROUP_ID }}
-          
+
           # Google Drive
           GOOGLE_DRIVE_ROOT_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_ROOT_FOLDER_ID }}
           GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google-service-account.json
           GOOGLE_DRIVE_CLIENT_ID=${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
           GOOGLE_DRIVE_CLIENT_SECRET=${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
           GOOGLE_DRIVE_OAUTH_TOKEN_PATH=/app/credentials/oauth-token.json
-          
+
           # AI / OCR
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL }}
-          
+
           # SMTP
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASS=${{ secrets.SMTP_PASS }}
-          
+
           # Dashboard
           DASHBOARD_BASE_URL=${{ secrets.DASHBOARD_BASE_URL }}
-          
+
           # Supabase Backup
           SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -121,17 +111,11 @@ jobs:
 
       - name: Sync credentials directory
         run: |
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "mkdir -p ${{ env.DEPLOY_PATH }}/credentials"
-          
+          ssh vps "mkdir -p ${{ env.DEPLOY_PATH }}/credentials"
+
           # Create Google service account credentials from secret
           if [ -n "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}" ]; then
-            ssh -o StrictHostKeyChecking=accept-new \
-                -o ConnectTimeout=15 \
-                "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-                "cat > ${{ env.DEPLOY_PATH }}/credentials/google-service-account.json" << 'SAEOF'
+            ssh vps "cat > ${{ env.DEPLOY_PATH }}/credentials/google-service-account.json" << 'SAEOF'
           ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           SAEOF
             echo "✅ google-service-account.json synced"
@@ -139,13 +123,10 @@ jobs:
 
       - name: Pull latest code on VPS
         run: |
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "cd ${{ env.DEPLOY_PATH }} && \
-               git stash --include-untracked 2>/dev/null || true && \
-               git pull origin master && \
-               echo '✅ Code pulled: \$(git rev-parse --short HEAD)'"
+          ssh vps "cd ${{ env.DEPLOY_PATH }} && \
+           git stash --include-untracked 2>/dev/null || true && \
+           git pull origin master && \
+           echo '✅ Code pulled: \$(git rev-parse --short HEAD)'"
 
       - name: Run deploy on VPS
         run: |
@@ -153,33 +134,19 @@ jobs:
           if [ "${{ github.event.inputs.skip_backup }}" = "true" ]; then
             BACKUP_FLAG="--skip-backup"
           fi
-          
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              -o ServerAliveInterval=30 \
-              -o ServerAliveCountMax=3 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "cd ${{ env.DEPLOY_PATH }} && bash scripts/quick-deploy.sh --skip-pull $BACKUP_FLAG 2>&1"
+
+          ssh vps "cd ${{ env.DEPLOY_PATH }} && bash scripts/quick-deploy.sh --skip-pull $BACKUP_FLAG 2>&1"
 
       - name: Verify deployment
         run: |
           sleep 5
           echo "=== Container Status ==="
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "docker ps --format 'table {{.Names}}\t{{.Status}}'"
-          
+          ssh vps "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
           echo ""
           echo "=== API Health ==="
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "curl -sf http://localhost:8080/health | head -c 300"
-          
+          ssh vps "curl -sf http://localhost:8080/health | head -c 300"
+
           echo ""
           echo "=== Deployed SHA ==="
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 \
-              "${{ env.TAILSCALE_SSH_USER }}@${{ env.TAILSCALE_IP }}" \
-              "cd ${{ env.DEPLOY_PATH }} && git rev-parse --short HEAD"
+          ssh vps "cd ${{ env.DEPLOY_PATH }} && git rev-parse --short HEAD"
