@@ -170,7 +170,7 @@ export default function OrderTable({
       <button
         type="button"
         onClick={() => startAmountEdit(order)}
-        className={`text-right ${onUpdateAmount ? 'cursor-pointer rounded px-1 py-0.5 hover:bg-red-50' : ''} ${
+        className={`inline-flex items-center justify-end gap-1 text-right ${onUpdateAmount ? 'cursor-pointer rounded px-1 py-0.5 hover:bg-red-50' : ''} ${
           changed ? 'font-semibold text-red-600' : 'text-gray-600'
         }`}
         title={
@@ -180,7 +180,10 @@ export default function OrderTable({
         }
         disabled={!onUpdateAmount}
       >
-        {money(order.total_amount)}
+        <span>{money(order.total_amount)}</span>
+        {onUpdateAmount && (
+          <Pencil className={`h-3.5 w-3.5 ${changed ? 'text-red-500' : 'text-gray-400'}`} aria-hidden="true" />
+        )}
         {changed && <span className="ml-1 text-[10px] font-medium text-red-500">edited</span>}
       </button>
     );

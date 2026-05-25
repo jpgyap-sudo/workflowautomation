@@ -10334,3 +10334,26 @@ Add pre-production full payment anywhere deposit proof is collected: New Order p
 cross-project, local-fallback
 
 ---
+
+### Lesson: Item tracking manual edit audit
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+For quotation-automation item tracking, preserve fast status-only workflows by adding a require_reason flag for dashboard edit forms instead of globally requiring reasons on every order_items PATCH. Manual create should use a separate append endpoint, not the bulk replace /orders/:id/items endpoint, and both manual create/edit should write production_update_logs with actor, changed fields, and reason.
+
+#### Lesson Learned
+
+For quotation-automation item tracking, preserve fast status-only workflows by adding a require_reason flag for dashboard edit forms instead of globally requiring reasons on every order_items PATCH. Manual create should use a separate append endpoint, not the bulk replace /orders/:id/items endpoint, and both manual create/edit should write production_update_logs with actor, changed fields, and reason.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

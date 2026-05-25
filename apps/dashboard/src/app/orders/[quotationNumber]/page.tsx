@@ -1,15 +1,15 @@
 'use client';
 
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, verifyPayment, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, verifyPayment, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2, Shield } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2, Shield, Plus, Pencil, X } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
@@ -733,6 +733,26 @@ function ItemTrackingSection({
   quotationNumber: string | null;
   currentStage: string;
 }) {
+  type ItemTrackingForm = {
+    name: string;
+    quantity: string;
+    production_status: OrderItem['production_status'];
+    en_route_status: OrderItem['en_route_status'];
+    estimated_arrival_days: string;
+    estimated_production_days: string;
+    reason: string;
+  };
+
+  const emptyItemForm: ItemTrackingForm = {
+    name: '',
+    quantity: '1',
+    production_status: 'pending',
+    en_route_status: 'not_yet',
+    estimated_arrival_days: '',
+    estimated_production_days: '',
+    reason: '',
+  };
+
   const [items, setItems] = useState<OrderItem[]>([]);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [logs, setLogs] = useState<ProductionUpdateLog[]>([]);
@@ -747,6 +767,12 @@ function ItemTrackingSection({
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [updatingEnRouteItemId, setUpdatingEnRouteItemId] = useState<string | null>(null);
+  const [showManualItemForm, setShowManualItemForm] = useState(false);
+  const [manualItemForm, setManualItemForm] = useState<ItemTrackingForm>(emptyItemForm);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editItemForm, setEditItemForm] = useState<ItemTrackingForm>(emptyItemForm);
+  const [savingManualItem, setSavingManualItem] = useState(false);
+  const [savingEditItem, setSavingEditItem] = useState(false);
   const [showOtp, setShowOtp] = useState<'complete_verification' | 'confirm_arrival' | 'extract_items' | 'upload_extract' | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [pendingVerifyItem, setPendingVerifyItem] = useState<{
@@ -778,6 +804,83 @@ function ItemTrackingSection({
     if (itemsRes.ok) setItems(itemsRes.items);
     if (compRes.ok) setCompletion(compRes);
     if (logsRes.ok) setLogs(logsRes.logs);
+  }
+
+  function normalizeItemForm(form: ItemTrackingForm) {
+    const quantity = Number.parseInt(form.quantity, 10);
+    const estimatedArrivalDays = form.estimated_arrival_days.trim()
+      ? Number.parseInt(form.estimated_arrival_days, 10)
+      : null;
+    const estimatedProductionDays = form.estimated_production_days.trim()
+      ? Number.parseInt(form.estimated_production_days, 10)
+      : null;
+
+    if (!form.name.trim()) throw new Error('Item name is required.');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantity must be greater than 0.');
+    if (estimatedArrivalDays !== null && (!Number.isFinite(estimatedArrivalDays) || estimatedArrivalDays <= 0)) {
+      throw new Error('Arrival estimate must be a positive number of days.');
+    }
+    if (estimatedProductionDays !== null && (!Number.isFinite(estimatedProductionDays) || estimatedProductionDays <= 0)) {
+      throw new Error('Production estimate must be a positive number of days.');
+    }
+    if (form.reason.trim().length < 3) {
+      throw new Error('Please state a reason for the item tracking change.');
+    }
+
+    return {
+      name: form.name.trim(),
+      quantity,
+      production_status: form.production_status,
+      en_route_status: form.en_route_status,
+      estimated_arrival_days: estimatedArrivalDays,
+      estimated_production_days: estimatedProductionDays,
+      edit_reason: form.reason.trim(),
+      updated_by: 'dashboard',
+    };
+  }
+
+  function startEditItem(item: OrderItem) {
+    setEditingItemId(item.id);
+    setEditItemForm({
+      name: item.name,
+      quantity: String(item.quantity),
+      production_status: item.production_status,
+      en_route_status: item.en_route_status,
+      estimated_arrival_days: item.estimated_arrival_days != null ? String(item.estimated_arrival_days) : '',
+      estimated_production_days: item.estimated_production_days != null ? String(item.estimated_production_days) : '',
+      reason: '',
+    });
+  }
+
+  async function handleCreateManualItem() {
+    setSavingManualItem(true);
+    try {
+      const payload = normalizeItemForm(manualItemForm);
+      await createOrderItem(orderId, payload);
+      setManualItemForm(emptyItemForm);
+      setShowManualItemForm(false);
+      await refreshItemTracking();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to add item tracking');
+    } finally {
+      setSavingManualItem(false);
+    }
+  }
+
+  async function handleSaveEditItem() {
+    if (!editingItemId) return;
+    setSavingEditItem(true);
+    try {
+      const payload = normalizeItemForm(editItemForm);
+      await updateOrderItem(orderId, editingItemId, { ...payload, require_reason: true });
+      setEditingItemId(null);
+      setEditItemForm(emptyItemForm);
+      await refreshItemTracking();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to edit item tracking');
+    } finally {
+      setSavingEditItem(false);
+    }
   }
 
   useEffect(() => {
@@ -1081,6 +1184,128 @@ function ItemTrackingSection({
     );
   }
 
+  function renderItemTrackingForm({
+    form,
+    setForm,
+    onCancel,
+    onSave,
+    saving,
+    mode,
+  }: {
+    form: ItemTrackingForm;
+    setForm: (value: ItemTrackingForm) => void;
+    onCancel: () => void;
+    onSave: () => void;
+    saving: boolean;
+    mode: 'add' | 'edit';
+  }) {
+    return (
+      <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-semibold text-blue-900">
+            {mode === 'add' ? 'Manual Item Tracking' : 'Edit Item Tracking'}
+          </p>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded p-1 text-blue-500 hover:bg-blue-100"
+            aria-label="Cancel item tracking form"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+          <label className="md:col-span-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Item</span>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              placeholder="Item name"
+            />
+          </label>
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Qty</span>
+            <input
+              type="number"
+              min="1"
+              value={form.quantity}
+              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+            />
+          </label>
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Production</span>
+            <select
+              value={form.production_status}
+              onChange={(e) => setForm({ ...form, production_status: e.target.value as OrderItem['production_status'] })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+            >
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="finished">Finished</option>
+            </select>
+          </label>
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">En Route</span>
+            <select
+              value={form.en_route_status}
+              onChange={(e) => setForm({ ...form, en_route_status: e.target.value as OrderItem['en_route_status'] })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+            >
+              <option value="not_yet">Not Yet</option>
+              <option value="en_route">En Route</option>
+              <option value="arrived">Arrived</option>
+            </select>
+          </label>
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Arrival Est.</span>
+            <input
+              type="number"
+              min="1"
+              value={form.estimated_arrival_days}
+              onChange={(e) => setForm({ ...form, estimated_arrival_days: e.target.value })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              placeholder="days"
+            />
+          </label>
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Prod. Est.</span>
+            <input
+              type="number"
+              min="1"
+              value={form.estimated_production_days}
+              onChange={(e) => setForm({ ...form, estimated_production_days: e.target.value })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              placeholder="days"
+            />
+          </label>
+          <label className="md:col-span-5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">
+              Reason {mode === 'edit' ? 'for edit' : 'for manual addition'}
+            </span>
+            <input
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              placeholder={mode === 'edit' ? 'Example: client changed item quantity' : 'Example: missing item from quotation extraction'}
+            />
+          </label>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving || !form.name.trim() || !form.reason.trim()}
+              className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : mode === 'add' ? 'Add Item' : 'Save Edit'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -1101,7 +1326,7 @@ function ItemTrackingSection({
             <h2 className="text-base font-semibold text-gray-800">Item-Level Tracking</h2>
           </div>
           <p className="mt-3 text-sm text-gray-500">
-            No items have been extracted for this order yet. You can extract items from the quotation image using AI vision.
+            No items have been extracted for this order yet. You can extract items from the quotation image using AI vision or manually create item tracking.
           </p>
           {extractError && (
             <p className="mt-2 text-xs text-red-500">{extractError}</p>
@@ -1142,7 +1367,22 @@ function ItemTrackingSection({
                 className="sr-only"
               />
             </label>
+            <button
+              onClick={() => setShowManualItemForm((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-4 py-2 text-xs font-medium text-blue-700 shadow-sm hover:bg-blue-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Item Manually
+            </button>
           </div>
+          {showManualItemForm && renderItemTrackingForm({
+            form: manualItemForm,
+            setForm: setManualItemForm,
+            onCancel: () => { setShowManualItemForm(false); setManualItemForm(emptyItemForm); },
+            onSave: handleCreateManualItem,
+            saving: savingManualItem,
+            mode: 'add',
+          })}
         </div>
         {renderOtpModals()}
       </>
@@ -1151,7 +1391,7 @@ function ItemTrackingSection({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6">
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <List className="h-4 w-4 text-gray-500" />
         <h2 className="text-base font-semibold text-gray-800">Item-Level Tracking</h2>
         {completion && (
@@ -1159,7 +1399,23 @@ function ItemTrackingSection({
             {items.length} item{items.length !== 1 ? 's' : ''}
           </span>
         )}
+        <button
+          onClick={() => setShowManualItemForm((prev) => !prev)}
+          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add Item
+        </button>
       </div>
+
+      {showManualItemForm && renderItemTrackingForm({
+        form: manualItemForm,
+        setForm: setManualItemForm,
+        onCancel: () => { setShowManualItemForm(false); setManualItemForm(emptyItemForm); },
+        onSave: handleCreateManualItem,
+        saving: savingManualItem,
+        mode: 'add',
+      })}
 
       {/* Completion bars */}
       {completion && (
@@ -1267,7 +1523,8 @@ function ItemTrackingSection({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {items.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
+                <Fragment key={item.id}>
+                <tr className="hover:bg-gray-50">
                   <td className="py-2 pr-3 font-medium text-gray-800">{item.name}</td>
                   <td className="py-2 pr-3 text-gray-600">{item.quantity}</td>
                   <td className="py-2 pr-3">
@@ -1414,9 +1671,35 @@ function ItemTrackingSection({
                     {item.estimated_arrival_days != null ? `${item.estimated_arrival_days}d` : '—'}
                   </td>
                   <td className="py-2 pr-3 text-gray-500">
-                    <Timestamp value={item.updated_at} variant="relative" />
+                    <div className="flex items-center gap-2">
+                      <Timestamp value={item.updated_at} variant="relative" />
+                      <button
+                        type="button"
+                        onClick={() => startEditItem(item)}
+                        className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
+                        title="Edit item tracking"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
+                {editingItemId === item.id && (
+                  <tr key={`${item.id}-edit`}>
+                    <td colSpan={8} className="bg-blue-50/40 px-2 py-3">
+                      {renderItemTrackingForm({
+                        form: editItemForm,
+                        setForm: setEditItemForm,
+                        onCancel: () => { setEditingItemId(null); setEditItemForm(emptyItemForm); },
+                        onSave: handleSaveEditItem,
+                        saving: savingEditItem,
+                        mode: 'edit',
+                      })}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

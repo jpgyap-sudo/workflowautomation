@@ -3104,6 +3104,9 @@ const updateItemSchema = z.object({
   estimated_arrival_days: z.number().int().positive().nullable().optional(),
   estimated_production_days: z.number().int().positive().nullable().optional(),
   action_token: z.string().optional(),
+  edit_reason: z.string().trim().min(3).optional(),
+  require_reason: z.boolean().optional(),
+  updated_by: z.string().trim().min(1).optional(),
 });
 
 const addProductionLogSchema = z.object({
@@ -3304,6 +3307,58 @@ app.post('/orders/:id/items', async (request, reply) => {
   return reply.send({ ok: true, items });
 });
 
+// POST /orders/:id/items/manual — Add one manually-created tracking item without replacing existing items
+app.post('/orders/:id/items/manual', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = orderItemSchema.extend({
+    edit_reason: z.string().trim().min(3).optional(),
+    updated_by: z.string().trim().min(1).optional(),
+  }).parse(request.body);
+
+  const reason = body.edit_reason?.trim();
+  if (!reason) {
+    return reply.code(400).send({ error: 'A reason is required when manually adding item tracking.' });
+  }
+
+  const orderRows = await query(
+    `SELECT id, quotation_number FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const rows = await query(
+    `INSERT INTO order_items (
+       order_id, name, quantity, production_status, en_route_status,
+       estimated_arrival_days, estimated_production_days, production_finished_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $4 = 'finished' THEN NOW() ELSE NULL END)
+     RETURNING id, order_id, name, quantity, production_status, en_route_status,
+               estimated_arrival_days, estimated_production_days, production_finished_at,
+               inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at`,
+    [
+      id,
+      body.name,
+      body.quantity,
+      body.production_status ?? 'pending',
+      body.en_route_status ?? 'not_yet',
+      body.estimated_arrival_days ?? null,
+      body.estimated_production_days ?? null,
+    ]
+  );
+
+  const item = rows[0] as any;
+  const actor = body.updated_by ?? 'dashboard';
+  await query(
+    `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
+     VALUES ($1, $2, $3, 'user', $4)`,
+    [id, item.id, `Manual item tracking added: ${item.name} x${item.quantity}. Reason: ${reason}`, actor]
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, item });
+});
+
 // PATCH /orders/:order_id/items/:item_id — Update a single item
 app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
   const { order_id, item_id } = request.params as { order_id: string; item_id: string };
@@ -3323,6 +3378,29 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     await cacheClient.del(tokenKey);
     const tokenPayload = JSON.parse(tokenData);
     userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  }
+
+  const oldRows = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days
+     FROM order_items
+     WHERE id = $1 AND order_id = $2`,
+    [item_id, order_id]
+  );
+  const oldItem = oldRows[0] as any;
+  if (!oldItem) return reply.code(404).send({ error: 'Item not found' });
+
+  const editFields = [
+    'name',
+    'quantity',
+    'production_status',
+    'en_route_status',
+    'estimated_arrival_days',
+    'estimated_production_days',
+  ] as const;
+  const hasTrackedEdit = editFields.some((field) => body[field] !== undefined);
+  if ((body.require_reason || body.name !== undefined || body.quantity !== undefined) && hasTrackedEdit && !body.edit_reason?.trim()) {
+    return reply.code(400).send({ error: 'A reason is required when editing item tracking.' });
   }
 
   // Build dynamic SET clause
@@ -3379,6 +3457,24 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
   if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
 
   const updatedItem = rows[0] as any;
+
+  if (body.edit_reason?.trim()) {
+    const changes = editFields
+      .filter((field) => body[field] !== undefined && String(oldItem[field] ?? '') !== String((body as any)[field] ?? ''))
+      .map((field) => `${field}: ${oldItem[field] ?? '—'} → ${(body as any)[field] ?? '—'}`);
+    if (changes.length > 0) {
+      await query(
+        `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
+         VALUES ($1, $2, $3, 'user', $4)`,
+        [
+          order_id,
+          item_id,
+          `Item tracking edited (${changes.join('; ')}). Reason: ${body.edit_reason.trim()}`,
+          body.updated_by ?? userEmail ?? 'dashboard',
+        ]
+      );
+    }
+  }
 
   // ── Item-Level Reminder Management ──────────────────────────────────
   // When production_status or en_route_status changes, create or complete

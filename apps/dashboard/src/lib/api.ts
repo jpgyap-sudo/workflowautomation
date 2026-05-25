@@ -621,6 +621,28 @@ export async function upsertOrderItems(
   );
 }
 
+export async function createOrderItem(
+  orderId: string,
+  data: {
+    name: string;
+    quantity: number;
+    production_status?: string;
+    en_route_status?: string;
+    estimated_arrival_days?: number | null;
+    estimated_production_days?: number | null;
+    edit_reason?: string;
+    updated_by?: string;
+  }
+): Promise<{ ok: boolean; item: OrderItem }> {
+  return fetchJson<{ ok: boolean; item: OrderItem }>(
+    `/orders/${encodeURIComponent(orderId)}/items/manual`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 export async function updateOrderItem(
   orderId: string,
   itemId: string,
@@ -632,6 +654,9 @@ export async function updateOrderItem(
     estimated_arrival_days?: number | null;
     estimated_production_days?: number | null;
     action_token?: string;
+    edit_reason?: string;
+    require_reason?: boolean;
+    updated_by?: string;
   }
 ): Promise<{ ok: boolean; item: OrderItem }> {
   return fetchJson<{ ok: boolean; item: OrderItem }>(
