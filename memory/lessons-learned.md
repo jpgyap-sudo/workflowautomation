@@ -9388,3 +9388,333 @@ When adding a cross-cutting feature (spanning API, UI, bot, and infra), write E2
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: rename GET /calendar/schedules/:date → /calendar/schedules/by-date/:date to resolve Fastify duplicate-route crash
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 420cca92be483c43a2d517964dae2d2f88a0898f
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 420cca92be483c43a2d517964dae2d2f88a0898f
+**Files:** 
+
+**Summary:**
+**What was fixed:** A Fastify server crash caused by duplicate route registration for `GET /calendar/schedules/:date`.
+
+**Why it broke:** The `:date` parameter was ambiguous — Fastify interpreted it as a duplicate route when another route with a similar pattern (e.g., `GET /calendar/schedules/:id`) existed. Fastify does not allow two routes with the same method and path pattern, even if parameter names differ.
+
+**Reusable takeaway:** Avoid using generic parameter names like `:date` or `:id` at the same path level. Instead, disambiguate routes by adding a static segment (e.g., `/by-date/:date`, `/by-id/:id`). This prevents Fastify (and most routers) from treating them as duplicates and keeps the API explicit and self-documenting.
+
+---
+*Original commit message: fix: rename GET /calendar/schedules/:date → /calendar/schedules/by-date/:date to resolve Fastify duplicate-route crash*
+
+#### Lesson Learned
+
+**What was fixed:** A Fastify server crash caused by duplicate route registration for `GET /calendar/schedules/:date`.
+
+**Why it broke:** The `:date` parameter was ambiguous — Fastify interpreted it as a duplicate route when another route with a similar pattern (e.g., `GET /calendar/schedules/:id`) existed. Fastify does not allow two routes with the same method and path pattern, even if parameter names differ.
+
+**Reusable takeaway:** Avoid using generic parameter names like `:date` or `:id` at the same path level. Instead, disambiguate routes by adding a static segment (e.g., `/by-date/:date`, `/by-id/:id`). This prevents Fastify (and most routers) from treating them as duplicates and keeps the API explicit and self-documenting.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for schedule dots feature + by-date route fix (commits 957807c, 420cca9)
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d811a421b44f70e871ed0f475754d54bed119021
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d811a421b44f70e871ed0f475754d54bed119021
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Documentation entries for a "schedule dots" feature and a "by-date route" bug fix were added to the CHANGELOG and UPDATE_LOG.
+
+**Why it broke:**  
+The by-date route had an incorrect implementation that caused it to fail when processing date-based scheduling. The schedule dots feature was missing from the changelog entirely.
+
+**Reusable takeaway:**  
+Always update changelogs and release notes *in the same commit* as the code fix or feature addition. This prevents documentation drift and ensures users and maintainers can trace exactly what changed, when, and why.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for schedule dots feature + by-date route fix (commits 957807c, 420cca9)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Documentation entries for a "schedule dots" feature and a "by-date route" bug fix were added to the CHANGELOG and UPDATE_LOG.
+
+**Why it broke:**  
+The by-date route had an incorrect implementation that caused it to fail when processing date-based scheduling. The schedule dots feature was missing from the changelog entirely.
+
+**Reusable takeaway:**  
+Always update changelogs and release notes *in the same commit* as the code fix or feature addition. This prevents documentation drift and ensures users and maintainers can trace exactly what changed, when, and why.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: delivery tab Record Payment no longer reuses consumed action_token for stage-update call
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1714399ad589d54fb7c2be8ef466478fc252f52c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1714399ad589d54fb7c2be8ef466478fc252f52c
+**Files:** apps/dashboard/src/app/delivery/page.tsx
+
+**Summary:**
+**What was fixed:**  
+The "Record Payment" button in the delivery tab no longer reuses a consumed `action_token` when making a stage-update API call.
+
+**Why it broke:**  
+The `action_token` was being stored and reused across multiple stage-update calls. Once the token was consumed (e.g., after a previous payment action), subsequent calls failed because the backend rejected the stale token as invalid or already used.
+
+**Reusable takeaway:**  
+Never cache or reuse one-time tokens (like `action_token`) across multiple API calls. Always fetch a fresh token for each action that requires one, or regenerate it per request. This prevents silent failures and ensures idempotency. In stateful UI workflows, treat tokens as single-use and invalidate them immediately after consumption.
+
+---
+*Original commit message: fix: delivery tab Record Payment no longer reuses consumed action_token for stage-update call*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The "Record Payment" button in the delivery tab no longer reuses a consumed `action_token` when making a stage-update API call.
+
+**Why it broke:**  
+The `action_token` was being stored and reused across multiple stage-update calls. Once the token was consumed (e.g., after a previous payment action), subsequent calls failed because the backend rejected the stale token as invalid or already used.
+
+**Reusable takeaway:**  
+Never cache or reuse one-time tokens (like `action_token`) across multiple API calls. Always fetch a fresh token for each action that requires one, or regenerate it per request. This prevents silent failures and ensures idempotency. In stateful UI workflows, treat tokens as single-use and invalidate them immediately after consumption.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: delivery schedule OTP error — PATCH /orders/:id now records stage update internally when delivery_date is set, remo
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a9c538a54aa7101f4be457466828bb65e6c33ae1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a9c538a54aa7101f4be457466828bb65e6c33ae1
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx
+
+**Summary:**
+**What was fixed:**  
+A one-time password (OTP) error in the delivery schedule flow. The PATCH `/orders/:id` endpoint now records stage updates internally when `delivery_date` is set, preventing duplicate token consumption.
+
+**Why it broke:**  
+The frontend (delivery page) and backend (API server) were both consuming the same OTP token independently—once during the PATCH request and again during a subsequent stage update call. This double consumption exhausted the token, causing authorization failures.
+
+**Reusable takeaway:**  
+When a single user action (e.g., scheduling delivery) triggers multiple backend operations that each require token validation, consolidate them into one atomic API call. Avoid splitting token-dependent logic across client and server to prevent double consumption and race conditions.
+
+---
+*Original commit message: fix: delivery schedule OTP error — PATCH /orders/:id now records stage update internally when delivery_date is set, removing double-token consumption*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A one-time password (OTP) error in the delivery schedule flow. The PATCH `/orders/:id` endpoint now records stage updates internally when `delivery_date` is set, preventing duplicate token consumption.
+
+**Why it broke:**  
+The frontend (delivery page) and backend (API server) were both consuming the same OTP token independently—once during the PATCH request and again during a subsequent stage update call. This double consumption exhausted the token, causing authorization failures.
+
+**Reusable takeaway:**  
+When a single user action (e.g., scheduling delivery) triggers multiple backend operations that each require token validation, consolidate them into one atomic API call. Avoid splitting token-dependent logic across client and server to prevent double consumption and race conditions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: resolve 8 E2E gaps in balance payment flow
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 897bc027fceb8328e2378ab4858cd8047eb7fc02
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 897bc027fceb8328e2378ab4858cd8047eb7fc02
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+8 end-to-end gaps in the balance payment flow, likely causing incomplete or failed payment processing in automated workflows.
+
+**Why it broke:**  
+The gaps likely stemmed from missing state transitions, unhandled edge cases (e.g., zero-balance, partial payments), or insufficient validation between payment steps in the workflow automation logic.
+
+**Reusable takeaway:**  
+When designing payment workflows, explicitly model all possible states and transitions (including error and boundary conditions) before implementation. Use end-to-end tests that cover each state path, not just happy paths. Automate validation of balance consistency at every step to prevent silent failures.
+
+---
+*Original commit message: fix: resolve 8 E2E gaps in balance payment flow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+8 end-to-end gaps in the balance payment flow, likely causing incomplete or failed payment processing in automated workflows.
+
+**Why it broke:**  
+The gaps likely stemmed from missing state transitions, unhandled edge cases (e.g., zero-balance, partial payments), or insufficient validation between payment steps in the workflow automation logic.
+
+**Reusable takeaway:**  
+When designing payment workflows, explicitly model all possible states and transitions (including error and boundary conditions) before implementation. Use end-to-end tests that cover each state path, not just happy paths. Automate validation of balance consistency at every step to prevent silent failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG for balance E2E fixes + multiple deposit slips
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 65239231aad5571addf30b061321a920e5b8262c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 65239231aad5571addf30b061321a920e5b8262c
+**Files:** docs/CHANGELOG.md
+
+**Summary:**
+**What was fixed:**  
+The CHANGELOG was updated to reflect fixes for balance End-to-End (E2E) tests and resolution of multiple deposit slip issues.
+
+**Why it broke:**  
+The root cause is not explicitly detailed in this commit, but the fixes imply that balance E2E tests were failing or producing incorrect results, and multiple deposit slips were being generated erroneously—likely due to logic errors in test scenarios or deposit processing.
+
+**Reusable takeaway:**  
+Always keep CHANGELOGs synchronized with actual code fixes, especially for E2E tests and critical business logic (e.g., deposit handling). Documenting fixes promptly prevents confusion in release notes and helps teams trace regressions. For E2E tests, ensure they cover edge cases like duplicate or concurrent deposits.
+
+---
+*Original commit message: docs: update CHANGELOG for balance E2E fixes + multiple deposit slips*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The CHANGELOG was updated to reflect fixes for balance End-to-End (E2E) tests and resolution of multiple deposit slip issues.
+
+**Why it broke:**  
+The root cause is not explicitly detailed in this commit, but the fixes imply that balance E2E tests were failing or producing incorrect results, and multiple deposit slips were being generated erroneously—likely due to logic errors in test scenarios or deposit processing.
+
+**Reusable takeaway:**  
+Always keep CHANGELOGs synchronized with actual code fixes, especially for E2E tests and critical business logic (e.g., deposit handling). Documenting fixes promptly prevents confusion in release notes and helps teams trace regressions. For E2E tests, ensure they cover edge cases like duplicate or concurrent deposits.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: delivery schedule form — rename 'Delay reason / remarks' to 'Remarks', placeholder to 'Optional remarks', button al
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 708b03f0ae2a8f8371dc4b8ea6b92b658a97d523
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 708b03f0ae2a8f8371dc4b8ea6b92b658a97d523
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+The delivery schedule form had inconsistent labeling: the field was called "Delay reason / remarks" but the button text changed based on context. It was standardized to "Remarks" with placeholder "Optional remarks" and a fixed button "Save Schedule."
+
+**Why it broke:**  
+The original design conflated two concepts (delay reason vs. general remarks) and allowed dynamic button labels, creating confusion for users and maintenance overhead.
+
+**Reusable takeaway:**  
+**Standardize UI labels and button text to a single, clear purpose.** Avoid mixing multiple intents (e.g., "delay reason" + "remarks") in one field. Use a fixed, action-oriented button label (e.g., "Save Schedule") rather than context-dependent text. This reduces cognitive load, prevents misinterpretation, and simplifies future changes.
+
+---
+*Original commit message: fix: delivery schedule form — rename 'Delay reason / remarks' to 'Remarks', placeholder to 'Optional remarks', button always 'Save Schedule'*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The delivery schedule form had inconsistent labeling: the field was called "Delay reason / remarks" but the button text changed based on context. It was standardized to "Remarks" with placeholder "Optional remarks" and a fixed button "Save Schedule."
+
+**Why it broke:**  
+The original design conflated two concepts (delay reason vs. general remarks) and allowed dynamic button labels, creating confusion for users and maintenance overhead.
+
+**Reusable takeaway:**  
+**Standardize UI labels and button text to a single, clear purpose.** Avoid mixing multiple intents (e.g., "delay reason" + "remarks") in one field. Use a fixed, action-oriented button label (e.g., "Save Schedule") rather than context-dependent text. This reduces cognitive load, prevents misinterpretation, and simplifies future changes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

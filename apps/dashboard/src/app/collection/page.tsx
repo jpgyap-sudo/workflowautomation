@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFile, visionExtract } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFile, visionExtract, getOrderPayments } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -294,6 +294,7 @@ export default function CollectionPage() {
     notes: string;
     granting: boolean;
   }>({ open: false, order: null, notes: '', granting: false });
+  const [paymentResult, setPaymentResult] = useState<string | null>(null);
 
   // Payment confirmation modal state
   const [paymentModal, setPaymentModal] = useState<{
@@ -303,7 +304,9 @@ export default function CollectionPage() {
     extracting: boolean;
     error: string | null;
     extractedNote: string | null;
-  }>({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null });
+    remainingBalance: number | null;
+    balancePaidSoFar: number | null;
+  }>({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null, remainingBalance: null, balancePaidSoFar: null });
   const [balancePaymentAmount, setBalancePaymentAmount] = useState('');
   const [balancePaymentDate, setBalancePaymentDate] = useState('');
   const [balancePaymentReference, setBalancePaymentReference] = useState('');
@@ -684,15 +687,24 @@ export default function CollectionPage() {
 
   // ── Payment Confirmation with Deposit Slip Upload ──────────────────────
 
-  function handlePaymentConfirmClick(order: Order) {
+  async function handlePaymentConfirmClick(order: Order) {
     const totalAmount = Number(order.total_amount ?? 0);
     const depositAmount = Number(order.deposit_amount ?? 0);
-    const balance = Math.max(0, totalAmount - depositAmount);
-    setPaymentModal({ open: true, order, uploading: false, extracting: false, error: null, extractedNote: null });
-    setBalancePaymentAmount(balance > 0 ? balance.toFixed(2) : '');
+    const computedBalance = Math.max(0, totalAmount - depositAmount);
+    setPaymentModal({ open: true, order, uploading: false, extracting: false, error: null, extractedNote: null, remainingBalance: null, balancePaidSoFar: null });
+    setBalancePaymentAmount(computedBalance > 0 ? computedBalance.toFixed(2) : '');
     setBalancePaymentDate(new Date().toISOString().slice(0, 10));
     setBalancePaymentReference('');
     setDepositSlipFile(null);
+    try {
+      const payments = await getOrderPayments(order.id);
+      const remaining = payments.totals.remaining_balance ?? computedBalance;
+      const paidSoFar = payments.totals.balance ?? 0;
+      setPaymentModal((prev) => ({ ...prev, remainingBalance: remaining, balancePaidSoFar: paidSoFar }));
+      if (remaining > 0) setBalancePaymentAmount(remaining.toFixed(2));
+    } catch {
+      // fallback: keep computed balance
+    }
   }
 
   function handleDepositSlipFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -781,7 +793,7 @@ export default function CollectionPage() {
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error('Enter a valid balance payment amount.');
       }
-      await payBalanceWithFile({
+      const res = await payBalanceWithFile({
         quotation_number: order.quotation_number ?? '',
         amount,
         payment_date: balancePaymentDate || undefined,
@@ -792,7 +804,15 @@ export default function CollectionPage() {
         updated_by: 'dashboard_quick_action',
         action_token: actionToken,
       });
-      setPaymentModal({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null });
+      let note = `Payment of ₱${amount.toLocaleString()} recorded.`;
+      if (res.is_fully_paid) {
+        note += ' Balance fully paid.';
+        if (res.overpayment && res.overpayment > 0) note += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
+      } else {
+        note += ` Remaining: ₱${res.remaining_balance?.toLocaleString() ?? 'unknown'}.`;
+      }
+      setPaymentModal({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null, remainingBalance: null, balancePaidSoFar: null });
+      setPaymentResult(note);
       setDepositSlipFile(null);
       setBalancePaymentAmount('');
       setBalancePaymentDate('');
@@ -817,7 +837,7 @@ export default function CollectionPage() {
   }
 
   function closePaymentModal() {
-    setPaymentModal({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null });
+    setPaymentModal({ open: false, order: null, uploading: false, extracting: false, error: null, extractedNote: null, remainingBalance: null, balancePaidSoFar: null });
     setDepositSlipFile(null);
     setBalancePaymentAmount('');
     setBalancePaymentDate('');
@@ -1359,6 +1379,18 @@ export default function CollectionPage() {
         )}
       </div>
 
+      {/* Payment result toast */}
+      {paymentResult && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3 mb-6">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" />
+          <div>
+            <p className="text-sm font-medium text-emerald-800">Payment Recorded</p>
+            <p className="text-xs text-emerald-700">{paymentResult}</p>
+            <button onClick={() => setPaymentResult(null)} className="mt-1 text-xs text-emerald-600 hover:underline">Dismiss</button>
+          </div>
+        </div>
+      )}
+
       {/* Payment Confirmation Modal — Upload Deposit Slip */}
       {paymentModal.open && paymentModal.order && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -1383,10 +1415,16 @@ export default function CollectionPage() {
                 <span>Downpayment Paid:</span>
                 <span className="font-medium">₱{Number(paymentModal.order.deposit_amount ?? 0).toLocaleString()}</span>
               </div>
+              {paymentModal.balancePaidSoFar != null && paymentModal.balancePaidSoFar > 0 && (
+                <div className="flex justify-between text-green-700">
+                  <span>Already Paid:</span>
+                  <span className="font-medium">₱{paymentModal.balancePaidSoFar.toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between text-violet-700">
-                <span>Balance Due:</span>
+                <span>{paymentModal.remainingBalance != null ? 'Remaining Balance:' : 'Balance Due:'}</span>
                 <span className="font-medium">
-                  ₱{(Number(paymentModal.order.total_amount ?? 0) - Number(paymentModal.order.deposit_amount ?? 0)).toLocaleString()}
+                  ₱{(paymentModal.remainingBalance ?? (Number(paymentModal.order.total_amount ?? 0) - Number(paymentModal.order.deposit_amount ?? 0))).toLocaleString()}
                 </span>
               </div>
             </div>

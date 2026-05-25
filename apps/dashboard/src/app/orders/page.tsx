@@ -185,10 +185,9 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               image_base64: base64,
               mime_type: entry.file.type,
               original_filename: entry.file.name,
-              action_token: actionToken,
             });
           } else {
-            await recordDeposit({ quotation_number: qn.trim(), amount: depositAmt, deposit_paid_at: entry.date || undefined, action_token: actionToken });
+            await recordDeposit({ quotation_number: qn.trim(), amount: depositAmt, deposit_paid_at: entry.date || undefined });
           }
           results.push(`✅ Deposit slip ${i + 1} recorded (₱${depositAmt.toLocaleString()})`);
         } catch (err: any) { results.push(`⚠️ Deposit slip ${i + 1} failed: ${err.message}`); }

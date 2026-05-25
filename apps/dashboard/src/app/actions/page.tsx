@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import OtpModal from '@/components/OtpModal';
-import { recordDepositWithFile, payBalanceWithFile, recordStageUpdate } from '@/lib/api';
+import { recordDepositWithFile, payBalanceWithFile, recordStageUpdate, getOrder, getOrderPayments } from '@/lib/api';
 import { CreditCard, Scale, CalendarDays, CheckCircle, AlertCircle, Loader2, Paperclip, X } from 'lucide-react';
 
 type ActionResult = { ok: boolean; message: string } | null;
@@ -219,7 +219,31 @@ function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
   const [loading, setLoading] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
   const [pending, setPending] = useState<{ quotation_number: string; amount: number } | null>(null);
+  const [orderInfo, setOrderInfo] = useState<{ remaining: number; expected: number; balancePaid: number } | null>(null);
+  const [orderLoading, setOrderLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function lookupOrderInfo(quotationNumber: string) {
+    if (!quotationNumber.trim()) { setOrderInfo(null); return; }
+    setOrderLoading(true);
+    try {
+      const order = await getOrder(quotationNumber);
+      if (order?.id) {
+        const payments = await getOrderPayments(order.id);
+        setOrderInfo({
+          remaining: payments.totals.remaining_balance ?? Math.max(0, (order.total_amount ?? 0) - (order.deposit_amount ?? 0)),
+          expected: payments.totals.expected_balance ?? Math.max(0, (order.total_amount ?? 0) - (order.deposit_amount ?? 0)),
+          balancePaid: payments.totals.balance ?? 0,
+        });
+      } else {
+        setOrderInfo(null);
+      }
+    } catch {
+      setOrderInfo(null);
+    } finally {
+      setOrderLoading(false);
+    }
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
@@ -264,7 +288,12 @@ function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
 
       let msg = `Balance of ₱${pending.amount.toLocaleString()} recorded for ${pending.quotation_number}.`;
       if (file) msg += ' Payment proof uploaded.';
-      if (res.overpayment && res.overpayment > 0) msg += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
+      if (res.is_fully_paid) {
+        msg += ' Balance fully paid.';
+        if (res.overpayment && res.overpayment > 0) msg += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
+      } else {
+        msg += ` Remaining: ₱${res.remaining_balance?.toLocaleString() ?? 'unknown'}.`;
+      }
       onResult({ ok: true, message: msg });
       setQn(''); setAmount(''); setFile(null); setPending(null);
     } catch (err: unknown) {
@@ -278,10 +307,26 @@ function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
     <>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Quotation Number">
-          <input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} />
+          <input
+            className={inputCls}
+            placeholder="QTN-2026-001"
+            value={qn}
+            onChange={e => { setQn(e.target.value); setOrderInfo(null); }}
+            onBlur={e => lookupOrderInfo(e.target.value)}
+          />
         </Field>
-        <Field label="Balance Amount (₱)">
-          <input className={inputCls} placeholder="15000" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+        {orderLoading && <p className="text-xs text-gray-400">Looking up order...</p>}
+        {orderInfo && (
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+            <p className="text-gray-600">Expected balance: <span className="font-semibold text-gray-800">₱{orderInfo.expected.toLocaleString()}</span></p>
+            {orderInfo.balancePaid > 0 && (
+              <p className="text-gray-600">Already paid: <span className="font-semibold text-green-600">₱{orderInfo.balancePaid.toLocaleString()}</span></p>
+            )}
+            <p className="text-gray-600">Remaining: <span className="font-semibold text-violet-600">₱{orderInfo.remaining.toLocaleString()}</span></p>
+          </div>
+        )}
+        <Field label={`Balance Amount (₱)${orderInfo ? ` — remaining ₱${orderInfo.remaining.toLocaleString()}` : ''}`}>
+          <input className={inputCls} placeholder={orderInfo ? String(orderInfo.remaining) : '15000'} value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
         </Field>
 
         {/* File attachment */}

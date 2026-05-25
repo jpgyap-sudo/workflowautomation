@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS stage_updates (
 CREATE TABLE IF NOT EXISTS reminders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  item_id UUID REFERENCES order_items(id) ON DELETE CASCADE,
   stage TEXT NOT NULL,
   group_chat_id TEXT NOT NULL,
   message TEXT NOT NULL,
@@ -87,6 +88,9 @@ CREATE TABLE IF NOT EXISTS reminders (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_order_stage_item ON reminders(order_id, stage, item_id) WHERE item_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_order_stage_null ON reminders(order_id, stage) WHERE item_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_reminders_item_id ON reminders(item_id);
 
 CREATE TABLE IF NOT EXISTS agent_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

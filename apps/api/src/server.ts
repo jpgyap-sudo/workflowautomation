@@ -1664,7 +1664,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
          VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
-         ON CONFLICT (order_id, stage) DO UPDATE SET
+         ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
            group_chat_id=EXCLUDED.group_chat_id,
            message=EXCLUDED.message,
            frequency=EXCLUDED.frequency,
@@ -1680,7 +1680,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
          VALUES ($1, 'production_due', $2, $3, 'once', $4, 'active')
-         ON CONFLICT (order_id, stage) DO UPDATE SET
+         ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
            group_chat_id=EXCLUDED.group_chat_id,
            message=EXCLUDED.message,
            frequency=EXCLUDED.frequency,
@@ -2129,7 +2129,7 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
       await query(
         `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
          VALUES ($1, 'en_route_reminder', $2, $3, 'daily', $4, 'active')
-         ON CONFLICT (order_id, stage) DO UPDATE SET
+         ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
            group_chat_id=EXCLUDED.group_chat_id,
            message=EXCLUDED.message,
            frequency=EXCLUDED.frequency,
@@ -3625,7 +3625,7 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
     await query(
       `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
        VALUES ($1, 'production_midpoint', $2, $3, 'once', $4, 'active')
-       ON CONFLICT (order_id, stage) DO UPDATE SET
+       ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
          group_chat_id=EXCLUDED.group_chat_id,
          message=EXCLUDED.message,
          frequency=EXCLUDED.frequency,
@@ -3643,7 +3643,7 @@ app.post('/orders/:id/recalc-production-reminders', async (request, reply) => {
   await query(
     `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
      VALUES ($1, 'production_due', $2, $3, 'once', $4, 'active')
-     ON CONFLICT (order_id, stage) DO UPDATE SET
+     ON CONFLICT (order_id, stage) WHERE item_id IS NULL DO UPDATE SET
        group_chat_id=EXCLUDED.group_chat_id,
        message=EXCLUDED.message,
        frequency=EXCLUDED.frequency,

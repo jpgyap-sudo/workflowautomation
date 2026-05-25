@@ -270,8 +270,8 @@ export async function payBalance(data: {
   reference_number?: string;
   updated_by?: string;
   action_token?: string;
-}): Promise<{ ok: boolean; overpayment?: number }> {
-  return fetchJson<{ ok: boolean; overpayment?: number }>('/pay-balance', {
+}): Promise<{ ok: boolean; expected_balance?: number; balance_total?: number; remaining_balance?: number; is_fully_paid?: boolean; overpayment?: number }> {
+  return fetchJson<{ ok: boolean; expected_balance?: number; balance_total?: number; remaining_balance?: number; is_fully_paid?: boolean; overpayment?: number }>('/pay-balance', {
     method: 'POST',
     body: JSON.stringify({ updated_by: 'dashboard_quick_action', ...data }),
   });
@@ -287,7 +287,7 @@ export async function payBalanceWithFile(data: {
   image_base64?: string;
   mime_type?: string;
   original_filename?: string;
-}): Promise<{ ok: boolean; overpayment?: number }> {
+}): Promise<{ ok: boolean; expected_balance?: number; balance_total?: number; remaining_balance?: number; is_fully_paid?: boolean; overpayment?: number }> {
   // Upload the proof file first if provided
   if (data.image_base64 && data.original_filename) {
     await uploadOrderFile({
@@ -299,7 +299,7 @@ export async function payBalanceWithFile(data: {
     });
   }
 
-  return fetchJson<{ ok: boolean; overpayment?: number }>('/pay-balance', {
+  return fetchJson<{ ok: boolean; expected_balance?: number; balance_total?: number; remaining_balance?: number; is_fully_paid?: boolean; overpayment?: number }>('/pay-balance', {
     method: 'POST',
     body: JSON.stringify({
       quotation_number: data.quotation_number,
