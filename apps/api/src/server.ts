@@ -206,7 +206,7 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   completed:             ['collection-agent'],
 };
 
-function triggerAgentsForStage(stage: string, orderRef?: string, clientName?: string): void {
+function triggerAgentsForStage(stage: string, orderRef?: string, clientName?: string, updatedBy?: string | null): void {
   // 1. Fire the relevant agent(s) for this stage
   const agentsToFire = AGENT_TRIGGER_MAP[stage];
   if (agentsToFire) {
@@ -224,7 +224,8 @@ function triggerAgentsForStage(stage: string, orderRef?: string, clientName?: st
     setImmediate(() => {
       const stageLabel = STAGE_LABELS[stage] ?? stage;
       const client = clientName ? ` (${clientName})` : '';
-      const msg = `📋 <b>Stage Update</b> — ${orderRef}${client}\n➡️ ${stageLabel}`;
+      const actor = updatedBy ? `\n👤 <i>By: ${updatedBy}</i>` : '';
+      const msg = `📋 <b>Stage Update</b> — ${orderRef}${client}\n➡️ ${stageLabel}${actor}`;
       const chatId = process.env['STAGE_TRANSITION_GROUP_CHAT_ID'];
       if (chatId && _TELEGRAM_BOT_TOKEN) {
         fetch(`https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -1562,7 +1563,7 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
         );
 
         // Notify
-        triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
+        triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name, userEmail ?? 'dashboard');
       } else if (body.payment.type === 'full') {
         const effectiveTotal = body.total_amount ?? order.total_amount;
         if (effectiveTotal == null) {
@@ -1633,7 +1634,7 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
           }
 
           // Notify
-          triggerAgentsForStage('balance_verification', order.quotation_number, order.client_name);
+          triggerAgentsForStage('balance_verification', order.quotation_number, order.client_name, userEmail ?? 'dashboard');
         }
       }
     }
@@ -4389,7 +4390,7 @@ app.post('/stage-updates', async (request, reply) => {
       );
 
       // Fire notification for 'completed' stage so the transition group gets notified
-      triggerAgentsForStage('completed', body.quotation_number, order?.client_name ?? null);
+      triggerAgentsForStage('completed', body.quotation_number, order?.client_name ?? null, actorName);
     }
   }
 
@@ -4583,7 +4584,7 @@ app.post('/stage-updates', async (request, reply) => {
   }
 
   // Immediately fire the relevant agent so group chats are notified now, not on the next hourly tick
-  triggerAgentsForStage(body.stage, body.quotation_number, order?.client_name ?? null);
+  triggerAgentsForStage(body.stage, body.quotation_number, order?.client_name ?? null, actorName);
 
   // Also notify the specific functional group directly based on the target stage
   // This ensures the group that needs to act gets an immediate notification,
@@ -4742,8 +4743,8 @@ async function recordFullPaymentForOrder(args: {
     [args.orderId]
   );
 
-  triggerAgentsForStage('deposit_verification', args.quotationNumber ?? undefined, args.clientName ?? undefined);
-  triggerAgentsForStage('balance_verification', args.quotationNumber ?? undefined, args.clientName ?? undefined);
+  triggerAgentsForStage('deposit_verification', args.quotationNumber ?? undefined, args.clientName ?? undefined, args.updatedBy ?? undefined);
+  triggerAgentsForStage('balance_verification', args.quotationNumber ?? undefined, args.clientName ?? undefined, args.updatedBy ?? undefined);
 
   setImmediate(() => {
     notifyGroupChat(
@@ -4884,7 +4885,7 @@ app.post('/deposits', async (request, reply) => {
     }
 
     // Notify collection agent immediately that a deposit needs verification
-    triggerAgentsForStage('deposit_verification', quotationNumber, clientName);
+    triggerAgentsForStage('deposit_verification', quotationNumber, clientName, body.updated_by ?? undefined);
 
     // Notify collection group immediately — deposit recorded, needs verification
     setImmediate(() => {
@@ -5055,7 +5056,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       }
 
       // Notify collection agent immediately that a deposit needs verification
-      triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
+      triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name, 'telegram_bot');
 
       try {
         await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -5158,7 +5159,7 @@ app.post('/deposits/match-and-record', async (request, reply) => {
       }
 
       // Notify collection agent immediately that a deposit needs verification
-      triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name);
+      triggerAgentsForStage('deposit_verification', order.quotation_number, order.client_name, 'telegram_bot');
 
       try {
         await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
@@ -5529,7 +5530,7 @@ app.post('/pay-balance', async (request, reply) => {
       }
 
       // Notify collection agent immediately that balance needs verification
-      triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name);
+      triggerAgentsForStage('balance_verification', body.quotation_number, order.client_name, body.updated_by ?? undefined);
     } else {
       // Partial payment: update the balance_due reminder message to reflect remaining amount
       try {
@@ -5790,7 +5791,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   );
 
   // Trigger agents and send notifications based on order type
-  triggerAgentsForStage(nextStage, order.quotation_number, order.client_name);
+  triggerAgentsForStage(nextStage, order.quotation_number, order.client_name, userEmail ?? body.verified_by ?? undefined);
 
   if (isFromStock) {
     // From-stock: notify inventory/delivery group about stock preparation
@@ -5974,7 +5975,7 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
     }
   }
 
-  triggerAgentsForStage('balance_due', order.quotation_number, order.client_name);
+  triggerAgentsForStage('balance_due', order.quotation_number, order.client_name, body.updated_by ?? undefined);
 
   setImmediate(() => {
     notifyGroupChat(
@@ -6160,7 +6161,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
 
   // Notify the relevant agent immediately. If full payment is verified before production,
   // keep the order in its production workflow and let inventory arrival advance to delivery later.
-  triggerAgentsForStage(nextStage === currentStage ? 'balance_verification' : nextStage, order.quotation_number, order.client_name);
+  triggerAgentsForStage(nextStage === currentStage ? 'balance_verification' : nextStage, order.quotation_number, order.client_name, body.verified_by ?? undefined);
 
   // Notify collection group immediately — balance verified
   setImmediate(() => {
