@@ -10311,3 +10311,26 @@ When using multi-line secrets (especially SSH keys) in CI workflows, always pres
 cross-project, local-fallback
 
 ---
+
+### Lesson: Full payment option in New Order and Telegram deposit flow
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+Add pre-production full payment anywhere deposit proof is collected: New Order payment entries should carry paymentType deposit/full and call /full-payment for full, while Telegram deposit_pending collection flow should ask downpayment vs full payment before accepting proof, preserve paymentType through image/manual fallback, and route full payments to /full-payment instead of /deposits.
+
+#### Lesson Learned
+
+Add pre-production full payment anywhere deposit proof is collected: New Order payment entries should carry paymentType deposit/full and call /full-payment for full, while Telegram deposit_pending collection flow should ask downpayment vs full payment before accepting proof, preserve paymentType through image/manual fallback, and route full payments to /full-payment instead of /deposits.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

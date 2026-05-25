@@ -448,6 +448,34 @@ async function getJson(path: string) {
   return res.json();
 }
 
+async function recordPreProductionPayment(args: {
+  quotationNumber: string;
+  amount: number;
+  paymentType?: 'deposit' | 'full';
+  paymentDate?: string | null;
+  updatedBy?: string | null;
+}) {
+  if (args.paymentType === 'full') {
+    return postJson('/full-payment', {
+      quotation_number: args.quotationNumber,
+      amount: args.amount,
+      payment_date: args.paymentDate ?? undefined,
+      paid_by: args.updatedBy ?? 'telegram_bot',
+      updated_by: 'telegram_bot',
+    });
+  }
+  return postJson('/deposits', {
+    quotation_number: args.quotationNumber,
+    amount: args.amount,
+    updated_by: args.updatedBy ?? 'telegram_bot',
+    deposit_paid_at: args.paymentDate ?? null,
+  });
+}
+
+function paymentTypeLabel(paymentType?: 'deposit' | 'full') {
+  return paymentType === 'full' ? 'Full Payment' : 'Downpayment';
+}
+
 
 async function buildProductionPromptPayload(quotationNumber: string) {
   const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
@@ -543,6 +571,8 @@ const SAFE_PREFIXES = [
   'action:cancel',
   'assistant:cancel',
   'deposit:confirm_no',
+  'deposit:type:',
+  'deposit:photo_type:',
   // Navigation / view-only
   'noop',
   'menu:',
@@ -596,7 +626,7 @@ type UserStep =
   | { action: 'awaiting_produce_remarks'; quotationNumber: string; status: string }
   | { action: 'awaiting_produce_custom_days'; quotationNumber: string; orderId?: string }
   | { action: 'awaiting_order_number_for_deposit' }
-  | { action: 'awaiting_deposit_amount'; quotationNumber: string }
+  | { action: 'awaiting_deposit_amount'; quotationNumber: string; paymentType?: 'deposit' | 'full' }
   | { action: 'awaiting_order_number_for_paybalance' }
   | { action: 'awaiting_paybalance_amount'; quotationNumber: string; imageBase64?: string; mimeType?: string; fileName?: string }
   | { action: 'awaiting_delivery_date'; quotationNumber: string }
@@ -621,7 +651,7 @@ type UserStep =
       uploadedBy?: string;
     }
   // Deposit slip matching flow
-  | { action: 'awaiting_deposit_confirmation'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; candidates: DepositCandidate[]; paymentDate?: string }
+  | { action: 'awaiting_deposit_confirmation'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; candidates: DepositCandidate[]; paymentDate?: string; paymentType?: 'deposit' | 'full' }
   | { action: 'awaiting_deposit_client_name'; imageBase64: string; mimeType: string; fileName: string; depositAmount: number; paymentDate?: string }
   // Production tracking flow
   | { action: 'awaiting_delay_days'; orderId: string; quotationNumber: string }
@@ -650,7 +680,7 @@ type UserStep =
   // Delivery day check flow
   | { action: 'awaiting_delivery_day_check'; orderId: string; quotationNumber: string }
   // Collection group deposit slip photo upload
-  | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string }
+  | { action: 'awaiting_deposit_slip_photo'; orderId: string; quotationNumber: string; paymentType?: 'deposit' | 'full' }
   // Inventory verification — enter partial qty
   | { action: 'awaiting_inv_verify_qty'; data: { itemId: string; orderId: string; quotationNumber: string } }
   // Bug report interactive flow
@@ -1426,10 +1456,16 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
     }
 
     case 'deposit': {
-      setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
       await ctx.editMessageText(
-        `💳 *Downpayment for ${quotationNumber}*\n\nEnter the downpayment amount in PHP:\n\nExample: \`5000\``,
-        { parse_mode: 'Markdown', ...cancelButton() }
+        `💳 *Payment Before Production for ${quotationNumber}*\n\nIs this a downpayment or full payment?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💳 Downpayment', `deposit:type:deposit:${quotationNumber}`)],
+            [Markup.button.callback('✅ Full Payment', `deposit:type:full:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
       );
       break;
     }
@@ -2204,10 +2240,18 @@ I'll save this as a schedule. What date should this be on?
         });
         return;
       }
-      setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
       await ctx.reply(
-        `💳 *Downpayment for ${quotationNumber}*\n\nEnter the downpayment amount in PHP:\n\nExample: \`5000\``,
-        { parse_mode: 'Markdown', ...cancelButton() }
+        `?? *Payment Before Production for ${quotationNumber}*
+
+Is this a downpayment or full payment?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('?? Downpayment', `deposit:type:deposit:${quotationNumber}`)],
+            [Markup.button.callback('? Full Payment', `deposit:type:full:${quotationNumber}`)],
+            [Markup.button.callback('? Cancel', 'action:cancel')],
+          ]),
+        }
       );
       break;
     }
@@ -2215,40 +2259,42 @@ I'll save this as a schedule. What date should this be on?
     case 'awaiting_deposit_amount': {
       const amount = parseFloat(text);
       if (isNaN(amount) || amount <= 0) {
-        await ctx.reply('❌ Invalid amount. Please enter a positive number (e.g., `5000`).', {
+        await ctx.reply('Invalid amount. Please enter a positive number (e.g., `5000`).', {
           parse_mode: 'Markdown',
           ...cancelButton(),
         });
         return;
       }
-      const { quotationNumber } = session.step;
+      const { quotationNumber, paymentType } = session.step;
+      const label = paymentTypeLabel(paymentType);
       try {
-        await postJson('/deposits', {
-          quotation_number: quotationNumber,
+        await recordPreProductionPayment({
+          quotationNumber,
           amount,
-          updated_by: ctx.from?.username ?? String(ctx.from?.id),
+          paymentType,
+          updatedBy: ctx.from?.username ?? String(ctx.from?.id),
         });
-        await logAction({ chatId, userId, username, label: 'Record Downpayment', quotationNumber, details: `₱${amount.toLocaleString()}` });
+        await logAction({ chatId, userId, username, label: `Record ${label}`, quotationNumber, details: `PHP ${amount.toLocaleString()}` });
         resetStep(chatId);
         await ctx.reply(
-          `✅ *Downpayment Recorded*\n\nOrder: *${quotationNumber}*\nAmount: ₱${amount.toLocaleString()}\n\nProduction can now proceed.`,
+          `? *${label} Recorded*\n\nOrder: *${quotationNumber}*\nAmount: PHP ${amount.toLocaleString()}\n\n${paymentType === 'full' ? 'Full payment has been recorded and is awaiting verification.' : 'Production can now proceed after verification.'}`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
       } catch (err: any) {
         const errorMsg = err.message ?? String(err);
         const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
         await ctx.reply(
-          `❌ *Error Recording Downpayment*\n\n` +
+          `? *Error Recording ${label}*\n\n` +
           `Order: *${quotationNumber}*\n` +
-          `Amount: ₱${amount.toLocaleString()}\n\n` +
+          `Amount: PHP ${amount.toLocaleString()}\n\n` +
           `Error: ${escapeMarkdown(errorMsg)}\n\n` +
           `You can try again or record this on the dashboard:\n` +
-          `🔗 ${dashboardBase}/orders/${encodeURIComponent(quotationNumber)}`,
+          `${dashboardBase}/orders/${encodeURIComponent(quotationNumber)}`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback('🔄 Try Again', `pick:deposit:${quotationNumber}`)],
-              [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+              [Markup.button.callback('Try Again', `pick:deposit:${quotationNumber}`)],
+              [Markup.button.callback('Main Menu', 'menu:main')],
             ]),
           }
         );
@@ -6678,6 +6724,17 @@ bot.action(/^reminder:item_inventory:(arrived|en_route|not_yet):([^:]*):([^:]+):
 
 // ── Balance Payment Callback Handlers ────────────────────────────────
 
+bot.action(/^deposit:type:(deposit|full):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const paymentType = ctx.match[1] as 'deposit' | 'full';
+  const quotationNumber = ctx.match[2];
+  setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber, paymentType });
+  await ctx.editMessageText(
+    `💳 *${paymentTypeLabel(paymentType)} for ${quotationNumber}*\n\nEnter the amount in PHP:\n\nExample: \`5000\``,
+    { parse_mode: 'Markdown', ...cancelButton() }
+  );
+});
+
 // User confirmed client paid the balance → ask for proof of payment photo
 bot.action(/^balance:paid:(.+):(.+)$/, async (ctx) => {
   const chatId = String(ctx.chat!.id);
@@ -7443,22 +7500,44 @@ Tap Retry to try again, or Cancel to go back.`, {
 
 // User clicked "Yes, Upload Deposit Slip" from deposit_pending reminder
 bot.action(/^deposit:yes:(.+):(.+)$/, async (ctx) => {
-  const chatId = String(ctx.chat!.id);
   const orderId = ctx.match[1];
   const quotationNumber = ctx.match[2];
 
   await ctx.editMessageText(
-    `📸 *Deposit Slip Upload*\n\n` +
-    `Please upload a photo of the deposit slip for *${quotationNumber}*.\n\n` +
-    `The bot will automatically extract the payment information and match it to the order.`,
+    `?? *Payment Before Production*
+
+Order: *${quotationNumber}*
+
+Is this proof for a downpayment or full payment?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('?? Downpayment', `deposit:photo_type:deposit:${orderId}:${quotationNumber}`)],
+        [Markup.button.callback('? Full Payment', `deposit:photo_type:full:${orderId}:${quotationNumber}`)],
+        [Markup.button.callback('? Cancel', 'action:cancel')],
+      ]),
+    }
+  );
+});
+
+bot.action(/^deposit:photo_type:(deposit|full):([^:]+):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const paymentType = ctx.match[1] as 'deposit' | 'full';
+  const orderId = ctx.match[2];
+  const quotationNumber = ctx.match[3];
+
+  await ctx.editMessageText(
+    `📸 *${paymentTypeLabel(paymentType)} Slip Upload*\n\n` +
+    `Please upload a photo of the ${paymentTypeLabel(paymentType).toLowerCase()} proof for *${quotationNumber}*.\n\n` +
+    `The bot will automatically extract the payment information and record it to the order.`,
     { parse_mode: 'Markdown' }
   );
 
-  // Set session to expect a deposit slip image
   setStep(chatId, {
     action: 'awaiting_deposit_slip_photo',
     orderId,
     quotationNumber,
+    paymentType,
   });
 });
 
@@ -8978,7 +9057,7 @@ bot.on(['document', 'photo'], async (ctx) => {
 
     // Check if user is in deposit slip photo flow (from collection group)
     if (session.step.action === 'awaiting_deposit_slip_photo') {
-      const { orderId, quotationNumber } = session.step;
+      const { orderId, quotationNumber, paymentType } = session.step;
 
       // For images, call vision API to extract payment details
       const isProcessable = /^image\//.test(mimeType) || mimeType === 'application/pdf';
@@ -8997,6 +9076,36 @@ bot.on(['document', 'photo'], async (ctx) => {
           const paymentDate = visionResult?.payment?.payment_date;
 
           if (depositAmount && depositAmount > 0) {
+            if (paymentType === 'full') {
+              await recordPreProductionPayment({
+                quotationNumber,
+                amount: Number(depositAmount),
+                paymentType: 'full',
+                paymentDate,
+                updatedBy: from,
+              });
+
+              uploadFileAndRecord({
+                chatId,
+                imageBase64,
+                mimeType,
+                fileName: `full_payment_${quotationNumber}_${Date.now()}.${mimeType.includes('pdf') ? 'pdf' : 'jpg'}`,
+                quotationNumber,
+                telegramMessageId: messageId,
+                uploadedBy: from,
+                fileType: 'full_payment',
+              }).catch((err: any) => console.error('[full-payment-slip] Failed to save image:', err));
+
+              resetStep(chatId);
+              let msg = `✅ *Full Payment Recorded!*\n\n`;
+              msg += `Order: *${quotationNumber}*\n`;
+              msg += `Amount: PHP ${Number(depositAmount).toLocaleString()}`;
+              if (paymentDate) msg += `\nDate: ${paymentDate}`;
+              msg += `\n\nThe full payment was recorded before production and is awaiting verification.`;
+              await ctx.reply(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+              return;
+            }
+
             // Try to match this deposit to the specific order
             try {
               const matchRes = await fetch(`${apiBaseUrl}/deposits/match-and-record`, {
@@ -9123,19 +9232,19 @@ bot.on(['document', 'photo'], async (ctx) => {
             );
           } else {
             // Vision couldn't extract amount — ask user to enter manually
-            setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
+            setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber, paymentType });
             await ctx.reply(
-              `⚠️ Could not automatically detect the deposit amount from the image.\n\n` +
-              `💰 Please enter the deposit amount in PHP manually:\n\nExample: \`15000\``,
+              `⚠️ Could not automatically detect the ${paymentTypeLabel(paymentType).toLowerCase()} amount from the image.\n\n` +
+              `💰 Please enter the amount in PHP manually:\n\nExample: \`15000\``,
               { parse_mode: 'Markdown', ...cancelButton() }
             );
           }
         } catch (err: any) {
           // Vision API failed — fall back to manual entry
-          setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber });
+          setStep(chatId, { action: 'awaiting_deposit_amount', quotationNumber, paymentType });
           await ctx.reply(
             `⚠️ Could not process the image: ${err.message}\n\n` +
-            `💰 Please enter the deposit amount in PHP manually:\n\nExample: \`15000\``,
+            `💰 Please enter the amount in PHP manually:\n\nExample: \`15000\``,
             { parse_mode: 'Markdown', ...cancelButton() }
           );
         }

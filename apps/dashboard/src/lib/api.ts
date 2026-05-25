@@ -292,6 +292,44 @@ export async function recordDepositWithFile(data: {
   });
 }
 
+export async function recordFullPaymentWithFile(data: {
+  quotation_number: string;
+  amount: number;
+  payment_date?: string;
+  reference_number?: string;
+  paid_by?: string;
+  updated_by?: string;
+  image_base64?: string;
+  mime_type?: string;
+  original_filename?: string;
+  action_token?: string;
+}): Promise<{ ok: boolean; quotation_number: string; amount: number; is_fully_paid: boolean; depositPortion?: number; balancePortion?: number; overpayment?: number }> {
+  if (data.image_base64 && data.original_filename) {
+    await uploadOrderFile({
+      quotation_number: data.quotation_number,
+      file_type: 'full_payment',
+      original_filename: data.original_filename,
+      mime_type: data.mime_type ?? 'image/jpeg',
+      file_data: data.image_base64,
+    }).catch((err) => {
+      console.warn('[recordFullPaymentWithFile] File upload failed (non-fatal):', err);
+    });
+  }
+
+  return fetchJson<{ ok: boolean; quotation_number: string; amount: number; is_fully_paid: boolean; depositPortion?: number; balancePortion?: number; overpayment?: number }>('/full-payment', {
+    method: 'POST',
+    body: JSON.stringify({
+      quotation_number: data.quotation_number,
+      amount: data.amount,
+      payment_date: data.payment_date,
+      reference_number: data.reference_number,
+      paid_by: data.paid_by ?? 'new_order',
+      updated_by: data.updated_by ?? 'new_order_full_payment',
+      ...(data.action_token ? { action_token: data.action_token } : {}),
+    }),
+  });
+}
+
 export async function payBalance(data: {
   quotation_number: string;
   amount: number;

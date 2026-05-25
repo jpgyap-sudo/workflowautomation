@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { useOrders } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, uploadOrderFile, visionExtract } from '@/lib/api';
+import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, recordFullPaymentWithFile, uploadOrderFile, visionExtract } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -23,8 +23,8 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [orderConfirmFile, setOrderConfirmFile] = useState<File | null>(null);
 
   // Multi-slip deposit state
-  const [depositEntries, setDepositEntries] = useState<{ file: File | null; amount: string; date: string; extracting: boolean }[]>([
-    { file: null, amount: '', date: '', extracting: false },
+  const [depositEntries, setDepositEntries] = useState<{ file: File | null; amount: string; date: string; extracting: boolean; paymentType: 'deposit' | 'full' }[]>([
+    { file: null, amount: '', date: '', extracting: false, paymentType: 'deposit' },
   ]);
   const depositFileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -81,7 +81,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   }
 
   function addDepositEntry() {
-    setDepositEntries(prev => [...prev, { file: null, amount: '', date: '', extracting: false }]);
+    setDepositEntries(prev => [...prev, { file: null, amount: '', date: '', extracting: false, paymentType: 'deposit' }]);
   }
 
   function removeDepositEntry(idx: number) {
@@ -90,6 +90,10 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   function updateDepositEntry(idx: number, field: 'amount' | 'date', value: string) {
     setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+  }
+
+  function updateDepositPaymentType(idx: number, paymentType: 'deposit' | 'full') {
+    setDepositEntries(prev => prev.map((e, i) => i === idx ? { ...e, paymentType } : e));
   }
 
   function setDepositEntryFile(idx: number, file: File | null) {
@@ -171,7 +175,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           results.push('✅ Order confirmation uploaded');
         } catch (err: any) { results.push(`⚠️ Order confirmation upload failed: ${err.message}`); }
       }
-      // 3. Record each deposit slip
+      // 3. Record each payment slip
       const validDeposits = depositEntries.filter(e => {
         const amt = parseFloat(e.amount.replace(/,/g, ''));
         return !isNaN(amt) && amt > 0;
@@ -179,22 +183,36 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       for (let i = 0; i < validDeposits.length; i++) {
         const entry = validDeposits[i];
         const depositAmt = parseFloat(entry.amount.replace(/,/g, ''));
+        const label = entry.paymentType === 'full' ? 'Full payment' : 'Deposit';
         try {
           if (entry.file) {
             const base64 = await fileToBase64(entry.file);
-            await recordDepositWithFile({
-              quotation_number: qn.trim(),
-              amount: depositAmt,
-              deposit_paid_at: entry.date || undefined,
-              image_base64: base64,
-              mime_type: entry.file.type,
-              original_filename: entry.file.name,
-            });
+            if (entry.paymentType === 'full') {
+              await recordFullPaymentWithFile({
+                quotation_number: qn.trim(),
+                amount: depositAmt,
+                payment_date: entry.date || undefined,
+                image_base64: base64,
+                mime_type: entry.file.type,
+                original_filename: entry.file.name,
+              });
+            } else {
+              await recordDepositWithFile({
+                quotation_number: qn.trim(),
+                amount: depositAmt,
+                deposit_paid_at: entry.date || undefined,
+                image_base64: base64,
+                mime_type: entry.file.type,
+                original_filename: entry.file.name,
+              });
+            }
+          } else if (entry.paymentType === 'full') {
+            await recordFullPaymentWithFile({ quotation_number: qn.trim(), amount: depositAmt, payment_date: entry.date || undefined });
           } else {
             await recordDeposit({ quotation_number: qn.trim(), amount: depositAmt, deposit_paid_at: entry.date || undefined });
           }
-          results.push(`✅ Deposit slip ${i + 1} recorded (₱${depositAmt.toLocaleString()})`);
-        } catch (err: any) { results.push(`⚠️ Deposit slip ${i + 1} failed: ${err.message}`); }
+          results.push(`${label} slip ${i + 1} recorded (PHP ${depositAmt.toLocaleString()})`);
+        } catch (err: any) { results.push(`${label} slip ${i + 1} failed: ${err.message}`); }
       }
 
       onCreated();
@@ -323,9 +341,9 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             </div>
           </div>
 
-          {/* Deposit Proof — multiple slips */}
+          {/* Payment Proof — multiple slips */}
           <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-3">
-            <label className="text-xs font-medium text-gray-700">💰 Downpayment Deposit</label>
+            <label className="text-xs font-medium text-gray-700">💰 Payment Before Production</label>
             {depositEntries.map((entry, idx) => (
               <div key={idx} className="space-y-2 rounded-lg border border-gray-200 bg-white p-2">
                 <div className="flex items-center justify-between">
@@ -335,6 +353,30 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                       <X className="h-3 w-3" />
                     </button>
                   )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateDepositPaymentType(idx, 'deposit')}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+                      entry.paymentType === 'deposit'
+                        ? 'border-blue-400 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    Downpayment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateDepositPaymentType(idx, 'full')}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+                      entry.paymentType === 'full'
+                        ? 'border-green-400 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    Full Payment
+                  </button>
                 </div>
                 <div className="flex gap-2">
                   <input
