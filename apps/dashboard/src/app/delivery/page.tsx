@@ -223,18 +223,13 @@ export default function DeliveryPage() {
     const { order, amount } = pending;
     setActionLoading(order.id);
     try {
+      // payBalance() records the payment AND advances stage from balance_due → balance_verification.
+      // The action_token is single-use (consumed by payBalance), so do NOT reuse it for a second call.
       await payBalance({ quotation_number: order.quotation_number ?? '', amount, action_token: actionToken });
-      await recordStageUpdate({
-        quotation_number: order.quotation_number ?? '',
-        stage: 'delivery_scheduled',
-        status: 'auto_advanced',
-        remarks: 'Balance paid — ready for delivery scheduling',
-        action_token: actionToken,
-      });
       setPayingOrder(null);
       setPayAmount('');
       mutateBalanceDue();
-      mutateScheduled();
+      mutateBalanceVerification();
     } catch (err: any) {
       alert('Failed to record payment: ' + (err.message ?? 'Unknown error'));
     } finally {
