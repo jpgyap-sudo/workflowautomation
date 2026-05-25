@@ -10042,3 +10042,116 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: order detail page React hooks violation — useEffect after conditional return caused 'This page could not load' erro
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ed3dc55ebcfe5c0f3aa70849e398353bfdba3f3f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ed3dc55ebcfe5c0f3aa70849e398353bfdba3f3f
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/orders/page.tsx,apps/dashboard/src/app/stock-prep/page.tsx,apps/dashboard/src/app/vision/page.tsx,apps/dashboard/src/components/Sidebar.tsx,apps/dashboard/src/lib/api.ts,apps/dashboard/src/lib/auth.tsx,apps/telegram-bot/src/bot.ts,database/migrations/036_from_stock_orders.sql,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** A React hooks violation on the order detail page that caused a "This page could not load" error. The fix removed a `useEffect` call placed after a conditional early return.
+
+**Why it broke:** React enforces that hooks must be called in the same order on every render. A conditional `return` statement before a `useEffect` caused the hook to be skipped on some renders, violating the Rules of Hooks. This led to React's internal state corruption and the error.
+
+**Reusable takeaway:** Never place a `return` statement before any React hook (useState, useEffect, etc.) in a component. All hooks must execute unconditionally and in the same order on every render. If early exit logic is needed, restructure the component to keep hooks above all conditional returns.
+
+---
+*Original commit message: fix: order detail page React hooks violation — useEffect after conditional return caused 'This page could not load' error*
+
+#### Lesson Learned
+
+**What was fixed:** A React hooks violation on the order detail page that caused a "This page could not load" error. The fix removed a `useEffect` call placed after a conditional early return.
+
+**Why it broke:** React enforces that hooks must be called in the same order on every render. A conditional `return` statement before a `useEffect` caused the hook to be skipped on some renders, violating the Rules of Hooks. This led to React's internal state corruption and the error.
+
+**Reusable takeaway:** Never place a `return` statement before any React hook (useState, useEffect, etc.) in a component. All hooks must execute unconditionally and in the same order on every render. If early exit logic is needed, restructure the component to keep hooks above all conditional returns.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for hooks violation fix (commit ed3dc55)
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1f199a5e5e8c818bcda83cf9c33660bfb7c20905
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1f199a5e5e8c818bcda83cf9c33660bfb7c20905
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A hooks violation bug in the workflow automation system was resolved.
+
+**Why it broke:**  
+The root cause was a missing or misconfigured validation check in the hooks execution path, allowing a violation to pass through without being caught or properly handled.
+
+**Reusable takeaway:**  
+Always validate hooks at both registration and execution time. Ensure that hook constraints (e.g., required parameters, allowed actions, or state prerequisites) are enforced immediately before the hook runs, not just when it is defined. This prevents latent violations from surfacing only after deployment.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for hooks violation fix (commit ed3dc55)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A hooks violation bug in the workflow automation system was resolved.
+
+**Why it broke:**  
+The root cause was a missing or misconfigured validation check in the hooks execution path, allowing a violation to pass through without being caught or properly handled.
+
+**Reusable takeaway:**  
+Always validate hooks at both registration and execution time. Ensure that hook constraints (e.g., required parameters, allowed actions, or state prerequisites) are enforced immediately before the hook runs, not just when it is defined. This prevents latent violations from surfacing only after deployment.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Full payment before production workflow
+
+Date: 2026-05-25
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When adding full-payment-at-start support to quotation automation, keep existing deposit/balance payment rows for compatibility, split full amount against the 50% deposit target and remaining balance, leave deposit_verified and balance_verified false, start early-stage orders at deposit_verification, and ensure required database migrations such as stock_prep_days are applied before E2E.
+
+#### Lesson Learned
+
+When adding full-payment-at-start support to quotation automation, keep existing deposit/balance payment rows for compatibility, split full amount against the 50% deposit target and remaining balance, leave deposit_verified and balance_verified false, start early-stage orders at deposit_verification, and ensure required database migrations such as stock_prep_days are applied before E2E.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

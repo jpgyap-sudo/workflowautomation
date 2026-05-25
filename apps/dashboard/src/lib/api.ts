@@ -53,6 +53,11 @@ export interface Order {
   production_exception_granted_by: string | null;
   inventory_verified_at: string | null;
   inventory_verification_pct: number | null;
+  total_amount_changed: boolean | null;
+  previous_total_amount: number | null;
+  amount_change_reason: string | null;
+  amount_changed_at: string | null;
+  amount_changed_by: string | null;
   order_type: string | null;
   stock_prep_days: number | null;
   stock_prep_ready_at: string | null;
@@ -403,6 +408,7 @@ export async function updateOrder(id: string, data: {
   authorized_receiver_contact?: string | null;
   deposit_paid_at?: string | null;
   balance_paid_at?: string | null;
+  total_amount_change_reason?: string;
   action_token: string;
 }): Promise<Order> {
   return fetchJson<Order>(`/orders/${encodeURIComponent(id)}`, {

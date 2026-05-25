@@ -61,6 +61,8 @@ const ORDER_LIST_SELECT = `
   o.production_exception, o.production_exception_notes,
   o.production_exception_granted_at, o.production_exception_granted_by,
   o.inventory_verified_at, o.inventory_verification_pct,
+  o.total_amount_changed, o.previous_total_amount, o.amount_change_reason,
+  o.amount_changed_at, o.amount_changed_by,
   o.order_type, o.stock_prep_days, o.stock_prep_ready_at,
   o.created_at, o.updated_at
 `;
@@ -536,6 +538,87 @@ app.post('/auth/verify-action-code', async (request, reply) => {
   const actionToken = randomUUID();
   await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), name: name ?? null, verified: true }));
   return reply.send({ ok: true, actionToken });
+});
+
+// ── Dashboard Accounts (server-side tab access + sub-users) ────────
+
+app.get('/dashboard-accounts', async () => {
+  const rows = await query(`SELECT email, name, role, allowed_tabs, sub_users, created_at, updated_at FROM dashboard_accounts ORDER BY created_at DESC`);
+  return rows.map((r: any) => ({
+    email: r.email,
+    name: r.name,
+    role: r.role,
+    allowedTabs: r.allowed_tabs,
+    subUsers: r.sub_users,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+});
+
+app.post('/dashboard-accounts', async (request, reply) => {
+  const body = z.object({
+    email: z.string().email(),
+    name: z.string().optional(),
+    role: z.enum(['admin', 'editor', 'viewer']).optional(),
+    allowedTabs: z.array(z.string()).optional(),
+    subUsers: z.array(z.object({ code: z.string(), name: z.string() })).optional(),
+  }).parse(request.body);
+
+  try {
+    await query(
+      `INSERT INTO dashboard_accounts (email, name, role, allowed_tabs, sub_users)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (email) DO UPDATE SET
+         name=COALESCE(EXCLUDED.name, dashboard_accounts.name),
+         role=COALESCE(EXCLUDED.role, dashboard_accounts.role),
+         allowed_tabs=COALESCE(EXCLUDED.allowed_tabs, dashboard_accounts.allowed_tabs),
+         sub_users=COALESCE(EXCLUDED.sub_users, dashboard_accounts.sub_users),
+         updated_at=NOW()`,
+      [body.email, body.name ?? null, body.role ?? 'editor', body.allowedTabs ?? null, body.subUsers ?? null]
+    );
+    return reply.send({ ok: true });
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message ?? 'Failed to save account' });
+  }
+});
+
+app.patch('/dashboard-accounts/:email', async (request, reply) => {
+  const params = z.object({ email: z.string().email() }).parse(request.params);
+  const body = z.object({
+    name: z.string().optional(),
+    role: z.enum(['admin', 'editor', 'viewer']).optional(),
+    allowedTabs: z.array(z.string()).nullable().optional(),
+    subUsers: z.array(z.object({ code: z.string(), name: z.string() })).nullable().optional(),
+  }).parse(request.body);
+
+  const fields: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  if (body.name !== undefined) { fields.push(`name=$${idx++}`); values.push(body.name); }
+  if (body.role !== undefined) { fields.push(`role=$${idx++}`); values.push(body.role); }
+  if (body.allowedTabs !== undefined) { fields.push(`allowed_tabs=$${idx++}`); values.push(body.allowedTabs); }
+  if (body.subUsers !== undefined) { fields.push(`sub_users=$${idx++}`); values.push(body.subUsers); }
+
+  if (fields.length === 0) {
+    return reply.status(400).send({ error: 'No fields to update' });
+  }
+
+  fields.push('updated_at=NOW()');
+  values.push(params.email);
+
+  await query(
+    `UPDATE dashboard_accounts SET ${fields.join(', ')} WHERE email=$${idx}`,
+    values
+  );
+
+  return reply.send({ ok: true });
+});
+
+app.delete('/dashboard-accounts/:email', async (request, reply) => {
+  const params = z.object({ email: z.string().email() }).parse(request.params);
+  await query(`DELETE FROM dashboard_accounts WHERE email=$1`, [params.email]);
+  return reply.send({ ok: true });
 });
 
 // ── Health ──────────────────────────────────────────────────────────
@@ -1080,6 +1163,7 @@ const updateOrderSchema = z.object({
   authorized_receiver_contact: z.string().nullable().optional(),
   deposit_paid_at: z.string().nullable().optional(),
   balance_paid_at: z.string().nullable().optional(),
+  total_amount_change_reason: z.string().trim().min(3).optional(),
   action_token: z.string(),
 });
 
@@ -1105,13 +1189,47 @@ app.patch('/orders/:id', async (request, reply) => {
     } catch { /* non-fatal */ }
   }
 
+  const existingRows = await query(
+    `SELECT id, quotation_number, client_name, total_amount, computed_amount
+     FROM orders WHERE id = $1`,
+    [params.id],
+  );
+  if (!existingRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const existingOrder = existingRows[0];
+  const amountIsChanging =
+    body.total_amount !== undefined &&
+    Number(existingOrder.total_amount ?? 0) !== Number(body.total_amount);
+  if (amountIsChanging && !body.total_amount_change_reason?.trim()) {
+    return reply.status(400).send({ error: 'Reason is required when changing the order total amount.' });
+  }
+
+  const recomputedMathStatus = (() => {
+    if (body.total_amount === undefined) return null;
+    const total = Number(body.total_amount);
+    const computed = existingOrder.computed_amount != null ? Number(existingOrder.computed_amount) : null;
+    if (computed === null || Number.isNaN(computed)) return 'pending';
+    return Math.abs(total - computed) <= 0.01 ? 'verified' : 'failed';
+  })();
+
   // Build SET clause dynamically
   const fields: string[] = [];
   const values: any[] = [];
   let idx = 1;
   if (body.client_name !== undefined) { fields.push(`client_name=$${idx++}`); values.push(body.client_name); }
   if (body.sales_agent !== undefined) { fields.push(`sales_agent=$${idx++}`); values.push(body.sales_agent); }
-  if (body.total_amount !== undefined) { fields.push(`total_amount=$${idx++}`); values.push(body.total_amount); }
+  if (body.total_amount !== undefined) {
+    fields.push(`total_amount=$${idx++}`); values.push(body.total_amount);
+    if (recomputedMathStatus) {
+      fields.push(`math_status=$${idx++}`); values.push(recomputedMathStatus);
+    }
+    if (amountIsChanging) {
+      fields.push(`total_amount_changed=TRUE`);
+      fields.push(`previous_total_amount=$${idx++}`); values.push(existingOrder.total_amount);
+      fields.push(`amount_change_reason=$${idx++}`); values.push(body.total_amount_change_reason?.trim());
+      fields.push(`amount_changed_at=NOW()`);
+      fields.push(`amount_changed_by=$${idx++}`); values.push(userEmail ?? 'dashboard');
+    }
+  }
   if (body.quotation_number !== undefined) { fields.push(`quotation_number=$${idx++}`); values.push(body.quotation_number); }
   if (body.delivery_date !== undefined) { fields.push(`delivery_date=$${idx++}`); values.push(body.delivery_date); }
   if (body.delivery_exception !== undefined) { fields.push(`delivery_exception=$${idx++}`); values.push(body.delivery_exception); }
@@ -1136,6 +1254,44 @@ app.patch('/orders/:id', async (request, reply) => {
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  if (amountIsChanging) {
+    const oldAmount = existingOrder.total_amount != null ? Number(existingOrder.total_amount) : null;
+    const newAmount = Number(body.total_amount);
+    const computedAmount = existingOrder.computed_amount != null ? Number(existingOrder.computed_amount) : null;
+    const mathDetail = computedAmount == null
+      ? 'No computed quotation amount is available yet; math status is pending.'
+      : `Computed amount: PHP ${computedAmount.toLocaleString()}. Math status: ${recomputedMathStatus}.`;
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'amount_adjustment', 'amount_changed', $2, $3)`,
+      [
+        params.id,
+        `Total amount changed from ${oldAmount == null ? 'N/A' : `PHP ${oldAmount.toLocaleString()}`} to PHP ${newAmount.toLocaleString()}. Reason: ${body.total_amount_change_reason?.trim()}. ${mathDetail}`,
+        userEmail ?? 'dashboard',
+      ],
+    );
+    await query(
+      `INSERT INTO agent_logs (order_id, agent_name, input, output, status)
+       VALUES ($1, 'quotation-checker', $2::jsonb, $3::jsonb, $4)`,
+      [
+        params.id,
+        JSON.stringify({
+          source: 'dashboard_amount_edit',
+          quotation_number: rows[0].quotation_number,
+          previous_total_amount: oldAmount,
+          total_amount: newAmount,
+          computed_amount: computedAmount,
+          reason: body.total_amount_change_reason?.trim(),
+        }),
+        JSON.stringify({
+          math_status: recomputedMathStatus,
+          message: mathDetail,
+        }),
+        recomputedMathStatus === 'verified' ? 'success' : 'needs_review',
+      ],
+    );
+  }
 
   // Auto-link client if client_name was updated
   if (body.client_name) {
@@ -1192,10 +1348,19 @@ app.patch('/orders/:id', async (request, reply) => {
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: params.id });
 
-  const updatedFields = Object.keys(body).filter((k) => k !== 'action_token').join(', ');
+  const updatedFields = Object.keys(body).filter((k) => k !== 'action_token' && k !== 'total_amount_change_reason').join(', ');
+  const amountChangeLine = amountIsChanging
+    ? `
+Previous amount: ${existingOrder.total_amount != null ? `PHP ${Number(existingOrder.total_amount).toLocaleString()}` : 'N/A'}
+New amount: PHP ${Number(body.total_amount).toLocaleString()}
+Reason: ${body.total_amount_change_reason?.trim()}
+Math status: ${recomputedMathStatus}`
+    : '';
   await notifyManualChange(
-    `✏️ Order edited via dashboard`,
-    `Quotation: *${rows[0].quotation_number ?? params.id}*\nClient: ${rows[0].client_name ?? '—'}\nFields changed: ${updatedFields}`,
+    `Order edited via dashboard`,
+    `Quotation: *${rows[0].quotation_number ?? params.id}*
+Client: ${rows[0].client_name ?? 'N/A'}
+Fields changed: ${updatedFields}${amountChangeLine}`,
     userEmail,
   );
 
@@ -8719,6 +8884,30 @@ if (PRODUCTION_CHAT_ID) {
 
 const port = Number(process.env.PORT ?? 8080);
 
+// Seed default dashboard accounts on first boot
+(async function seedDashboardAccounts() {
+  try {
+    const existing = await query(`SELECT email FROM dashboard_accounts LIMIT 1`);
+    if (existing.length > 0) return;
+
+    const defaults = [
+      { email: 'jpgyap@gmail.com', name: 'Admin', role: 'admin', allowed_tabs: null, sub_users: null },
+      { email: 'maiquocquynh2506@gmail.com', name: 'Quynh Mai', role: 'editor', allowed_tabs: JSON.stringify(['/', '/orders', '/actions', '/clients', '/purchasing', '/production', '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow', '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram', '/backup', '/vision', '/settings']), sub_users: null },
+      { email: 'sales.homeu@gmail.com', name: 'Sales Team', role: 'editor', allowed_tabs: JSON.stringify(['/', '/orders', '/actions', '/clients', '/purchasing', '/production', '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow', '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram', '/backup', '/vision', '/settings']), sub_users: JSON.stringify([{ code: '777', name: 'Mariella Ignaco' }, { code: '888', name: 'Cathlyn Roma' }]) },
+    ];
+
+    for (const d of defaults) {
+      await query(
+        `INSERT INTO dashboard_accounts (email, name, role, allowed_tabs, sub_users) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+        [d.email, d.name, d.role, d.allowed_tabs, d.sub_users]
+      );
+    }
+    console.log('[seed] Dashboard accounts seeded');
+  } catch (err) {
+    console.warn('[seed] Failed to seed dashboard accounts:', err);
+  }
+})();
+
 // Start the reminder scheduler (checks every 60 seconds)
 const REMINDER_INTERVAL_MS = Number(process.env.REMINDER_INTERVAL_MS ?? 60_000);
 startReminderScheduler(REMINDER_INTERVAL_MS);
@@ -8780,4 +8969,3 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-

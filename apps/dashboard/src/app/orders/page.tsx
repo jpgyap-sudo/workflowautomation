@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react';
 import { useOrders } from '@/lib/useApi';
-import { STAGE_CONFIG } from '@/lib/api';
 import type { Order } from '@/lib/api';
 import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, uploadOrderFile, visionExtract } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
@@ -464,7 +463,7 @@ function EditForm({ order, onSave, onCancel, saving }: {
 }
 
 export default function OrdersPage() {
-  const { data: orders = [], error, isLoading, mutate } = useOrders();
+  const { data: orders = [], isLoading, mutate } = useOrders();
   const [filter, setFilter] = useState<string>('all');
   const [showNewOrder, setShowNewOrder] = useState(false);
 
@@ -473,6 +472,7 @@ export default function OrdersPage() {
   // Edit state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingAmountOrderId, setSavingAmountOrderId] = useState<string | null>(null);
 
   // Delete state
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
@@ -585,10 +585,14 @@ export default function OrdersPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'bulk-delete';
+    pendingAction: 'edit' | 'amount-edit' | 'delete' | 'bulk-delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
-  const filtered = filter === 'all' ? orders : orders.filter((o) => o.current_stage === filter);
+  const filtered =
+    filter === 'all'       ? orders :
+    filter === 'active'    ? orders.filter((o) => o.status === 'active') :
+    filter === 'completed' ? orders.filter((o) => o.current_stage === 'completed') :
+    orders.filter((o) => o.current_stage === filter);
 
   function handleEdit(order: Order) {
     setEditingOrder(order);
@@ -622,6 +626,35 @@ export default function OrdersPage() {
     } finally {
       setSaving(false);
       (window as any).__pendingEditData = null;
+    }
+  }
+
+  function handleAmountUpdate(order: Order, amount: number, reason: string) {
+    setOtpModal({
+      open: true,
+      title: 'Change Order Amount',
+      description: `You are about to change the amount for "${order.quotation_number ?? '—'}" to ₱${amount.toLocaleString()}. Math status will be recomputed and the amount will be marked red. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'amount-edit',
+    });
+    (window as any).__pendingAmountEditData = { orderId: order.id, amount, reason };
+  }
+
+  async function handleAmountEditVerified(actionToken: string) {
+    const pending = (window as any).__pendingAmountEditData;
+    if (!pending) return;
+    setSavingAmountOrderId(pending.orderId);
+    try {
+      await updateOrder(pending.orderId, {
+        total_amount: pending.amount,
+        total_amount_change_reason: pending.reason,
+        action_token: actionToken,
+      });
+      mutate();
+    } catch (err: any) {
+      alert('Failed to update amount: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setSavingAmountOrderId(null);
+      (window as any).__pendingAmountEditData = null;
     }
   }
 
@@ -703,6 +736,8 @@ export default function OrdersPage() {
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') {
       handleEditVerified(actionToken);
+    } else if (otpModal.pendingAction === 'amount-edit') {
+      handleAmountEditVerified(actionToken);
     } else if (otpModal.pendingAction === 'delete') {
       handleDeleteVerified(actionToken);
     } else if (otpModal.pendingAction === 'bulk-delete') {
@@ -785,6 +820,8 @@ export default function OrdersPage() {
           onDelete={handleDeleteClick}
           onViewFiles={handleViewFiles}
           onRecordDeposit={handleRecordDepositClick}
+          onUpdateAmount={handleAmountUpdate}
+          savingAmountOrderId={savingAmountOrderId}
           selectable
           selectedIds={selectedIds}
           onSelect={handleSelect}
@@ -809,6 +846,7 @@ export default function OrdersPage() {
         onClose={() => {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingEditData = null;
+          (window as any).__pendingAmountEditData = null;
         }}
       />
 

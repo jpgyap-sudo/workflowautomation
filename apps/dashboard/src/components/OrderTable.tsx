@@ -1,5 +1,7 @@
+'use client';
+
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Order } from '@/lib/api';
 import StageBadge from './StageBadge';
 import Timestamp from './Timestamp';
@@ -18,6 +20,8 @@ interface OrderTableProps {
   onDelete?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
   onRecordDeposit?: (order: Order) => void;
+  onUpdateAmount?: (order: Order, amount: number, reason: string) => void;
+  savingAmountOrderId?: string | null;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
@@ -26,6 +30,11 @@ interface OrderTableProps {
 
 function money(value: unknown) {
   return value != null ? `₱${Number(value).toLocaleString()}` : '—';
+}
+
+
+function parseAmount(value: string) {
+  return Number(value.replace(/,/g, ''));
 }
 
 function StatusPill({ children, className }: { children: ReactNode; className: string }) {
@@ -62,6 +71,8 @@ export default function OrderTable({
   onDelete,
   onViewFiles,
   onRecordDeposit,
+  onUpdateAmount,
+  savingAmountOrderId = null,
   selectable = false,
   selectedIds = new Set(),
   onSelect,
@@ -69,12 +80,117 @@ export default function OrderTable({
 }: OrderTableProps) {
   const allSelected = orders.length > 0 && orders.every((o) => selectedIds.has(o.id));
   const someSelected = orders.some((o) => selectedIds.has(o.id)) && !allSelected;
+  const [editingAmountId, setEditingAmountId] = useState<string | null>(null);
+  const [amountDraft, setAmountDraft] = useState('');
+  const [reasonDraft, setReasonDraft] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
+
+  function startAmountEdit(order: Order) {
+    if (!onUpdateAmount) return;
+    setEditingAmountId(order.id);
+    setAmountDraft(order.total_amount != null ? String(order.total_amount) : '');
+    setReasonDraft('');
+    setAmountError(null);
+  }
+
+  function cancelAmountEdit() {
+    setEditingAmountId(null);
+    setAmountDraft('');
+    setReasonDraft('');
+    setAmountError(null);
+  }
+
+  function submitAmountEdit(order: Order) {
+    const amount = parseAmount(amountDraft);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setAmountError('Enter a valid amount.');
+      return;
+    }
+    if (!reasonDraft.trim()) {
+      setAmountError('Reason is required for amount changes.');
+      return;
+    }
+    if (order.total_amount != null && Math.abs(Number(order.total_amount) - amount) <= 0.01) {
+      cancelAmountEdit();
+      return;
+    }
+    onUpdateAmount?.(order, amount, reasonDraft.trim());
+  }
+
+  function AmountCell({ order, mobile = false }: { order: Order; mobile?: boolean }) {
+    const isEditing = editingAmountId === order.id;
+    const changed = Boolean(order.total_amount_changed);
+    const isSaving = savingAmountOrderId === order.id;
+    if (isEditing) {
+      return (
+        <div className={`space-y-2 ${mobile ? '' : 'min-w-[220px] text-left'}`}>
+          <input
+            value={amountDraft}
+            onChange={(e) => {
+              setAmountDraft(e.target.value.replace(/[^0-9.,]/g, ''));
+              setAmountError(null);
+            }}
+            className="w-full rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-right text-sm font-semibold text-red-600 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+            placeholder="Amount"
+            autoFocus
+          />
+          <textarea
+            value={reasonDraft}
+            onChange={(e) => {
+              setReasonDraft(e.target.value);
+              setAmountError(null);
+            }}
+            className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            rows={2}
+            placeholder="Reason required, e.g. due to change order of item"
+          />
+          {amountError && <p className="text-[11px] text-red-600">{amountError}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={cancelAmountEdit}
+              className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
+              disabled={isSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => submitAmountEdit(order)}
+              className="rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => startAmountEdit(order)}
+        className={`text-right ${onUpdateAmount ? 'cursor-pointer rounded px-1 py-0.5 hover:bg-red-50' : ''} ${
+          changed ? 'font-semibold text-red-600' : 'text-gray-600'
+        }`}
+        title={
+          changed
+            ? `Amount changed${order.amount_change_reason ? `: ${order.amount_change_reason}` : ''}`
+            : 'Click to edit amount'
+        }
+        disabled={!onUpdateAmount}
+      >
+        {money(order.total_amount)}
+        {changed && <span className="ml-1 text-[10px] font-medium text-red-500">edited</span>}
+      </button>
+    );
+  }
 
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center px-4 py-12 text-center text-gray-400">
         <p className="text-lg">No orders found</p>
-        <p className="text-sm">Orders will appear here once they are created via Telegram</p>
+        <p className="text-sm">Create an order with the + New Order button or via Telegram</p>
       </div>
     );
   }
@@ -121,7 +237,7 @@ export default function OrderTable({
                 {showAmount && (
                   <div>
                     <dt className="text-gray-400">Amount</dt>
-                    <dd className="font-medium text-gray-700">{money(order.total_amount)}</dd>
+                    <dd className="font-medium"><AmountCell order={order} mobile /></dd>
                   </div>
                 )}
                 {showDeposit && (
@@ -325,7 +441,11 @@ export default function OrderTable({
                   {showClient && <td className="px-4 py-3 text-gray-600">{order.client_name ?? '—'}</td>}
                   {showAgent && <td className="px-4 py-3 text-gray-600">{order.sales_agent ?? '—'}</td>}
                   <td className="px-4 py-3"><StageBadge stage={order.current_stage} /></td>
-                  {showAmount && <td className="px-4 py-3 text-right text-gray-600">{money(order.total_amount)}</td>}
+                  {showAmount && (
+                    <td className="px-4 py-3 text-right align-top">
+                      <AmountCell order={order} />
+                    </td>
+                  )}
                   {showDeposit && (
                     <td className="px-4 py-3">
                       <StatusPill className={order.deposit_paid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>

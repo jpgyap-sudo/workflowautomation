@@ -156,16 +156,76 @@ function persistAccounts(accounts: Account[]) {
   localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
 }
 
+// Fetch accounts from server (source of truth for allowedTabs + subUsers)
+async function fetchServerAccounts(): Promise<Partial<Account>[] | null> {
+  try {
+    const res = await fetch(`${API_BASE}/dashboard-accounts`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    return data.map((s: any) => ({
+      email: s.email,
+      name: s.name,
+      role: s.role,
+      allowedTabs: s.allowedTabs,
+      subUsers: s.subUsers,
+      createdAt: s.createdAt,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+// Merge server accounts into local accounts (server wins on allowedTabs/subUsers)
+function mergeServerAccounts(local: Account[], server: Partial<Account>[]): Account[] {
+  const merged = local.map((acct) => {
+    const serverAcct = server.find((s) => s.email?.toLowerCase() === acct.email.toLowerCase());
+    if (!serverAcct) return acct;
+    return {
+      ...acct,
+      allowedTabs: serverAcct.allowedTabs !== undefined ? serverAcct.allowedTabs : acct.allowedTabs,
+      subUsers: serverAcct.subUsers !== undefined ? serverAcct.subUsers : acct.subUsers,
+      name: serverAcct.name ?? acct.name,
+      role: (serverAcct.role as Account['role']) ?? acct.role,
+    };
+  });
+  // Add any server-only accounts (they won't have passwords locally)
+  for (const s of server) {
+    const serverEmail = s.email;
+    if (!serverEmail) continue;
+    if (!merged.some((a) => a.email.toLowerCase() === serverEmail.toLowerCase())) {
+      merged.push({
+        email: serverEmail,
+        password: '',
+        name: s.name ?? serverEmail,
+        role: (s.role as Account['role']) ?? 'editor',
+        createdAt: s.createdAt ?? new Date().toISOString(),
+        allowedTabs: s.allowedTabs,
+        subUsers: s.subUsers,
+      });
+    }
+  }
+  return merged;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<{ email: string; name: string; role: string } | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [, setInitialized] = useState(false);
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage + server on mount
   useEffect(() => {
-    queueMicrotask(() => {
-      const accts = getStoredAccounts();
+    queueMicrotask(async () => {
+      let accts = getStoredAccounts();
+
+      // Pull server-side settings (allowedTabs, subUsers) and merge
+      const serverAccts = await fetchServerAccounts();
+      if (serverAccts && serverAccts.length > 0) {
+        accts = mergeServerAccounts(accts, serverAccts);
+        persistAccounts(accts);
+      }
+
       setAccounts(accts);
 
       try {
@@ -337,6 +397,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const updated = [...accts, newAccount];
     persistAccounts(updated);
     setAccounts(updated);
+
+    // Sync to server
+    try {
+      await fetch(`${API_BASE}/dashboard-accounts`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: newAccount.email,
+          name: newAccount.name,
+          role: newAccount.role,
+          allowedTabs: newAccount.allowedTabs,
+          subUsers: newAccount.subUsers,
+        }),
+      });
+    } catch { /* non-fatal */ }
+
     return { success: true };
   }, []);
 
@@ -369,6 +445,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // Sync to server (server is source of truth for allowedTabs + subUsers)
+    const serverBody: Record<string, unknown> = {};
+    if (updates.allowedTabs !== undefined) serverBody.allowedTabs = updates.allowedTabs;
+    if (updates.subUsers !== undefined) serverBody.subUsers = updates.subUsers;
+    if (updates.name !== undefined) serverBody.name = updates.name;
+    if (updates.role !== undefined) serverBody.role = updates.role;
+
+    if (Object.keys(serverBody).length > 0) {
+      try {
+        await fetch(`${API_BASE}/dashboard-accounts/${encodeURIComponent(email)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(serverBody),
+        });
+      } catch { /* non-fatal */ }
+    }
+
     return { success: true };
   }, []);
 
@@ -397,6 +490,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout();
       }
     }
+
+    // Sync to server
+    try {
+      await fetch(`${API_BASE}/dashboard-accounts/${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+      });
+    } catch { /* non-fatal */ }
 
     return { success: true };
   }, [logout]);
