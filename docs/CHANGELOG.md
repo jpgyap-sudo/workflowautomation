@@ -15,6 +15,7 @@
 | `7576af0` | Roo (Code) | fix: remove Production Confirmed section from production page — redundant with Production In Progress section | ✅ VPS `8b041c9` |
 | `c7c9287` | Roo (Code) | feat: add item-level Start button inside ProductionInfoCards for Production Pending items — prompts for production days via window.prompt, saves estimated_production_days, then triggers OTP for production_status change | ✅ VPS `8b041c9` |
 | `8b041c9` | Roo (Code) | fix: item-level Start also sets production_started on order for agent reminders; remove unused imports and variable | ✅ VPS `8b041c9` |
+| `1a39260` | Roo (Code) | fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row | ✅ VPS `1a39260` |
 
 ## 2026-05-25
 

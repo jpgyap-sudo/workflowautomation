@@ -109,4 +109,4 @@ When you **finish**:
 | 2026-05-20 | Roo (Code) | Fix: Dashboard Docker OOM — use npm install instead of npm ci | ✅ Done |
 | 2026-05-26 11:24 | Roo (Code) | E2E gap analysis: fix item-level Start to also set production_started on order for agent reminders; remove unused imports/variable | ✅ Done |
 | 2026-05-26 11:27 | Roo (Code) | Deploy: git pull + docker compose up -d --build on VPS (commits 8b041c9, e6a0632) | ✅ Done |
-| 2026-05-26 18:15 | Roo (Code) | Fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row | 🔴 Active |
+| 2026-05-26 18:15 | Roo (Code) | Fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row | ✅ Done |

@@ -11215,3 +11215,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Prog
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1a392605fc1699747425ea14afcd33a360c86b9d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1a392605fc1699747425ea14afcd33a360c86b9d
+**Files:** apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/lib/useApi.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A separate "Finish Production Pending" section was removed. The "Finish Production" button was moved directly into the "Production In Progress" section header row.
+
+**Why it broke:**  
+The original design had a redundant, detached section for pending finish actions, causing UI fragmentation and likely confusion or extra navigation for users.
+
+**Reusable takeaway:**  
+Consolidate related actions into the same context (e.g., section header) to reduce UI clutter and improve workflow efficiency. Avoid separate sections for single actions that logically belong to an existing state.
+
+---
+*Original commit message: fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A separate "Finish Production Pending" section was removed. The "Finish Production" button was moved directly into the "Production In Progress" section header row.
+
+**Why it broke:**  
+The original design had a redundant, detached section for pending finish actions, causing UI fragmentation and likely confusion or extra navigation for users.
+
+**Reusable takeaway:**  
+Consolidate related actions into the same context (e.g., section header) to reduce UI clutter and improve workflow efficiency. Avoid separate sections for single actions that logically belong to an existing state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
