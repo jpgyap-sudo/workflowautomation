@@ -474,11 +474,22 @@ export default function OrderDetailPage() {
         {/* Summary */}
         {order.total_amount != null && order.deposit_amount != null && (
           <div className="mt-2 text-xs text-gray-500">
-            Expected balance: ₱{(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}
-            {paymentTotals && paymentTotals.balance > 0 && (
-              <span className="ml-2 text-gray-400">
-                (paid so far: ₱{paymentTotals.balance.toLocaleString()})
+            {paymentTotals && paymentTotals.remaining_balance != null && paymentTotals.remaining_balance === 0 ? (
+              <span className="text-green-600">
+                Full payment recorded — no balance due
+                {paymentTotals.balance > 0 && order.deposit_amount >= order.total_amount && (
+                  <span className="ml-2 text-gray-400">(paid upfront)</span>
+                )}
               </span>
+            ) : (
+              <>
+                Expected balance: ₱{(Number(order.total_amount) - Number(order.deposit_amount)).toLocaleString()}
+                {paymentTotals && paymentTotals.balance > 0 && (
+                  <span className="ml-2 text-gray-400">
+                    (paid so far: ₱{paymentTotals.balance.toLocaleString()})
+                  </span>
+                )}
+              </>
             )}
           </div>
         )}

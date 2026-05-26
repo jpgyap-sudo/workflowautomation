@@ -5750,6 +5750,11 @@ async function recordFullPaymentForOrder(args: {
   const totals = await getPaymentTotals(args.orderId);
   const isFullyPaid = totals.depositTotal + totals.balanceTotal >= totalAmount;
 
+  // For full payments (no previous payments), store deposit_amount as the full total
+  // so the order displays correctly (expected balance = 0).
+  const isFirstFullPayment = isFullyPaid && existingPaid === 0;
+  const depositAmountToStore = isFirstFullPayment ? totalAmount : totals.depositTotal;
+
   await query(
     `UPDATE orders SET
        deposit_paid=TRUE,
@@ -5768,7 +5773,7 @@ async function recordFullPaymentForOrder(args: {
        END,
        updated_at=NOW()
      WHERE id=$3`,
-    [totals.depositTotal, isFullyPaid, args.orderId, args.paymentDate ?? null]
+    [depositAmountToStore, isFullyPaid, args.orderId, args.paymentDate ?? null]
   );
 
   await query(
@@ -5778,8 +5783,12 @@ async function recordFullPaymentForOrder(args: {
        ($1, 'balance_verification', 'full_payment_recorded', $3, $4)`,
     [
       args.orderId,
-      `Full payment recorded. Deposit portion: PHP ${depositPortion.toLocaleString()}. Awaiting deposit verification.`,
-      `Full payment recorded. Balance portion: PHP ${balancePortion.toLocaleString()}${overpayment > 0 ? `; overpayment: PHP ${overpayment.toLocaleString()}` : ''}. Awaiting balance verification.`,
+      isFirstFullPayment
+        ? `Full payment of PHP ${fullAmount.toLocaleString()} recorded upfront. Awaiting verification.`
+        : `Full payment recorded. Deposit portion: PHP ${depositPortion.toLocaleString()}. Awaiting deposit verification.`,
+      isFirstFullPayment
+        ? `Full payment covers entire order. No balance due.`
+        : `Full payment recorded. Balance portion: PHP ${balancePortion.toLocaleString()}${overpayment > 0 ? `; overpayment: PHP ${overpayment.toLocaleString()}` : ''}. Awaiting balance verification.`,
       args.updatedBy ?? null,
     ]
   );
