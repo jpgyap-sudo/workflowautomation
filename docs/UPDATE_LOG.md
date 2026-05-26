@@ -107,3 +107,4 @@ When you **finish**:
 | 2026-05-20 | Roo (Code) | Feat: Google Drive upload with retry + token refresh | ✅ Done |
 | 2026-05-20 | Roo (Code) | Fix: Telegram bot 409/429 on restart — close + retry logic | ✅ Done |
 | 2026-05-20 | Roo (Code) | Fix: Dashboard Docker OOM — use npm install instead of npm ci | ✅ Done |
+| 2026-05-26 11:24 | Roo (Code) | E2E gap analysis: fix item-level Start to also set production_started on order for agent reminders; remove unused imports/variable | 🔴 Active |

@@ -11029,3 +11029,51 @@ When generating financial documents, always include conditional logic for balanc
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: item-level Start also sets production_started on order for agent reminders; remove unused imports and variable
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8b041c9eeec22370a87a09d28848d7058bb0a477
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8b041c9eeec22370a87a09d28848d7058bb0a477
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,memory/lesson-index.jsonl,memory/lessons-learned.md,plans/item-level-production-tab.md
+
+**Summary:**
+**What was fixed:**  
+Item-level production start now also sets `production_started` on the parent order, enabling agent reminders to trigger correctly.
+
+**Why it broke:**  
+The order-level `production_started` flag was not updated when starting production on individual items. This caused agent reminder logic—which checks the order flag—to remain inactive.
+
+**Reusable takeaway:**  
+When introducing item-level granularity, ensure parent-level state flags are updated to maintain downstream dependencies (e.g., reminders, notifications, workflows). A missing parent flag can silently break cross-cutting features that rely on aggregate state.
+
+---
+*Original commit message: fix: item-level Start also sets production_started on order for agent reminders; remove unused imports and variable*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Item-level production start now also sets `production_started` on the parent order, enabling agent reminders to trigger correctly.
+
+**Why it broke:**  
+The order-level `production_started` flag was not updated when starting production on individual items. This caused agent reminder logic—which checks the order flag—to remain inactive.
+
+**Reusable takeaway:**  
+When introducing item-level granularity, ensure parent-level state flags are updated to maintain downstream dependencies (e.g., reminders, notifications, workflows). A missing parent flag can silently break cross-cutting features that rely on aggregate state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

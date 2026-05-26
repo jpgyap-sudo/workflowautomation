@@ -13,6 +13,7 @@
 | `8c9a531` | Roo (Code) | fix: remove Finish button from Production Pending section — add production_pending stage guard to ProductionInfoCards and OrderRow | ❌ |
 | `7576af0` | Roo (Code) | fix: remove Production Confirmed section from production page — redundant with Production In Progress section | ❌ |
 | `c7c9287` | Roo (Code) | feat: add item-level Start button inside ProductionInfoCards for Production Pending items — prompts for production days via window.prompt, saves estimated_production_days, then triggers OTP for production_status change | ❌ |
+| `8b041c9` | Roo (Code) | fix: item-level Start also sets production_started on order for agent reminders; remove unused imports and variable | ❌ |
 
 ## 2026-05-25
 
