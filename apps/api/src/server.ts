@@ -1319,7 +1319,7 @@ app.get('/orders/picker', async (request, reply) => {
     produce:      `o.status = 'active' AND o.deposit_paid = true AND (o.production_finished IS NULL OR o.production_finished = false)`,
     deposit:      `o.status = 'active' AND (o.deposit_paid IS NULL OR o.deposit_paid = false)`,
     paybalance:   `o.status = 'active' AND o.deposit_paid = true AND (o.balance_paid IS NULL OR o.balance_paid = false)`,
-    deliverydate: `o.status = 'active' AND o.balance_paid = true AND o.current_stage NOT IN ('delivery_scheduled','delivered','payment_received','payment_confirmed')`,
+    deliverydate: `o.status = 'active' AND (o.balance_paid = true OR o.delivery_exception = true) AND o.current_stage NOT IN ('delivery_scheduled','delivered','payment_received','payment_confirmed')`,
     delivered:    `o.status = 'active' AND o.current_stage = 'delivery_scheduled'`,
     payment:      `o.status = 'active' AND o.current_stage IN ('delivered','payment_received')`,
     link:         `o.status = 'active'`,
@@ -5337,7 +5337,7 @@ app.post('/stage-updates', async (request, reply) => {
     balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
     balance_verification:      ['delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],
     delivery_pending:          ['delivery_scheduled', 'delivered', 'countered'],
-    delivery_scheduled:        ['delivered', 'countered'],
+    delivery_scheduled:        ['delivery_pending', 'delivered', 'countered'],
     delivered:                 ['payment_received', 'payment_confirmed', 'completed'],
     countered:                 ['payment_received', 'payment_confirmed', 'completed'],
     payment_received:          ['payment_confirmed', 'completed'],
@@ -5378,6 +5378,16 @@ app.post('/stage-updates', async (request, reply) => {
     });
   }
 
+  // Guard: Block balance_due → delivery_scheduled unless balance is paid or delivery exception is granted
+  if (previousStage === 'balance_due' && body.stage === 'delivery_scheduled' && !(order.balance_paid || order.delivery_exception)) {
+    return reply.code(400).send({
+      error: 'Cannot schedule delivery: balance must be paid first, unless a delivery exception is granted.',
+      current_stage: previousStage,
+      balance_paid: order.balance_paid,
+      delivery_exception: order.delivery_exception,
+    });
+  }
+
   const orderId = order.id;
   const clientName = order?.client_name ?? null;
   const actorName = userEmail ?? body.updated_by ?? null;
@@ -5411,13 +5421,30 @@ app.post('/stage-updates', async (request, reply) => {
       [retentionUntil.toISOString(), orderId]
     );
 
+    // ── Immediate collection reminder if balance is still unpaid ──────────
+    if (!order.balance_paid) {
+      const collectionChatId = process.env.COLLECTION_GROUP_CHAT_ID;
+      if (collectionChatId) {
+        try {
+          await query(
+            `INSERT INTO reminders (order_id, stage, group_chat_id, message, frequency, next_run_at, status)
+             VALUES ($1, 'delivered', $2, $3, 'daily', NOW() + INTERVAL '5 minutes', 'active')
+             ON CONFLICT DO NOTHING`,
+            [orderId, collectionChatId, `Order #${body.quotation_number ?? orderId.slice(0, 8)} has been delivered but balance is still unpaid. Please collect payment.`]
+          );
+        } catch {
+          console.warn(`[recordStageUpdate] Failed to create immediate collection reminder for order ${orderId}`);
+        }
+      }
+    }
+
     // ── Auto-complete if balance was already paid before delivery ──────────
     // If balance_paid is already true, steps 14-16 (countered → payment_received → payment_confirmed)
     // are N/A. The order can go directly to 'completed'.
-    if (order.balance_paid) {
+    if (order.balance_paid && order.balance_verified) {
       await query(
         `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
-         VALUES ($1, 'completed', 'auto_completed', 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)', $2, $3, $4)`,
+         VALUES ($1, 'completed', 'auto_completed', 'Balance already paid and verified — auto-completed on delivery (steps 14-16 N/A)', $2, $3, $4)`,
         [orderId, body.updated_by ?? null, clientName, actorName]
       );
       await query(`UPDATE orders SET current_stage='completed', updated_at=NOW() WHERE id=$1`, [orderId]);
@@ -6530,7 +6557,7 @@ app.post('/pay-balance', async (request, reply) => {
          balance_verified=FALSE,
          balance_paid_at=CASE WHEN $1 THEN COALESCE($3, NOW()) ELSE balance_paid_at END,
          current_stage=CASE
-           WHEN $1 AND current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+           WHEN $1 AND current_stage IN ('balance_due', 'inventory_arrived')
            THEN 'balance_verification'
            ELSE current_stage
          END,
@@ -6742,7 +6769,7 @@ app.post('/pay-balance-bulk', async (request, reply) => {
          balance_verified=FALSE,
          balance_paid_at=CASE WHEN $1 THEN COALESCE($3, NOW()) ELSE balance_paid_at END,
          current_stage=CASE
-           WHEN $1 AND current_stage IN ('balance_due', 'inventory_arrived', 'delivery_scheduled')
+           WHEN $1 AND current_stage IN ('balance_due', 'inventory_arrived')
            THEN 'balance_verification'
            ELSE current_stage
          END,

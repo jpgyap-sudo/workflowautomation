@@ -260,6 +260,7 @@ export async function processDueReminders(): Promise<number> {
     // En route timed reminders — en_route_midpoint stays active through en_route_verification (arrival still expected)
     if (reminder.stage === 'en_route_midpoint' && !['en_route', 'en_route_verification'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route_arrival' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'delivery_pending' && ['delivery_scheduled', 'delivered', 'countered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
 
     // ── Item-level safety-net: also check item status directly ────────
     // If an item-level reminder's item is already finished/arrived, mark stale

@@ -70,6 +70,22 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
+  // Check stuck orders at balance_due with balance_verified=true — should be at delivery_pending
+  const stuckBalanceDue = await query<OrderRow>(
+    `SELECT * FROM orders WHERE current_stage = 'balance_due' AND balance_verified = true AND status = 'active' ORDER BY updated_at ASC`
+  );
+  for (const order of stuckBalanceDue) {
+    const result = await checkStuckBalanceDue(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('delivery-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'delivery_pending', groupChatId, result.message);
+        await notifyDelivery(groupChatId, order, result);
+      }
+    }
+    results.push(result);
+  }
+
   return results;
 }
 
@@ -115,6 +131,45 @@ export async function checkDeliveryPending(order: OrderRow): Promise<AgentResult
     const result: AgentResult = {
       status: 'blocked',
       message: `❌ Error checking delivery pending for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
+
+    await logAgentAction('delivery-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Check stuck orders at balance_due with balance_verified=true.
+ * These orders should have advanced to delivery_pending but got stuck.
+ */
+export async function checkStuckBalanceDue(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+    balance_verified: order.balance_verified,
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'delivery_pending');
+
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `⚠️ Order #${order.quotation_number ?? 'unknown'} is at <b>balance_due</b> but balance has already been verified. Please advance to <b>delivery_pending</b> so delivery can be scheduled.`,
+      next_stage: 'delivery_pending',
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking stuck balance_due for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
       next_stage: null,
       reminder_needed: true,
       escalation_level: 0,
@@ -380,13 +435,30 @@ export async function notifyDelivery(
         ],
       ]);
     } else if (order.current_stage === 'delivery_scheduled') {
-      // Check if it's delivery day or past due
-      keyboard = inlineKeyboard([
-        [
-          { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id.slice(0, 8)}:${qn}` },
-          { text: '❌ Not Yet', callback_data: `delivery:no:${id.slice(0, 8)}:${qn}` },
-        ],
-      ]);
+      // Differentiate keyboard based on timing
+      const orderWithDate = await query(`SELECT delivery_date FROM orders WHERE id = $1`, [order.id]);
+      const deliveryDate = orderWithDate[0]?.delivery_date;
+      const now = new Date();
+      const deliveryDateObj = deliveryDate ? new Date(deliveryDate) : null;
+      const diffDays = deliveryDateObj ? Math.ceil((deliveryDateObj.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+      if (diffDays === 1) {
+        // Day before delivery — ask if ready for tomorrow
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Yes, Ready!', callback_data: `delivery:ready:${id.slice(0, 8)}:${qn}` },
+            { text: '❌ Not Ready', callback_data: `delivery:not_ready:${id.slice(0, 8)}:${qn}` },
+          ],
+        ]);
+      } else {
+        // Delivery day or past due — ask if delivered
+        keyboard = inlineKeyboard([
+          [
+            { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id.slice(0, 8)}:${qn}` },
+            { text: '❌ Not Yet', callback_data: `delivery:no:${id.slice(0, 8)}:${qn}` },
+          ],
+        ]);
+      }
     } else if (order.current_stage === 'stock_preparation') {
       keyboard = inlineKeyboard([
         [

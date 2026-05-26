@@ -174,8 +174,9 @@ export default function DeliveryPage() {
   const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
   const { data: paymentReceivedOrders = [], isLoading: loadingPaymentReceived, mutate: mutatePaymentReceived } = useOrdersByStage('payment_received');
   const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, mutate: mutatePaymentConfirmed } = useOrdersByStage('payment_confirmed');
+  const { data: stockPrepOrders = [], isLoading: loadingStockPrep, mutate: mutateStockPrep } = useOrdersByStage('stock_preparation');
 
-  const loading = loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed;
+  const loading = loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingStockPrep;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -193,11 +194,11 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function mutateAll() {
-    mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed();
+    mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
   }
 
   // ── Client filter ──────────────────────────────────────────────────────
@@ -707,16 +708,35 @@ export default function DeliveryPage() {
     }
   }
 
-  // ── Advance balance_due → delivery_scheduled (skip payment for exceptions) ──
+  // ── Cancel schedule: delivery_scheduled → delivery_pending ─────────────
 
-  function handleSkipPaymentSchedule(order: Order) {
+  function handleCancelSchedule(order: Order) {
     (window as any).__pendingActionOrder = order;
     setOtpModal({
       open: true,
-      title: 'Skip Payment — Schedule Delivery',
-      description: `Skip balance payment for "${order.quotation_number ?? '—'}" and schedule delivery directly (exception orders only).`,
-      pendingAction: 'schedule_delivery',
+      title: 'Cancel Delivery Schedule',
+      description: `Cancel the delivery schedule for "${order.quotation_number ?? '—'}" and move back to Delivery Pending.`,
+      pendingAction: 'cancel_schedule',
     });
+  }
+
+  async function executeCancelSchedule(order: Order, actionToken: string) {
+    setActionLoading(order.id);
+    try {
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'delivery_pending',
+        status: 'schedule_cancelled',
+        remarks: 'Delivery schedule cancelled via dashboard',
+        action_token: actionToken,
+      });
+      mutateScheduled();
+      mutatePending();
+    } catch (err: any) {
+      alert('Failed to cancel schedule: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   // ── Advance delivered → payment_received ────────────────────────────────
@@ -858,6 +878,7 @@ export default function DeliveryPage() {
     if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order, actionToken);
     else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order, actionToken);
     else if (otpModal.pendingAction === 'advance_balance_due') executeAdvanceBalanceDue(order, actionToken);
+    else if (otpModal.pendingAction === 'cancel_schedule') executeCancelSchedule(order, actionToken);
     else if (otpModal.pendingAction === 'verify_balance') executeVerifyBalance(order, actionToken);
     else if (otpModal.pendingAction === 'mark_payment_received') executeMarkPaymentReceived(order, actionToken);
     else if (otpModal.pendingAction === 'mark_payment_confirmed') executeMarkPaymentConfirmed(order, actionToken);
@@ -892,6 +913,7 @@ export default function DeliveryPage() {
   const filteredDeliveredOrders = filterByClient(deliveredOrders);
   const filteredPaymentReceivedOrders = filterByClient(paymentReceivedOrders);
   const filteredPaymentConfirmedOrders = filterByClient(paymentConfirmedOrders);
+  const filteredStockPrepOrders = filterByClient(stockPrepOrders);
 
   if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
     return (
@@ -978,6 +1000,73 @@ export default function DeliveryPage() {
         </div>
       )}
 
+      {/* ── Stock Preparation (From-Stock Orders) ─────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <PackageCheck className="h-4 w-4 text-cyan-500" />
+          <h2 className="text-base font-semibold text-gray-800">Stock Preparation</h2>
+          <span className="ml-auto rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700">
+            {filteredStockPrepOrders.length}
+          </span>
+        </div>
+        {filteredStockPrepOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No from-stock orders awaiting stock preparation</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filteredStockPrepOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              const hasException = order.delivery_exception === true;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                        {hasException && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />Special Case
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()} due`}
+                        </p>
+                      )}
+                      {order.stock_prep_ready_at && (
+                        <p className="mt-0.5 text-xs text-cyan-600">
+                          Stock ready by: {formatDeliveryDate(order.stock_prep_ready_at) ?? order.stock_prep_ready_at}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleAdvanceBalanceDue(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-700 disabled:opacity-40"
+                        title="Advance to Balance Due"
+                      >
+                        {actionLoading === order.id ? '…' : 'Balance Due →'}
+                      </button>
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ── Inventory Arrived ──────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
@@ -1025,7 +1114,7 @@ export default function DeliveryPage() {
                         className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
                         title="Advance to Balance Due"
                       >
-                        {actionLoading === order.id ? '…' : 'Ready for Delivery →'}
+                        {actionLoading === order.id ? '…' : 'Balance Due →'}
                       </button>
                       <RowActions order={order} />
                     </div>
@@ -1327,6 +1416,14 @@ export default function DeliveryPage() {
                         title='Schedule delivery'
                       >
                         Schedule
+                      </button>
+                      <button
+                        onClick={() => handleCancelSchedule(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                        title="Cancel schedule"
+                      >
+                        Cancel
                       </button>
                       <button
                         onClick={() => handleMarkDelivered(order)}

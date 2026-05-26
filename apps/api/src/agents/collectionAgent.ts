@@ -73,8 +73,8 @@ export async function runCollectionAgent(): Promise<AgentResult[]> {
   //       Collection agent only starts balance collection once the stage advances to balance_due.
   const paymentOrders = await getActiveOrdersByStages(['balance_due', 'delivered', 'countered']);
   for (const order of paymentOrders) {
-    // Skip if balance already paid (e.g., full payment upfront or paid at inventory_arrived stage)
-    if (order.balance_paid) continue;
+    // Skip if balance already paid or verified (e.g., full payment upfront, paid at inventory_arrived, or verified but stage stuck)
+    if (order.balance_paid || order.balance_verified) continue;
 
     const result = await checkCollection(order);
     if (result.reminder_needed) {

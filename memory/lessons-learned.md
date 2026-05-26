@@ -11645,3 +11645,51 @@ When parent data changes, always re-fetch or invalidate any dependent child data
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: auto-advance en_route_verification → inventory_verification when all items arrive
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a54e4f3a73261c9a8d5280afd620b6f7d7522770
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** a54e4f3a73261c9a8d5280afd620b6f7d7522770
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+The workflow now auto-advances from `en_route_verification` to `inventory_verification` once all items have physically arrived, instead of requiring manual intervention.
+
+**Why it broke:**  
+The transition logic only checked for partial arrival events, not a complete set. When the last item arrived, no rule triggered the state change, leaving the workflow stuck in `en_route_verification`.
+
+**Reusable takeaway:**  
+When modeling state transitions based on aggregate conditions (e.g., “all items arrived”), ensure the trigger evaluates the *completeness* of the set, not just individual events. Use a threshold or count-based guard (e.g., `all_items_arrived == true`) rather than relying on a single event to fire the transition. This prevents deadlocks in workflows where the final event is structurally identical to earlier ones.
+
+---
+*Original commit message: fix: auto-advance en_route_verification → inventory_verification when all items arrive*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The workflow now auto-advances from `en_route_verification` to `inventory_verification` once all items have physically arrived, instead of requiring manual intervention.
+
+**Why it broke:**  
+The transition logic only checked for partial arrival events, not a complete set. When the last item arrived, no rule triggered the state change, leaving the workflow stuck in `en_route_verification`.
+
+**Reusable takeaway:**  
+When modeling state transitions based on aggregate conditions (e.g., “all items arrived”), ensure the trigger evaluates the *completeness* of the set, not just individual events. Use a threshold or count-based guard (e.g., `all_items_arrived == true`) rather than relying on a single event to fire the transition. This prevents deadlocks in workflows where the final event is structurally identical to earlier ones.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
