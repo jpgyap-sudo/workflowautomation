@@ -11501,3 +11501,51 @@ When refactoring shared data sources (e.g., client list or API endpoints), alway
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: inventory & stock-prep gaps — audit trail, agent sync, Telegram, reminders
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 64d465772a16b4dbf98b1dce9d8024a3b01e98d0
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 64d465772a16b4dbf98b1dce9d8024a3b01e98d0
+**Files:** 
+
+**Summary:**
+**Fix:**  
+Resolved gaps in inventory and stock-prep workflows: audit trail logging, agent sync, Telegram notifications, and reminder triggers.
+
+**Root Cause:**  
+Inconsistent state synchronization between inventory updates and downstream agents (e.g., Telegram bot, reminder scheduler). Audit trail was missing for certain stock-prep transitions, causing silent failures in notifications and sync.
+
+**Reusable Takeaway:**  
+When automating multi-agent workflows, ensure every state change in the core data model (e.g., inventory) triggers a **unified audit event** that all dependent agents subscribe to. Avoid point-to-point syncs; use a central event bus or log to decouple agents. This prevents silent gaps in notifications, reminders, or syncs when a single path is missed.
+
+---
+*Original commit message: fix: inventory & stock-prep gaps — audit trail, agent sync, Telegram, reminders*
+
+#### Lesson Learned
+
+**Fix:**  
+Resolved gaps in inventory and stock-prep workflows: audit trail logging, agent sync, Telegram notifications, and reminder triggers.
+
+**Root Cause:**  
+Inconsistent state synchronization between inventory updates and downstream agents (e.g., Telegram bot, reminder scheduler). Audit trail was missing for certain stock-prep transitions, causing silent failures in notifications and sync.
+
+**Reusable Takeaway:**  
+When automating multi-agent workflows, ensure every state change in the core data model (e.g., inventory) triggers a **unified audit event** that all dependent agents subscribe to. Avoid point-to-point syncs; use a central event bus or log to decouple agents. This prevents silent gaps in notifications, reminders, or syncs when a single path is missed.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
