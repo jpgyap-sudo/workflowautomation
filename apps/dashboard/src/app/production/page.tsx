@@ -179,7 +179,11 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
       });
     }
     return () => { cancelled = true; };
-  }, [order.id, order.production_started, order.current_stage]);
+  // order.updated_at is touched server-side on every item change so this
+  // effect re-runs (re-fetching items) even for partial status changes that
+  // don't advance the stage (e.g. 1-of-3 items marked arrived).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.id, order.production_started, order.current_stage, order.updated_at]);
 
   async function refreshItemState() {
     const [itemsRes, completionRes] = await Promise.all([

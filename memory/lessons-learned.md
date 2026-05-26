@@ -11741,3 +11741,51 @@ Always pair state mutations with cleanup logic (e.g., reset reminders on status 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: touch orders.updated_at on item patch for SWR refresh
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 59049d79c06f15541321cffc574c80c37e3cdb26
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 59049d79c06f15541321cffc574c80c37e3cdb26
+**Files:** apps/api/src/server.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The `orders.updated_at` timestamp was not being updated when an order item was patched, causing SWR (stale-while-revalidate) cache to not refresh properly.
+
+**Why it broke:**  
+The API only updated the top-level `orders` table timestamp on direct order modifications. Item-level patches (e.g., updating a line item) bypassed that trigger, leaving the parent order’s `updated_at` unchanged. SWR relies on this timestamp to detect changes and invalidate cached data.
+
+**Reusable takeaway:**  
+When using SWR or similar cache-invalidation patterns, ensure that **all child-level mutations propagate a timestamp change to the parent entity**. A database trigger or application-level hook that updates the parent’s `updated_at` on any child insert/update/delete prevents stale cache issues. This is especially critical in normalized schemas where UI queries depend on a single timestamp for freshness.
+
+---
+*Original commit message: fix: touch orders.updated_at on item patch for SWR refresh*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `orders.updated_at` timestamp was not being updated when an order item was patched, causing SWR (stale-while-revalidate) cache to not refresh properly.
+
+**Why it broke:**  
+The API only updated the top-level `orders` table timestamp on direct order modifications. Item-level patches (e.g., updating a line item) bypassed that trigger, leaving the parent order’s `updated_at` unchanged. SWR relies on this timestamp to detect changes and invalidate cached data.
+
+**Reusable takeaway:**  
+When using SWR or similar cache-invalidation patterns, ensure that **all child-level mutations propagate a timestamp change to the parent entity**. A database trigger or application-level hook that updates the parent’s `updated_at` on any child insert/update/delete prevents stale cache issues. This is especially critical in normalized schemas where UI queries depend on a single timestamp for freshness.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
