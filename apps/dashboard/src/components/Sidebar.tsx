@@ -28,6 +28,7 @@ import {
   Zap,
   Smartphone,
   Bug,
+  BookOpen,
 } from 'lucide-react';
 import { useState, type ComponentType } from 'react';
 import { getAllowedTabsForUser, useAuth, type TabRoute } from '@/lib/auth';
@@ -40,6 +41,7 @@ type NavItem = {
 
 const ALL_NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/guides', label: 'Guides', icon: BookOpen },
   { href: '/orders', label: 'All Orders', icon: FileText },
   { href: '/actions', label: 'Quick Actions', icon: Zap },
   { href: '/clients', label: 'Clients', icon: Users },

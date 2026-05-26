@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-05-27
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
+| `pending` | Roo (Code) | feat: add Guides & Tutorials page (/guides) with step-by-step guides for all tabs, SVG workflow diagrams, search, expandable sections/steps, quick nav chips, internal links. Wire into sidebar + auth system. | ❌ |
+
 ## 2026-05-26
 
 | Commit | Extension | Description | Deployed |
@@ -19,7 +25,9 @@
 | `09f8836` | Roo (Code) | fix: 401 error when marking selected items en route — action token consumed on first PATCH call, fails on subsequent items. New POST /orders/:id/bulk-en-route-selected endpoint + bulkEnRouteSelected() API function. Updated handleBulkEnRouteSelectedVerified to use single API call instead of Promise.all with individual updateOrderItem calls. | ✅ VPS `09f8836` |
 | `7e3a0c3` | Roo (Code) | feat: add deposit slip upload + AI extract modal to Balance Due section in Delivery page — replaces old inline payment form with full modal-based flow (slip upload, visionExtract, duplicate detection, payBalanceWithFileBulk). Also fix: add missing bulkInventoryVerify import in orders/[quotationNumber]/page.tsx. | ✅ VPS `7e3a0c3` |
 | `d882d2b` | Roo (Code) | fix: clients tab gaps — (1) linked orders in expanded row now clickable (Link to order detail page), (2) client autocomplete in NewOrderModal with searchClients API, (3) client filter in production/delivery/collection/purchasing tabs with autocomplete dropdown | ✅ VPS `d882d2b` |
- 
+| `572e5b6` | Roo (Code) | fix: add delivery date to Telegram notification for delivery_scheduled stage updates | ✅ VPS `572e5b6` |
+| `f2fec22` | Roo (Code) | chore: update CHANGELOG and UPDATE_LOG after clients tab gap fixes deployment | ✅ VPS `f2fec22` |
+
 ## 2026-05-25
 
 | Commit | Extension | Description | Deployed |

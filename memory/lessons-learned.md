@@ -11549,3 +11549,99 @@ When automating multi-agent workflows, ensure every state change in the core dat
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: update changelog and update log for clients tab gap fixes (commit d882d2b)
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f2fec22808754a0e4cef2186d50aa6120d6273c9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f2fec22808754a0e4cef2186d50aa6120d6273c9
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A visual gap issue in the clients tab was resolved, and the changelog/update log were updated to reflect the fix.
+
+**Why it broke:**  
+The gap likely resulted from inconsistent spacing or layout handling in the clients tab UI, possibly due to missing CSS rules or improper element alignment.
+
+**Reusable takeaway:**  
+When fixing UI layout issues, always update both the changelog and update log to maintain clear version history. For gap problems, check for missing or conflicting CSS spacing properties (e.g., margin, padding, flex/grid gaps) and ensure consistent alignment across all viewport sizes.
+
+---
+*Original commit message: chore: update changelog and update log for clients tab gap fixes (commit d882d2b)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A visual gap issue in the clients tab was resolved, and the changelog/update log were updated to reflect the fix.
+
+**Why it broke:**  
+The gap likely resulted from inconsistent spacing or layout handling in the clients tab UI, possibly due to missing CSS rules or improper element alignment.
+
+**Reusable takeaway:**  
+When fixing UI layout issues, always update both the changelog and update log to maintain clear version history. For gap problems, check for missing or conflicting CSS spacing properties (e.g., margin, padding, flex/grid gaps) and ensure consistent alignment across all viewport sizes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: stale item rows after refresh — re-fetch expanded order items when parent data updates
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 36b70ee2d32b59e4dd714b976927c29a5272aa29
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 36b70ee2d32b59e4dd714b976927c29a5272aa29
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Expanded order item rows became stale after a parent data refresh. The UI still showed old item data even though the underlying order had been updated.
+
+**Why it broke:**  
+The expanded state (e.g., `expandedRows`) was preserved across refreshes, but the item data inside those rows was not re-fetched. The component assumed the cached child data was still valid, ignoring the parent update.
+
+**Reusable takeaway:**  
+When parent data changes, always re-fetch or invalidate any dependent child data that is currently expanded or visible. Do not rely on cached expanded state without a corresponding data refresh. A common pattern: clear or re-query expanded rows on parent data update, or use a key that forces re-mount of child components.
+
+---
+*Original commit message: fix: stale item rows after refresh — re-fetch expanded order items when parent data updates*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Expanded order item rows became stale after a parent data refresh. The UI still showed old item data even though the underlying order had been updated.
+
+**Why it broke:**  
+The expanded state (e.g., `expandedRows`) was preserved across refreshes, but the item data inside those rows was not re-fetched. The component assumed the cached child data was still valid, ignoring the parent update.
+
+**Reusable takeaway:**  
+When parent data changes, always re-fetch or invalidate any dependent child data that is currently expanded or visible. Do not rely on cached expanded state without a corresponding data refresh. A common pattern: clear or re-query expanded rows on parent data update, or use a key that forces re-mount of child components.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

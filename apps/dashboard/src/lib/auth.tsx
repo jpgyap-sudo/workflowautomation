@@ -14,7 +14,7 @@ export const ALL_TAB_ROUTES = [
   '/', '/orders', '/actions', '/clients', '/purchasing', '/production',
   '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow',
   '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram',
-  '/backup', '/vision', '/settings',
+  '/backup', '/vision', '/settings', '/guides',
 ] as const;
 
 export type TabRoute = (typeof ALL_TAB_ROUTES)[number];
@@ -81,7 +81,7 @@ const DEFAULT_TAB_ACCESS: TabRoute[] = [
   '/', '/orders', '/actions', '/clients', '/purchasing', '/production',
   '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow',
   '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram',
-  '/backup', '/vision', '/settings',
+  '/backup', '/vision', '/settings', '/guides',
 ];
 
 const DEFAULT_ACCOUNTS: Account[] = [
