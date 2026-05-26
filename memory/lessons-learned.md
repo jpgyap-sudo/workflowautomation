@@ -11311,3 +11311,45 @@ Always destructure specific props at the top of the component or method to avoid
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: 401 error when marking selected items en route — action token consumed on first PATCH call, fails on subsequent ite
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 09f8836a041c12e9db5105c18db6388f9e13db39
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 09f8836a041c12e9db5105c18db6388f9e13db39
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/lib/api.ts,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** A 401 error when marking multiple selected items as "en route" — only the first item succeeded; subsequent items failed.
+
+**Why it broke:** The action token (a one-time-use authentication credential) was consumed on the first PATCH call. Subsequent PATCH requests for the remaining items used the same, now-invalid token, causing authentication failure.
+
+**Reusable takeaway:** When batching state-change operations that each require a unique action token, generate or fetch a fresh token per request. Do not reuse a token across multiple calls — treat action tokens as single-use credentials.
+
+---
+*Original commit message: fix: 401 error when marking selected items en route — action token consumed on first PATCH call, fails on subsequent items*
+
+#### Lesson Learned
+
+**What was fixed:** A 401 error when marking multiple selected items as "en route" — only the first item succeeded; subsequent items failed.
+
+**Why it broke:** The action token (a one-time-use authentication credential) was consumed on the first PATCH call. Subsequent PATCH requests for the remaining items used the same, now-invalid token, causing authentication failure.
+
+**Reusable takeaway:** When batching state-change operations that each require a unique action token, generate or fetch a fresh token per request. Do not reuse a token across multiple calls — treat action tokens as single-use credentials.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

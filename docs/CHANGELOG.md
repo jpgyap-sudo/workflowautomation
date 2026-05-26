@@ -16,6 +16,7 @@
 | `c7c9287` | Roo (Code) | feat: add item-level Start button inside ProductionInfoCards for Production Pending items — prompts for production days via window.prompt, saves estimated_production_days, then triggers OTP for production_status change | ✅ VPS `8b041c9` |
 | `8b041c9` | Roo (Code) | fix: item-level Start also sets production_started on order for agent reminders; remove unused imports and variable | ✅ VPS `8b041c9` |
 | `1a39260` | Roo (Code) | fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row | ✅ VPS `1a39260` |
+| `09f8836` | Roo (Code) | fix: 401 error when marking selected items en route — action token consumed on first PATCH call, fails on subsequent items. New POST /orders/:id/bulk-en-route-selected endpoint + bulkEnRouteSelected() API function. Updated handleBulkEnRouteSelectedVerified to use single API call instead of Promise.all with individual updateOrderItem calls. | ✅ VPS `09f8836` |
 
 ## 2026-05-25
 
