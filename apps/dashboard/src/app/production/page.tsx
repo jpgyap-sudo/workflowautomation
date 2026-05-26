@@ -929,6 +929,8 @@ interface ProductionItemSectionProps {
   onItemDelayed?: (order: Order, item: OrderItem) => void;
   /** Callback when bulk Finish All is clicked for an order */
   onBulkFinish?: (order: Order) => void;
+  /** Callback when Finish Selected is clicked with specific item IDs */
+  onBulkFinishSelected?: (order: Order, itemIds: string[]) => void;
   /** Callback to view files */
   onViewFiles?: (o: Order) => void;
   /** Callback to edit */
@@ -946,7 +948,7 @@ function ProductionItemSection({
   orders, isLoading, error, onRetry, emptyText,
   itemFilter,
   showStartButton, showFinishedButton, showDelayedButton, showBulkFinishButton,
-  onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish,
+  onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish, onBulkFinishSelected,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
   onFinishProduction,
@@ -954,6 +956,25 @@ function ProductionItemSection({
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
   const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
+  // Multi-select state: per-order set of selected item IDs (only in_progress items)
+  const [selectedItemIds, setSelectedItemIds] = useState<Record<string, Set<string>>>({});
+
+  function toggleSelectItem(orderId: string, itemId: string) {
+    setSelectedItemIds((prev) => {
+      const current = new Set(prev[orderId] ?? []);
+      if (current.has(itemId)) current.delete(itemId); else current.add(itemId);
+      return { ...prev, [orderId]: current };
+    });
+  }
+
+  function toggleSelectAll(orderId: string, selectableItems: OrderItem[]) {
+    setSelectedItemIds((prev) => {
+      const current = prev[orderId] ?? new Set<string>();
+      const allSelected = selectableItems.every((i) => current.has(i.id));
+      return { ...prev, [orderId]: allSelected ? new Set() : new Set(selectableItems.map((i) => i.id)) };
+    });
+  }
+
   // Per-item start production modal
   const [startItemModal, setStartItemModal] = useState<{
     open: boolean;
@@ -965,6 +986,7 @@ function ProductionItemSection({
   async function toggleOrder(order: Order) {
     if (expandedOrderId === order.id) {
       setExpandedOrderId(null);
+      setSelectedItemIds((prev) => { const next = { ...prev }; delete next[order.id]; return next; });
       return;
     }
     setExpandedOrderId(order.id);
@@ -1106,94 +1128,142 @@ function ProductionItemSection({
                         {orderItems.length === 0 ? 'No items found for this order.' : `No items match the current section criteria.`}
                       </p>
                     ) : (
-                      <div>
-                        {showBulkFinishButton && (
-                          <div className="mb-2 flex items-center justify-end">
-                            {(() => {
-                              const unfinished = filteredItems.filter((i) => i.production_status !== 'finished');
-                              if (unfinished.length === 0) return null;
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); onBulkFinish?.(order); }}
-                                  className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-[11px] font-semibold text-green-700 hover:bg-green-100 transition-colors"
-                                >
-                                  ✓ Finish All ({unfinished.length})
-                                </button>
-                              );
-                            })()}
-                          </div>
-                        )}
-                        <div className="overflow-x-auto rounded-lg border border-gray-200">
-                          <table className="w-full text-left text-xs">
-                            <thead>
-                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                                <th className="px-3 py-2">Item</th>
-                                <th className="px-3 py-2">Qty</th>
-                                <th className="px-3 py-2">Status</th>
-                                <th className="px-3 py-2">Est. Finish Date</th>
-                                <th className="px-3 py-2">Actions</th>
-                              </tr>
-                            </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {filteredItems.map((item) => {
-                              const estFinishDate = getItemEstimatedFinishDate(item);
-                              return (
-                                <tr key={item.id} className="hover:bg-gray-50">
-                                  <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
-                                  <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
-                                  <td className="px-3 py-2">
-                                    <ItemStatusBadge status={item.production_status} />
-                                  </td>
-                                  <td className="px-3 py-2 text-gray-600">
-                                    {estFinishDate ? (
-                                      <span className="text-[11px]">{formatDate(estFinishDate)}</span>
-                                    ) : (
-                                      <span className="text-[11px] text-gray-400">—</span>
+                      (() => {
+                        const orderSelected = selectedItemIds[order.id] ?? new Set<string>();
+                        const selectableItems = filteredItems.filter((i) => i.production_status === 'in_progress');
+                        const allSelected = selectableItems.length > 0 && selectableItems.every((i) => orderSelected.has(i.id));
+                        const someSelected = orderSelected.size > 0 && !allSelected;
+                        return (
+                          <div>
+                            {/* Toolbar: Finish Selected + Finish All */}
+                            {(showBulkFinishButton || (showFinishedButton && onBulkFinishSelected)) && (
+                              <div className="mb-2 flex items-center justify-end gap-2">
+                                {showFinishedButton && onBulkFinishSelected && orderSelected.size > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onBulkFinishSelected(order, Array.from(orderSelected)); }}
+                                    className="rounded-md border border-green-300 bg-green-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-green-700 transition-colors"
+                                  >
+                                    ✓ Finish Selected ({orderSelected.size})
+                                  </button>
+                                )}
+                                {showBulkFinishButton && (() => {
+                                  const unfinished = filteredItems.filter((i) => i.production_status !== 'finished');
+                                  if (unfinished.length === 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); onBulkFinish?.(order); }}
+                                      className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-[11px] font-semibold text-green-700 hover:bg-green-100 transition-colors"
+                                    >
+                                      ✓ Finish All ({unfinished.length})
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                              <table className="w-full text-left text-xs">
+                                <thead>
+                                  <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                    {showFinishedButton && (
+                                      <th className="w-8 px-3 py-2">
+                                        <input
+                                          type="checkbox"
+                                          title="Select all"
+                                          checked={allSelected}
+                                          ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                                          onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, selectableItems); }}
+                                          disabled={selectableItems.length === 0}
+                                          className="rounded border-gray-300 accent-green-600 disabled:opacity-30"
+                                        />
+                                      </th>
                                     )}
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {showStartButton && item.production_status === 'pending' && (
-                                        <button
-                                          type="button"
-                                          disabled={updatingItemId === item.id}
-                                          onClick={(e) => { e.stopPropagation(); handleStartClick(order, item); }}
-                                          className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition-colors"
-                                        >
-                                          {updatingItemId === item.id ? 'Starting...' : '▶ Start'}
-                                        </button>
-                                      )}
-                                      {showFinishedButton && item.production_status !== 'pending' && (
-                                        <button
-                                          type="button"
-                                          disabled={updatingItemId === item.id || item.production_status === 'finished'}
-                                          onClick={(e) => { e.stopPropagation(); onItemFinished?.(order, item); }}
-                                          className="rounded-md border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
-                                        >
-                                          {updatingItemId === item.id ? 'Saving...' : item.production_status === 'finished' ? '✓ Finished' : '✓ Finish'}
-                                        </button>
-                                      )}
-                                      {showDelayedButton && item.production_status !== 'pending' && item.production_status !== 'finished' && (
-                                        <button
-                                          type="button"
-                                          disabled={updatingItemId === item.id}
-                                          onClick={(e) => { e.stopPropagation(); onItemDelayed?.(order, item); }}
-                                          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
-                                        >
-                                          {updatingItemId === item.id ? 'Saving...' : '⚠ Delayed'}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
+                                    <th className="px-3 py-2">Item</th>
+                                    <th className="px-3 py-2">Qty</th>
+                                    <th className="px-3 py-2">Status</th>
+                                    <th className="px-3 py-2">Est. Finish Date</th>
+                                    <th className="px-3 py-2">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {filteredItems.map((item) => {
+                                    const estFinishDate = getItemEstimatedFinishDate(item);
+                                    const isSelectable = item.production_status === 'in_progress';
+                                    const isChecked = orderSelected.has(item.id);
+                                    return (
+                                      <tr
+                                        key={item.id}
+                                        className={`hover:bg-gray-50 ${isChecked ? 'bg-green-50/40' : ''}`}
+                                      >
+                                        {showFinishedButton && (
+                                          <td className="px-3 py-2">
+                                            {isSelectable && (
+                                              <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={(e) => { e.stopPropagation(); toggleSelectItem(order.id, item.id); }}
+                                                className="rounded border-gray-300 accent-green-600"
+                                              />
+                                            )}
+                                          </td>
+                                        )}
+                                        <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                        <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                        <td className="px-3 py-2">
+                                          <ItemStatusBadge status={item.production_status} />
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-600">
+                                          {estFinishDate ? (
+                                            <span className="text-[11px]">{formatDate(estFinishDate)}</span>
+                                          ) : (
+                                            <span className="text-[11px] text-gray-400">—</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {showStartButton && item.production_status === 'pending' && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={(e) => { e.stopPropagation(); handleStartClick(order, item); }}
+                                                className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Starting...' : '▶ Start'}
+                                              </button>
+                                            )}
+                                            {showFinishedButton && item.production_status !== 'pending' && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id || item.production_status === 'finished'}
+                                                onClick={(e) => { e.stopPropagation(); onItemFinished?.(order, item); }}
+                                                className="rounded-md border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Saving...' : item.production_status === 'finished' ? '✓ Finished' : '✓ Finish'}
+                                              </button>
+                                            )}
+                                            {showDelayedButton && item.production_status !== 'pending' && item.production_status !== 'finished' && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={(e) => { e.stopPropagation(); onItemDelayed?.(order, item); }}
+                                                className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Saving...' : '⚠ Delayed'}
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
                 </div>
                 )}
               </div>
@@ -1728,7 +1798,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -1790,6 +1860,7 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'itemDelayed') handleItemDelayedVerified(actionToken);
     else if (otpModal.pendingAction === 'bulkFinish') handleBulkFinishVerified(actionToken);
     else if (otpModal.pendingAction === 'bulkEnRoute') handleBulkEnRouteVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulkFinishSelected') handleBulkFinishSelectedVerified(actionToken);
     else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
@@ -2157,6 +2228,36 @@ export default function ProductionPage() {
     }
   }
 
+  // ── Bulk finish selected items ───────────────────────────────────────
+
+  function handleBulkFinishSelected(order: Order, itemIds: string[]) {
+    const names = itemIds.length === 1 ? '1 item' : `${itemIds.length} items`;
+    setOtpModal({
+      open: true,
+      title: 'Finish Selected Items',
+      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as finished. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulkFinishSelected',
+    });
+    (window as any).__pendingBulkFinishSelectedData = { orderId: order.id, itemIds };
+  }
+
+  async function handleBulkFinishSelectedVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkFinishSelectedData as { orderId: string; itemIds: string[] } | null;
+    if (!pending) return;
+    try {
+      await Promise.all(
+        pending.itemIds.map((itemId) =>
+          updateOrderItem(pending.orderId, itemId, { production_status: 'finished', action_token: actionToken })
+        )
+      );
+      refresh();
+    } catch (err: any) {
+      alert('Failed to finish selected items: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingBulkFinishSelectedData = null;
+    }
+  }
+
   // ── Bulk en route all items ──────────────────────────────────────────
 
   function handleBulkEnRoute(order: Order, items: OrderItem[]) {
@@ -2415,6 +2516,7 @@ export default function ProductionPage() {
         onItemFinished={handleItemFinish}
         onItemDelayed={handleItemDelayed}
         onBulkFinish={handleBulkFinish}
+        onBulkFinishSelected={handleBulkFinishSelected}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
