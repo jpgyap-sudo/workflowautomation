@@ -5966,36 +5966,59 @@ bot.action(/^inv_ready:(.+)$/, async (ctx) => {
   botLog({ chatId, userId, username, messageType: 'callback_query', content: `inv_ready:${quotationNumber}`, direction: 'incoming' });
 
   try {
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const isBalanceVerified = order?.balance_verified === true;
+    const nextStage = isBalanceVerified ? 'delivery_pending' : 'balance_due';
+    const remarks = isBalanceVerified
+      ? 'Inventory arrived - ready for delivery, balance already verified'
+      : 'Inventory arrived - ready for delivery, balance payment required';
+    const actionLabel = isBalanceVerified ? 'Inventory Ready - Delivery Pending' : 'Inventory Ready - Balance Due';
+
     await postJson('/stage-updates', {
       quotation_number: quotationNumber,
-      stage: 'balance_due',
+      stage: nextStage,
       status: 'auto_advanced',
-      remarks: 'Inventory arrived - ready for delivery, balance payment required',
+      remarks,
       updated_by: 'delivery-agent',
     });
-    await logAction({ chatId, userId, username, label: 'Inventory Ready - Balance Due', quotationNumber });
+    await logAction({ chatId, userId, username, label: actionLabel, quotationNumber });
 
     const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
     if (INVENTORY_GROUP_CHAT_ID && String(INVENTORY_GROUP_CHAT_ID) !== chatId) {
       try {
+        const groupMessage = isBalanceVerified
+          ? `<b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\nQuotation: <b>${quotationNumber}</b>\nAll inventory has been confirmed as arrived via Telegram bot.\nOrder is now in Delivery Pending stage.`
+          : `<b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\nQuotation: <b>${quotationNumber}</b>\nAll inventory has been confirmed as arrived via Telegram bot.\nOrder is now in Balance Due stage.`;
         await ctx.telegram.sendMessage(
           INVENTORY_GROUP_CHAT_ID,
-          `<b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\nQuotation: <b>${quotationNumber}</b>\nAll inventory has been confirmed as arrived via Telegram bot.\nOrder is now in Balance Due stage.`,
+          groupMessage,
           { parse_mode: 'HTML' }
         );
       } catch { /* best-effort */ }
     }
 
-    await ctx.editMessageText(
-      `*Inventory Ready* - ${quotationNumber}\n\nStage advanced to *Balance Due*.\n\nPlease collect the balance payment from the client.`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('Pay Balance', `pick:paybalance:${quotationNumber}`)],
-          [Markup.button.callback('Main Menu', 'menu:main')],
-        ]),
-      }
-    );
+    if (isBalanceVerified) {
+      await ctx.editMessageText(
+        `*Inventory Ready* - ${quotationNumber}\n\nStage advanced to *Delivery Pending*.\n\nBalance has already been verified.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('Main Menu', 'menu:main')],
+          ]),
+        }
+      );
+    } else {
+      await ctx.editMessageText(
+        `*Inventory Ready* - ${quotationNumber}\n\nStage advanced to *Balance Due*.\n\nPlease collect the balance payment from the client.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('Pay Balance', `pick:paybalance:${quotationNumber}`)],
+            [Markup.button.callback('Main Menu', 'menu:main')],
+          ]),
+        }
+      );
+    }
   } catch (err: any) {
     await ctx.editMessageText(`Error updating order: ${err.message}`, { parse_mode: 'Markdown' });
   }
@@ -6032,43 +6055,71 @@ bot.action(/^inventory:ready:(.+):(.+)$/, async (ctx) => {
   });
 
   try {
-    // Advance to balance_due stage via /stage-updates (accepts quotation_number)
+    const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
+    const isBalanceVerified = order?.balance_verified === true;
+    const nextStage = isBalanceVerified ? 'delivery_pending' : 'balance_due';
+    const remarks = isBalanceVerified
+      ? 'Inventory arrived — ready for delivery, balance already verified'
+      : 'Inventory arrived — ready for delivery, balance payment required';
+    const actionLabel = isBalanceVerified ? 'Inventory Ready — Delivery Pending' : 'Inventory Ready — Balance Due';
+
+    // Advance to the appropriate stage via /stage-updates (accepts quotation_number)
     await postJson('/stage-updates', {
       quotation_number: quotationNumber,
-      stage: 'balance_due',
+      stage: nextStage,
       status: 'auto_advanced',
-      remarks: 'Inventory arrived — ready for delivery, balance payment required',
+      remarks,
       updated_by: 'delivery-agent',
     });
-    await logAction({ chatId, userId, username, label: 'Inventory Ready — Balance Due', quotationNumber });
+    await logAction({ chatId, userId, username, label: actionLabel, quotationNumber });
 
     // Notify inventory group chat about the arrival confirmation
     const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
     if (INVENTORY_GROUP_CHAT_ID && String(INVENTORY_GROUP_CHAT_ID) !== chatId) {
       try {
+        const groupMessage = isBalanceVerified
+          ? `✅ <b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\n` +
+            `Quotation: <b>${quotationNumber}</b>\n` +
+            `All inventory has been confirmed as arrived via Telegram bot.\n` +
+            `Order is now in Delivery Pending stage.`
+          : `✅ <b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\n` +
+            `Quotation: <b>${quotationNumber}</b>\n` +
+            `All inventory has been confirmed as arrived via Telegram bot.\n` +
+            `Order is now in Balance Due stage.`;
         await ctx.telegram.sendMessage(
           INVENTORY_GROUP_CHAT_ID,
-          `✅ <b>Inventory Arrival Confirmed (Telegram Bot)</b>\n\n` +
-          `Quotation: <b>${quotationNumber}</b>\n` +
-          `All inventory has been confirmed as arrived via Telegram bot.\n` +
-          `Order is now in Balance Due stage.`,
+          groupMessage,
           { parse_mode: 'HTML' }
         );
       } catch { /* non-fatal — group notification is best-effort */ }
     }
 
-    await ctx.editMessageText(
-      `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
-      `Stage advanced to ⚖️ *Balance Due*.\n\n` +
-      `Please collect the balance payment from the client.`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('💰 Pay Balance', `pick:paybalance:${quotationNumber}`)],
-          [Markup.button.callback('🏠 Main Menu', 'menu:main')],
-        ]),
-      }
-    );
+    if (isBalanceVerified) {
+      await ctx.editMessageText(
+        `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
+        `Stage advanced to 🚚 *Delivery Pending*.\n\n` +
+        `Balance has already been verified.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+          ]),
+        }
+      );
+    } else {
+      await ctx.editMessageText(
+        `✅ *Inventory Ready* — ${quotationNumber}\n\n` +
+        `Stage advanced to ⚖️ *Balance Due*.\n\n` +
+        `Please collect the balance payment from the client.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💰 Pay Balance', `pick:paybalance:${quotationNumber}`)],
+            [Markup.button.callback('🏠 Main Menu', 'menu:main')],
+          ]),
+        }
+      );
+    }
   } catch (err: any) {
     await ctx.editMessageText(
       `❌ Error updating order: ${err.message}`,

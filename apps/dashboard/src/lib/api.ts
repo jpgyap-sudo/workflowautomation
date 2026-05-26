@@ -190,8 +190,8 @@ export async function createOrder(data: {
 export async function markStockReady(
   orderId: string,
   opts: { deduct_inventory?: boolean; updated_by?: string } = {},
-): Promise<{ ok: boolean; next_stage: string }> {
-  return fetchJson<{ ok: boolean; next_stage: string }>(`/orders/${orderId}/stock-ready`, {
+): Promise<{ ok: boolean; next_stage: string; deductions?: { item_name: string; quantity: number }[] }> {
+  return fetchJson<{ ok: boolean; next_stage: string; deductions?: { item_name: string; quantity: number }[] }>(`/orders/${orderId}/stock-ready`, {
     method: 'POST',
     body: JSON.stringify({ deduct_inventory: opts.deduct_inventory ?? true, updated_by: opts.updated_by }),
   });
@@ -200,10 +200,11 @@ export async function markStockReady(
 export async function setStockPrep(
   orderId: string,
   stock_prep_days: number,
+  action_token?: string,
 ): Promise<{ ok: boolean; stock_prep_ready_at: string }> {
   return fetchJson<{ ok: boolean; stock_prep_ready_at: string }>(`/orders/${orderId}/set-stock-prep`, {
     method: 'POST',
-    body: JSON.stringify({ stock_prep_days }),
+    body: JSON.stringify({ stock_prep_days, action_token }),
   });
 }
 
@@ -625,10 +626,23 @@ export async function inventoryVerifyItem(
 
 export async function bulkInventoryVerify(
   id: string,
-  data: { item_ids: string[]; action_token: string }
-): Promise<{ ok: boolean; verification_pct: number }> {
+  data: { item_ids: string[]; action_token: string; action?: 'all' | 'partial' | 'not_yet'; verified_qty?: number }
+): Promise<{ ok: boolean; verification_pct: number; warning?: string; already_verified?: string[]; verified_count?: number }> {
   return fetchJson(
     `/orders/${encodeURIComponent(id)}/bulk-inventory-verify`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+export async function bulkInventoryUnverify(
+  id: string,
+  data: { item_ids: string[]; action_token: string }
+): Promise<{ ok: boolean; verification_pct: number; unverified_count?: number; warning?: string }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/bulk-inventory-unverify`,
     {
       method: 'POST',
       body: JSON.stringify(data),
@@ -1370,6 +1384,22 @@ export async function deleteAllInventoryDrafts(actionToken: string): Promise<{ o
     method: 'POST',
     body: JSON.stringify({ action_token: actionToken }),
   });
+}
+
+export interface InventoryMovement {
+  id: string;
+  inventory_item_id: string;
+  type: 'in' | 'out' | 'adjustment';
+  quantity: number;
+  previous_quantity: number;
+  new_quantity: number;
+  reason: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export async function getInventoryMovements(id: string): Promise<{ ok: boolean; movements: InventoryMovement[] }> {
+  return fetchJson<{ ok: boolean; movements: InventoryMovement[] }>(`/inventory/${encodeURIComponent(id)}/movements`);
 }
 
 export async function bulkDeleteInventoryItems(ids: string[], actionToken: string): Promise<{ ok: boolean; deleted_count: number }> {

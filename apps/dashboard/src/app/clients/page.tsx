@@ -1,10 +1,11 @@
 'use client';
 
 import { Fragment, useState } from 'react';
+import Link from 'next/link';
 import { useClients } from '@/lib/useApi';
 import type { Client } from '@/lib/api';
 import { createClient, updateClient, deleteClient, bulkDeleteClients, searchClients, getClientOrders } from '@/lib/api';
-import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText, ExternalLink } from 'lucide-react';
 import { useEffect } from 'react';
 import OtpModal from '@/components/OtpModal';
 
@@ -581,18 +582,25 @@ export default function ClientsPage() {
                               ) : (
                                 <div className="max-h-48 overflow-auto rounded-lg bg-white">
                                   {clientOrders[client.id].map((order) => (
-                                    <div key={order.id} className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs last:border-0">
-                                      <div>
-                                        <p className="font-medium text-gray-800">{order.quotation_number ?? '-'}</p>
+                                    <Link
+                                      key={order.id}
+                                      href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`}
+                                      className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs last:border-0 hover:bg-blue-50/40 transition-colors"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <p className="flex items-center gap-1 font-medium text-[#2490ef] hover:underline">
+                                          {order.quotation_number ?? '-'}
+                                          <ExternalLink className="h-3 w-3 shrink-0" />
+                                        </p>
                                         <p className="text-gray-400">{order.current_stage}</p>
                                       </div>
-                                      <div className="text-right">
+                                      <div className="ml-3 shrink-0 text-right">
                                         <p className="text-gray-600">{order.status}</p>
                                         {order.total_amount != null && (
                                           <p className="text-gray-400">PHP {Number(order.total_amount).toLocaleString()}</p>
                                         )}
                                       </div>
-                                    </div>
+                                    </Link>
                                   ))}
                                 </div>
                               )}

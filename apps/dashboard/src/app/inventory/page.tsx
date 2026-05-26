@@ -25,6 +25,7 @@ import {
   completeInventoryVerification,
   confirmInventoryArrived,
   updateOrderItem,
+  getInventoryMovements,
   type OrderItem,
 } from '@/lib/api';
 import {
@@ -50,6 +51,7 @@ import {
   Clock,
   ExternalLink,
   Eye,
+  History,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -83,6 +85,15 @@ export default function InventoryPage() {
 
   const [modal, setModal] = useState<ModalView>('none');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+
+  // History modal
+  const [historyModal, setHistoryModal] = useState<{ open: boolean; itemId: string | null; movements: any[]; loading: boolean }>({
+    open: false,
+    itemId: null,
+    movements: [],
+    loading: false,
+  });
 
   // Single add form
   const [addForm, setAddForm] = useState({
@@ -147,12 +158,13 @@ export default function InventoryPage() {
 
   const filteredItems = items.filter((item) => {
     const q = searchQuery.toLowerCase();
-    return (
+    const matchesSearch =
       item.product_name.toLowerCase().includes(q) ||
       (item.description ?? '').toLowerCase().includes(q) ||
       (item.dimension ?? '').toLowerCase().includes(q) ||
-      (item.category ?? '').toLowerCase().includes(q)
-    );
+      (item.category ?? '').toLowerCase().includes(q);
+    const matchesCategory = !selectedCategory || item.category === selectedCategory;
+    return matchesSearch && matchesCategory;
   });
 
   // ── Single Add ──
@@ -663,16 +675,30 @@ export default function InventoryPage() {
       {/* Orders Awaiting Inventory Arrival */}
       <InventoryArrivalSection />
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search inventory..."
-          className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
-        />
+      {/* Search + Category Filter */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search inventory..."
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+          />
+        </div>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+        >
+          <option value="">All Categories</option>
+          {FURNITURE_CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Inventory Table */}
@@ -813,7 +839,13 @@ export default function InventoryPage() {
                           className="w-20 rounded border border-gray-200 px-2 py-1 text-sm"
                         />
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          item.quantity === 0
+                            ? 'bg-red-100 text-red-700'
+                            : item.quantity <= 2
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-gray-100 text-gray-700'
+                        }`}>
                           {item.quantity}
                         </span>
                       )}
@@ -830,6 +862,21 @@ export default function InventoryPage() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={async () => {
+                              setHistoryModal({ open: true, itemId: item.id, movements: [], loading: true });
+                              try {
+                                const res = await getInventoryMovements(item.id);
+                                setHistoryModal((prev) => ({ ...prev, movements: res.movements ?? [], loading: false }));
+                              } catch {
+                                setHistoryModal((prev) => ({ ...prev, movements: [], loading: false }));
+                              }
+                            }}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                            title="View history"
+                          >
+                            <History className="h-4 w-4" />
+                          </button>
                           <button onClick={() => startEdit(item)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                             <Edit2 className="h-4 w-4" />
                           </button>
@@ -1243,6 +1290,50 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* ── History Modal ── */}
+      {historyModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Inventory History</h2>
+              <button
+                onClick={() => setHistoryModal({ open: false, itemId: null, movements: [], loading: false })}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {historyModal.loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : historyModal.movements.length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">No history available</div>
+            ) : (
+              <div className="space-y-2">
+                {historyModal.movements.map((m: any) => (
+                  <div key={m.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-700 capitalize">{m.type ?? 'adjustment'}</span>
+                      <span className="text-gray-400">{new Date(m.created_at).toLocaleString()}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-gray-600">
+                      <span>Qty: {m.quantity}</span>
+                      <span className="text-gray-300">|</span>
+                      <span>Before: {m.previous_quantity}</span>
+                      <span className="text-gray-300">|</span>
+                      <span>After: {m.new_quantity}</span>
+                    </div>
+                    {m.reason && <p className="mt-1 text-gray-500">{m.reason}</p>}
+                    {m.created_by && <p className="mt-0.5 text-[10px] text-gray-400">By: {m.created_by}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <OtpModal
         open={otpModal.open}
         title={otpModal.title}
@@ -1265,6 +1356,21 @@ export default function InventoryPage() {
 function InventoryVerificationSection() {
   const { data: orders = [], isLoading, mutate } = useOrdersByStage('inventory_verification');
   const [itemSummaryMap, setItemSummaryMap] = useState<Record<string, { verified: number; total: number; totalQty: number; verifiedQty: number }>>({});
+
+  // Listen for SSE events to revalidate data
+  useEffect(() => {
+    const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/events`);
+    const handleUpdate = () => {
+      mutate();
+    };
+    eventSource.addEventListener('order_updated', handleUpdate);
+    eventSource.addEventListener('invalidate', handleUpdate);
+    return () => {
+      eventSource.removeEventListener('order_updated', handleUpdate);
+      eventSource.removeEventListener('invalidate', handleUpdate);
+      eventSource.close();
+    };
+  }, [mutate]);
 
   useEffect(() => {
     if (orders.length === 0) {

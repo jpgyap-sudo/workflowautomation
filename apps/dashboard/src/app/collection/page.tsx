@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, type AcknowledgementReceipt } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, type AcknowledgementReceipt, type Client } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send, Download } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send, Download, XCircle } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -409,6 +409,57 @@ export default function CollectionPage() {
     granting: boolean;
   }>({ open: false, order: null, notes: '', granting: false });
   const [paymentResult, setPaymentResult] = useState<string | null>(null);
+
+  // ── Client filter ──────────────────────────────────────────────────────
+  const [clientFilter, setClientFilter] = useState('');
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientFilterRef = useRef<HTMLDivElement>(null);
+  const clientFilterInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clientFilterRef.current && !clientFilterRef.current.contains(e.target as Node) &&
+          clientFilterInputRef.current && !clientFilterInputRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleClientFilterSearch = useCallback(async (q: string) => {
+    setClientFilter(q);
+    const trimmed = q.trim();
+    if (!trimmed) { setClientSuggestions([]); setShowClientDropdown(false); return; }
+    setSearchingClient(true);
+    try {
+      const results = await searchClients(trimmed);
+      setClientSuggestions(results);
+      setShowClientDropdown(results.length > 0);
+    } catch { setClientSuggestions([]); }
+    finally { setSearchingClient(false); }
+  }, []);
+
+  function selectClientFilter(name: string) {
+    setClientFilter(name);
+    setShowClientDropdown(false);
+    setClientSuggestions([]);
+  }
+
+  function clearClientFilter() {
+    setClientFilter('');
+    setClientSuggestions([]);
+    setShowClientDropdown(false);
+  }
+
+  function filterByClient(orders: Order[]): Order[] {
+    if (!clientFilter.trim()) return orders;
+    return orders.filter(o =>
+      o.client_name?.toLowerCase().includes(clientFilter.trim().toLowerCase())
+    );
+  }
 
   // Payment confirmation modal state
   const [paymentModal, setPaymentModal] = useState<{
@@ -996,6 +1047,20 @@ export default function CollectionPage() {
     setBalanceSlips([emptySlip()]);
   }
 
+  // ── Apply client filter ──────────────────────────────────────────────
+  const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
+  const filteredBalanceDueOrders = filterByClient(balanceDueOrders);
+  const filteredDepositVerificationOrders = filterByClient(depositVerificationOrders);
+  const filteredBalanceVerificationOrders = filterByClient(balanceVerificationOrders);
+  const filteredDeliveredOrders = filterByClient(deliveredOrders);
+  const filteredCounteredOrders = filterByClient(counteredOrders);
+  const filteredPaymentReceivedOrders = filterByClient(paymentReceivedOrders);
+  const filteredPaymentConfirmedOrders = filterByClient(paymentConfirmedOrders);
+  const filteredCompletedOrders = filterByClient(completedOrders);
+  const filteredUnsyncedOrders = unsyncedOrders.filter(o =>
+    !clientFilter.trim() || o.client_name?.toLowerCase().includes(clientFilter.trim().toLowerCase())
+  );
+
   const collectionSummaryOrders = Array.from(
     new Map(
       [
@@ -1219,16 +1284,63 @@ export default function CollectionPage() {
     <div className="space-y-6">
       {/* Workflow info from Excel */}
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <div className="flex items-start gap-3">
-          <DollarSign className="mt-0.5 h-5 w-5 text-emerald-600" />
-          <div>
-            <h3 className="text-sm font-semibold text-emerald-800">Counter & Collection Workflow</h3>
-            <p className="mt-1 text-xs text-emerald-700">
-              <strong>Policy:</strong> Payment is required <em>before</em> delivery, unless a Special Case exception is granted.
-              Collection team sends deposit slip/proof of payment → Updates via{' '}
-              <code className="rounded bg-emerald-100 px-1">/payment QTN-2026-001 confirmed</code>
-              {' '}→ When confirmed, order becomes completed → Verification notification sent
-            </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <DollarSign className="mt-0.5 h-5 w-5 text-emerald-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-emerald-800">Counter & Collection Workflow</h3>
+              <p className="mt-1 text-xs text-emerald-700">
+                <strong>Policy:</strong> Payment is required <em>before</em> delivery, unless a Special Case exception is granted.
+                Collection team sends deposit slip/proof of payment → Updates via{' '}
+                <code className="rounded bg-emerald-100 px-1">/payment QTN-2026-001 confirmed</code>
+                {' '}→ When confirmed, order becomes completed → Verification notification sent
+              </p>
+            </div>
+          </div>
+          {/* Client filter */}
+          <div className="relative shrink-0" ref={clientFilterRef}>
+            <div className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 text-gray-400" />
+              <input
+                ref={clientFilterInputRef}
+                type="text"
+                placeholder="Filter by client..."
+                value={clientFilter}
+                onChange={(e) => handleClientFilterSearch(e.target.value)}
+                onFocus={() => { if (clientSuggestions.length > 0) setShowClientDropdown(true); }}
+                className="w-36 text-xs outline-none bg-transparent text-gray-700 placeholder-gray-400"
+              />
+              {clientFilter && (
+                <button onClick={clearClientFilter} className="text-gray-400 hover:text-gray-600">
+                  <XCircle className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {showClientDropdown && (
+              <div className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                {searchingClient ? (
+                  <div className="flex items-center justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : (
+                  <ul className="max-h-48 overflow-auto py-1">
+                    {clientSuggestions.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          onClick={() => selectClientFilter(c.client_name)}
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-50"
+                        >
+                          <span className="font-medium text-gray-800">{c.client_name}</span>
+                          {c.order_count != null && (
+                            <span className="ml-2 text-gray-400">{c.order_count} orders</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1389,31 +1501,31 @@ export default function CollectionPage() {
           <ArrowRight className="h-4 w-4 text-blue-500" />
           <h2 className="text-base font-semibold text-gray-800">Delivered</h2>
           <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-            {deliveredOrders.length}
+            {filteredDeliveredOrders.length}
           </span>
         </div>
-        {deliveredOrders.length === 0 ? (
+        {filteredDeliveredOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No delivered orders pending</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {deliveredOrders.filter(o => !o.delivery_exception).length > 0 && (
+            {filteredDeliveredOrders.filter(o => !o.delivery_exception).length > 0 && (
               <>
                 <div className="bg-yellow-50/50 px-6 py-2">
                   <p className="text-xs font-medium text-yellow-700">
                     🚛 Standard delivery — Steps 14–16 are N/A, advance directly to Completed
                   </p>
                 </div>
-                {deliveredOrders.filter(o => !o.delivery_exception).map((order) => renderOrderRow(order, [mutateDelivered, mutateCompleted]))}
+                {filteredDeliveredOrders.filter(o => !o.delivery_exception).map((order) => renderOrderRow(order, [mutateDelivered, mutateCompleted]))}
               </>
             )}
-            {deliveredOrders.filter(o => o.delivery_exception).length > 0 && (
+            {filteredDeliveredOrders.filter(o => o.delivery_exception).length > 0 && (
               <>
                 <div className="bg-amber-50/50 px-6 py-2">
                   <p className="text-xs font-medium text-amber-700">
                     ⚠️ Special Case — Must go through Countered → Payment Received → Payment Confirmed
                   </p>
                 </div>
-                {deliveredOrders.filter(o => o.delivery_exception).map((order) => renderOrderRow(order, [mutateDelivered, mutateCountered]))}
+                {filteredDeliveredOrders.filter(o => o.delivery_exception).map((order) => renderOrderRow(order, [mutateDelivered, mutateCountered]))}
               </>
             )}
           </div>
@@ -1426,14 +1538,14 @@ export default function CollectionPage() {
           <AlertTriangle className="h-4 w-4 text-rose-500" />
           <h2 className="text-base font-semibold text-gray-800">Countered</h2>
           <span className="ml-auto rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
-            {counteredOrders.length}
+            {filteredCounteredOrders.length}
           </span>
         </div>
-        {counteredOrders.length === 0 ? (
+        {filteredCounteredOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No countered orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {counteredOrders.map((order) => renderOrderRow(order, [mutateCountered]))}
+            {filteredCounteredOrders.map((order) => renderOrderRow(order, [mutateCountered]))}
           </div>
         )}
       </div>
@@ -1444,22 +1556,22 @@ export default function CollectionPage() {
           <Clock className="h-4 w-4 text-emerald-500" />
           <h2 className="text-base font-semibold text-gray-800">Payment Received (Pending Confirmation)</h2>
           <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-            {paymentReceivedOrders.length + unsyncedOrders.length}
+            {filteredPaymentReceivedOrders.length + filteredUnsyncedOrders.length}
           </span>
         </div>
-        {paymentReceivedOrders.length === 0 && unsyncedOrders.length === 0 ? (
+        {filteredPaymentReceivedOrders.length === 0 && filteredUnsyncedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No pending payment confirmations</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {/* Unsynced orders — balance_paid=TRUE but stage stuck at balance_due (legacy gap) */}
-            {unsyncedOrders.length > 0 && (
+            {filteredUnsyncedOrders.length > 0 && (
               <>
                 <div className="bg-amber-50/50 px-6 py-2">
                   <p className="text-xs font-medium text-amber-700">
                     ⚠️ Legacy — Balance paid but not yet synced to Payment Received stage
                   </p>
                 </div>
-                {unsyncedOrders.map((order) => (
+                {filteredUnsyncedOrders.map((order) => (
                   <div key={order.id}>
                     <div className="flex items-center justify-between px-6 py-4">
                       <div>
@@ -1495,7 +1607,7 @@ export default function CollectionPage() {
                 ))}
               </>
             )}
-            {paymentReceivedOrders.map((order) => renderOrderRow(order, [mutateReceived]))}
+            {filteredPaymentReceivedOrders.map((order) => renderOrderRow(order, [mutateReceived]))}
           </div>
         )}
       </div>
@@ -1506,14 +1618,14 @@ export default function CollectionPage() {
           <CheckCircle2 className="h-4 w-4 text-green-500" />
           <h2 className="text-base font-semibold text-gray-800">Payment Confirmed</h2>
           <span className="ml-auto rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            {paymentConfirmedOrders.length}
+            {filteredPaymentConfirmedOrders.length}
           </span>
         </div>
-        {paymentConfirmedOrders.length === 0 ? (
+        {filteredPaymentConfirmedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No confirmed payments</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {paymentConfirmedOrders.map((order) => renderOrderRow(order, [mutateConfirmed]))}
+            {filteredPaymentConfirmedOrders.map((order) => renderOrderRow(order, [mutateConfirmed]))}
           </div>
         )}
       </div>
@@ -1524,14 +1636,14 @@ export default function CollectionPage() {
           <CheckCircle2 className="h-4 w-4 text-gray-500" />
           <h2 className="text-base font-semibold text-gray-800">Completed Orders</h2>
           <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-            {completedOrders.length}
+            {filteredCompletedOrders.length}
           </span>
         </div>
-        {completedOrders.length === 0 ? (
+        {filteredCompletedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No completed orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {completedOrders.map((order) => renderOrderRow(order, [mutateCompleted]))}
+            {filteredCompletedOrders.map((order) => renderOrderRow(order, [mutateCompleted]))}
           </div>
         )}
       </div>

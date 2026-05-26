@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem } from '@/lib/api';
+import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -14,6 +14,7 @@ import {
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, CheckCircle,
   Shield, DollarSign, ShieldAlert, Loader2,
+  Search, XCircle,
 } from 'lucide-react';
 
 interface OrderRowProps {
@@ -416,6 +417,57 @@ export default function PurchasingPage() {
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
+  // ── Client filter ──────────────────────────────────────────────────────
+  const [clientFilter, setClientFilter] = useState('');
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientFilterRef = useRef<HTMLDivElement>(null);
+  const clientFilterInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clientFilterRef.current && !clientFilterRef.current.contains(e.target as Node) &&
+          clientFilterInputRef.current && !clientFilterInputRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleClientFilterSearch = useCallback(async (q: string) => {
+    setClientFilter(q);
+    const trimmed = q.trim();
+    if (!trimmed) { setClientSuggestions([]); setShowClientDropdown(false); return; }
+    setSearchingClient(true);
+    try {
+      const results = await searchClients(trimmed);
+      setClientSuggestions(results);
+      setShowClientDropdown(results.length > 0);
+    } catch { setClientSuggestions([]); }
+    finally { setSearchingClient(false); }
+  }, []);
+
+  function selectClientFilter(name: string) {
+    setClientFilter(name);
+    setShowClientDropdown(false);
+    setClientSuggestions([]);
+  }
+
+  function clearClientFilter() {
+    setClientFilter('');
+    setClientSuggestions([]);
+    setShowClientDropdown(false);
+  }
+
+  function filterByClient(orders: Order[]): Order[] {
+    if (!clientFilter.trim()) return orders;
+    return orders.filter(o =>
+      o.client_name?.toLowerCase().includes(clientFilter.trim().toLowerCase())
+    );
+  }
+
   function refresh() {
     mutatePending();
     mutateDepositPending();
@@ -564,16 +616,63 @@ export default function PurchasingPage() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-        <div className="flex items-start gap-3">
-          <ShoppingCart className="mt-0.5 h-5 w-5 text-amber-600" />
-          <div>
-            <h3 className="text-sm font-semibold text-amber-800">Purchasing Workflow</h3>
-            <p className="mt-1 text-xs text-amber-700">
-              Orders flow through: Downpayment Pending → Deposit Verification → Purchasing → Production.
-              Once production starts, the order moves to the{' '}
-              <strong>Production</strong> tab. Once en route is confirmed, the order moves to the{' '}
-              <strong>Delivery</strong> tab for balance payment and delivery scheduling.
-            </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <ShoppingCart className="mt-0.5 h-5 w-5 text-amber-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-amber-800">Purchasing Workflow</h3>
+              <p className="mt-1 text-xs text-amber-700">
+                Orders flow through: Downpayment Pending → Deposit Verification → Purchasing → Production.
+                Once production starts, the order moves to the{' '}
+                <strong>Production</strong> tab. Once en route is confirmed, the order moves to the{' '}
+                <strong>Delivery</strong> tab for balance payment and delivery scheduling.
+              </p>
+            </div>
+          </div>
+          {/* Client filter */}
+          <div className="relative shrink-0" ref={clientFilterRef}>
+            <div className="flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 text-gray-400" />
+              <input
+                ref={clientFilterInputRef}
+                type="text"
+                placeholder="Filter by client..."
+                value={clientFilter}
+                onChange={(e) => handleClientFilterSearch(e.target.value)}
+                onFocus={() => { if (clientSuggestions.length > 0) setShowClientDropdown(true); }}
+                className="w-36 text-xs outline-none bg-transparent text-gray-700 placeholder-gray-400"
+              />
+              {clientFilter && (
+                <button onClick={clearClientFilter} className="text-gray-400 hover:text-gray-600">
+                  <XCircle className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {showClientDropdown && (
+              <div className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                {searchingClient ? (
+                  <div className="flex items-center justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : (
+                  <ul className="max-h-48 overflow-auto py-1">
+                    {clientSuggestions.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          onClick={() => selectClientFilter(c.client_name)}
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-amber-50"
+                        >
+                          <span className="font-medium text-gray-800">{c.client_name}</span>
+                          {c.order_count != null && (
+                            <span className="ml-2 text-gray-400">{c.order_count} orders</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -582,9 +681,9 @@ export default function PurchasingPage() {
       <OrderSection
         icon={<DollarSign className="h-4 w-4 text-pink-500" />}
         title="Downpayment Pending"
-        count={depositPendingOrders.length}
+        count={filterByClient(depositPendingOrders).length}
         countBg="bg-pink-100" countText="text-pink-700"
-        orders={depositPendingOrders} isLoading={loadingDepositPending} error={errorDepositPending}
+        orders={filterByClient(depositPendingOrders)} isLoading={loadingDepositPending} error={errorDepositPending}
         onRetry={() => mutateDepositPending()}
         emptyText="No orders awaiting downpayment"
       >
@@ -602,9 +701,9 @@ export default function PurchasingPage() {
       <OrderSection
         icon={<Shield className="h-4 w-4 text-rose-500" />}
         title="Deposit Verification"
-        count={depositVerificationOrders.length}
+        count={filterByClient(depositVerificationOrders).length}
         countBg="bg-rose-100" countText="text-rose-700"
-        orders={depositVerificationOrders} isLoading={loadingDepositVerification} error={errorDepositVerification}
+        orders={filterByClient(depositVerificationOrders)} isLoading={loadingDepositVerification} error={errorDepositVerification}
         onRetry={() => mutateDepositVerification()}
         emptyText="No orders awaiting deposit verification"
       >
@@ -622,9 +721,9 @@ export default function PurchasingPage() {
       <OrderSection
         icon={<ShieldAlert className="h-4 w-4 text-red-500" />}
         title="Production Exception"
-        count={exceptionOrders.length}
+        count={filterByClient(exceptionOrders).length}
         countBg="bg-red-100" countText="text-red-700"
-        orders={exceptionOrders} isLoading={loadingExceptions} error={errorExceptions}
+        orders={filterByClient(exceptionOrders)} isLoading={loadingExceptions} error={errorExceptions}
         onRetry={() => mutateExceptions()}
         emptyText="No production exceptions"
       >
@@ -642,9 +741,9 @@ export default function PurchasingPage() {
       <OrderSection
         icon={<Clock className="h-4 w-4 text-amber-500" />}
         title="Pending Purchasing"
-        count={pendingOrders.length}
+        count={filterByClient(pendingOrders).length}
         countBg="bg-amber-100" countText="text-amber-700"
-        orders={pendingOrders} isLoading={loadingPending} error={errorPending}
+        orders={filterByClient(pendingOrders)} isLoading={loadingPending} error={errorPending}
         onRetry={() => mutatePending()}
         emptyText="No pending purchasing orders"
       >

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
-import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments } from '@/lib/api';
+import type { Order, Client } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2 } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -198,6 +198,57 @@ export default function DeliveryPage() {
 
   function mutateAll() {
     mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed();
+  }
+
+  // ── Client filter ──────────────────────────────────────────────────────
+  const [clientFilter, setClientFilter] = useState('');
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientFilterRef = useRef<HTMLDivElement>(null);
+  const clientFilterInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clientFilterRef.current && !clientFilterRef.current.contains(e.target as Node) &&
+          clientFilterInputRef.current && !clientFilterInputRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleClientFilterSearch = useCallback(async (q: string) => {
+    setClientFilter(q);
+    const trimmed = q.trim();
+    if (!trimmed) { setClientSuggestions([]); setShowClientDropdown(false); return; }
+    setSearchingClient(true);
+    try {
+      const results = await searchClients(trimmed);
+      setClientSuggestions(results);
+      setShowClientDropdown(results.length > 0);
+    } catch { setClientSuggestions([]); }
+    finally { setSearchingClient(false); }
+  }, []);
+
+  function selectClientFilter(name: string) {
+    setClientFilter(name);
+    setShowClientDropdown(false);
+    setClientSuggestions([]);
+  }
+
+  function clearClientFilter() {
+    setClientFilter('');
+    setClientSuggestions([]);
+    setShowClientDropdown(false);
+  }
+
+  function filterByClient(orders: Order[]): Order[] {
+    if (!clientFilter.trim()) return orders;
+    return orders.filter(o =>
+      o.client_name?.toLowerCase().includes(clientFilter.trim().toLowerCase())
+    );
   }
 
   // ── Payment Modal (Deposit Slip Upload + AI Extract) ────────────────────
@@ -832,6 +883,16 @@ export default function DeliveryPage() {
     );
   }
 
+  // ── Apply client filter ──────────────────────────────────────────────
+  const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
+  const filteredBalanceDueOrders = filterByClient(balanceDueOrders);
+  const filteredBalanceVerificationOrders = filterByClient(balanceVerificationOrders);
+  const filteredPendingOrders = filterByClient(pendingOrders);
+  const filteredScheduledOrders = filterByClient(scheduledOrders);
+  const filteredDeliveredOrders = filterByClient(deliveredOrders);
+  const filteredPaymentReceivedOrders = filterByClient(paymentReceivedOrders);
+  const filteredPaymentConfirmedOrders = filterByClient(paymentConfirmedOrders);
+
   if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -845,18 +906,62 @@ export default function DeliveryPage() {
 
       {/* Workflow banner */}
       <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
-        <div className="flex items-start gap-3">
-          <Truck className="mt-0.5 h-5 w-5 text-purple-600" />
-          <div>
-            <h3 className="text-sm font-semibold text-purple-800">Delivery Workflow</h3>
-            <p className="mt-1 text-xs text-purple-700">
-              Inventory arrives → Balance paid via{' '}
-              <code className="rounded bg-purple-100 px-1">/paybalance QTN-2026-001 15000</code>
-              {' '}→ Schedule via{' '}
-              <code className="rounded bg-purple-100 px-1">/deliverydate QTN-2026-001 May 22 2026</code>
-              {' '}→ Deliver → Update via{' '}
-              <code className="rounded bg-purple-100 px-1">/delivered QTN-2026-001 yes countered</code>
-            </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Truck className="mt-0.5 h-5 w-5 text-purple-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-purple-800">Delivery Workflow</h3>
+              <p className="mt-1 text-xs text-purple-700">
+                Inventory arrives → Balance paid via{' '}
+                <code className="rounded bg-purple-100 px-1">/paybalance QTN-2026-001 15000</code>
+                {' '}→ Schedule via{' '}
+                <code className="rounded bg-purple-100 px-1">/deliverydate QTN-2026-001 May 22 2026</code>
+                {' '}→ Deliver → Update via{' '}
+                <code className="rounded bg-purple-100 px-1">/delivered QTN-2026-001 yes countered</code>
+              </p>
+            </div>
+          </div>
+          {/* Client filter */}
+          <div className="relative shrink-0" ref={clientFilterRef}>
+            <div className="flex items-center gap-1 rounded-lg border border-purple-200 bg-white px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 text-gray-400" />
+              <input
+                ref={clientFilterInputRef}
+                type="text"
+                placeholder="Filter by client..."
+                value={clientFilter}
+                onChange={(e) => handleClientFilterSearch(e.target.value)}
+                onFocus={() => { if (clientSuggestions.length > 0) setShowClientDropdown(true); }}
+                className="w-36 text-xs outline-none bg-transparent text-gray-700 placeholder-gray-400"
+              />
+              {clientFilter && (
+                <button onClick={clearClientFilter} className="text-gray-400 hover:text-gray-600">
+                  <XCircle className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {showClientDropdown && (
+              <div className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                {searchingClient ? (
+                  <div className="flex items-center justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto">
+                    {clientSuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => selectClientFilter(c.client_name)}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-purple-50 transition-colors"
+                      >
+                        <span className="font-medium text-gray-700">{c.client_name}</span>
+                        <span className="text-gray-400">{c.order_count ?? 0} orders</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -879,14 +984,14 @@ export default function DeliveryPage() {
           <PackageOpen className="h-4 w-4 text-teal-500" />
           <h2 className="text-base font-semibold text-gray-800">Inventory Arrived</h2>
           <span className="ml-auto rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700">
-            {inventoryArrivedOrders.length}
+            {filteredInventoryArrivedOrders.length}
           </span>
         </div>
-        {inventoryArrivedOrders.length === 0 ? (
+        {filteredInventoryArrivedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders with inventory arrived</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {inventoryArrivedOrders.map((order) => {
+            {filteredInventoryArrivedOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -941,14 +1046,14 @@ export default function DeliveryPage() {
           <Scale className="h-4 w-4 text-violet-500" />
           <h2 className="text-base font-semibold text-gray-800">Balance Due (Awaiting Payment)</h2>
           <span className="ml-auto rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
-            {balanceDueOrders.length}
+            {filteredBalanceDueOrders.length}
           </span>
         </div>
-        {balanceDueOrders.length === 0 ? (
+        {filteredBalanceDueOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders awaiting balance payment</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {balanceDueOrders.map((order) => {
+            {filteredBalanceDueOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -1037,14 +1142,14 @@ export default function DeliveryPage() {
           <ThumbsUp className="h-4 w-4 text-emerald-500" />
           <h2 className="text-base font-semibold text-gray-800">Balance Verification</h2>
           <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-            {balanceVerificationOrders.length}
+            {filteredBalanceVerificationOrders.length}
           </span>
         </div>
-        {balanceVerificationOrders.length === 0 ? (
+        {filteredBalanceVerificationOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders awaiting balance verification</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {balanceVerificationOrders.map((order) => {
+            {filteredBalanceVerificationOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -1091,14 +1196,14 @@ export default function DeliveryPage() {
           <Clock className="h-4 w-4 text-amber-500" />
           <h2 className="text-base font-semibold text-gray-800">Delivery Pending</h2>
           <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-            {pendingOrders.length}
+            {filteredPendingOrders.length}
           </span>
         </div>
-        {pendingOrders.length === 0 ? (
+        {filteredPendingOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders pending delivery scheduling</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {pendingOrders.map((order) => {
+            {filteredPendingOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -1168,14 +1273,14 @@ export default function DeliveryPage() {
           <Calendar className="h-4 w-4 text-purple-500" />
           <h2 className="text-base font-semibold text-gray-800">Scheduled Deliveries</h2>
           <span className="ml-auto rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-            {scheduledOrders.length}
+            {filteredScheduledOrders.length}
           </span>
         </div>
-        {scheduledOrders.length === 0 ? (
+        {filteredScheduledOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No scheduled deliveries</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {scheduledOrders.map((order) => {
+            {filteredScheduledOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -1262,14 +1367,14 @@ export default function DeliveryPage() {
           <CheckCircle2 className="h-4 w-4 text-orange-500" />
           <h2 className="text-base font-semibold text-gray-800">Delivered</h2>
           <span className="ml-auto rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
-            {deliveredOrders.length}
+            {filteredDeliveredOrders.length}
           </span>
         </div>
-        {deliveredOrders.length === 0 ? (
+        {filteredDeliveredOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No delivered orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {deliveredOrders.map((order) => {
+            {filteredDeliveredOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -1359,14 +1464,14 @@ export default function DeliveryPage() {
           <CreditCard className="h-4 w-4 text-blue-500" />
           <h2 className="text-base font-semibold text-gray-800">Payment Received</h2>
           <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-            {paymentReceivedOrders.length}
+            {filteredPaymentReceivedOrders.length}
           </span>
         </div>
-        {paymentReceivedOrders.length === 0 ? (
+        {filteredPaymentReceivedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders with payment received</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {paymentReceivedOrders.map((order) => {
+            {filteredPaymentReceivedOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
@@ -1413,14 +1518,14 @@ export default function DeliveryPage() {
           <ThumbsUp className="h-4 w-4 text-indigo-500" />
           <h2 className="text-base font-semibold text-gray-800">Payment Confirmed</h2>
           <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-            {paymentConfirmedOrders.length}
+            {filteredPaymentConfirmedOrders.length}
           </span>
         </div>
-        {paymentConfirmedOrders.length === 0 ? (
+        {filteredPaymentConfirmedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders with payment confirmed</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {paymentConfirmedOrders.map((order) => {
+            {filteredPaymentConfirmedOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;

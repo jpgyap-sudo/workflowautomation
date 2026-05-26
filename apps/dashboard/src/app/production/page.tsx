@@ -1,10 +1,10 @@
 'use client';
 
-import { Fragment, useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
+import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
   reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, bulkFinishSelected, confirmEnRoute, setProduction,
@@ -13,6 +13,7 @@ import {
   grantProductionException, revokeProductionException,
   createStockReplenishmentOrder,
   getOrderNotes, postProductionNote,
+  searchClients,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -20,7 +21,7 @@ import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/comp
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  RefreshCw, Package, Loader2, MessageSquare,
+  RefreshCw, Package, Loader2, MessageSquare, Search, XCircle,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -1793,6 +1794,57 @@ export default function ProductionPage() {
   const { data: inventoryArrivedOrders = [], isLoading: loadingInventoryArrived, error: errorInventoryArrived, mutate: mutateInventoryArrived } =
     useOrdersByStage('inventory_arrived');
 
+  // ── Client filter ──────────────────────────────────────────────────────
+  const [clientFilter, setClientFilter] = useState('');
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientFilterRef = useRef<HTMLDivElement>(null);
+  const clientFilterInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clientFilterRef.current && !clientFilterRef.current.contains(e.target as Node) &&
+          clientFilterInputRef.current && !clientFilterInputRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleClientFilterSearch = useCallback(async (q: string) => {
+    setClientFilter(q);
+    const trimmed = q.trim();
+    if (!trimmed) { setClientSuggestions([]); setShowClientDropdown(false); return; }
+    setSearchingClient(true);
+    try {
+      const results = await searchClients(trimmed);
+      setClientSuggestions(results);
+      setShowClientDropdown(results.length > 0);
+    } catch { setClientSuggestions([]); }
+    finally { setSearchingClient(false); }
+  }, []);
+
+  function selectClientFilter(name: string) {
+    setClientFilter(name);
+    setShowClientDropdown(false);
+    setClientSuggestions([]);
+  }
+
+  function clearClientFilter() {
+    setClientFilter('');
+    setClientSuggestions([]);
+    setShowClientDropdown(false);
+  }
+
+  function filterByClient(orders: Order[]): Order[] {
+    if (!clientFilter.trim()) return orders;
+    return orders.filter(o =>
+      o.client_name?.toLowerCase().includes(clientFilter.trim().toLowerCase())
+    );
+  }
+
   // Fetch item completion for en_route orders so we can split them into
   // "Dispatch Pending" (some items not yet en_route) vs "En Route — In Transit" (all tracking)
   const [enRouteCompletion, setEnRouteCompletion] = useState<Record<string, { pct: number; allArrived: boolean }>>({});
@@ -2559,6 +2611,17 @@ export default function ProductionPage() {
 
   const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
 
+  // ── Apply client filter ──────────────────────────────────────────────
+  const filteredPendingOrders = filterByClient(pendingOrders);
+  const filteredPartialOrders = filterByClient(partialOrders);
+  const filteredInProgressStageOrders = filterByClient(inProgressStageOrders);
+  const filteredFinishedOrders = filterByClient(finishedOrders);
+  const filteredEnRouteOrders = filterByClient(enRouteOrders);
+  const filteredEnRouteVerificationStageOrders = filterByClient(enRouteVerificationStageOrders);
+  const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
+  const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
+  const filteredInProgressMergedOrders = dedupeOrders([...filteredInProgressStageOrders, ...filteredPartialOrders]);
+
   return (
     <div className="space-y-6">
       {/* Header info */}
@@ -2575,13 +2638,59 @@ export default function ProductionPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={handleOpenStockRepl}
-            className="shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
-          >
-            <Package className="h-3.5 w-3.5" />
-            Stock Replenishment
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Client filter */}
+            <div className="relative" ref={clientFilterRef}>
+              <div className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5">
+                <Search className="h-3.5 w-3.5 text-gray-400" />
+                <input
+                  ref={clientFilterInputRef}
+                  type="text"
+                  placeholder="Filter by client..."
+                  value={clientFilter}
+                  onChange={(e) => handleClientFilterSearch(e.target.value)}
+                  onFocus={() => { if (clientSuggestions.length > 0) setShowClientDropdown(true); }}
+                  className="w-36 text-xs outline-none bg-transparent text-gray-700 placeholder-gray-400"
+                />
+                {clientFilter && (
+                  <button onClick={clearClientFilter} className="text-gray-400 hover:text-gray-600">
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {showClientDropdown && (
+                <div className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {searchingClient ? (
+                    <div className="flex items-center justify-center py-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    </div>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto">
+                      {clientSuggestions.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => selectClientFilter(c.client_name)}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-indigo-50 transition-colors"
+                        >
+                          <span className="font-medium text-gray-700">{c.client_name}</span>
+                          <span className="text-gray-400">
+                            {c.order_count ?? 0} orders
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handleOpenStockRepl}
+              className="shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+            >
+              <Package className="h-3.5 w-3.5" />
+              Stock Replenishment
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2589,9 +2698,9 @@ export default function ProductionPage() {
       <OrderSection
         icon={<Clock className="h-4 w-4 text-indigo-500" />}
         title="Production Pending"
-        count={pendingOrders.length}
+        count={filteredPendingOrders.length}
         countBg="bg-indigo-100" countText="text-indigo-700"
-        orders={pendingOrders} isLoading={loadingPending} error={errorPending}
+        orders={filteredPendingOrders} isLoading={loadingPending} error={errorPending}
         onRetry={() => mutatePending()}
         emptyText="No orders pending production"
       >
@@ -2612,9 +2721,9 @@ export default function ProductionPage() {
       <ProductionItemSection
         icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
         title="Partial Production"
-        count={partialOrders.length}
+        count={filteredPartialOrders.length}
         countBg="bg-amber-100" countText="text-amber-700"
-        orders={partialOrders}
+        orders={filteredPartialOrders}
         isLoading={loadingPartial}
         error={errorPartial}
         onRetry={() => mutatePartial()}
@@ -2635,9 +2744,9 @@ export default function ProductionPage() {
       <ProductionItemSection
         icon={<Factory className="h-4 w-4 text-indigo-500" />}
         title="Production In Progress"
-        count={inProgressMergedOrders.length}
+        count={filteredInProgressMergedOrders.length}
         countBg="bg-indigo-100" countText="text-indigo-700"
-        orders={inProgressMergedOrders}
+        orders={filteredInProgressMergedOrders}
         isLoading={loadingInProgress || loadingPartial}
         error={errorInProgress || errorPartial}
         onRetry={() => { mutateInProgress(); mutatePartial(); }}
@@ -2659,7 +2768,7 @@ export default function ProductionPage() {
 
       {/* Production Finished */}
       <ProductionFinishedTrackingSection
-        orders={finishedOrders}
+        orders={filteredFinishedOrders}
         summaries={productionFinishedSummaries}
         isLoading={loadingFinished}
         error={errorFinished}
@@ -2674,9 +2783,9 @@ export default function ProductionPage() {
       <OrderSection
         icon={<Truck className="h-4 w-4 text-amber-500" />}
         title="Dispatch Pending"
-        count={enRouteVerificationOrders.length}
+        count={filteredEnRouteVerificationStageOrders.length}
         countBg="bg-amber-100" countText="text-amber-700"
-        orders={enRouteVerificationOrders} isLoading={loadingEnRoute} error={errorEnRoute}
+        orders={filteredEnRouteVerificationStageOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
         emptyText="No orders pending dispatch confirmation"
       >
@@ -2701,9 +2810,9 @@ export default function ProductionPage() {
       <OrderSection
         icon={<Truck className="h-4 w-4 text-sky-500" />}
         title="En Route — In Transit"
-        count={enRouteTrackingOrders.length}
+        count={filteredEnRouteOrders.length}
         countBg="bg-sky-100" countText="text-sky-700"
-        orders={enRouteTrackingOrders} isLoading={loadingEnRoute} error={errorEnRoute}
+        orders={filteredEnRouteOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
         emptyText="No orders in transit"
       >
@@ -2728,9 +2837,9 @@ export default function ProductionPage() {
       <OrderSection
         icon={<Truck className="h-4 w-4 text-blue-500" />}
         title="Arrival Verification"
-        count={enRouteVerificationStageOrders.length}
+        count={filteredEnRouteVerificationStageOrders.length}
         countBg="bg-blue-100" countText="text-blue-700"
-        orders={enRouteVerificationStageOrders} isLoading={loadingEnRouteStage} error={errorEnRouteStage}
+        orders={filteredEnRouteVerificationStageOrders} isLoading={loadingEnRouteStage} error={errorEnRouteStage}
         onRetry={() => mutateEnRouteStage()}
         emptyText="No orders awaiting arrival verification"
       >

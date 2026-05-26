@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
-import { STAGE_CONFIG } from '@/lib/api';
 import type { Order, OrderItem, InventoryItem } from '@/lib/api';
 import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
@@ -47,7 +46,7 @@ function ReadyBadge({ readyAt }: { readyAt: string | null | undefined }) {
 
 function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => void }) {
   const [showOtp, setShowOtp] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'ready' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'ready' | 'set-prep-days' | null>(null);
   const [deductInventory, setDeductInventory] = useState(true);
   const [marking, setMarking] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -63,33 +62,47 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
   }
 
   async function handleVerified(actionToken: string) {
-    if (pendingAction !== 'ready') return;
-    setMarking(true);
-    setMsg(null);
-    try {
-      await markStockReady(order.id, { deduct_inventory: deductInventory, updated_by: 'dashboard' });
-      setMsg({ ok: true, text: '✅ Stock marked ready — order advanced to Balance Due' });
-      setTimeout(() => onUpdated(), 800);
-    } catch (err: any) {
-      setMsg({ ok: false, text: err.message ?? 'Failed to mark stock ready' });
-    } finally {
-      setMarking(false);
+    if (pendingAction === 'ready') {
+      setMarking(true);
+      setMsg(null);
+      try {
+        const result = await markStockReady(order.id, { deduct_inventory: deductInventory, updated_by: 'dashboard' });
+        let text = '✅ Stock marked ready — order advanced to Balance Due';
+        if (result.deductions && result.deductions.length > 0) {
+          text += '\n\n📦 Deductions:';
+          for (const d of result.deductions) {
+            text += `\n• ${d.item_name}: −${d.quantity}`;
+          }
+        }
+        setMsg({ ok: true, text });
+        setTimeout(() => onUpdated(), 800);
+      } catch (err: any) {
+        setMsg({ ok: false, text: err.message ?? 'Failed to mark stock ready' });
+      } finally {
+        setMarking(false);
+      }
+    } else if (pendingAction === 'set-prep-days') {
+      const days = parseInt(daysInput, 10);
+      if (isNaN(days) || days < 0) return;
+      setSavingDays(true);
+      setMsg(null);
+      try {
+        await setStockPrep(order.id, days, actionToken);
+        setEditingDays(false);
+        onUpdated();
+      } catch (err: any) {
+        setMsg({ ok: false, text: err.message ?? 'Failed to update prep days' });
+      } finally {
+        setSavingDays(false);
+      }
     }
   }
 
-  async function handleSaveDays() {
+  function handleSaveDays() {
     const days = parseInt(daysInput, 10);
     if (isNaN(days) || days < 0) return;
-    setSavingDays(true);
-    try {
-      await setStockPrep(order.id, days);
-      setEditingDays(false);
-      onUpdated();
-    } catch (err: any) {
-      setMsg({ ok: false, text: err.message ?? 'Failed to update prep days' });
-    } finally {
-      setSavingDays(false);
-    }
+    setPendingAction('set-prep-days');
+    setShowOtp(true);
   }
 
   const readyDate = order.stock_prep_ready_at;
@@ -167,7 +180,7 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
 
       {/* Status message */}
       {msg && (
-        <p className={`rounded-lg px-3 py-2 text-xs ${msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+        <p className={`rounded-lg px-3 py-2 text-xs whitespace-pre-wrap ${msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
           {msg.text}
         </p>
       )}
@@ -184,8 +197,12 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
 
       <OtpModal
         open={showOtp}
-        title="Confirm: Mark Stock Ready"
-        description={`Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`}
+        title={pendingAction === 'set-prep-days' ? 'Confirm: Update Prep Days' : 'Confirm: Mark Stock Ready'}
+        description={
+          pendingAction === 'set-prep-days'
+            ? `Updating stock prep days to ${daysInput} day(s) for ${order.quotation_number ?? 'this order'}.`
+            : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
+        }
         onVerified={handleVerified}
         onClose={() => { setShowOtp(false); setPendingAction(null); }}
       />
@@ -359,7 +376,15 @@ function MatchCard({ order, item, suggestedMatch, suggestedScore, onConfirm, con
           {/* Search results */}
           {searchResults.length > 0 && (
             <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
-              {searchResults.map((invItem) => {
+              {searchResults
+                .filter((invItem) => {
+                  if (searchTab === 'all') return true;
+                  const q = searchQuery.toLowerCase();
+                  if (searchTab === 'name') return invItem.product_name.toLowerCase().includes(q);
+                  if (searchTab === 'description') return (invItem.description ?? '').toLowerCase().includes(q);
+                  return true;
+                })
+                .map((invItem) => {
                 const isSelected = selectedMatch?.id === invItem.id;
                 const itemSufficient = invItem.quantity >= item.quantity;
                 return (
@@ -651,8 +676,6 @@ function MatchingVerificationSection({ onUpdated }: { onUpdated: () => void }) {
 
 export default function StockPrepPage() {
   const { data: orders, isLoading, mutate } = useOrdersByStage('stock_preparation');
-
-  const stageConfig = STAGE_CONFIG['stock_preparation'];
 
   return (
     <div className="space-y-8">

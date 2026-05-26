@@ -11353,3 +11353,99 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add delivery date to Telegram notification for delivery_scheduled stage updates
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 572e5b65f963c8dd604fbe03e737355fe277aa83
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 572e5b65f963c8dd604fbe03e737355fe277aa83
+**Files:** apps/api/src/server.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A missing `deliveryDate` field in Telegram notifications for `delivery_scheduled` stage updates.
+
+**Why it broke:**  
+The notification template for `delivery_scheduled` events did not include the delivery date variable, causing incomplete or confusing messages to users.
+
+**Reusable takeaway:**  
+When adding new event-driven notifications, always verify that all relevant data fields are included in the notification payload. Use a checklist or template validation step to ensure no fields are omitted, especially for stage-specific updates like scheduling or status changes.
+
+---
+*Original commit message: fix: add delivery date to Telegram notification for delivery_scheduled stage updates*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing `deliveryDate` field in Telegram notifications for `delivery_scheduled` stage updates.
+
+**Why it broke:**  
+The notification template for `delivery_scheduled` events did not include the delivery date variable, causing incomplete or confusing messages to users.
+
+**Reusable takeaway:**  
+When adding new event-driven notifications, always verify that all relevant data fields are included in the notification payload. Use a checklist or template validation step to ensure no fields are omitted, especially for stage-specific updates like scheduling or status changes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: bulk finish selected — replace Promise.all with single token endpoint
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 78c208a2fd2dab101a083deecb32ca6ba191b271
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 78c208a2fd2dab101a083deecb32ca6ba191b271
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Replaced `Promise.all` with a single token endpoint for bulk finishing selected items.
+
+**Why it broke:**  
+`Promise.all` attempted to finish multiple items concurrently, each requiring a separate token. This caused race conditions or token exhaustion when tokens were reused or invalidated mid-batch.
+
+**Reusable takeaway:**  
+Avoid concurrent token-dependent operations in bulk actions. Use a single endpoint that accepts a batch of IDs and handles token lifecycle once, ensuring atomicity and preventing race conditions.
+
+---
+*Original commit message: fix: bulk finish selected — replace Promise.all with single token endpoint*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Replaced `Promise.all` with a single token endpoint for bulk finishing selected items.
+
+**Why it broke:**  
+`Promise.all` attempted to finish multiple items concurrently, each requiring a separate token. This caused race conditions or token exhaustion when tokens were reused or invalidated mid-batch.
+
+**Reusable takeaway:**  
+Avoid concurrent token-dependent operations in bulk actions. Use a single endpoint that accepts a batch of IDs and handles token lifecycle once, ensuring atomicity and preventing race conditions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

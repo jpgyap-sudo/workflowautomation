@@ -11,10 +11,11 @@ import {
   inventoryVerifyItem,
   completeInventoryVerification,
   bulkInventoryVerify,
+  bulkInventoryUnverify,
   type OrderDetail,
   type OrderItem,
 } from '@/lib/api';
-import { ArrowLeft, CheckCircle, Loader2, Package, Search } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Loader2, Package, Search, Undo2 } from 'lucide-react';
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '?';
@@ -45,6 +46,9 @@ export default function InventoryVerificationDetailPage() {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bulkVerifyOtpOpen, setBulkVerifyOtpOpen] = useState(false);
   const [bulkVerifying, setBulkVerifying] = useState(false);
+  const [bulkAction, setBulkAction] = useState<'verify_all' | 'partial' | 'not_yet' | 'unverify'>('verify_all');
+  const [bulkPartialQty, setBulkPartialQty] = useState<number>(0);
+  const [showBulkPartialInput, setShowBulkPartialInput] = useState(false);
 
   const canVerify = order?.current_stage === 'inventory_verification';
   const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -139,8 +143,22 @@ export default function InventoryVerificationDetailPage() {
     }
   }
 
-  function handleBulkVerifyClick() {
+  function handleBulkVerifyClick(action: 'verify_all' | 'partial' | 'not_yet' | 'unverify') {
     if (selectedItemIds.size === 0) return;
+
+    if (action === 'partial') {
+      // Prompt for partial quantity before opening OTP
+      const input = window.prompt(`Set verified quantity for ${selectedItemIds.size} selected item(s)?`, '0');
+      if (input == null) return;
+      const qty = Number(input.replace(/[^0-9]/g, ''));
+      if (!Number.isInteger(qty) || qty < 0) {
+        alert('Enter a valid non-negative integer.');
+        return;
+      }
+      setBulkPartialQty(qty);
+    }
+
+    setBulkAction(action);
     setBulkVerifyOtpOpen(true);
   }
 
@@ -148,10 +166,45 @@ export default function InventoryVerificationDetailPage() {
     if (!order || selectedItemIds.size === 0) return;
     setBulkVerifying(true);
     try {
-      await bulkInventoryVerify(order.id, {
-        item_ids: Array.from(selectedItemIds),
-        action_token: actionToken,
-      });
+      if (bulkAction === 'unverify') {
+        const result = await bulkInventoryUnverify(order.id, {
+          item_ids: Array.from(selectedItemIds),
+          action_token: actionToken,
+        });
+        if (result.warning) {
+          alert(result.warning);
+        }
+      } else if (bulkAction === 'not_yet') {
+        // Use the bulk endpoint with action='not_yet' instead of looping single-item calls
+        const result = await bulkInventoryVerify(order.id, {
+          item_ids: Array.from(selectedItemIds),
+          action_token: actionToken,
+          action: 'not_yet',
+        });
+        if (result.warning) {
+          alert(result.warning);
+        }
+      } else if (bulkAction === 'partial') {
+        const result = await bulkInventoryVerify(order.id, {
+          item_ids: Array.from(selectedItemIds),
+          action_token: actionToken,
+          action: 'partial',
+          verified_qty: bulkPartialQty,
+        });
+        if (result.warning) {
+          alert(result.warning);
+        }
+      } else {
+        // verify_all
+        const result = await bulkInventoryVerify(order.id, {
+          item_ids: Array.from(selectedItemIds),
+          action_token: actionToken,
+          action: 'all',
+        });
+        if (result.warning) {
+          alert(result.warning);
+        }
+      }
       setSelectedItemIds(new Set());
       await load();
     } catch (err) {
@@ -159,6 +212,7 @@ export default function InventoryVerificationDetailPage() {
     } finally {
       setBulkVerifying(false);
       setBulkVerifyOtpOpen(false);
+      setShowBulkPartialInput(false);
     }
   }
 
@@ -207,14 +261,40 @@ export default function InventoryVerificationDetailPage() {
       {canVerify && selectableItems.length > 0 && (
         <div className="flex items-center justify-end gap-2">
           {selectedItemIds.size > 0 && (
-            <button
-              onClick={handleBulkVerifyClick}
-              disabled={bulkVerifying}
-              className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700 disabled:opacity-50"
-            >
-              {bulkVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              Verify Selected ({selectedItemIds.size})
-            </button>
+            <>
+              <button
+                onClick={() => handleBulkVerifyClick('unverify')}
+                disabled={bulkVerifying}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-600 disabled:opacity-50"
+              >
+                {bulkVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                Unverify ({selectedItemIds.size})
+              </button>
+              <button
+                onClick={() => handleBulkVerifyClick('not_yet')}
+                disabled={bulkVerifying}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-600 disabled:opacity-50"
+              >
+                {bulkVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Not Yet ({selectedItemIds.size})
+              </button>
+              <button
+                onClick={() => handleBulkVerifyClick('partial')}
+                disabled={bulkVerifying}
+                className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
+              >
+                {bulkVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Partial ({selectedItemIds.size})
+              </button>
+              <button
+                onClick={() => handleBulkVerifyClick('verify_all')}
+                disabled={bulkVerifying}
+                className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700 disabled:opacity-50"
+              >
+                {bulkVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Verify All ({selectedItemIds.size})
+              </button>
+            </>
           )}
         </div>
       )}
@@ -301,8 +381,11 @@ export default function InventoryVerificationDetailPage() {
       />
       <OtpModal
         open={bulkVerifyOtpOpen}
-        title="Bulk Verify Inventory Items"
-        description={`Verify ${selectedItemIds.size} selected item(s) as fully verified for #${order.quotation_number}.`}
+        title={bulkAction === 'not_yet' ? 'Bulk Mark as Not Yet' : 'Bulk Verify Inventory Items'}
+        description={bulkAction === 'not_yet'
+          ? `Mark ${selectedItemIds.size} selected item(s) as "not yet verified" for #${order.quotation_number}. This will reset their verified quantity to 0.`
+          : `Verify ${selectedItemIds.size} selected item(s) as fully verified for #${order.quotation_number}.`
+        }
         onVerified={handleBulkVerifyOtp}
         onClose={() => setBulkVerifyOtpOpen(false)}
       />

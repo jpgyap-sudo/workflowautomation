@@ -88,6 +88,76 @@ const _TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ESCALATION_CHAT_ID = process.env.ESCALATION_GROUP_CHAT_ID ?? null;
 const COLLECTION_CHAT_ID = process.env.COLLECTION_GROUP_CHAT_ID ?? null;
 const DELIVERY_CHAT_ID = process.env.DELIVERY_GROUP_CHAT_ID ?? null;
+
+/**
+ * Detect if an order is progressing earlier than its estimated schedule
+ * and send a Telegram notification to the production group.
+ *
+ * "Early" means:
+ *   - Production finished before estimated_production_days elapsed
+ *   - Items marked en_route before estimated_arrival_days elapsed
+ *   - Delivery scheduled before estimated delivery date
+ */
+async function notifyEarlyProgress(
+  order: any,
+  action: string,
+  details: string,
+  actor?: string | null,
+): Promise<void> {
+  if (!_TELEGRAM_BOT_TOKEN || !PRODUCTION_CHAT_ID) return;
+
+  const earlyReasons: string[] = [];
+  const ref = order.quotation_number ?? `Order #${(order.id ?? '').slice(0, 8)}`;
+  const client = order.client_name ?? 'Unknown';
+
+  // Check production finished early
+  if (action.includes('production') || action.includes('finish')) {
+    if (order.estimated_production_days && order.production_started_at) {
+      const startedAt = new Date(order.production_started_at).getTime();
+      const finishedAt = order.production_finished_at
+        ? new Date(order.production_finished_at).getTime()
+        : Date.now();
+      const elapsedDays = (finishedAt - startedAt) / 86_400_000;
+      if (elapsedDays < order.estimated_production_days) {
+        const earlyDays = Math.round(order.estimated_production_days - elapsedDays);
+        earlyReasons.push(`🏁 Finished ${earlyDays} day(s) early (estimated ${order.estimated_production_days}d, actual ${Math.round(elapsedDays)}d)`);
+      }
+    }
+  }
+
+  // Check en route early
+  if (action.includes('en_route') || action.includes('en-route') || action.includes('En route')) {
+    if (order.estimated_arrival_days) {
+      // Items are going en route — if estimated arrival days are set, note it
+      earlyReasons.push(`🚚 Marked en route — estimated arrival in ${order.estimated_arrival_days} day(s)`);
+    }
+    if (order.delivery_estimated_days) {
+      earlyReasons.push(`📦 Delivery estimated in ${order.delivery_estimated_days} day(s) from production finish`);
+    }
+  }
+
+  // Check delivery scheduled early
+  if (action.includes('delivery') || action.includes('schedule')) {
+    if (order.delivery_date) {
+      earlyReasons.push(`📅 Delivery scheduled for ${order.delivery_date}`);
+    }
+  }
+
+  if (earlyReasons.length === 0) return;
+
+  const byLine = actor ? `\n👤 By: <b>${actor}</b>` : '';
+  const msg =
+    `⚡ <b>Early Progress Notification</b>\n\n` +
+    `Quotation: <b>${ref}</b>\n` +
+    `Client: ${client}\n` +
+    `Action: ${action}\n\n` +
+    `${details}\n\n` +
+    `<b>Schedule Status:</b>\n${earlyReasons.join('\n')}${byLine}`;
+
+  setImmediate(() => {
+    notifyGroupChat(PRODUCTION_CHAT_ID, msg);
+  });
+}
 const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? null;
 const PURCHASING_CHAT_ID = process.env.PURCHASING_GROUP_CHAT_ID ?? null;
 
@@ -2518,6 +2588,17 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
+
+  // Notify early progress if production finished ahead of schedule
+  setImmediate(() => {
+    notifyEarlyProgress(
+      rows[0],
+      'finish-production',
+      `Production finished via dashboard`,
+      userEmail,
+    );
+  });
+
   return reply.send({ ok: true, order: rows[0] });
 });
 
@@ -2577,6 +2658,18 @@ app.post('/orders/:id/finish-all-items', async (request, reply) => {
     `Quotation: *${finalizeResult.order?.quotation_number ?? 'N/A'}*\nClient: *${finalizeResult.order?.client_name ?? 'Unknown'}*\nAll ${updatedItems.length} item(s) marked finished`,
     userEmail,
   );
+
+  // Notify early progress if production finished ahead of schedule
+  if (finalizeResult.order) {
+    setImmediate(() => {
+      notifyEarlyProgress(
+        finalizeResult.order,
+        'finish-all-items',
+        `All ${updatedItems.length} item(s) marked finished via dashboard`,
+        userEmail,
+      );
+    });
+  }
 
   return reply.send({ ok: true, items: updatedItems, order: finalizeResult.order });
 });
@@ -2638,6 +2731,18 @@ app.post('/orders/:id/finish-selected-items', async (request, reply) => {
     `Quotation: *${finalizeResult.order?.quotation_number ?? 'N/A'}*\nClient: *${finalizeResult.order?.client_name ?? 'Unknown'}*\n${body.item_ids.length} selected item(s) marked finished${finalizeResult.finalized ? ' — all items done' : ''}`,
     userEmail,
   );
+
+  // Notify early progress if production finished ahead of schedule
+  if (finalizeResult.order) {
+    setImmediate(() => {
+      notifyEarlyProgress(
+        finalizeResult.order,
+        'finish-selected-items',
+        `${body.item_ids.length} selected item(s) marked finished via dashboard`,
+        userEmail,
+      );
+    });
+  }
 
   return reply.send({ ok: true, items: updatedItems, order: finalizeResult.order });
 });
@@ -2712,6 +2817,18 @@ app.post('/orders/:id/bulk-en-route', async (request, reply) => {
     userEmail,
   );
 
+  // Notify early progress if items are going en route ahead of schedule
+  if (effectiveOrder) {
+    setImmediate(() => {
+      notifyEarlyProgress(
+        effectiveOrder,
+        'bulk-en-route',
+        `All items marked en route via dashboard`,
+        userEmail,
+      );
+    });
+  }
+
   return reply.send({ ok: true, items: updatedItems, order: effectiveOrder });
 });
 
@@ -2771,6 +2888,18 @@ app.post('/orders/:id/bulk-en-route-selected', async (request, reply) => {
     `Quotation: *${effectiveOrder?.quotation_number ?? 'N/A'}*\nClient: *${effectiveOrder?.client_name ?? 'Unknown'}*\nSelected items marked en route${verificationAdvance.advanced ? ' — advanced to En Route Verification' : ''}`,
     userEmail,
   );
+
+  // Notify early progress if items are going en route ahead of schedule
+  if (effectiveOrder) {
+    setImmediate(() => {
+      notifyEarlyProgress(
+        effectiveOrder,
+        'bulk-en-route-selected',
+        `Selected items marked en route via dashboard`,
+        userEmail,
+      );
+    });
+  }
 
   return reply.send({ ok: true, items: updatedItems, order: effectiveOrder });
 });
@@ -2856,6 +2985,17 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
+
+  // Notify early progress if en route confirmed ahead of schedule
+  setImmediate(() => {
+    notifyEarlyProgress(
+      rows[0],
+      'confirm-en-route',
+      `En route confirmed with estimated arrival in ${body.estimated_arrival_days} day(s)`,
+      userEmail,
+    );
+  });
+
   return reply.send({ ok: true, order: rows[0] });
 });
 
@@ -3035,7 +3175,7 @@ async function adjustInventoryForOrderItem(
   orderItemId: string,
   itemName: string,
   quantityDelta: number,
-  movementType: 'inventory_verified' | 'inventory_unverified' | 'delivery_deduct',
+  movementType: 'inventory_verified' | 'inventory_unverified' | 'delivery_deduct' | 'stock_prep_deduct',
   note: string,
   createdBy: string,
 ) {
@@ -3070,12 +3210,17 @@ async function adjustInventoryForOrderItem(
     quantityAfter = Number(inserted[0]?.quantity ?? quantityDelta);
   }
 
-  await query(
-    `INSERT INTO inventory_movements
-       (inventory_item_id, order_id, order_item_id, item_name, movement_type, quantity_change, quantity_after, note, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [inventoryItemId, orderId, orderItemId, itemName, movementType, quantityDelta, quantityAfter, note, createdBy],
-  );
+  // Only insert movement record if we have a valid inventory item to reference.
+  // If inventoryItemId is null (no existing item and delta <= 0), skip the movement
+  // since there's nothing to trace back to.
+  if (inventoryItemId) {
+    await query(
+      `INSERT INTO inventory_movements
+         (inventory_item_id, order_id, order_item_id, item_name, movement_type, quantity_change, quantity_after, note, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [inventoryItemId, orderId, orderItemId, itemName, movementType, quantityDelta, quantityAfter, note, createdBy],
+    );
+  }
 }
 
 async function deductInventoryForDeliveredOrder(orderId: string, createdBy: string) {
@@ -3241,10 +3386,13 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   });
 });
 
-// POST /orders/:id/bulk-inventory-verify — Bulk verify selected items as "all verified"
+// POST /orders/:id/bulk-inventory-verify — Bulk verify selected items
+// Supports actions: 'all' (default, full qty), 'partial' (set specific qty), 'not_yet' (set to 0)
 const bulkInventoryVerifySchema = z.object({
-  item_ids: z.array(z.string()),
+  item_ids: z.array(z.string()).min(1, 'At least one item must be selected'),
   action_token: z.string(),
+  action: z.enum(['all', 'partial', 'not_yet']).optional().default('all'),
+  verified_qty: z.number().int().min(0).optional(),
 });
 
 app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
@@ -3256,13 +3404,26 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
     return reply.status(503).send({ error: 'Action verification unavailable' });
   }
   const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[bulk-inventory-verify] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
   if (!tokenData) {
     return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
   }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+  await cacheClient.del(tokenKey).catch(() => {});
+
+  // Parse token payload safely
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
   // Verify the order is in inventory_verification stage
   const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null }>(
@@ -3279,14 +3440,44 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
     [id, body.item_ids]
   );
 
+  if (selectedItems.length === 0) {
+    return reply.code(400).send({ error: 'None of the selected items were found for this order.' });
+  }
+
+  const action = body.action ?? 'all';
   const verifiedNames: string[] = [];
+  const alreadyVerifiedNames: string[] = [];
+  const skippedNames: string[] = [];
 
   for (const item of selectedItems) {
     const previousVerifiedQty = Number(item.verified_qty ?? 0);
-    const newVerifiedQty = item.quantity;
+
+    // Determine target verified_qty based on action
+    let newVerifiedQty: number;
+    switch (action) {
+      case 'all':
+        newVerifiedQty = item.quantity;
+        break;
+      case 'partial':
+        newVerifiedQty = body.verified_qty ?? previousVerifiedQty;
+        if (newVerifiedQty > item.quantity) newVerifiedQty = item.quantity;
+        if (newVerifiedQty < 0) newVerifiedQty = 0;
+        break;
+      case 'not_yet':
+        newVerifiedQty = 0;
+        break;
+      default:
+        newVerifiedQty = item.quantity;
+    }
+
     const inventoryDelta = newVerifiedQty - previousVerifiedQty;
 
-    if (inventoryDelta > 0) {
+    if (inventoryDelta === 0) {
+      alreadyVerifiedNames.push(item.name);
+      continue;
+    }
+
+    try {
       await query(
         `UPDATE order_items
          SET verified_qty = $1,
@@ -3301,18 +3492,22 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
         item.id,
         item.name,
         inventoryDelta,
-        'inventory_verified',
-        `Bulk inventory verification: ${item.name} — ${previousVerifiedQty} -> ${newVerifiedQty}.`,
+        inventoryDelta > 0 ? 'inventory_verified' : 'inventory_unverified',
+        `Bulk inventory verification: ${item.name} — ${previousVerifiedQty} -> ${newVerifiedQty} (${action}).`,
         'inventory-agent',
       );
 
+      const actionLabel = action === 'all' ? 'all verified' : action === 'partial' ? `partial (${newVerifiedQty}/${item.quantity})` : 'not yet';
       await query(
         `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
          VALUES ($1, $2, $3, 'agent', 'inventory-agent')`,
-        [id, item.id, `Bulk inventory verification: ${item.name} — all verified (${newVerifiedQty}/${item.quantity})`]
+        [id, item.id, `Bulk inventory verification: ${item.name} — ${actionLabel} (${newVerifiedQty}/${item.quantity})`]
       );
 
       verifiedNames.push(`${item.name} (${newVerifiedQty}/${item.quantity})`);
+    } catch (err) {
+      console.error(`[bulk-inventory-verify] Failed to verify item ${item.id} (${item.name}):`, err);
+      skippedNames.push(item.name);
     }
   }
 
@@ -3349,15 +3544,178 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
   }
 
   await notifyManualChange(
-    'Inventory verified (bulk)',
-    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\n${verifiedNames.length} item(s) marked as fully verified`,
+    `Inventory verified (bulk ${action})`,
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\n${verifiedNames.length} item(s) updated (${action})`,
     userEmail,
   );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
 
-  return reply.send({ ok: true, verification_pct: verificationPct });
+  // Build response with feedback
+  const response: Record<string, unknown> = { ok: true, verification_pct: verificationPct };
+  if (verifiedNames.length > 0) {
+    response.verified_count = verifiedNames.length;
+  }
+  if (alreadyVerifiedNames.length > 0) {
+    response.already_verified = alreadyVerifiedNames;
+    response.warning = `${alreadyVerifiedNames.length} item(s) were already at the target state and were skipped.`;
+  }
+  if (verifiedNames.length === 0 && alreadyVerifiedNames.length > 0) {
+    response.warning = 'All selected items were already at the target state. No changes were made.';
+  }
+  if (skippedNames.length > 0) {
+    response.skipped = skippedNames;
+  }
+
+  return reply.send(response);
+});
+
+// POST /orders/:id/bulk-inventory-unverify — Bulk unverify (undo) selected items, resetting verified_qty to 0
+const bulkInventoryUnverifySchema = z.object({
+  item_ids: z.array(z.string()).min(1, 'At least one item must be selected'),
+  action_token: z.string(),
+});
+
+app.post('/orders/:id/bulk-inventory-unverify', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkInventoryUnverifySchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[bulk-inventory-unverify] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey).catch(() => {});
+
+  // Parse token payload safely
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
+
+  // Verify the order is in inventory_verification stage
+  const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null }>(
+    `SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (orderRows[0].current_stage !== 'inventory_verification') {
+    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  }
+
+  // Fetch selected items that have verified_qty > 0
+  const selectedItems = await query<{ id: string; name: string; quantity: number; verified_qty: number | null }>(
+    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::text[]) AND COALESCE(verified_qty, 0) > 0 ORDER BY created_at ASC`,
+    [id, body.item_ids]
+  );
+
+  if (selectedItems.length === 0) {
+    return reply.code(400).send({ error: 'None of the selected items have any verified quantity to undo.' });
+  }
+
+  const unverifiedNames: string[] = [];
+  const skippedNames: string[] = [];
+
+  for (const item of selectedItems) {
+    const previousVerifiedQty = Number(item.verified_qty ?? 0);
+    const inventoryDelta = -previousVerifiedQty; // negative delta to deduct from inventory
+
+    try {
+      await query(
+        `UPDATE order_items
+         SET verified_qty = 0,
+             inventory_verified_at = NULL,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [item.id]
+      );
+
+      await adjustInventoryForOrderItem(
+        id,
+        item.id,
+        item.name,
+        inventoryDelta,
+        'inventory_unverified',
+        `Bulk inventory unverify: ${item.name} — ${previousVerifiedQty} -> 0.`,
+        'inventory-agent',
+      );
+
+      await query(
+        `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
+         VALUES ($1, $2, $3, 'agent', 'inventory-agent')`,
+        [id, item.id, `Bulk inventory unverify: ${item.name} — reset from ${previousVerifiedQty} to 0`]
+      );
+
+      unverifiedNames.push(`${item.name} (was ${previousVerifiedQty}/${item.quantity})`);
+    } catch (err) {
+      console.error(`[bulk-inventory-unverify] Failed to unverify item ${item.id} (${item.name}):`, err);
+      skippedNames.push(item.name);
+    }
+  }
+
+  // Recalculate overall verification %
+  const allItems = await query(
+    `SELECT SUM(quantity) as total_qty, SUM(verified_qty) as verified_qty FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+  const totalQty = Number(allItems[0]?.total_qty ?? 0);
+  const totalVerified = Number(allItems[0]?.verified_qty ?? 0);
+  const verificationPct = totalQty > 0 ? Math.round((totalVerified / totalQty) * 100) : 0;
+
+  await query(
+    `UPDATE orders SET inventory_verification_pct = $1, updated_at = NOW() WHERE id = $2`,
+    [verificationPct, id]
+  );
+
+  // Notify inventory group chat about bulk unverify
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID && unverifiedNames.length > 0) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `<b>Inventory Verification Undone (Bulk)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `<b>Unverified Items</b>\n${unverifiedNames.join('\n')}\n\n` +
+        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>`
+      );
+    });
+  }
+
+  await notifyManualChange(
+    'Inventory unverified (bulk)',
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\n${unverifiedNames.length} item(s) unverified`,
+    userEmail,
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  const response: Record<string, unknown> = { ok: true, verification_pct: verificationPct };
+  if (unverifiedNames.length > 0) {
+    response.unverified_count = unverifiedNames.length;
+  }
+  if (skippedNames.length > 0) {
+    response.skipped = skippedNames;
+  }
+
+  return reply.send(response);
 });
 
 /**
@@ -3378,13 +3736,25 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
     return reply.status(503).send({ error: 'Action verification unavailable' });
   }
   const tokenKey = `action_token:${body.action_token}`;
-  const tokenData = await cacheClient.get(tokenKey);
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[complete-inventory-verification] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
   if (!tokenData) {
     return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
   }
-  await cacheClient.del(tokenKey);
-  const tokenPayload = JSON.parse(tokenData);
-  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+  await cacheClient.del(tokenKey).catch(() => {});
+
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -3570,6 +3940,18 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
         isReplenishment
           ? `✅ <b>Stock Replenishment Complete</b>\n\nRef: <b>${ref}</b>\n\nAll inventory has arrived and been confirmed. Order is now Completed.`
           : `✅ <b>Inventory Arrival Confirmed (Dashboard)</b>\n\nQuotation: <b>${ref}</b>\nClient: ${client}\n\nAll inventory has been confirmed as arrived via dashboard. Order is now in ${isBalanceAlreadyVerified ? 'Delivery Pending stage because full payment is verified' : 'Balance Due stage'}.`
+      );
+    });
+  }
+
+  // Notify collection group when entering balance_due
+  if (nextStage === 'balance_due' && COLLECTION_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `💰 <b>Balance Collection Needed</b>\n\nQuotation: <b>${ref}</b>\nClient: ${client}\n\nInventory arrival confirmed. Please collect the balance payment from the client.`
       );
     });
   }
@@ -5109,16 +5491,17 @@ app.post('/stage-updates', async (request, reply) => {
 
   // When advancing to inventory_verification, create a persistent reminder
   // asking the team to verify inventory items.
-  if (body.stage === 'inventory_verification' && DELIVERY_CHAT_ID) {
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (body.stage === 'inventory_verification' && INVENTORY_GROUP_CHAT_ID) {
     const ref = body.quotation_number;
     const client = order?.client_name ?? 'Unknown';
     const reminderMessage = `Items have arrived for #${ref} (${client}). Please verify inventory.`;
 
-    await upsertStageReminder(orderId, 'inventory_verification', DELIVERY_CHAT_ID, reminderMessage);
+    await upsertStageReminder(orderId, 'inventory_verification', INVENTORY_GROUP_CHAT_ID, reminderMessage);
 
     setImmediate(() => {
       notifyGroupChat(
-        DELIVERY_CHAT_ID,
+        INVENTORY_GROUP_CHAT_ID,
         `📦 <b>Inventory Verification (Dashboard)</b>\n\n` +
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n\n` +
@@ -5129,16 +5512,16 @@ app.post('/stage-updates', async (request, reply) => {
 
   // When advancing to inventory_arrived, create a persistent reminder
   // asking the team to confirm inventory arrival.
-  if (body.stage === 'inventory_arrived' && DELIVERY_CHAT_ID) {
+  if (body.stage === 'inventory_arrived' && INVENTORY_GROUP_CHAT_ID) {
     const ref = body.quotation_number;
     const client = order?.client_name ?? 'Unknown';
     const reminderMessage = `Inventory has arrived for #${ref} (${client}). Please confirm.`;
 
-    await upsertStageReminder(orderId, 'inventory_arrived', DELIVERY_CHAT_ID, reminderMessage);
+    await upsertStageReminder(orderId, 'inventory_arrived', INVENTORY_GROUP_CHAT_ID, reminderMessage);
 
     setImmediate(() => {
       notifyGroupChat(
-        DELIVERY_CHAT_ID,
+        INVENTORY_GROUP_CHAT_ID,
         `📦 <b>Inventory Arrived (Dashboard)</b>\n\n` +
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n\n` +
@@ -6778,26 +7161,34 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
     [id],
   );
 
-  // Deduct inventory quantities — prefer matched_inventory_item_id, fall back to name match
+  // Enforce all items are matched before deducting
+  const unmatchedItems = await query(
+    `SELECT id, name FROM order_items WHERE order_id = $1 AND (matched_inventory_item_id IS NULL OR inventory_match_verified = FALSE)`,
+    [id],
+  );
+  if (unmatchedItems.length > 0) {
+    return reply.code(400).send({
+      error: `Cannot mark stock ready: ${unmatchedItems.length} item(s) are not matched to inventory.`,
+      unmatched_items: unmatchedItems.map((i) => i.name),
+    });
+  }
+
+  // Deduct inventory quantities — use adjustInventoryForOrderItem for audit trail
   if (body.deduct_inventory) {
     const items = await query<{ id: string; name: string; quantity: number; matched_inventory_item_id: string | null }>(
       `SELECT id, name, quantity, matched_inventory_item_id FROM order_items WHERE order_id = $1`,
       [id],
     );
     for (const item of items) {
-      // Use matched_inventory_item_id if available (set via Matching Verification), otherwise fall back to name match
-      let invId: string | null = item.matched_inventory_item_id;
-      if (!invId) {
-        const invRows = await query<{ id: string; quantity: number }>(
-          `SELECT id, quantity FROM inventory_items WHERE lower(product_name) = lower($1) ORDER BY created_at ASC LIMIT 1`,
-          [item.name],
-        );
-        invId = invRows[0]?.id ?? null;
-      }
-      if (invId) {
-        await query(
-          `UPDATE inventory_items SET quantity = GREATEST(0, quantity - $1), updated_at = NOW() WHERE id = $2`,
-          [item.quantity, invId],
+      if (item.matched_inventory_item_id) {
+        await adjustInventoryForOrderItem(
+          id,
+          item.id,
+          item.name,
+          -item.quantity,
+          'stock_prep_deduct',
+          `Stock prep deduction for order item: ${item.name} (${item.quantity} units).`,
+          body.updated_by ?? 'system',
         );
       }
     }
@@ -6805,6 +7196,7 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
 
   triggerAgentsForStage('balance_due', order.quotation_number, order.client_name, body.updated_by ?? undefined);
 
+  // Notify collection and inventory groups
   setImmediate(() => {
     notifyGroupChat(
       COLLECTION_CHAT_ID,
@@ -6815,6 +7207,19 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
       `Stock is prepared. Please collect the balance payment from the client.`
     );
   });
+
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `📦 <b>Stock Deducted — From-Stock Order Ready</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n\n` +
+        `Stock has been deducted from inventory and order is ready for delivery.`
+      );
+    });
+  }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
   return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: 'balance_due' });
@@ -6839,6 +7244,19 @@ app.post('/orders/:id/set-stock-prep', async (request, reply) => {
     `UPDATE orders SET stock_prep_days = $1, stock_prep_ready_at = $2, updated_at = NOW() WHERE id = $3`,
     [body.stock_prep_days, readyAt.toISOString(), id],
   );
+
+  // Reschedule the stock_preparation reminder to reflect the new ready date
+  const orderRows = await query<{ quotation_number: string | null; client_name: string | null }>(
+    `SELECT quotation_number, client_name FROM orders WHERE id = $1`,
+    [id],
+  );
+  if (orderRows[0] && COLLECTION_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    const reminderMessage = `Stock preparation for #${ref} (${client}). Ready in ${body.stock_prep_days} day(s).`;
+    await upsertStageReminder(id, 'stock_preparation', COLLECTION_CHAT_ID, reminderMessage);
+  }
+
   await invalidateCache(['dashboard:*', 'orders:*', 'calendar:*']);
   return reply.send({ ok: true, stock_prep_days: body.stock_prep_days, stock_prep_ready_at: readyAt.toISOString() });
 });

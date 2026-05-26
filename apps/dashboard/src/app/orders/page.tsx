@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useOrders } from '@/lib/useApi';
-import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, recordFullPaymentWithFile, uploadOrderFile, visionExtract } from '@/lib/api';
+import type { Order, Client } from '@/lib/api';
+import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, recordFullPaymentWithFile, uploadOrderFile, visionExtract, searchClients } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { X, Check, Plus, Loader2, Trash2, Upload, Sparkles as SparklesIcon } from 'lucide-react';
+import { X, Check, Plus, Loader2, Trash2, Upload, Sparkles as SparklesIcon, ChevronDown } from 'lucide-react';
 
 function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [qn, setQn] = useState('');
@@ -17,6 +17,51 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOtp, setShowOtp] = useState(false);
+
+  // Client autocomplete
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientInputRef = useRef<HTMLInputElement>(null);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close client dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node) &&
+          clientInputRef.current && !clientInputRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  async function handleClientSearch(q: string) {
+    setClientName(q);
+    const trimmed = q.trim();
+    if (!trimmed) {
+      setClientSuggestions([]);
+      setShowClientDropdown(false);
+      return;
+    }
+    setSearchingClient(true);
+    try {
+      const results = await searchClients(trimmed);
+      setClientSuggestions(results);
+      setShowClientDropdown(results.length > 0);
+    } catch {
+      setClientSuggestions([]);
+    } finally {
+      setSearchingClient(false);
+    }
+  }
+
+  function handleClientSelect(client: Client) {
+    setClientName(client.client_name);
+    setShowClientDropdown(false);
+    setClientSuggestions([]);
+  }
 
   // File upload states
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
@@ -248,9 +293,44 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             <label className="text-xs font-medium text-gray-600">Quotation Number <span className="text-red-500">*</span></label>
             <input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <label className="text-xs font-medium text-gray-600">Client Name</label>
-            <input className={inputCls} placeholder="Juan dela Cruz" value={clientName} onChange={e => setClientName(e.target.value)} />
+            <div className="relative">
+              <input
+                ref={clientInputRef}
+                className={inputCls}
+                placeholder="Search existing client..."
+                value={clientName}
+                onChange={e => handleClientSearch(e.target.value)}
+                onFocus={() => { if (clientSuggestions.length > 0) setShowClientDropdown(true); }}
+              />
+              {searchingClient && (
+                <Loader2 className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
+              )}
+            </div>
+            {showClientDropdown && clientSuggestions.length > 0 && (
+              <div
+                ref={clientDropdownRef}
+                className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg"
+              >
+                {clientSuggestions.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleClientSelect(c)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-blue-50/50 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    <span className="font-medium text-gray-800">{c.client_name}</span>
+                    <span className="text-gray-400">
+                      {c.order_count ?? 0} order{(c.order_count ?? 0) !== 1 ? 's' : ''}
+                      {(c.active_order_count ?? 0) > 0 && (
+                        <span className="ml-1 text-green-600">({c.active_order_count} active)</span>
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600">Sales Agent</label>
