@@ -10707,3 +10707,118 @@ For dashboard tab access, the backend PATCH /dashboard-accounts/:email should RE
 cross-project, local-fallback
 
 ---
+
+### Lesson: OTP callback wiring pattern for nested React components in Next.js dashboard
+
+Date: 2026-05-26
+Source: roo-code (Code mode)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: apps/dashboard/src/app/production/page.tsx
+Tags: react, nextjs, otp, security, callback-pattern, component-hierarchy, prop-drilling
+
+#### Task Summary
+
+Added OTP-verified actions to deeply nested React components (Page â†’ OrderSection â†’ OrderRow â†’ ProductionInfoCards) in the Production tab. Each sensitive action (item finish, item delayed, item production status, item en-route status, item start confirm) needed an OTP modal before execution.
+
+#### Lesson Learned
+
+When adding OTP-verified actions to deeply nested React components, use window variables for pending data + a centralized handleOtpVerified dispatcher rather than creating separate OTP modal instances per action. This keeps the OTP modal count at 1 while supporting unlimited action types. Pattern: (1) Extend pendingAction type union, (2) Store pending data in window variables, (3) Add else-if branches in handleOtpVerified, (4) Create wrapper functions to capture closure variables, (5) Thread callbacks through component hierarchy.
+
+#### Tags
+
+react, nextjs, otp, security, callback-pattern, component-hierarchy, prop-drilling
+
+---
+
+### Lesson: Tailscale SSH recovery â€” tailscale up --reset when coordination server is offline
+
+Date: 2026-05-26
+Source: roo-code (Code mode)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: deploy-agent.mjs
+Tags: tailscale, ssh, vps, networking, troubleshooting, vpn
+
+#### Task Summary
+
+When Tailscale shows 'offline' status (not connected to the coordination server), SSH connections to Tailscale IPs fail with 'Permission denied (publickey)' even though the SSH key is correct. This happens when the local Tailscale client loses connection to the DERP/coordination server.
+
+#### Lesson Learned
+
+When SSH to a Tailscale IP fails with 'Permission denied' despite correct credentials, always check `tailscale status` first. If the local node shows 'offline', run `tailscale up --reset` to reconnect to the coordination server. Do NOT assume the SSH key is wrong â€” Tailscale connectivity is the more likely cause.
+
+#### Tags
+
+tailscale, ssh, vps, networking, troubleshooting, vpn
+
+---
+
+### Lesson: MCP stdio server communication â€” JSON-RPC over stdin/stdout pipes
+
+Date: 2026-05-26
+Source: roo-code (Code mode)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: C:\Users\User\mcp-servers\qas-vps\dist\index.js
+Tags: mcp, json-rpc, stdio, protocol, debugging, child-process
+
+#### Task Summary
+
+When communicating with stdio-based MCP (Model Context Protocol) servers, the initial message from the server is a plain text banner (e.g., 'server running on stdio'), not JSON-RPC. Sending JSON-RPC requests immediately fails because the server is waiting for the client to initiate the protocol handshake.
+
+#### Lesson Learned
+
+When building or debugging stdio-based MCP servers, always account for the startup banner and the initialize/initialized handshake before sending tool calls. Use line-delimited JSON (each JSON-RPC message followed by a newline) for communication. For debugging, pipe stderr to a log file since the server may output diagnostic info there.
+
+#### Tags
+
+mcp, json-rpc, stdio, protocol, debugging, child-process
+
+---
+
+### Lesson: SSH command construction bug â€” space before @ causes 'Could not resolve hostname'
+
+Date: 2026-05-26
+Source: roo-code (Code mode)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: deploy-agent.mjs
+Tags: ssh, deploy, bug, command-construction, shell
+
+#### Task Summary
+
+A deploy script (deploy-agent.mjs) failed with 'Could not resolve hostname root: Name or service not known' when running SSH commands. The SSH command was constructed as `ssh -i key root @host` with a space between the username and the @ symbol.
+
+#### Lesson Learned
+
+When constructing SSH commands programmatically, always use the format `user@host` without spaces. This is a subtle typo that's easy to miss during code review because the space blends in visually. Add a unit test or console.log the constructed command before execution to catch this class of bugs. The same applies to SCP, rsync, and any other SSH-based tools.
+
+#### Tags
+
+ssh, deploy, bug, command-construction, shell
+
+---
+
+### Lesson: Production tab gap analysis â€” 7 security and UX gaps found and fixed in Next.js dashboard
+
+Date: 2026-05-26
+Source: roo-code (Code mode)
+Model/API used: deepseek-chat
+Confidence: high
+Related files: apps/dashboard/src/app/production/page.tsx, apps/dashboard/src/components/OtpModal.tsx
+Tags: security, otp, production, dashboard, gap-analysis, react, nextjs, ux
+
+#### Task Summary
+
+The Production tab had 7 gaps compared to other tabs: (1) No OTP on item finish, (2) No OTP on item delayed, (3) No OTP on item production status change, (4) No OTP on item en-route status change, (5) No OTP on item start, (6) No days prompt on item start, (7) Finish button visible when it shouldn't be.
+
+#### Lesson Learned
+
+When building a multi-tab dashboard with security-sensitive actions, establish the OTP/action_token pattern EARLY and apply it uniformly across ALL tabs. Retrofitting OTP to an existing tab requires touching every action handler and propagating callbacks through the component hierarchy. Use a checklist: for every button that mutates data, ask 'does this need OTP?' before writing the handler.
+
+#### Tags
+
+security, otp, production, dashboard, gap-analysis, react, nextjs, ux
+
+---
