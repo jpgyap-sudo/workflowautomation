@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `3bf26c4` | Roo (Code) | fix: change production_confirmed stage to production_in_progress to fix Bulk Start Production bug — setProduction, report-production-status, production board, item update auto-advance, stage transition map, AGENT_TRIGGER_MAP, productionAgent.ts (6 locations) | ✅ VPS `3bf26c4` |
 | `0fc0c87` | Roo (Code) | feat: contribute 5 lessons to SuperRoo Central Brain learning layer + local memory/lessons-learned.md | ❌ |
 | `8c9a531` | Roo (Code) | fix: remove Finish button from Production Pending section — add production_pending stage guard to ProductionInfoCards and OrderRow | ✅ VPS `8b041c9` |
 | `7576af0` | Roo (Code) | fix: remove Production Confirmed section from production page — redundant with Production In Progress section | ✅ VPS `8b041c9` |
