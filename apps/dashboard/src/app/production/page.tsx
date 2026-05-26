@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
-  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, confirmEnRoute, setProduction,
+  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, bulkFinishSelected, confirmEnRoute, setProduction,
   recordStageUpdate,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
@@ -1548,7 +1548,7 @@ function ProductionFinishedTrackingSection({
                       </td>
                       <td className="px-4 py-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enRouteVerified ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {getEnRouteVerificationText(order)}
+                          {getEnRouteVerificationText(order, orderItems)}
                         </span>
                       </td>
                       <td className="px-4 py-4 text-gray-700">
@@ -2345,11 +2345,10 @@ export default function ProductionPage() {
     const pending = (window as any).__pendingBulkFinishSelectedData as { orderId: string; itemIds: string[] } | null;
     if (!pending) return;
     try {
-      await Promise.all(
-        pending.itemIds.map((itemId) =>
-          updateOrderItem(pending.orderId, itemId, { production_status: 'finished', action_token: actionToken })
-        )
-      );
+      await bulkFinishSelected(pending.orderId, {
+        action_token: actionToken,
+        item_ids: pending.itemIds,
+      });
       refresh();
     } catch (err: any) {
       alert('Failed to finish selected items: ' + (err.message ?? 'Unknown error'));

@@ -572,6 +572,16 @@ export async function bulkEnRouteSelected(
   });
 }
 
+export async function bulkFinishSelected(
+  id: string,
+  data: { action_token: string; item_ids: string[] }
+): Promise<{ ok: boolean; items: OrderItem[]; order: Order | null }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[]; order: Order | null }>(`/orders/${encodeURIComponent(id)}/finish-selected-items`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function recalcProductionReminders(
   id: string,
   data: { estimated_production_days: number; action_token?: string }
