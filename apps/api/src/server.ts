@@ -6,6 +6,9 @@ import { cacheClient, cacheGet, cacheSet, cacheDeletePattern } from './cache.js'
 import { randomUUID, randomInt } from 'crypto';
 import * as http from 'http';
 import nodemailer from 'nodemailer';
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import {
   autoExtract,
   extractQuotation,
@@ -3240,6 +3243,50 @@ function paymentKindLabel(payment: { type: string; source?: string | null }): st
   return payment.type === 'deposit' ? 'Downpayment' : 'Balance Payment';
 }
 
+// ── Logo for PDF receipts ────────────────────────────────────────────
+const __filename_pdf = fileURLToPath(import.meta.url);
+const __dirname_pdf = dirname(__filename_pdf);
+
+function parseJpegDimensions(buf: Buffer): { width: number; height: number; components: number } {
+  let i = 2; // skip SOI marker FF D8
+  while (i < buf.length - 9) {
+    if (buf[i] !== 0xFF) break;
+    const marker = buf[i + 1];
+    if (
+      (marker >= 0xC0 && marker <= 0xC3) ||
+      (marker >= 0xC5 && marker <= 0xC7) ||
+      (marker >= 0xC9 && marker <= 0xCB) ||
+      (marker >= 0xCD && marker <= 0xCF)
+    ) {
+      return {
+        height: buf.readUInt16BE(i + 5),
+        width: buf.readUInt16BE(i + 7),
+        components: buf[i + 9],
+      };
+    }
+    if (marker === 0xD9 || marker === 0xDA) break;
+    const segLen = buf.readUInt16BE(i + 2);
+    i += 2 + segLen;
+  }
+  throw new Error('Could not parse JPEG dimensions');
+}
+
+let LOGO_JPEG: Buffer | null = null;
+let LOGO_DIMS: { width: number; height: number; components: number } | null = null;
+
+try {
+  const logoPath = join(__dirname_pdf, 'assets', 'logo.jpg');
+  if (existsSync(logoPath)) {
+    LOGO_JPEG = readFileSync(logoPath);
+    LOGO_DIMS = parseJpegDimensions(LOGO_JPEG);
+    console.log(`[logo] Loaded receipt logo: ${LOGO_DIMS.width}x${LOGO_DIMS.height} (${LOGO_JPEG.length} bytes)`);
+  } else {
+    console.log('[logo] No logo found at src/assets/logo.jpg — receipts will render without logo');
+  }
+} catch (err) {
+  console.warn('[logo] Failed to load receipt logo:', err);
+}
+
 function escapePdfText(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').replace(/[\r\n]+/g, ' ');
 }
@@ -3275,6 +3322,10 @@ function buildAcknowledgementReceiptPdf(data: {
 }): Buffer {
   const width = 595;
   const height = 842;
+  const hasLogo = LOGO_JPEG !== null && LOGO_DIMS !== null;
+  // Shift all content down when logo occupies the top area
+  const S = hasLogo ? 80 : 0;
+
   const lines: string[] = [];
   const text = (x: number, y: number, size: number, value: string, font = 'F1') => {
     lines.push(`BT /${font} ${size} Tf ${x} ${y} Td (${escapePdfText(value)}) Tj ET`);
@@ -3288,48 +3339,57 @@ function buildAcknowledgementReceiptPdf(data: {
 
   lines.push('0.8 w');
   rect(42, 48, width - 84, height - 96);
-  text(60, 775, 18, 'ACKNOWLEDGEMENT RECEIPT', 'F2');
-  text(60, 752, 10, 'This document acknowledges receipt of payment for the order stated below.');
-  line(60, 735, 535, 735);
+
+  // Logo — centered at top inside border
+  if (hasLogo) {
+    const logoW = 75;
+    const logoH = 75;
+    const logoX = Math.round((width - logoW) / 2);
+    const logoY = 712; // bottom edge of logo image
+    lines.push(`q ${logoW} 0 0 ${logoH} ${logoX} ${logoY} cm /Logo Do Q`);
+  }
+
+  text(60, 775 - S, 18, 'ACKNOWLEDGEMENT RECEIPT', 'F2');
+  text(60, 752 - S, 10, 'This document acknowledges receipt of payment for the order stated below.');
+  line(60, 735 - S, 535, 735 - S);
 
   // Header: receipt number + date
-  text(60, 706, 10, 'Receipt No.', 'F2');
-  text(160, 706, 10, data.receiptNumber);
-  text(340, 706, 10, 'Date', 'F2');
-  text(405, 706, 10, data.receiptDate);
+  text(60, 706 - S, 10, 'Receipt No.', 'F2');
+  text(160, 706 - S, 10, data.receiptNumber);
+  text(340, 706 - S, 10, 'Date', 'F2');
+  text(405, 706 - S, 10, data.receiptDate);
 
   // Order info
-  text(60, 682, 10, 'Order / Quotation No.', 'F2');
-  text(200, 682, 10, data.orderNumber);
-  text(60, 658, 10, 'Client', 'F2');
-  text(200, 658, 10, data.clientName);
-  text(60, 634, 10, 'Payment Type', 'F2');
-  text(200, 634, 10, data.paymentType);
+  text(60, 682 - S, 10, 'Order / Quotation No.', 'F2');
+  text(200, 682 - S, 10, data.orderNumber);
+  text(60, 658 - S, 10, 'Client', 'F2');
+  text(200, 658 - S, 10, data.clientName);
+  text(60, 634 - S, 10, 'Payment Type', 'F2');
+  text(200, 634 - S, 10, data.paymentType);
 
   // Amount box
-  rect(60, 555, 475, 55);
-  text(80, 588, 11, 'Amount Received', 'F2');
-  text(80, 566, 22, `PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'F2');
+  rect(60, 555 - S, 475, 55);
+  text(80, 588 - S, 11, 'Amount Received', 'F2');
+  text(80, 566 - S, 22, `PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'F2');
 
-  // Details (no Reference No. or Paid By)
-  text(60, 520, 10, 'Sales Agent', 'F2');
-  text(200, 520, 10, data.salesAgent || 'N/A');
-  text(60, 496, 10, 'Order Total', 'F2');
-  text(200, 496, 10, data.totalAmount != null ? `PHP ${data.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A');
-  text(60, 472, 10, 'Verification Status', 'F2');
-  text(200, 472, 10, data.verified ? 'Verified' : 'Pending Verification');
+  // Details
+  text(60, 520 - S, 10, 'Sales Agent', 'F2');
+  text(200, 520 - S, 10, data.salesAgent || 'N/A');
+  text(60, 496 - S, 10, 'Order Total', 'F2');
+  text(200, 496 - S, 10, data.totalAmount != null ? `PHP ${data.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A');
+  text(60, 472 - S, 10, 'Verification Status', 'F2');
+  text(200, 472 - S, 10, data.verified ? 'Verified' : 'Pending Verification');
 
   // Order items summary
-  let itemsBottomY = 430;
+  let itemsBottomY = 430 - S;
   const orderItems = data.items ?? [];
   if (orderItems.length > 0) {
-    text(60, 448, 10, 'Order Summary', 'F2');
-    line(60, 444, 535, 444);
-    // Column headers
-    text(60, 430, 9, 'Product / Item', 'F2');
-    text(460, 430, 9, 'Qty', 'F2');
-    line(60, 426, 535, 426);
-    let rowY = 412;
+    text(60, 448 - S, 10, 'Order Summary', 'F2');
+    line(60, 444 - S, 535, 444 - S);
+    text(60, 430 - S, 9, 'Product / Item', 'F2');
+    text(460, 430 - S, 9, 'Qty', 'F2');
+    line(60, 426 - S, 535, 426 - S);
+    let rowY = 412 - S;
     for (const item of orderItems.slice(0, 8)) {
       const itemName = item.name.length > 55 ? item.name.slice(0, 52) + '...' : item.name;
       text(60, rowY, 9, itemName);
@@ -3349,39 +3409,53 @@ function buildAcknowledgementReceiptPdf(data: {
   text(60, itemsBottomY - 8, 10, 'Acknowledgement', 'F2');
   wrapText(acknowledgement, 80).forEach((wrapped, index) => text(60, itemsBottomY - 28 - index * 16, 10, wrapped));
 
-  // Balance payment notice (only shown for downpayment receipts)
+  // Balance notice: only for Downpayment AND only if full payment has NOT already been made
+  // (Full Payment type means the entire amount was paid at once — no balance notice needed)
   if (data.paymentType === 'Downpayment') {
     const noticeY = itemsBottomY - 76;
     text(60, noticeY, 9, 'Important: Balance payment must be settled in full before delivery can be arranged.', 'F2');
   }
 
-  // Prepared By section — centered, blank for handwriting
+  // Prepared By — centered, blank for handwriting
   text(248, 248, 10, 'Prepared By:', 'F2');
   line(180, 212, 415, 212);
   text(248, 197, 9, 'Name / Signature');
 
-
   const content = lines.join('\n');
+
+  // Build PDF objects — object 7 is the logo XObject (if logo present)
+  const xobjResources = hasLogo ? ' /XObject << /Logo 7 0 R >>' : '';
   const objects: string[] = [];
   objects.push('<< /Type /Catalog /Pages 2 0 R >>');
   objects.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>`);
+  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >>${xobjResources} >> /Contents 6 0 R >>`);
   objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
   objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
   objects.push(`<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`);
 
+  // Build PDF string (latin1 is bijective — binary JPEG bytes survive round-trip)
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
   objects.forEach((obj, index) => {
     offsets.push(Buffer.byteLength(pdf, 'latin1'));
     pdf += `${index + 1} 0 obj\n${obj}\nendobj\n`;
   });
+
+  // Append image XObject inline if logo available
+  if (hasLogo) {
+    const colorSpace = LOGO_DIMS!.components === 1 ? '/DeviceGray' : '/DeviceRGB';
+    const logoStr = LOGO_JPEG!.toString('latin1');
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `7 0 obj\n<< /Type /XObject /Subtype /Image /Width ${LOGO_DIMS!.width} /Height ${LOGO_DIMS!.height} /ColorSpace ${colorSpace} /BitsPerComponent 8 /Filter /DCTDecode /Length ${LOGO_JPEG!.length} >>\nstream\n${logoStr}\nendstream\nendobj\n`;
+  }
+
+  const totalObjs = objects.length + (hasLogo ? 1 : 0);
   const xrefOffset = Buffer.byteLength(pdf, 'latin1');
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += `xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`;
   for (let i = 1; i < offsets.length; i += 1) {
     pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
   }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  pdf += `trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
   return Buffer.from(pdf, 'latin1');
 }
 
@@ -9730,7 +9804,7 @@ app.get('/events', (request, reply) => {
 // never drifts from the codebase. Safe to run repeatedly (idempotent SQL).
 
 import { readdir, readFile } from 'fs/promises';
-import { resolve, join } from 'path';
+// path — already imported at top of file
 
 const MIGRATION_PATHS = [
   '/app/database/migrations',                 // Docker
