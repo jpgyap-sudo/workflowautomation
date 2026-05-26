@@ -84,7 +84,7 @@ export async function handleProductionChat(
     `SELECT id, quotation_number, client_name, current_stage,
             production_started, production_finished, estimated_production_days, production_started_at
      FROM orders
-     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending')
+     WHERE current_stage IN ('production_pending', 'production_in_progress', 'purchasing_pending')
        AND status = 'active'
      ORDER BY updated_at DESC
      LIMIT 30`,

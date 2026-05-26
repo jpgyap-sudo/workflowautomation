@@ -297,7 +297,7 @@ export default function CalendarPage() {
     deposit_pending:       [{ stage: 'deposit_verification', label: 'Verify Deposit', icon: <CreditCard className="h-3 w-3" /> }],
     deposit_verification:  [{ stage: 'purchasing_pending', label: 'Advance to Purchasing', icon: <ArrowUpCircle className="h-3 w-3" /> }],
     purchasing_pending:    [{ stage: 'production_pending', label: 'Start Production', icon: <Factory className="h-3 w-3" /> }],
-    production_confirmed:  [{ stage: 'en_route', label: 'Mark En Route', icon: <Ship className="h-3 w-3" /> }],
+    production_in_progress:  [{ stage: 'en_route', label: 'Mark En Route', icon: <Ship className="h-3 w-3" /> }],
     inventory_arrived:     [{ stage: 'balance_due', label: 'Mark Arrived', icon: <CheckCircle2 className="h-3 w-3" /> }],
     balance_due:           [{ stage: 'balance_verification', label: 'Verify Balance', icon: <Banknote className="h-3 w-3" /> }],
     balance_verification:  [{ stage: 'delivery_pending', label: 'Proceed Delivery', icon: <Truck className="h-3 w-3" /> }],

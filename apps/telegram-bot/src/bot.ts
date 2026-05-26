@@ -2184,6 +2184,22 @@ I'll save this as a schedule. What date should this be on?
           production_started: true,
           estimated_production_days: estimatedDays,
         });
+
+        // Also mark all order items as in_progress so they appear in Production In Progress
+        try {
+          const itemsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/items`);
+          const itemsData = await itemsRes.json();
+          const items: any[] = itemsData?.items ?? [];
+          if (items.length > 0) {
+            await Promise.all(items.map((item: any) =>
+              patchJson(`/orders/${order.id}/items/${item.id}`, {
+                production_status: 'in_progress',
+                estimated_production_days: estimatedDays,
+              })
+            ));
+          }
+        } catch { /* non-fatal — items may not exist */ }
+
         await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
@@ -2214,6 +2230,22 @@ I'll save this as a schedule. What date should this be on?
           production_started: status === 'yes',
           estimated_production_days: estimatedDays,
         });
+
+        // Also mark all order items as in_progress so they appear in Production In Progress
+        try {
+          const itemsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/items`);
+          const itemsData = await itemsRes.json();
+          const items: any[] = itemsData?.items ?? [];
+          if (items.length > 0) {
+            await Promise.all(items.map((item: any) =>
+              patchJson(`/orders/${order.id}/items/${item.id}`, {
+                production_status: 'in_progress',
+                estimated_production_days: estimatedDays,
+              })
+            ));
+          }
+        } catch { /* non-fatal — items may not exist */ }
+
         await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${estimatedDays} day(s)` });
         resetStep(chatId);
         await ctx.reply(
@@ -3643,7 +3675,7 @@ function boardCategory(order: BoardOrder): BoardCategory {
     // All finished items are en-route, but not all items are finished yet
     return 'en_route';
   }
-  if (order.production_started || anyItemStarted(order) || order.current_stage === 'production_confirmed' || order.current_stage === 'partial_production') {
+  if (order.production_started || anyItemStarted(order) || order.current_stage === 'production_in_progress' || order.current_stage === 'partial_production') {
     return 'in_progress';
   }
   return 'pending_start';
@@ -4267,6 +4299,22 @@ bot.action(/^produce:days:(\d+):([^:]*):(.+)$/, async (ctx) => {
       production_started: true,
       estimated_production_days: days,
     });
+
+    // Also mark all order items as in_progress so they appear in Production In Progress
+    try {
+      const itemsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/items`);
+      const itemsData = await itemsRes.json();
+      const items: any[] = itemsData?.items ?? [];
+      if (items.length > 0) {
+        await Promise.all(items.map((item: any) =>
+          patchJson(`/orders/${order.id}/items/${item.id}`, {
+            production_status: 'in_progress',
+            estimated_production_days: days,
+          })
+        ));
+      }
+    } catch { /* non-fatal — items may not exist */ }
+
     await logAction({ chatId, userId, username, label: 'Production Started', quotationNumber, details: `Timeline: ${days} day(s)` });
     await ctx.editMessageText(
       `✅ *Production Started* — ${quotationNumber}\n\nTimeline: *${days} days*\n\nA midpoint check will be sent in *${Math.max(1, Math.floor(days / 2))} days* to confirm if production is on time, early, or delayed. A due reminder will follow at the end of the production window.`,
@@ -4415,7 +4463,7 @@ bot.action(/^partial_production:update:([^:]+):(.+)$/, async (ctx) => {
       if (!pendingItem) {
         resetStep(chatId);
         await ctx.editMessageText(
-          `✅ All items have started production for *${quotationNumber}*. Order will advance to Production Confirmed shortly.`,
+          `✅ All items have started production for *${quotationNumber}*. Order will advance to Production In Progress shortly.`,
           { parse_mode: 'Markdown', ...mainMenuKeyboard() }
         );
         return;

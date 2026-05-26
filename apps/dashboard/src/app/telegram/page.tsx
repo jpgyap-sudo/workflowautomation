@@ -14,7 +14,7 @@ interface TelegramGroup {
 const TELEGRAM_GROUPS: TelegramGroup[] = [
   { name: 'Quotation Group', envVar: 'QUOTATION_GROUP_CHAT_ID', agents: ['quotation-checker'], stages: ['order_confirmation_received', 'math_verified'], color: 'border-blue-200 bg-blue-50', icon: Search },
   { name: 'Purchasing Group', envVar: 'PURCHASING_GROUP_CHAT_ID', agents: ['purchasing-agent'], stages: ['purchasing_pending'], color: 'border-amber-200 bg-amber-50', icon: ShoppingCart },
-  { name: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', agents: ['purchasing-agent', 'production-agent'], stages: ['production_pending', 'production_confirmed', 'en_route'], color: 'border-indigo-200 bg-indigo-50', icon: Factory },
+  { name: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', agents: ['purchasing-agent', 'production-agent'], stages: ['production_pending', 'production_in_progress', 'en_route'], color: 'border-indigo-200 bg-indigo-50', icon: Factory },
   { name: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', agents: ['inventory-agent'], stages: ['inventory_arrived'], color: 'border-cyan-200 bg-cyan-50', icon: Package },
   { name: 'Delivery Group', envVar: 'DELIVERY_GROUP_CHAT_ID', agents: ['delivery-agent'], stages: ['balance_due', 'delivery_scheduled', 'delivered'], color: 'border-purple-200 bg-purple-50', icon: Truck },
   { name: 'Collection Group', envVar: 'COLLECTION_GROUP_CHAT_ID', agents: ['collection-agent'], stages: ['deposit_pending', 'countered', 'payment_received', 'payment_confirmed'], color: 'border-emerald-200 bg-emerald-50', icon: DollarSign },
@@ -25,7 +25,7 @@ interface InlineKeyboardMapping {
   stage: string; buttons: { text: string; action: string }[]; frequency: string; escalation: boolean; description: string;
 }
 const INLINE_KEYBOARD_MAPPINGS: InlineKeyboardMapping[] = [
-  { stage: 'production_pending', buttons: [{ text: '✅ Yes', action: 'Ask production days → advance to production_confirmed' }, { text: '❌ No', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Has production started for this order?' },
+  { stage: 'production_pending', buttons: [{ text: '✅ Yes', action: 'Ask production days → advance to production_in_progress' }, { text: '❌ No', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Has production started for this order?' },
   { stage: 'production_midpoint', buttons: [{ text: '✅ On Time', action: 'Continue adaptive reminders' }, { text: '⚠️ Delayed', action: 'Ask delay days, update production_delayed flag' }], frequency: 'once (adaptive)', escalation: false, description: 'Midpoint check — is production on time?' },
   { stage: 'production_due', buttons: [{ text: '✅ Finished', action: 'Ask delivery timeline → advance to en_route' }, { text: '❌ Not Yet', action: 'Acknowledge, continue adaptive reminders' }], frequency: 'once (adaptive)', escalation: false, description: 'Production due — is production finished?' },
   { stage: 'en_route_reminder', buttons: [{ text: '✅ Yes', action: 'Ask estimated arrival days → advance to inventory_verification' }, { text: '❌ No', action: 'Acknowledge, continue adaptive reminders' }], frequency: 'adaptive (24h→12h→4h→2h)', escalation: false, description: 'Is the order en route to inventory?' },
@@ -42,7 +42,7 @@ interface AgentGroupMapping { agentName: string; groupName: string; envVar: stri
 const AGENT_GROUP_MAPPINGS: AgentGroupMapping[] = [
   { agentName: 'quotation-checker', groupName: 'Quotation Group', envVar: 'QUOTATION_GROUP_CHAT_ID', stages: ['order_confirmation_received', 'math_verified'] },
   { agentName: 'purchasing-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['production_pending'] },
-  { agentName: 'production-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['production_confirmed', 'en_route'] },
+  { agentName: 'production-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['production_in_progress', 'en_route'] },
   { agentName: 'inventory-agent', groupName: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', stages: ['inventory_arrived'] },
   { agentName: 'delivery-agent', groupName: 'Delivery Group', envVar: 'DELIVERY_GROUP_CHAT_ID', stages: ['balance_due', 'delivery_scheduled', 'delivered'] },
   { agentName: 'collection-agent', groupName: 'Collection Group', envVar: 'COLLECTION_GROUP_CHAT_ID', stages: ['deposit_pending', 'countered', 'payment_received', 'payment_confirmed'] },
@@ -51,7 +51,7 @@ const AGENT_GROUP_MAPPINGS: AgentGroupMapping[] = [
 
 const REMINDER_STAGE_LABELS: Record<string, string> = {
   order_confirmation_received: '📄 Order Confirmation Received', math_verified: '✅ Math Verified',
-  purchasing_pending: '🛒 Purchasing Pending', production_pending: '🏗️ Production Pending', production_confirmed: '🏭 Production Confirmed',
+  purchasing_pending: '🛒 Purchasing Pending', production_pending: '🏗️ Production Pending', production_in_progress: '🏭 Production In Progress',
   production_midpoint: '🏭 Production Midpoint Check', production_due: '🏭 Production Due',
   deposit_pending: '💳 Deposit Pending', en_route: '🚚 En Route', en_route_reminder: '🚚 En Route',
   inventory_arrived: '📦 Inventory Arrived', balance_due: '⚖️ Balance Due',

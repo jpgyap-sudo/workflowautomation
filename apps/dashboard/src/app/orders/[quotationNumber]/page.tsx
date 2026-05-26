@@ -571,9 +571,9 @@ export default function OrderDetailPage() {
           deposit_pending:           ['deposit_verification'],
           deposit_verification:      ['purchasing_pending'],
           purchasing_pending:        ['production_pending'],
-          production_pending:        ['production_confirmed', 'partial_production'],
-          production_confirmed:      ['en_route', 'partial_production'],
-          partial_production:        ['production_confirmed', 'en_route'],
+          production_pending:        ['production_in_progress', 'partial_production'],
+          production_in_progress:      ['en_route', 'partial_production'],
+          partial_production:        ['production_in_progress', 'en_route'],
           en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
           inventory_verification:    ['inventory_arrived'],
           inventory_arrived:         ['balance_due'],
@@ -795,7 +795,7 @@ function ItemTrackingSection({
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
   const stageShowsArrivalCols = ['en_route', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(currentStage);
-  const stageAllowsProdEdit = ['production_confirmed', 'partial_production', 'en_route'].includes(currentStage);
+  const stageAllowsProdEdit = ['production_in_progress', 'partial_production', 'en_route'].includes(currentStage);
   // Allow en-route dispatch edits at en_route, and arrival edits at en_route_verification too
   const stageAllowsEnRouteEdit = ['en_route', 'en_route_verification'].includes(currentStage);
 

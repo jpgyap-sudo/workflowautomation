@@ -542,6 +542,26 @@ export async function finishProduction(
   });
 }
 
+export async function finishAllItems(
+  id: string,
+  data: { action_token: string }
+): Promise<{ ok: boolean; items: OrderItem[]; order: Order | null }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[]; order: Order | null }>(`/orders/${encodeURIComponent(id)}/finish-all-items`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function bulkEnRoute(
+  id: string,
+  data: { action_token: string; default_arrival_days?: number }
+): Promise<{ ok: boolean; items: OrderItem[]; order: Order | null }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[]; order: Order | null }>(`/orders/${encodeURIComponent(id)}/bulk-en-route`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function recalcProductionReminders(
   id: string,
   data: { estimated_production_days: number; action_token?: string }
@@ -838,7 +858,7 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   math_verified:         { label: 'Math Verified',         color: 'bg-teal-100 text-teal-800',       icon: '✅' },
   purchasing_pending:    { label: 'Purchasing Pending',    color: 'bg-amber-100 text-amber-800',     icon: '🛒' },
   production_pending:    { label: 'Production Pending',    color: 'bg-yellow-100 text-yellow-800',   icon: '🏗️' },
-  production_confirmed:  { label: 'Production Confirmed',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
+  production_in_progress:  { label: 'Production In Progress',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
   deposit_pending:       { label: 'Downpayment Pending',   color: 'bg-pink-100 text-pink-800',       icon: '💳' },
   deposit_verification:  { label: 'Deposit Verification',  color: 'bg-rose-100 text-rose-800',       icon: '🔍' },
   en_route:              { label: 'En Route',               color: 'bg-sky-100 text-sky-800',         icon: '🚚' },
@@ -1601,7 +1621,7 @@ export const STAGE_ORDER = [
   'deposit_verification',
   'purchasing_pending',
   'production_pending',
-  'production_confirmed',
+  'production_in_progress',
   'production_in_progress',
   'en_route',
   'en_route_verification',

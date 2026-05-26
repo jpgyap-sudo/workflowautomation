@@ -245,10 +245,10 @@ export async function processDueReminders(): Promise<number> {
     if (reminder.stage === 'inventory_arrived' && ['balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route' && ['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'en_route_reminder' && ['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if ((reminder.stage === 'production_confirmed' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if (reminder.stage === 'production_pending' && (reminder.production_started || ['partial_production', 'production_confirmed', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
-    if (reminder.stage === 'partial_production' && ['production_confirmed', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
-    if ((reminder.stage === 'purchasing_pending') && ['partial_production', 'production_confirmed', 'production_pending', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'production_in_progress' || reminder.stage === 'production_midpoint' || reminder.stage === 'production_due') && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if (reminder.stage === 'production_pending' && (reminder.production_started || ['partial_production', 'production_in_progress', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage))) stale = true;
+    if (reminder.stage === 'partial_production' && ['production_in_progress', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
+    if ((reminder.stage === 'purchasing_pending') && ['partial_production', 'production_in_progress', 'production_pending', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     // Item-level tracking reminders — stale if order has moved past the relevant stage
     if (reminder.stage === 'item_level_production' && ['en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
     if (reminder.stage === 'item_level_en_route' && ['inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(reminder.current_stage)) stale = true;
@@ -296,7 +296,7 @@ export async function processDueReminders(): Promise<number> {
       math_verified: '✅ Math Verified',
       purchasing_pending: '🛒 Purchasing Pending',
       production_pending: '🏭 Production Pending',
-      production_confirmed: '🏭 Production Confirmed',
+      production_in_progress: '🏭 Production In Progress',
       production_midpoint: '🏭 Production Midpoint Check',
       production_due: '🏭 Production Due',
       deposit_pending: '💳 Deposit Pending',

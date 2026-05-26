@@ -60,7 +60,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     description: 'Monitors production pending orders and sends daily reminders to production group until production starts',
     monitors: ['production_pending'],
     triggers: [
-      { from: 'production_pending', to: 'production_confirmed', condition: 'Team replies /produce yes' },
+      { from: 'production_pending', to: 'production_in_progress', condition: 'Team replies /produce yes' },
     ],
     notificationGroup: 'Production',
   },
@@ -70,9 +70,9 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     color: 'border-indigo-200 bg-indigo-50',
     headingColor: 'text-indigo-700',
     description: 'Hermes Claw â€” adaptive-frequency reminders that tighten as production deadlines approach (daily â†’ 12h â†’ 4h â†’ 2h)',
-    monitors: ['production_confirmed', 'en_route', 'partial_production'],
+    monitors: ['production_in_progress', 'en_route', 'partial_production'],
     triggers: [
-      { from: 'production_confirmed', to: 'en_route', condition: 'Production finished via /finish-production' },
+      { from: 'production_in_progress', to: 'en_route', condition: 'Production finished via /finish-production' },
       { from: 'en_route', to: 'inventory_verification', condition: 'All items arrived (production agent auto-advance)' },
     ],
     notificationGroup: 'Production',
@@ -124,7 +124,7 @@ const AGENT_MAPPINGS: AgentMapping[] = [
     color: 'border-rose-200 bg-rose-50',
     headingColor: 'text-rose-700',
     description: 'Escalates stale orders that have not progressed',
-    monitors: ['purchasing_pending', 'production_pending', 'production_confirmed', 'en_route', 'deposit_pending', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'countered'],
+    monitors: ['purchasing_pending', 'production_pending', 'production_in_progress', 'en_route', 'deposit_pending', 'inventory_arrived', 'balance_due', 'delivery_scheduled', 'delivered', 'countered'],
     triggers: [
       { from: '*', to: '*', condition: 'Escalation level increases per missed reminder' },
     ],
@@ -204,8 +204,8 @@ const STAGE_INFO: Record<string, StageInfo> = {
     responsibleParty: 'Production Team',
     autoAdvance: false,
   },
-  production_confirmed: {
-    stage: 'production_confirmed',
+  production_in_progress: {
+    stage: 'production_in_progress',
     entryAction: 'Production timeline recorded',
     exitCondition: 'Production finished',
     triggeredBy: 'Team',

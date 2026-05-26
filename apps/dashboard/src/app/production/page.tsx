@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
-  reportProductionStatus, finishProduction, confirmEnRoute, setProduction,
+  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, confirmEnRoute, setProduction,
   recordStageUpdate,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
@@ -50,7 +50,9 @@ function getEstimatedInventoryArrivalDate(order: Order): Date | null {
 }
 
 function getEstimatedItemInventoryArrivalDate(order: Order, item: OrderItem): Date | null {
-  return addDays(order.en_route_confirmed_at, item.estimated_arrival_days)
+  const baseDate = order.en_route_confirmed_at
+    ?? ((item.en_route_status === 'en_route' || item.en_route_status === 'arrived') ? item.updated_at : null);
+  return addDays(baseDate, item.estimated_arrival_days)
     ?? getEstimatedInventoryArrivalDate(order);
 }
 
@@ -915,6 +917,8 @@ interface ProductionItemSectionProps {
   showFinishedButton?: boolean;
   /** Show Delayed button for items */
   showDelayedButton?: boolean;
+  /** Show bulk "Finish All" button for an order */
+  showBulkFinishButton?: boolean;
   /** Callback when Start is clicked for an item */
   onItemStart?: (order: Order, item: OrderItem) => void;
   /** Callback when Start is confirmed with production days */
@@ -923,6 +927,8 @@ interface ProductionItemSectionProps {
   onItemFinished?: (order: Order, item: OrderItem) => void;
   /** Callback when Delayed is clicked for an item */
   onItemDelayed?: (order: Order, item: OrderItem) => void;
+  /** Callback when bulk Finish All is clicked for an order */
+  onBulkFinish?: (order: Order) => void;
   /** Callback to view files */
   onViewFiles?: (o: Order) => void;
   /** Callback to edit */
@@ -937,8 +943,8 @@ function ProductionItemSection({
   icon, title, count, countBg, countText,
   orders, isLoading, error, onRetry, emptyText,
   itemFilter,
-  showStartButton, showFinishedButton, showDelayedButton,
-  onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed,
+  showStartButton, showFinishedButton, showDelayedButton, showBulkFinishButton,
+  onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
 }: ProductionItemSectionProps) {
@@ -1089,17 +1095,35 @@ function ProductionItemSection({
                         {orderItems.length === 0 ? 'No items found for this order.' : `No items match the current section criteria.`}
                       </p>
                     ) : (
-                      <div className="overflow-x-auto rounded-lg border border-gray-200">
-                        <table className="w-full text-left text-xs">
-                          <thead>
-                            <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                              <th className="px-3 py-2">Item</th>
-                              <th className="px-3 py-2">Qty</th>
-                              <th className="px-3 py-2">Status</th>
-                              <th className="px-3 py-2">Est. Finish Date</th>
-                              <th className="px-3 py-2">Actions</th>
-                            </tr>
-                          </thead>
+                      <div>
+                        {showBulkFinishButton && (
+                          <div className="mb-2 flex items-center justify-end">
+                            {(() => {
+                              const unfinished = filteredItems.filter((i) => i.production_status !== 'finished');
+                              if (unfinished.length === 0) return null;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onBulkFinish?.(order); }}
+                                  className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-[11px] font-semibold text-green-700 hover:bg-green-100 transition-colors"
+                                >
+                                  ✓ Finish All ({unfinished.length})
+                                </button>
+                              );
+                            })()}
+                          </div>
+                        )}
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                <th className="px-3 py-2">Item</th>
+                                <th className="px-3 py-2">Qty</th>
+                                <th className="px-3 py-2">Status</th>
+                                <th className="px-3 py-2">Est. Finish Date</th>
+                                <th className="px-3 py-2">Actions</th>
+                              </tr>
+                            </thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredItems.map((item) => {
                               const estFinishDate = getItemEstimatedFinishDate(item);
@@ -1157,8 +1181,9 @@ function ProductionItemSection({
                           </tbody>
                         </table>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </div>
                 )}
               </div>
             );
@@ -1242,6 +1267,7 @@ function ProductionFinishedTrackingSection({
   onRetry,
   onViewFiles,
   onItemEnRouteStatus,
+  onBulkEnRoute,
 }: {
   orders: Order[];
   summaries: Record<string, ProductionFinishedSummary>;
@@ -1250,6 +1276,7 @@ function ProductionFinishedTrackingSection({
   onRetry: () => void;
   onViewFiles?: (o: Order) => void;
   onItemEnRouteStatus?: (orderId: string, item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
+  onBulkEnRoute?: (order: Order, items: OrderItem[]) => void;
 }) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1461,7 +1488,25 @@ function ProductionFinishedTrackingSection({
                           ) : orderItems.length === 0 ? (
                             <div className="text-xs text-gray-400">No item records found for this order.</div>
                           ) : (
-                            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                            <div>
+                              {onBulkEnRoute && (
+                                <div className="mb-2 flex items-center justify-end">
+                                  {(() => {
+                                    const notYetItems = orderItems.filter((i) => i.en_route_status === 'not_yet');
+                                    if (notYetItems.length === 0) return null;
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); onBulkEnRoute(order, orderItems); }}
+                                        className="rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+                                      >
+                                        🚚 Mark All En Route ({notYetItems.length})
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+                              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
                               <table className="w-full text-left text-xs">
                                 <thead className="bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                                   <tr>
@@ -1519,6 +1564,7 @@ function ProductionFinishedTrackingSection({
                                 </tbody>
                               </table>
                             </div>
+                          </div>
                           )}
                         </td>
                       </tr>
@@ -1556,8 +1602,6 @@ export default function ProductionPage() {
     useOrdersByStage('production_pending');
   const { data: partialOrders = [], isLoading: loadingPartial, error: errorPartial, mutate: mutatePartial } =
     usePartialProductionOrders();
-  const { data: confirmedOrders = [], isLoading: loadingConfirmed, error: errorConfirmed, mutate: mutateConfirmed } =
-    useOrdersByStage('production_confirmed');
   const { data: inProgressStageOrders = [], isLoading: loadingInProgress, error: errorInProgress, mutate: mutateInProgress } =
     useOrdersByStage('production_in_progress');
   const { data: enRouteOrders = [], isLoading: loadingEnRoute, error: errorEnRoute, mutate: mutateEnRoute } =
@@ -1609,7 +1653,6 @@ export default function ProductionPage() {
 
   const productionFinishedCandidateOrders = dedupeOrders([
     ...partialOrders,
-    ...confirmedOrders,
     ...inProgressStageOrders,
     ...enRouteOrders,
     ...enRouteVerificationStageOrders,
@@ -1653,8 +1696,8 @@ export default function ProductionPage() {
     const summary = productionFinishedSummaries[order.id];
     return summary?.hasFinishedProduction && !['balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
   });
-  const loadingFinished = loadingPartial || loadingConfirmed || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
-  const errorFinished = errorPartial || errorConfirmed || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
+  const loadingFinished = loadingPartial || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
+  const errorFinished = errorPartial || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1674,7 +1717,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -1689,7 +1732,7 @@ export default function ProductionPage() {
   // Per-item production action state
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
-  function refresh() { mutatePending(); mutatePartial(); mutateConfirmed(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
+  function refresh() { mutatePending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -1734,6 +1777,8 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'stockReplenishment') handleStockReplVerified(actionToken);
     else if (otpModal.pendingAction === 'itemFinish') handleItemFinishVerified(actionToken);
     else if (otpModal.pendingAction === 'itemDelayed') handleItemDelayedVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulkFinish') handleBulkFinishVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulkEnRoute') handleBulkEnRouteVerified(actionToken);
     else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
@@ -1773,11 +1818,14 @@ export default function ProductionPage() {
     const pending = (window as any).__pendingStartProductionData;
     if (!pending) return;
     try {
-      // Save per-item production days first
+      // Save per-item production days AND mark items as in_progress
       if (pending.itemDays && Object.keys(pending.itemDays).length > 0) {
         await Promise.all(
           Object.entries(pending.itemDays as Record<string, number>).map(([itemId, days]) =>
-            updateOrderItem(pending.orderId, itemId, { estimated_production_days: days })
+            updateOrderItem(pending.orderId, itemId, {
+              estimated_production_days: days,
+              production_status: 'in_progress',
+            })
           )
         );
       }
@@ -2073,6 +2121,68 @@ export default function ProductionPage() {
     }
   }
 
+  // ── Bulk finish all items ────────────────────────────────────────────
+
+  function handleBulkFinish(order: Order) {
+    setOtpModal({
+      open: true,
+      title: 'Finish All Items',
+      description: `You are about to mark all unfinished items in order "${order.quotation_number ?? '—'}" as finished. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulkFinish',
+    });
+    (window as any).__pendingBulkFinishData = { orderId: order.id };
+  }
+
+  async function handleBulkFinishVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkFinishData;
+    if (!pending) return;
+    try {
+      await finishAllItems(pending.orderId, { action_token: actionToken });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to finish all items: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingBulkFinishData = null;
+    }
+  }
+
+  // ── Bulk en route all items ──────────────────────────────────────────
+
+  function handleBulkEnRoute(order: Order, items: OrderItem[]) {
+    const itemsNeedingDays = items.filter((i) => i.en_route_status === 'not_yet' && !i.estimated_arrival_days);
+    let defaultDays: number | undefined;
+    if (itemsNeedingDays.length > 0) {
+      const input = window.prompt(
+        `${itemsNeedingDays.length} item(s) missing arrival days. Default arrival days for all?`,
+        '28'
+      );
+      if (input === null) return;
+      const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+      if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
+      defaultDays = days;
+    }
+    setOtpModal({
+      open: true,
+      title: 'Mark All En Route',
+      description: `You are about to mark all not-yet items in order "${order.quotation_number ?? '—'}" as en route. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulkEnRoute',
+    });
+    (window as any).__pendingBulkEnRouteData = { orderId: order.id, defaultDays };
+  }
+
+  async function handleBulkEnRouteVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkEnRouteData;
+    if (!pending) return;
+    try {
+      await bulkEnRoute(pending.orderId, { action_token: actionToken, default_arrival_days: pending.defaultDays });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to mark all items en route: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingBulkEnRouteData = null;
+    }
+  }
+
   // ── Item production status (from ProductionInfoCards) ────────────────
 
   // These are called from ProductionInfoCards which has access to the order
@@ -2289,8 +2399,10 @@ export default function ProductionPage() {
         showStartButton={false}
         showFinishedButton={true}
         showDelayedButton={true}
+        showBulkFinishButton={true}
         onItemFinished={handleItemFinish}
         onItemDelayed={handleItemDelayed}
+        onBulkFinish={handleBulkFinish}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
@@ -2306,6 +2418,7 @@ export default function ProductionPage() {
         onRetry={refresh}
         onViewFiles={handleViewFiles}
         onItemEnRouteStatus={handleItemEnRouteStatusAction}
+        onBulkEnRoute={handleBulkEnRoute}
       />
 
       {/* En Route Verification — some items still not confirmed en route */}

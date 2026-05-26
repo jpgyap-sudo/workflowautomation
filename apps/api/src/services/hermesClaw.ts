@@ -415,8 +415,8 @@ export async function analyzeProductionOrder(
 // ── Fallback Analysis (rule-based, no AI needed) ───────────────────────
 
 function fallbackAnalysis(ctx: HermesProductionContext): HermesAnalysis {
-  // Production confirmed stage
-  if (ctx.stage === 'production_confirmed') {
+  // Production in progress stage
+  if (ctx.stage === 'production_in_progress') {
     if (ctx.production_finished) {
       return {
         message: `✅ Production finished for #${ctx.quotation_number ?? 'unknown'}. Ready for en_route confirmation.`,

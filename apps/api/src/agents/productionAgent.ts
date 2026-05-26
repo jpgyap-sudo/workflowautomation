@@ -36,12 +36,12 @@ import {
  *   overdue               → 2h  (critical, escalating)
  *
  * Monitors:
- *   1. production_confirmed + production_in_progress — tracks timeline, sends adaptive reminders
+ *   1. production_in_progress — tracks timeline, sends adaptive reminders
  *   2. en_route              — daily check until inventory arrives
  *   3. partial_production    — item-level: asks about pending items one-by-one;
  *                              auto-advances to production_in_progress when all started
  *   4. item-level tracking   — item-by-item production tracking with process of elimination
- *      (production_confirmed + production_in_progress orders that have order_items)
+ *      (production_in_progress orders that have order_items)
  *   5. en_route + en_route_verification — item-level dispatch & arrival monitoring
  */
 
@@ -137,7 +137,7 @@ async function upsertProductionReminder(
     [orderId, stage, groupChatId, message, nextRun.toISOString()],
   );
 }
-// ── 1. Check production_confirmed / production_in_progress orders ─────
+// ── 1. Check production_in_progress orders ─────
 
 
 async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
@@ -657,8 +657,8 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
   };
 
   try {
-    // Only run for production_confirmed (legacy) or production_in_progress orders that have started production
-    if (order.current_stage !== 'production_confirmed' && order.current_stage !== 'production_in_progress') return null;
+    // Only run for production_in_progress orders that have started production
+    if (order.current_stage !== 'production_in_progress') return null;
     if (!order.production_started) return null;
 
     // Fetch items and completion
@@ -1169,8 +1169,8 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
-  // 1. Production confirmed + Production in progress — adaptive frequency
-  const productionOrders = await getActiveOrdersByStages(['production_confirmed', 'production_in_progress']);
+  // 1. Production in progress — adaptive frequency
+  const productionOrders = await getActiveOrdersByStages(['production_in_progress']);
   for (const order of productionOrders) {
     // Check if order has item-level tracking items
     const items = await getOrderItems(order.id);
@@ -1227,7 +1227,7 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     results.push(await checkLegacyPartialProduction(order));
   }
 
-  // 4. Item-level production tracking — production_confirmed and production_in_progress orders with order_items
+  // 4. Item-level production tracking — production_in_progress orders with order_items
   for (const order of productionOrders) {
     const itemResult = await checkItemLevelProduction(order);
     if (itemResult) {

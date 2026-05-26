@@ -13,8 +13,8 @@ The system automates the full order lifecycle from quotation to payment collecti
 
 ```txt
 order_confirmation_received → math_verified → purchasing_pending →
-production_pending → production_confirmed → deposit_pending →
-deposit_verification → en_route → inventory_verification →
+production_pending → production_in_progress → en_route →
+en_route_verification → inventory_verification →
 inventory_arrived → balance_due → balance_verification →
 delivery_pending → delivery_scheduled → delivered → countered →
 payment_received → payment_confirmed → completed
@@ -66,9 +66,9 @@ If Yes → Bot asks for estimated production days → stage moves to `production
 
 Stage moves to `production_pending` after purchasing confirms start.
 
-The **Purchasing Agent** continues monitoring. When production is ready to begin, the stage advances to `production_confirmed`.
+The **Purchasing Agent** continues monitoring. When production is ready to begin, the stage advances to `production_in_progress` (or `partial_production` if only some items start).
 
-### 3c. Production Confirmed
+### 3c. Production In Progress
 
 The **Production Agent** takes over (runs every 60 min):
 
@@ -82,7 +82,7 @@ The **Production Agent** takes over (runs every 60 min):
 **Due Inline buttons**: `✅ Finished` / `❌ Not Yet`
 - If Finished → Bot asks delivery timeline (standard 4 weeks or custom days).
 
-When production is finished → stage advances to `en_route`.
+When all items are finished → stage advances to `en_route`.
 
 ### 3d. En Route
 
@@ -266,8 +266,8 @@ Order is fully complete. All reminders are disabled.
 | Stage | Inline Buttons | Action on Yes | Action on No |
 |-------|---------------|---------------|--------------|
 | `purchasing_pending` | ✅ Yes, started / ⚠️ Partial / ⏳ Not yet | Ask production days | Acknowledge |
-| `production_confirmed` (midpoint) | ✅ On Time / ⚠️ Delayed | Continue reminders | Ask delay days |
-| `production_confirmed` (due) | ✅ Finished / ❌ Not Yet | Ask delivery timeline | Acknowledge |
+| `production_in_progress` (midpoint) | ✅ On Time / ⚠️ Delayed | Continue reminders | Ask delay days |
+| `production_in_progress` (due) | ✅ Finished / ❌ Not Yet | Ask delivery timeline | Acknowledge |
 | `en_route` (item level) | ✅ Yes / ❌ No / 📦 Arrived | Mark item arrived | Acknowledge |
 | `inventory_verification` | 🔍 Verify All / ⚠️ Partial / ⏳ Not Yet | Advance to `inventory_arrived` | Acknowledge |
 | `inventory_arrived` | ✅ Ready for Delivery / ⏳ Still Waiting | Advance to `balance_due` | Acknowledge |
@@ -287,7 +287,7 @@ The system uses automated agents that run on schedules to check orders and send 
 |-------|----------|-----------------|
 | **Quotation Checker** | Every 5 min | `order_confirmation_received` |
 | **Purchasing Agent** | Every 60 min | `math_verified`, `purchasing_pending`, `production_pending` |
-| **Production Agent** | Every 60 min | `production_confirmed`, `en_route` |
+| **Production Agent** | Every 60 min | `production_in_progress`, `en_route` |
 | **Inventory Agent** | Every 60 min | `inventory_verification`, `inventory_arrived` |
 | **Collection Agent** | Every 60 min | `deposit_pending`, `deposit_verification`, `balance_due`, `balance_verification`, `delivered`, `countered`, `payment_received`, `payment_confirmed` |
 | **Delivery Agent** | Every 60 min | `inventory_arrived`, `balance_due`, `delivery_pending`, `delivery_scheduled`, `delivered` |
@@ -303,7 +303,7 @@ When an order enters a stage, the corresponding agent(s) are triggered immediate
 | `math_verified` | Purchasing Agent |
 | `purchasing_pending` | Purchasing Agent |
 | `production_pending` | Purchasing Agent |
-| `production_confirmed` | Production Agent |
+| `production_in_progress` | Production Agent |
 | `en_route` | Production Agent, Inventory Agent |
 | `inventory_verification` | Inventory Agent |
 | `inventory_arrived` | Inventory Agent |

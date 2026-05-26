@@ -2171,7 +2171,7 @@ app.get('/production/board', async (_request, reply) => {
             production_started, production_finished, en_route_confirmed,
             estimated_production_days, production_started_at
      FROM orders
-     WHERE current_stage IN ('production_pending', 'production_confirmed', 'purchasing_pending', 'partial_production', 'production_in_progress', 'en_route')
+     WHERE current_stage IN ('production_pending', 'purchasing_pending', 'partial_production', 'production_in_progress', 'en_route')
        AND status = 'active'
      ORDER BY updated_at DESC
      LIMIT 30`,
@@ -2423,6 +2423,127 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${rows[0].quotation_number}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
   return reply.send({ ok: true, order: rows[0] });
+});
+
+const finishAllItemsSchema = z.object({
+  action_token: z.string(),
+});
+
+// POST /orders/:id/finish-all-items — Bulk finish all items for an order
+app.post('/orders/:id/finish-all-items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = finishAllItemsSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Mark all non-finished items as finished
+  await query(
+    `UPDATE order_items
+     SET production_status = 'finished',
+         production_finished_at = COALESCE(production_finished_at, NOW()),
+         updated_at = NOW()
+     WHERE order_id = $1 AND production_status != 'finished'`,
+    [id]
+  );
+
+  // Fetch updated items
+  const updatedItems = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days, production_finished_at,
+            inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  // Finalize order production if all items are finished
+  const finalizeResult = await finalizeProductionIfAllItemsFinished(
+    id,
+    'item_update',
+    'Bulk finish all items via dashboard'
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${finalizeResult.order?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  await notifyManualChange(
+    'Production finished (bulk)',
+    `Quotation: *${finalizeResult.order?.quotation_number ?? 'N/A'}*\nClient: *${finalizeResult.order?.client_name ?? 'Unknown'}*\nAll ${updatedItems.length} item(s) marked finished`,
+    userEmail,
+  );
+
+  return reply.send({ ok: true, items: updatedItems, order: finalizeResult.order });
+});
+
+const bulkEnRouteSchema = z.object({
+  action_token: z.string(),
+  default_arrival_days: z.number().int().positive().optional(),
+});
+
+// POST /orders/:id/bulk-en-route — Bulk mark all not-yet items as en_route
+app.post('/orders/:id/bulk-en-route', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkEnRouteSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Mark all not-yet items as en_route, applying default arrival days if missing
+  await query(
+    `UPDATE order_items
+     SET en_route_status = 'en_route',
+         estimated_arrival_days = COALESCE(estimated_arrival_days, $2),
+         updated_at = NOW()
+     WHERE order_id = $1 AND en_route_status = 'not_yet'`,
+    [id, body.default_arrival_days ?? null]
+  );
+
+  // Fetch updated items
+  const updatedItems = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days, production_finished_at,
+            inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  // Check if all items are now dispatched and advance stage if so
+  const advanceResult = await advanceToEnRouteIfAllDispatched(
+    id,
+    'item_update',
+    'Bulk mark all items en route via dashboard'
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${advanceResult.order?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  await notifyManualChange(
+    'En route (bulk)',
+    `Quotation: *${advanceResult.order?.quotation_number ?? 'N/A'}*\nClient: *${advanceResult.order?.client_name ?? 'Unknown'}*\nAll items marked en route`,
+    userEmail,
+  );
+
+  return reply.send({ ok: true, items: updatedItems, order: advanceResult.order });
 });
 
 // ── Confirm En Route ──────────────────────────────────────────────────
@@ -4045,7 +4166,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     );
     const currentOrder = stageRows[0];
 
-    if (currentOrder && ['production_pending', 'partial_production', 'production_confirmed', 'production_in_progress'].includes(currentOrder.current_stage)) {
+    if (currentOrder && ['production_pending', 'partial_production', 'production_in_progress'].includes(currentOrder.current_stage)) {
       const allItemStatuses = await query<{ production_status: string; name: string }>(
         `SELECT production_status, name FROM order_items WHERE order_id = $1`,
         [order_id]
@@ -4451,7 +4572,7 @@ app.post('/stage-updates', async (request, reply) => {
 
   const previousStage = order.current_stage;
   const targetStage = body.stage;
-  const productionGatedStages = new Set(['production_pending', 'production_confirmed', 'partial_production', 'production_in_progress', 'en_route']);
+  const productionGatedStages = new Set(['production_pending', 'partial_production', 'production_in_progress', 'en_route']);
   const hasProductionClearance = Boolean(order.deposit_verified || order.production_exception);
 
   // Allow transitions that are in the valid map, or if the stage hasn't changed
@@ -4739,7 +4860,6 @@ app.post('/stage-updates', async (request, reply) => {
       deposit_verification: COLLECTION_CHAT_ID,
       purchasing_pending: PURCHASING_CHAT_ID,
       production_pending: PRODUCTION_CHAT_ID,
-      production_confirmed: PRODUCTION_CHAT_ID,
       partial_production: PRODUCTION_CHAT_ID,
       en_route: PRODUCTION_CHAT_ID,
       en_route_verification: PRODUCTION_CHAT_ID,

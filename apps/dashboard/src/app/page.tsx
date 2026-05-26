@@ -30,7 +30,7 @@ const STAGE_COLORS: Record<string, string> = {
   math_verified: '#14b8a6',
   purchasing_pending: '#f59e0b',
   production_pending: '#eab308',
-  production_confirmed: '#6366f1',
+  production_in_progress: '#6366f1',
   deposit_pending: '#ec4899',
   en_route: '#0ea5e9',
   inventory_arrived: '#06b6d4',

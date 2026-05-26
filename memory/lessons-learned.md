@@ -11077,3 +11077,99 @@ When introducing item-level granularity, ensure parent-level state flags are upd
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: change production_confirmed stage to production_in_progress to fix Bulk Start Production bug
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3bf26c4496ea7fb5096d71e217d4970e1e099248
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3bf26c4496ea7fb5096d71e217d4970e1e099248
+**Files:** apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug in Bulk Start Production where the system incorrectly used `production_confirmed` as the stage name instead of `production_in_progress`, causing the bulk action to fail or behave unexpectedly.
+
+**Why it broke:**  
+The stage naming was inconsistent: the actual workflow stage was `production_in_progress`, but the code referenced `production_confirmed`. This mismatch meant the system couldn't find or transition to the correct stage during bulk operations.
+
+**Reusable takeaway:**  
+Always align stage/state names between code and workflow definitions. When implementing bulk actions, verify that the target stage name exactly matches the one defined in the workflow engine. A single string mismatch can break entire batch operations. Use constants or enums for stage names to prevent typos and ensure consistency across the codebase.
+
+---
+*Original commit message: fix: change production_confirmed stage to production_in_progress to fix Bulk Start Production bug*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug in Bulk Start Production where the system incorrectly used `production_confirmed` as the stage name instead of `production_in_progress`, causing the bulk action to fail or behave unexpectedly.
+
+**Why it broke:**  
+The stage naming was inconsistent: the actual workflow stage was `production_in_progress`, but the code referenced `production_confirmed`. This mismatch meant the system couldn't find or transition to the correct stage during bulk operations.
+
+**Reusable takeaway:**  
+Always align stage/state names between code and workflow definitions. When implementing bulk actions, verify that the target stage name exactly matches the one defined in the workflow engine. A single string mismatch can break entire batch operations. Use constants or enums for stage names to prevent typos and ensure consistency across the codebase.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update changelog and update log for production_confirmed → production_in_progress fix (commit 3bf26c4)
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ed303a6a1db0de32039e3b6f2f7acf2012c6f025
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ed303a6a1db0de32039e3b6f2f7acf2012c6f025
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A status transition bug where `production_confirmed` was incorrectly used instead of `production_in_progress` in changelog and update log documentation.
+
+**Why it broke:**  
+The status name `production_confirmed` likely represented a completed state, while the intended transition was to an in-progress state (`production_in_progress`). The mismatch caused workflow logic or documentation to reference a non-existent or incorrect status.
+
+**Reusable takeaway:**  
+Always validate status names against the actual workflow state machine. Use consistent naming conventions (e.g., `_in_progress`, `_confirmed`) to avoid ambiguity. When updating logs or changelogs, cross-check status transitions against the source code to prevent documentation drift.
+
+---
+*Original commit message: docs: update changelog and update log for production_confirmed → production_in_progress fix (commit 3bf26c4)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A status transition bug where `production_confirmed` was incorrectly used instead of `production_in_progress` in changelog and update log documentation.
+
+**Why it broke:**  
+The status name `production_confirmed` likely represented a completed state, while the intended transition was to an in-progress state (`production_in_progress`). The mismatch caused workflow logic or documentation to reference a non-existent or incorrect status.
+
+**Reusable takeaway:**  
+Always validate status names against the actual workflow state machine. Use consistent naming conventions (e.g., `_in_progress`, `_confirmed`) to avoid ambiguity. When updating logs or changelogs, cross-check status transitions against the source code to prevent documentation drift.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
