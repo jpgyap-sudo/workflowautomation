@@ -18,6 +18,10 @@ import {
   ExternalLink,
   ArrowRight,
   Users,
+  ShieldAlert,
+  MessageSquare,
+  HelpCircle,
+  Keyboard,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -46,7 +50,7 @@ interface Section {
 
 function OrderLifecycleDiagram() {
   return (
-    <svg viewBox="0 0 800 120" className="w-full max-w-3xl" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 920 120" className="w-full max-w-3xl" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="orderGrad" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#2490ef" />
@@ -426,6 +430,18 @@ const SECTIONS: Section[] = [
           'Orders where all items have been verified and confirmed as arrived. Click "Confirm Arrived" to finalize and move the order to the next stage (Delivery/Collection).',
       },
       {
+        title: 'Item-Level Tracking',
+        description:
+          'Every order item is tracked individually through its lifecycle. Each item has independent status fields:',
+        details: [
+          'Production Status — pending / in_progress / finished',
+          'En Route Status — pending / in_transit / arrived',
+          'Inventory Verification — verified quantity vs ordered quantity',
+          'Use the Order Detail page to see per-item progress bars and timelines',
+        ],
+        tip: 'Item-level tracking means one order can have some items in production while others are already en route.',
+      },
+      {
         title: 'Production Exceptions',
         description:
           'Use "Grant Exception" or "Revoke Exception" on orders that need special handling or bypass normal production checks.',
@@ -548,10 +564,16 @@ const SECTIONS: Section[] = [
     diagram: 'payment-workflow',
     steps: [
       {
+        title: 'Stock Preparation',
+        description:
+          'From-stock orders appear here first. These orders skip production and go straight to stock preparation. Match items against existing inventory, confirm stock is ready, and the order advances to Balance Due.',
+        links: [{ label: 'Open Delivery →', href: '/delivery' }],
+      },
+      {
         title: 'Inventory Arrived',
         description:
-          'Orders where inventory has arrived and is ready for delivery processing. Click "Advance to Balance Due" to move the order forward.',
-        links: [{ label: 'Open Delivery →', href: '/delivery' }],
+          'Orders where inventory has arrived and is ready for delivery processing. Click "Balance Due →" to move the order forward.',
+        tip: 'The button advances the order to the Balance Due stage so the team can collect payment before delivery.',
       },
       {
         title: 'Balance Due',
@@ -563,8 +585,9 @@ const SECTIONS: Section[] = [
           'Add multiple slips if needed (e.g., partial payments)',
           'The system detects duplicate slips automatically',
           'Review extracted data and confirm with OTP verification',
+          'Exception orders show a "Schedule" button to skip payment and schedule delivery directly',
         ],
-        tip: 'You can upload multiple deposit slips for a single order. The system will sum up all slip amounts and detect duplicates.',
+        tip: 'You can upload multiple deposit slips for a single order. The system will sum up all slip amounts and detect duplicates. Exception orders can bypass payment if granted a delivery exception.',
       },
       {
         title: 'Balance Verification',
@@ -579,7 +602,7 @@ const SECTIONS: Section[] = [
       {
         title: 'Delivery Scheduled',
         description:
-          'Orders with a scheduled delivery date. Shows the scheduled date and allows rescheduling if needed.',
+          'Orders with a scheduled delivery date. Shows the scheduled date and allows rescheduling or cancelling if needed.',
       },
       {
         title: 'Delivered',
@@ -589,6 +612,7 @@ const SECTIONS: Section[] = [
           'Mark Payment Received — when the customer has paid',
           'Mark Countered — if the customer contested the delivery',
           'Mark Payment Confirmed — when payment is fully verified',
+          'Complete Order — if balance was already paid before delivery, the order auto-completes',
         ],
       },
       {
@@ -599,7 +623,8 @@ const SECTIONS: Section[] = [
       {
         title: 'Delivery Exceptions',
         description:
-          'Use "Grant Exception" or "Revoke Exception" for orders that need special delivery handling.',
+          'Use "Grant Exception" or "Revoke Exception" for orders that need special delivery handling. Exception orders can schedule delivery without full payment.',
+        warning: 'Only grant exceptions for trusted clients or special-case orders.',
       },
       {
         title: 'Filter by Client',
@@ -624,7 +649,6 @@ const SECTIONS: Section[] = [
         description:
           'The Collection page is organized into payment workflow sections:',
         details: [
-          'Inventory Arrived — Orders ready for payment processing',
           'Balance Due — Orders awaiting balance payment with deposit slip upload + AI extract',
           'Deposit for Verification — Deposits that need to be verified',
           'Balance for Verification — Balance payments that need verification',
@@ -732,7 +756,356 @@ const SECTIONS: Section[] = [
       },
     ],
   },
+
+  {
+    id: 'order-types',
+    icon: PackageCheck,
+    color: 'bg-sky-50 text-sky-600',
+    title: '📦 Order Types & Workflow',
+    href: '/orders',
+    summary:
+      'The system handles three order types. Understanding the difference prevents confusion when orders skip stages or follow alternate paths.',
+    steps: [
+      {
+        title: 'Produced Orders (Standard)',
+        description:
+          'The default flow. Items are manufactured or sourced externally, then dispatched.',
+        details: [
+          'Flow: Order Confirmation → Math Verified → Purchasing → Production → En Route → Inventory → Delivery → Collection → Completed',
+          'Production stage is mandatory',
+          'En route and inventory verification track physical arrival of goods',
+        ],
+        tip: 'Most orders follow this path.',
+      },
+      {
+        title: 'From-Stock Orders',
+        description:
+          'Items are pulled directly from existing inventory. These orders skip production, en route, and inventory verification.',
+        details: [
+          'Flow: Order Confirmation → Math Verified → Stock Preparation → Balance Due → Delivery → Collection → Completed',
+          'Stock Preparation stage matches order items against inventory database',
+          'Once stock is confirmed ready, the order advances to Balance Due',
+        ],
+        tip: 'From-stock orders appear in the Stock Preparation section of the Delivery tab, not in Production.',
+      },
+      {
+        title: 'Stock Replenishment',
+        description:
+          'Internal orders to restock inventory. These do not require deposits or client payments.',
+        details: [
+          'No deposit or balance collection needed',
+          'Moves straight to purchasing/production once confirmed',
+          'Used to keep inventory levels healthy',
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'item-tracking',
+    icon: Factory,
+    color: 'bg-violet-50 text-violet-600',
+    title: '🏗️ Item-Level Tracking',
+    href: '/production',
+    summary:
+      'Every order item is tracked independently. One order can have items at different stages simultaneously.',
+    steps: [
+      {
+        title: 'Production Tracking',
+        description:
+          'Each item has its own production status and estimated finish date.',
+        details: [
+          'Pending — not yet started',
+          'In Progress — actively being produced',
+          'Finished — production complete',
+          'Delayed — behind schedule, triggers escalation reminders',
+        ],
+        tip: 'Use "Bulk Start" and "Bulk Finish" to update many items at once, or handle items individually for partial production.',
+      },
+      {
+        title: 'En Route Tracking',
+        description:
+          'After production, each item is tracked during dispatch and transit.',
+        details: [
+          'Pending — waiting to be dispatched',
+          'In Transit — dispatched, on the way',
+          'Arrived — physically received at warehouse',
+        ],
+      },
+      {
+        title: 'Inventory Verification',
+        description:
+          'When items arrive, each is verified against the order quantity.',
+        details: [
+          'Verified Qty — how many units have been checked and confirmed',
+          'Partial verification is allowed (e.g., 5/10 items verified)',
+          'Bulk verify multiple items at once with a single OTP',
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'security',
+    icon: ShieldAlert,
+    color: 'bg-red-50 text-red-600',
+    title: '🔒 Security & OTP Verification',
+    href: '/settings',
+    summary:
+      'Critical actions require email OTP verification to prevent accidental or unauthorized changes.',
+    steps: [
+      {
+        title: 'OTP-Protected Actions',
+        description:
+          'The following actions always require an OTP code sent to your email:',
+        details: [
+          'Editing or deleting an order',
+          'Recording or verifying a payment',
+          'Manually advancing a stage',
+          'Granting or revoking exceptions',
+          'Verifying deposits or balances',
+          'Scheduling or cancelling delivery',
+          'Marking an order as delivered or countered',
+          'Deleting calendar events or clients',
+        ],
+        warning: 'If you do not receive the OTP email, check your spam folder or contact an admin.',
+      },
+      {
+        title: 'How OTP Works',
+        description:
+          'When you trigger a protected action, the system sends a one-time code to your registered email. Enter the code in the modal to proceed. The code expires after a short time for security.',
+        tip: 'The OTP modal shows which action you are confirming. Always double-check the order quotation number before entering the code.',
+      },
+    ],
+  },
+
+  {
+    id: 'exceptions',
+    icon: ShieldAlert,
+    color: 'bg-amber-50 text-amber-600',
+    title: '⚠️ Delivery Exceptions & Special Cases',
+    href: '/delivery',
+    summary:
+      'Delivery exceptions allow orders to bypass normal requirements for trusted clients or special situations.',
+    steps: [
+      {
+        title: 'What is a Delivery Exception?',
+        description:
+          'A delivery exception lets an order move to delivery scheduling without the balance being fully paid. This is useful for:',
+        details: [
+          'Trusted long-term clients with payment terms',
+          'Emergency or rush deliveries where payment will follow',
+          'Internal or special-case orders',
+        ],
+        warning: 'Only admins can grant exceptions. Use sparingly — exceptions bypass the standard payment guard.',
+      },
+      {
+        title: 'How to Grant an Exception',
+        description:
+          'On the Delivery or Production tab, click "Grant Exception" on an order row. Add a note explaining why the exception is needed. The order will then show a "Special Case" badge and unlock skip-payment buttons.',
+      },
+      {
+        title: 'Revoking an Exception',
+        description:
+          'If circumstances change, click "Revoke Exception" to restore normal payment requirements. The order will no longer allow skip-payment scheduling.',
+      },
+    ],
+  },
+
+  {
+    id: 'telegram',
+    icon: MessageSquare,
+    color: 'bg-blue-50 text-blue-600',
+    title: '🤖 Telegram Bot Quick Reference',
+    href: '/telegram',
+    summary:
+      'The Telegram bot mirrors dashboard functionality for on-the-go updates. Most actions use inline buttons.',
+    steps: [
+      {
+        title: 'Slash Commands',
+        description:
+          'Type these commands in any connected group or private chat:',
+        details: [
+          '/start — Show the main menu with all features',
+          '/commands — List all available commands and features',
+          '/help — Detailed guide for each feature',
+          '/unlink — Clear the linked order for file uploads',
+          '/prod — Quick production status check',
+          '/bug — Report a bug or issue',
+        ],
+      },
+      {
+        title: 'Main Menu Features',
+        description:
+          'Tap the buttons in the main menu for guided workflows:',
+        details: [
+          'Check Order Status — type a quotation number to see current stage and payment status',
+          'Purchasing / Production — confirm production started, partial, or not yet',
+          'Record Downpayment — log deposit with optional AI slip scan',
+          'Pay Balance — record balance payment before delivery',
+          'Schedule Delivery — pick a date (requires balance paid unless exception granted)',
+          'Mark as Delivered — confirm delivery with optional remarks',
+          'Record Payment — confirm or log payment received',
+          'Clients — search client details and delivery info',
+        ],
+      },
+      {
+        title: 'Smart Features',
+        description:
+          'Advanced automation features powered by AI and scheduling:',
+        details: [
+          'AI Vision — send a quotation or deposit slip photo and the bot auto-extracts details',
+          'Auto Reminders — scheduled reminders for production, delivery, and payments',
+          'Dashboard Sync — all data syncs to the web dashboard in real-time',
+          'Inline Buttons — most actions use tap-friendly buttons instead of typed commands',
+        ],
+        tip: 'You can also type a quotation number directly (e.g., QTN-2026-001) and the bot will show its status instantly.',
+      },
+    ],
+  },
+
+  {
+    id: 'shortcuts',
+    icon: Keyboard,
+    color: 'bg-gray-50 text-gray-600',
+    title: '⌨️ Tips & Shortcuts',
+    href: '#',
+    summary:
+      'Productivity tips to navigate the dashboard faster.',
+    steps: [
+      {
+        title: 'Dashboard Navigation Tips',
+        description:
+          'Ways to move through the system more efficiently:',
+        details: [
+          'Click any quotation number to open the Order Detail page from any tab',
+          'Use the client filter at the top of each page to narrow down orders quickly',
+          'Expand order rows to see item-level details without leaving the page',
+          'The Calendar tab aggregates all delivery dates and reminders in one view',
+        ],
+      },
+      {
+        title: 'Search Tips',
+        description:
+          'Make the most of search and filtering:',
+        details: [
+          'Client search uses fuzzy matching — partial names work',
+          'Order search filters by quotation number and client name simultaneously',
+          'Use the Workflow page to see live order counts at every stage',
+        ],
+      },
+      {
+        title: 'Mobile Tips',
+        description:
+          'The dashboard is responsive and works on mobile:',
+        details: [
+          'Tables scroll horizontally on small screens',
+          'OTP modals are centered and thumb-friendly',
+          'Add the dashboard to your home screen for quick access (PWA supported)',
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'faq',
+    icon: HelpCircle,
+    color: 'bg-orange-50 text-orange-600',
+    title: '❓ FAQ & Troubleshooting',
+    href: '#',
+    summary:
+      'Common questions and quick fixes for issues you might encounter.',
+    steps: [
+      {
+        title: 'Why does my order not advance to the next stage?',
+        description:
+          'Orders only advance when all required conditions are met. Check:',
+        details: [
+          'Is the deposit verified? Production cannot start without a verified deposit.',
+          'Are all items finished? Production only advances when every item is marked finished.',
+          'Is the balance paid? Delivery scheduling requires balance payment unless an exception is granted.',
+          'Check the Workflow page to see the exact exit condition for each stage.',
+        ],
+      },
+      {
+        title: 'Why am I getting duplicate reminders?',
+        description:
+          'The reminder scheduler auto-completes stale reminders when an order advances, but occasionally a reminder may fire just before the stage change. If you see persistent duplicate reminders for the same stage, check the Workflow page to confirm the order is not stuck.',
+        tip: 'Stuck orders (e.g., balance_due with balance_verified=true) will trigger reminders until manually advanced.',
+      },
+      {
+        title: 'Why did my dashboard action fail?',
+        description:
+          'Most failures fall into these categories:',
+        details: [
+          'OTP expired — request a new code and try again',
+          'Invalid stage transition — the system blocks jumps that skip required steps',
+          'Action token missing — dashboard actions require OTP verification; bot actions do not',
+          'Network error — refresh the page and retry',
+        ],
+      },
+      {
+        title: 'How do I fix a stuck order?',
+        description:
+          'An order is "stuck" when it sits at a stage longer than expected. To resolve:',
+        details: [
+          'Check the Order Detail page for the full timeline and any error notes',
+          'Verify all prerequisites are met (deposit verified, items finished, balance paid)',
+          'Use the Quick Actions tab to manually advance the stage if needed',
+          'If the stage transition is blocked, read the error message — it tells you exactly what is missing',
+        ],
+      },
+      {
+        title: 'The Telegram bot is not responding',
+        description:
+          'Try these steps:',
+        details: [
+          'Check the Bot Logs page for error messages',
+          'Ensure the bot is added to the correct group chats with admin permissions',
+          'Try typing /start to reset your session',
+          'If the bot shows a 409 Conflict error, it will auto-retry within a few minutes',
+        ],
+      },
+    ],
+  },
 ];
+
+// ─── Stage Badge Helper ──────────────────────────────────────────────────────
+
+function GuideStageBadge({ stage }: { stage: string }) {
+  const config = {
+    order_confirmation_received: { label: 'Order Confirmation', color: '#2490ef', bg: '#eff6ff' },
+    math_verified: { label: 'Math Verified', color: '#14b8a6', bg: '#f0fdfa' },
+    purchasing_pending: { label: 'Purchasing Pending', color: '#f97316', bg: '#fff7ed' },
+    deposit_pending: { label: 'Downpayment Pending', color: '#ec4899', bg: '#fdf2f8' },
+    deposit_verification: { label: 'Deposit Verification', color: '#e11d48', bg: '#fff1f2' },
+    production_pending: { label: 'Production Pending', color: '#eab308', bg: '#fefce8' },
+    production_in_progress: { label: 'Production In Progress', color: '#6366f1', bg: '#eef2ff' },
+    en_route: { label: 'En Route', color: '#0ea5e9', bg: '#f0f9ff' },
+    en_route_verification: { label: 'En Route Verification', color: '#3b82f6', bg: '#eff6ff' },
+    inventory_verification: { label: 'Inventory Verification', color: '#14b8a6', bg: '#f0fdfa' },
+    inventory_arrived: { label: 'Inventory Arrived', color: '#06b6d4', bg: '#ecfeff' },
+    stock_preparation: { label: 'Stock Preparation', color: '#84cc16', bg: '#f7fee7' },
+    balance_due: { label: 'Balance Due', color: '#8b5cf6', bg: '#f5f3ff' },
+    balance_verification: { label: 'Balance Verification', color: '#d946ef', bg: '#fdf4ff' },
+    delivery_pending: { label: 'Delivery Pending', color: '#f59e0b', bg: '#fffbeb' },
+    delivery_scheduled: { label: 'Delivery Scheduled', color: '#a855f7', bg: '#faf5ff' },
+    delivered: { label: 'Delivered', color: '#f97316', bg: '#fff7ed' },
+    countered: { label: 'Countered', color: '#f43f5e', bg: '#fff1f2' },
+    payment_received: { label: 'Payment Received', color: '#10b981', bg: '#ecfdf5' },
+    payment_confirmed: { label: 'Payment Confirmed', color: '#22c55e', bg: '#f0fdf4' },
+    completed: { label: 'Completed', color: '#6b7280', bg: '#f3f4f6' },
+  }[stage];
+  if (!config) return null;
+  return (
+    <span
+      className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ color: config.color, backgroundColor: config.bg, border: `1px solid ${config.color}33` }}
+    >
+      {config.label}
+    </span>
+  );
+}
 
 // ─── Diagram Renderer ────────────────────────────────────────────────────────
 
@@ -987,16 +1360,8 @@ export default function GuidesPage() {
       {/* ── Footer ──────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
         <p className="text-sm text-gray-500">
-          Need help? Check the{' '}
-          <a
-            href="https://github.com/your-org/quotation-automation-system"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-indigo-600 underline-offset-2 hover:underline"
-          >
-            GitHub repository
-          </a>{' '}
-          for more documentation.
+          Guides last updated: {new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}.
+          For system issues, use the <a href="/bugs" className="font-medium text-indigo-600 underline-offset-2 hover:underline">Bug Report</a> page.
         </p>
       </div>
     </div>
