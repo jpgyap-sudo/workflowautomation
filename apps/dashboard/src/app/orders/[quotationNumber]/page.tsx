@@ -5,7 +5,7 @@ import { Fragment, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, verifyPayment, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, verifyPayment, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
@@ -780,6 +780,8 @@ function ItemTrackingSection({
     action: 'all' | 'partial' | 'not_yet';
     verifiedQty?: number;
   } | null>(null);
+  const [pendingBulkVerifyItemIds, setPendingBulkVerifyItemIds] = useState<string[] | null>(null);
+  const [selectedVerifyItemIds, setSelectedVerifyItemIds] = useState<Set<string>>(new Set());
   const [pendingMarkArrived, setPendingMarkArrived] = useState<{ itemId: string } | null>(null);
   const [pendingEditItem, setPendingEditItem] = useState<boolean>(false);
   const [pendingProdStatus, setPendingProdStatus] = useState<{ itemId: string; status: 'pending' | 'in_progress' | 'finished' } | null>(null);
@@ -789,12 +791,13 @@ function ItemTrackingSection({
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'verify_item' | 'mark_arrived' | 'edit_item' | 'production_status' | 'en_route_status' | 'manual_item';
+    pendingAction: 'verify_item' | 'bulk_verify_items' | 'mark_arrived' | 'edit_item' | 'production_status' | 'en_route_status' | 'manual_item';
   }>({ open: false, title: '', description: '', pendingAction: 'verify_item' });
 
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
   const stageShowsArrivalCols = ['en_route', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(currentStage);
+  const selectableVerifyItems = stageShowsInventoryCols ? items.filter((i) => (i.verified_qty ?? 0) < i.quantity) : [];
   const stageAllowsProdEdit = ['production_in_progress', 'partial_production', 'en_route'].includes(currentStage);
   // Allow en-route dispatch edits at en_route, and arrival edits at en_route_verification too
   const stageAllowsEnRouteEdit = ['en_route', 'en_route_verification'].includes(currentStage);
@@ -1066,6 +1069,36 @@ function ItemTrackingSection({
     }
   }
 
+  function handleBulkVerifyItems(itemIds: string[]) {
+    if (itemIds.length === 0) return;
+    setPendingBulkVerifyItemIds(itemIds);
+    setOtpModal({
+      open: true,
+      title: 'Bulk Verify Inventory Items',
+      description: `Confirm verifying ${itemIds.length} selected item(s) as fully verified.`,
+      pendingAction: 'bulk_verify_items',
+    });
+  }
+
+  async function executeBulkVerifyItems(actionToken: string) {
+    if (!pendingBulkVerifyItemIds || pendingBulkVerifyItemIds.length === 0) return;
+    setOtpModal((prev) => ({ ...prev, open: false }));
+    setVerifyingItemId('bulk');
+    try {
+      await bulkInventoryVerify(orderId, {
+        item_ids: pendingBulkVerifyItemIds,
+        action_token: actionToken,
+      });
+      await refreshItemTracking();
+      setSelectedVerifyItemIds(new Set());
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Bulk verification failed');
+    } finally {
+      setVerifyingItemId(null);
+      setPendingBulkVerifyItemIds(null);
+    }
+  }
+
   async function handleCompleteVerification(actionToken: string) {
     setCompletingVerification(true);
     setShowOtp(null);
@@ -1238,6 +1271,7 @@ function ItemTrackingSection({
           description={otpModal.description}
           onVerified={(token) => {
             if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
+            else if (otpModal.pendingAction === 'bulk_verify_items') executeBulkVerifyItems(token);
             else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
             else if (otpModal.pendingAction === 'edit_item') executeSaveEditItem(token);
             else if (otpModal.pendingAction === 'production_status') executeItemProductionStatus(token);
@@ -1585,6 +1619,25 @@ function ItemTrackingSection({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-gray-200 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                {stageShowsInventoryCols && (
+                  <th className="w-8 py-2 pr-3">
+                    <input
+                      type="checkbox"
+                      title="Select all"
+                      checked={selectableVerifyItems.length > 0 && selectableVerifyItems.every((i) => selectedVerifyItemIds.has(i.id))}
+                      ref={(el) => { if (el) el.indeterminate = selectedVerifyItemIds.size > 0 && !selectableVerifyItems.every((i) => selectedVerifyItemIds.has(i.id)); }}
+                      onChange={() => {
+                        if (selectableVerifyItems.every((i) => selectedVerifyItemIds.has(i.id))) {
+                          setSelectedVerifyItemIds(new Set());
+                        } else {
+                          setSelectedVerifyItemIds(new Set(selectableVerifyItems.map((i) => i.id)));
+                        }
+                      }}
+                      disabled={selectableVerifyItems.length === 0}
+                      className="rounded border-gray-300 accent-teal-600 disabled:opacity-30"
+                    />
+                  </th>
+                )}
                 <th className="py-2 pr-3">Item</th>
                 <th className="py-2 pr-3">Qty</th>
                 <th className="py-2 pr-3">Production</th>
@@ -1598,7 +1651,25 @@ function ItemTrackingSection({
             <tbody className="divide-y divide-gray-100">
               {items.map((item) => (
                 <Fragment key={item.id}>
-                <tr className="hover:bg-gray-50">
+                <tr className={`hover:bg-gray-50 ${selectedVerifyItemIds.has(item.id) ? 'bg-teal-50/40' : ''}`}>
+                  {stageShowsInventoryCols && (
+                    <td className="py-2 pr-3">
+                      {(item.verified_qty ?? 0) < item.quantity && (
+                        <input
+                          type="checkbox"
+                          checked={selectedVerifyItemIds.has(item.id)}
+                          onChange={() => {
+                            setSelectedVerifyItemIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                              return next;
+                            });
+                          }}
+                          className="rounded border-gray-300 accent-teal-600"
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className="py-2 pr-3 font-medium text-gray-800">{item.name}</td>
                   <td className="py-2 pr-3 text-gray-600">{item.quantity}</td>
                   <td className="py-2 pr-3">
@@ -1789,13 +1860,24 @@ function ItemTrackingSection({
               {items.filter(i => (i.verified_qty ?? 0) >= i.quantity).length}/{items.length} items fully verified
             </p>
           </div>
-          <button
-            onClick={() => setShowOtp('complete_verification')}
-            disabled={completingVerification || items.some(i => (i.verified_qty ?? 0) < i.quantity)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
-          >
-            {completingVerification ? 'Completing...' : '✓ Complete Verification'}
-          </button>
+          <div className="flex items-center gap-2">
+            {selectedVerifyItemIds.size > 0 && (
+              <button
+                onClick={() => handleBulkVerifyItems(Array.from(selectedVerifyItemIds))}
+                disabled={verifyingItemId === 'bulk'}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+              >
+                {verifyingItemId === 'bulk' ? 'Verifying...' : `✓ Verify Selected (${selectedVerifyItemIds.size})`}
+              </button>
+            )}
+            <button
+              onClick={() => setShowOtp('complete_verification')}
+              disabled={completingVerification || items.some(i => (i.verified_qty ?? 0) < i.quantity)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {completingVerification ? 'Completing...' : '✓ Complete Verification'}
+            </button>
+          </div>
         </div>
       )}
 

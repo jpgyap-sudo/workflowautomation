@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, recordStageUpdate, getOrderPayments } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2 } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -182,9 +182,6 @@ export default function DeliveryPage() {
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [payingOrder, setPayingOrder] = useState<Order | null>(null);
-  const [payAmount, setPayAmount] = useState('');
-  const [payRemaining, setPayRemaining] = useState<number | null>(null);
   const [payResult, setPayResult] = useState<string | null>(null);
   const [schedulingOrder, setSchedulingOrder] = useState<Order | null>(null);
   const [scheduleDate, setScheduleDate] = useState('');
@@ -196,56 +193,216 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   function mutateAll() {
     mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed();
   }
 
-  // ── Payment ────────────────────────────────────────────────────────────
+  // ── Payment Modal (Deposit Slip Upload + AI Extract) ────────────────────
 
-  function handleRecordPayment(order: Order) {
-    const amount = Number(payAmount.replace(/,/g, ''));
-    if (!amount || amount <= 0) { alert('Please enter a valid payment amount'); return; }
-    (window as any).__pendingPaymentData = { order, amount };
+  interface BalanceSlip {
+    amount: string;
+    date: string;
+    reference: string;
+    file: { name: string; data: string; mime: string; preview: string } | null;
+    extracting: boolean;
+    extractedNote: string | null;
+  }
+
+  const emptySlip = (): BalanceSlip => ({
+    amount: '',
+    date: new Date().toISOString().slice(0, 10),
+    reference: '',
+    file: null,
+    extracting: false,
+    extractedNote: null,
+  });
+
+  const [paymentModal, setPaymentModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    uploading: boolean;
+    error: string | null;
+    remainingBalance: number | null;
+    balancePaidSoFar: number | null;
+  }>({ open: false, order: null, uploading: false, error: null, remainingBalance: null, balancePaidSoFar: null });
+
+  const [balanceSlips, setBalanceSlips] = useState<BalanceSlip[]>([emptySlip()]);
+  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  function updateSlip(index: number, patch: Partial<BalanceSlip>) {
+    setBalanceSlips(prev => prev.map((s, i) => i === index ? { ...s, ...patch } : s));
+  }
+
+  function addSlip() {
+    setBalanceSlips(prev => [...prev, emptySlip()]);
+  }
+
+  function removeSlip(index: number) {
+    setBalanceSlips(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function handleSlipFileSelect(index: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      const commaIndex = result.indexOf(',');
+      const base64 = commaIndex !== -1 ? result.substring(commaIndex + 1) : result;
+      const mime = file.type || 'image/jpeg';
+      updateSlip(index, { file: { name: file.name, data: base64, mime, preview: result }, extracting: true, extractedNote: null });
+      extractSlipData(index, base64, mime);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function extractSlipData(index: number, base64: string, mimeType: string) {
+    try {
+      const result = await visionExtract({ image_base64: base64, mime_type: mimeType, mode: 'payment' });
+      const payment = result.payment;
+      const updates: string[] = [];
+      const patch: Partial<BalanceSlip> = { extracting: false };
+      if (payment?.amount && Number(payment.amount) > 0) {
+        patch.amount = String(payment.amount);
+        updates.push(`amount ₱${Number(payment.amount).toLocaleString()}`);
+      }
+      if (payment?.payment_date) {
+        patch.date = payment.payment_date.slice(0, 10);
+        updates.push(`date ${payment.payment_date.slice(0, 10)}`);
+      }
+      if (payment?.reference_number) {
+        patch.reference = payment.reference_number;
+        updates.push(`ref ${payment.reference_number}`);
+      }
+      patch.extractedNote = updates.length
+        ? `AI extracted ${updates.join(', ')}.`
+        : 'AI could not find fields. Enter manually.';
+      updateSlip(index, patch);
+    } catch (err: any) {
+      updateSlip(index, { extracting: false, extractedNote: 'AI extraction failed. Enter manually.' });
+    }
+  }
+
+  function getDuplicateIndices(slips: BalanceSlip[]): Set<number> {
+    const seen = new Map<string, number>();
+    const dupes = new Set<number>();
+    slips.forEach((s, i) => {
+      const amt = s.amount.replace(/,/g, '').trim();
+      const dt = s.date.trim();
+      if (!amt || !dt) return;
+      const key = `${amt}|${dt}`;
+      if (seen.has(key)) {
+        dupes.add(seen.get(key)!);
+        dupes.add(i);
+      } else {
+        seen.set(key, i);
+      }
+    });
+    return dupes;
+  }
+
+  async function handlePaymentConfirmClick(order: Order) {
+    const totalAmount = Number(order.total_amount ?? 0);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const computedBalance = Math.max(0, totalAmount - depositAmount);
+    const firstSlip = emptySlip();
+    firstSlip.amount = computedBalance > 0 ? computedBalance.toFixed(2) : '';
+    setBalanceSlips([firstSlip]);
+    setPaymentModal({ open: true, order, uploading: false, error: null, remainingBalance: null, balancePaidSoFar: null });
+    try {
+      const payments = await getOrderPayments(order.id);
+      const remaining = payments.totals.remaining_balance ?? computedBalance;
+      const paidSoFar = payments.totals.balance ?? 0;
+      setPaymentModal((prev) => ({ ...prev, remainingBalance: remaining, balancePaidSoFar: paidSoFar }));
+      setBalanceSlips(prev => {
+        const updated = [...prev];
+        if (updated[0] && remaining > 0) updated[0] = { ...updated[0], amount: remaining.toFixed(2) };
+        return updated;
+      });
+    } catch {
+      // fallback: keep computed balance
+    }
+  }
+
+  function closePaymentModal() {
+    setPaymentModal({ open: false, order: null, uploading: false, error: null, remainingBalance: null, balancePaidSoFar: null });
+    setBalanceSlips([emptySlip()]);
+  }
+
+  function handleConfirmPayment() {
+    const order = paymentModal.order;
+    if (!order) return;
+    const validSlips = balanceSlips.filter(s => {
+      const amt = Number(s.amount.replace(/,/g, ''));
+      return Number.isFinite(amt) && amt > 0;
+    });
+    if (validSlips.length === 0) {
+      setPaymentModal((prev) => ({ ...prev, error: 'Enter at least one valid payment amount before confirming.' }));
+      return;
+    }
+    const dupes = getDuplicateIndices(balanceSlips);
+    if (dupes.size > 0) {
+      setPaymentModal((prev) => ({ ...prev, error: 'Remove duplicate slips (same amount + same date) before confirming.' }));
+      return;
+    }
+    (window as any).__pendingConfirmPaymentData = { order };
     setOtpModal({
       open: true,
       title: 'Record Balance Payment',
-      description: `Confirm balance payment of ₱${amount.toLocaleString()} for "${order.quotation_number ?? '—'}".`,
-      pendingAction: 'record_payment',
+      description: `Record ${validSlips.length} balance payment slip(s) for "${order.quotation_number ?? '?'}". This will move the order to Balance Verification.`,
+      pendingAction: 'confirmPayment',
     });
   }
 
-  async function executeRecordPayment(actionToken: string) {
-    const pending = (window as any).__pendingPaymentData as
-      | { order: Order; amount: number }
-      | undefined;
+  async function executeConfirmPayment(actionToken: string) {
+    const pending = (window as any).__pendingConfirmPaymentData as { order: Order } | undefined;
     if (!pending) return;
-    const { order, amount } = pending;
-    setActionLoading(order.id);
+    const { order } = pending;
+    setPaymentModal((prev) => ({ ...prev, uploading: true, error: null }));
     try {
-      // payBalance() records the payment AND advances stage from balance_due → balance_verification.
-      // The action_token is single-use (consumed by payBalance), so do NOT reuse it for a second call.
-      const res = await payBalance({ quotation_number: order.quotation_number ?? '', amount, action_token: actionToken });
-      let msg = `Payment of ₱${amount.toLocaleString()} recorded.`;
+      const validSlips = balanceSlips.filter(s => {
+        const amt = Number(s.amount.replace(/,/g, ''));
+        return Number.isFinite(amt) && amt > 0;
+      });
+      if (validSlips.length === 0) throw new Error('No valid slips to record.');
+
+      const res = await payBalanceWithFileBulk({
+        quotation_number: order.quotation_number ?? '',
+        slips: validSlips.map(s => ({
+          amount: Number(s.amount.replace(/,/g, '')),
+          payment_date: s.date || undefined,
+          reference_number: s.reference || undefined,
+          image_base64: s.file?.data,
+          mime_type: s.file?.mime,
+          original_filename: s.file?.name,
+        })),
+        updated_by: 'dashboard_quick_action',
+        action_token: actionToken,
+      });
+
+      const total = res.total_this_submission ?? validSlips.reduce((sum, s) => sum + Number(s.amount.replace(/,/g, '')), 0);
+      let note = `${validSlips.length} slip(s) totalling ₱${total.toLocaleString()} recorded.`;
       if (res.is_fully_paid) {
-        msg += ' Balance fully paid.';
-        if (res.overpayment && res.overpayment > 0) msg += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
+        note += ' Balance fully paid.';
+        if (res.overpayment && res.overpayment > 0) note += ` Overpayment: ₱${res.overpayment.toLocaleString()}.`;
       } else {
-        msg += ` Remaining: ₱${res.remaining_balance?.toLocaleString() ?? 'unknown'}.`;
+        note += ` Remaining: ₱${res.remaining_balance?.toLocaleString() ?? 'unknown'}.`;
       }
-      setPayResult(msg);
-      setPayingOrder(null);
-      setPayAmount('');
-      setPayRemaining(null);
+      closePaymentModal();
+      setPayResult(note);
       mutateBalanceDue();
       mutateBalanceVerification();
     } catch (err: any) {
-      alert('Failed to record payment: ' + (err.message ?? 'Unknown error'));
+      setPaymentModal((prev) => ({
+        ...prev,
+        uploading: false,
+        error: err.message ?? 'Failed to record balance payment. Please try again.',
+      }));
     } finally {
-      setActionLoading(null);
-      (window as any).__pendingPaymentData = null;
+      (window as any).__pendingConfirmPaymentData = null;
     }
   }
 
@@ -639,7 +796,8 @@ export default function DeliveryPage() {
     if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
     if (otpModal.pendingAction === 'delete') { handleDeleteVerified(actionToken); return; }
     if (otpModal.pendingAction === 'schedule_delivery') { handleScheduleVerified(actionToken); return; }
-    if (otpModal.pendingAction === 'record_payment') { executeRecordPayment(actionToken); return; }
+    if (otpModal.pendingAction === 'record_payment') { executeConfirmPayment(actionToken); return; }
+    if (otpModal.pendingAction === 'confirmPayment') { executeConfirmPayment(actionToken); return; }
     if (otpModal.pendingAction === 'complete_directly') {
       const pending = (window as any).__pendingCompleteData as { order: Order } | undefined;
       if (pending) executeCompleteDirectly(pending.order, actionToken);
@@ -824,24 +982,12 @@ export default function DeliveryPage() {
                       )}
                       <StageBadge stage={order.current_stage} />
                       <button
-                        onClick={async () => {
-                          setPayingOrder(order);
-                          setPayResult(null);
-                          try {
-                            const payments = await getOrderPayments(order.id);
-                            const remaining = payments.totals.remaining_balance ?? Math.max(0, totalAmount - depositAmount);
-                            setPayRemaining(remaining);
-                            setPayAmount(String(remaining));
-                          } catch {
-                            setPayRemaining(Math.max(0, totalAmount - depositAmount));
-                            setPayAmount(String(balance));
-                          }
-                        }}
+                        onClick={() => handlePaymentConfirmClick(order)}
                         disabled={actionLoading === order.id}
                         className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
-                        title="Record payment"
+                        title="Record payment with deposit slip"
                       >
-                        <DollarSign className="h-4 w-4" />
+                        <Upload className="h-4 w-4" />
                       </button>
                       {/* Skip-payment buttons for exception orders */}
                       {hasException && (
@@ -877,25 +1023,6 @@ export default function DeliveryPage() {
                   </div>
                   {editingOrder?.id === order.id && (
                     <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
-                  )}
-                  {payingOrder?.id === order.id && (
-                    <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-emerald-50/50 px-6 py-3">
-                      <span className="text-xs font-medium text-emerald-700">Amount{payRemaining != null ? ` (remaining ₱${payRemaining.toLocaleString()})` : ''}:</span>
-                      <input
-                        value={payAmount}
-                        onChange={(e) => setPayAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                        placeholder="Enter amount"
-                        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                      <button onClick={() => handleRecordPayment(order)} disabled={actionLoading === order.id}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-                        {actionLoading === order.id ? 'Processing…' : 'Confirm Payment'}
-                      </button>
-                      <button onClick={() => { setPayingOrder(null); setPayAmount(''); setPayRemaining(null); setPayResult(null); }}
-                        className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-300">
-                        Cancel
-                      </button>
-                    </div>
                   )}
                 </div>
               );
@@ -1334,6 +1461,179 @@ export default function DeliveryPage() {
         )}
       </div>
 
+      {/* ── Payment Modal (Deposit Slip Upload + AI Extract) ──────────────── */}
+      {paymentModal.open && paymentModal.order && (() => {
+        const order = paymentModal.order;
+        const totalAmount = Number(order.total_amount ?? 0);
+        const depositAmount = Number(order.deposit_amount ?? 0);
+        const computedBalance = Math.max(0, totalAmount - depositAmount);
+        const slipTotal = balanceSlips.reduce((sum, s) => {
+          const amt = Number(s.amount.replace(/,/g, ''));
+          return sum + (Number.isFinite(amt) ? amt : 0);
+        }, 0);
+        const hasValidSlip = balanceSlips.some(s => {
+          const amt = Number(s.amount.replace(/,/g, ''));
+          return Number.isFinite(amt) && amt > 0;
+        });
+        const dupes = getDuplicateIndices(balanceSlips);
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 py-10">
+            <div className="mx-auto w-full max-w-xl rounded-xl bg-white shadow-2xl">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">Record Balance Payment</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {order.quotation_number ?? '—'} — {order.client_name ?? 'Unknown'}
+                    {paymentModal.remainingBalance != null && (
+                      <span className="ml-2 font-medium text-violet-600">
+                        Remaining: ₱{paymentModal.remainingBalance.toLocaleString()}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <button onClick={closePaymentModal} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="space-y-4 px-6 py-4">
+                {paymentModal.error && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                    {paymentModal.error}
+                  </div>
+                )}
+
+                {/* Slip list */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-700">Deposit Slips</span>
+                    <button onClick={addSlip} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100">
+                      + Add Slip
+                    </button>
+                  </div>
+
+                  {balanceSlips.map((slip, idx) => {
+                    const isDupe = dupes.has(idx);
+                    return (
+                      <div key={idx} className={`rounded-lg border p-3 ${isDupe ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-gray-500">Slip #{idx + 1}</span>
+                          {balanceSlips.length > 1 && (
+                            <button onClick={() => removeSlip(idx)} className="text-[11px] text-red-500 hover:text-red-700">Remove</button>
+                          )}
+                        </div>
+
+                        {/* File upload */}
+                        <div className="mb-3">
+                          <input
+                            ref={(el) => { fileInputRefs.current[idx] = el; }}
+                            type="file"
+                            accept="image/*,.pdf"
+                            className="hidden"
+                            onChange={(e) => handleSlipFileSelect(idx, e)}
+                          />
+                          {slip.file ? (
+                            <div className="relative">
+                              <img src={slip.file.preview} alt="Slip preview" className="h-24 w-full rounded-lg border border-gray-200 object-cover" />
+                              <button
+                                onClick={() => updateSlip(idx, { file: null, extractedNote: null })}
+                                className="absolute right-1 top-1 rounded-full bg-white/80 p-0.5 text-gray-500 hover:text-red-500"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => fileInputRefs.current[idx]?.click()}
+                              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 text-xs text-gray-500 hover:border-emerald-400 hover:text-emerald-600"
+                            >
+                              <Upload className="h-5 w-5" />
+                              Upload deposit slip (image or PDF)
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Extracting indicator */}
+                        {slip.extracting && (
+                          <div className="mb-2 flex items-center gap-2 text-xs text-blue-600">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            AI extracting payment details…
+                          </div>
+                        )}
+
+                        {/* Extracted note */}
+                        {slip.extractedNote && (
+                          <div className="mb-2 rounded bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
+                            {slip.extractedNote}
+                          </div>
+                        )}
+
+                        {/* Amount + Date + Reference */}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <label className="block text-xs font-medium text-gray-600">
+                            Amount (₱)
+                            <input
+                              value={slip.amount}
+                              onChange={(e) => updateSlip(idx, { amount: e.target.value.replace(/[^0-9.,]/g, '') })}
+                              placeholder="0.00"
+                              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="block text-xs font-medium text-gray-600">
+                            Payment Date
+                            <input
+                              type="date"
+                              value={slip.date}
+                              onChange={(e) => updateSlip(idx, { date: e.target.value })}
+                              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                        </div>
+                        <label className="mt-2 block text-xs font-medium text-gray-600">
+                          Reference Number
+                          <input
+                            value={slip.reference}
+                            onChange={(e) => updateSlip(idx, { reference: e.target.value })}
+                            placeholder="Optional"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Summary */}
+                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5">
+                  <span className="text-xs font-medium text-gray-600">Total this submission</span>
+                  <span className="text-sm font-bold text-emerald-700">₱{slipTotal.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+                <button onClick={closePaymentModal} className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmPayment}
+                  disabled={!hasValidSlip || paymentModal.uploading}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {paymentModal.uploading ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
+                  ) : (
+                    <><FileText className="h-3.5 w-3.5" /> Confirm & Record Payment</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* OTP Modal */}
       <OtpModal
         open={otpModal.open}
@@ -1347,6 +1647,7 @@ export default function DeliveryPage() {
           (window as any).__pendingScheduleData = null;
           (window as any).__pendingPaymentData = null;
           (window as any).__pendingCompleteData = null;
+          (window as any).__pendingConfirmPaymentData = null;
         }}
       />
 

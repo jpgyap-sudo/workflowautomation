@@ -613,6 +613,19 @@ export async function inventoryVerifyItem(
   );
 }
 
+export async function bulkInventoryVerify(
+  id: string,
+  data: { item_ids: string[]; action_token: string }
+): Promise<{ ok: boolean; verification_pct: number }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/bulk-inventory-verify`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 export async function completeInventoryVerification(
   id: string,
   actionToken: string

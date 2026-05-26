@@ -3118,6 +3118,125 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   });
 });
 
+// POST /orders/:id/bulk-inventory-verify — Bulk verify selected items as "all verified"
+const bulkInventoryVerifySchema = z.object({
+  item_ids: z.array(z.string()),
+  action_token: z.string(),
+});
+
+app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkInventoryVerifySchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Verify the order is in inventory_verification stage
+  const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null }>(
+    `SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (orderRows[0].current_stage !== 'inventory_verification') {
+    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  }
+
+  // Fetch selected items
+  const selectedItems = await query<{ id: string; name: string; quantity: number; verified_qty: number | null }>(
+    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::text[]) ORDER BY created_at ASC`,
+    [id, body.item_ids]
+  );
+
+  const verifiedNames: string[] = [];
+
+  for (const item of selectedItems) {
+    const previousVerifiedQty = Number(item.verified_qty ?? 0);
+    const newVerifiedQty = item.quantity;
+    const inventoryDelta = newVerifiedQty - previousVerifiedQty;
+
+    if (inventoryDelta > 0) {
+      await query(
+        `UPDATE order_items
+         SET verified_qty = $1,
+             inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [newVerifiedQty, item.id]
+      );
+
+      await adjustInventoryForOrderItem(
+        id,
+        item.id,
+        item.name,
+        inventoryDelta,
+        'inventory_verified',
+        `Bulk inventory verification: ${item.name} — ${previousVerifiedQty} -> ${newVerifiedQty}.`,
+        'inventory-agent',
+      );
+
+      await query(
+        `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
+         VALUES ($1, $2, $3, 'agent', 'inventory-agent')`,
+        [id, item.id, `Bulk inventory verification: ${item.name} — all verified (${newVerifiedQty}/${item.quantity})`]
+      );
+
+      verifiedNames.push(`${item.name} (${newVerifiedQty}/${item.quantity})`);
+    }
+  }
+
+  // Recalculate overall verification %
+  const allItems = await query(
+    `SELECT SUM(quantity) as total_qty, SUM(verified_qty) as verified_qty FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+  const totalQty = Number(allItems[0]?.total_qty ?? 0);
+  const totalVerified = Number(allItems[0]?.verified_qty ?? 0);
+  const verificationPct = totalQty > 0 ? Math.round((totalVerified / totalQty) * 100) : 0;
+
+  await query(
+    `UPDATE orders SET inventory_verification_pct = $1, updated_at = NOW() WHERE id = $2`,
+    [verificationPct, id]
+  );
+
+  // Notify inventory group chat about bulk verification
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID && verifiedNames.length > 0) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `<b>Inventory Verification Updated (Bulk)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `<b>Verified Items</b>\n${verifiedNames.join('\n')}\n\n` +
+        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>`
+      );
+    });
+  }
+
+  await notifyManualChange(
+    'Inventory verified (bulk)',
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\n${verifiedNames.length} item(s) marked as fully verified`,
+    userEmail,
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({ ok: true, verification_pct: verificationPct });
+});
+
 /**
  * POST /orders/:id/complete-inventory-verification
  * Manually mark inventory verification as complete and advance to inventory_arrived.
