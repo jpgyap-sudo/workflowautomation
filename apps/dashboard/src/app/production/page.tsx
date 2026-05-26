@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
-  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, confirmEnRoute, setProduction,
+  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, confirmEnRoute, setProduction,
   recordStageUpdate,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
@@ -150,6 +150,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
   const [loadingItems, setLoadingItems] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [updatingEnRouteItemId, setUpdatingEnRouteItemId] = useState<string | null>(null);
+  const [markingDelayedId, setMarkingDelayedId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,6 +236,19 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
       } finally {
         setUpdatingEnRouteItemId(null);
       }
+    }
+  }
+
+  async function handleMarkArrivalDelayed(item: OrderItem) {
+    const confirm = window.confirm(`Mark "${item.name}" arrival as delayed?`);
+    if (!confirm) return;
+    setMarkingDelayedId(item.id);
+    try {
+      await postProductionNote(order.id, `⚠ Arrival delayed — ${item.name}`);
+    } catch {
+      // silently ignore note failures
+    } finally {
+      setMarkingDelayedId(null);
     }
   }
 
@@ -325,8 +339,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
-                        {/* Production status buttons — only shown when production has started */}
-                        {order.production_started && order.current_stage !== 'en_route' && order.current_stage !== 'production_pending' && (['pending', 'in_progress', 'finished'] as const).map((status) => {
+                        {/* Production status buttons — only shown when production has started and not in arrival-tracking stages */}
+                        {order.production_started && !['en_route', 'production_pending', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(order.current_stage) && (['pending', 'in_progress', 'finished'] as const).map((status) => {
                           const isActive = item.production_status === status;
                           const label = status === 'pending' ? 'Pending' : status === 'in_progress' ? 'Started' : 'Finished';
                           return (
@@ -414,6 +428,33 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                                   ✕ Not Yet
                                 </button>
                               )}
+                            </>
+                          );
+                        })()}
+                        {/* Arrival tracking buttons — for en_route_verification / inventory_arrived stages */}
+                        {['en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(order.current_stage) && (() => {
+                          const isBusy = updatingEnRouteItemId === item.id || markingDelayedId === item.id;
+                          if (item.en_route_status === 'arrived') {
+                            return <span className="text-[10px] font-medium text-green-600">✓ Arrived</span>;
+                          }
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleItemEnRouteStatus(item, 'arrived')}
+                                className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                              >
+                                {updatingEnRouteItemId === item.id ? 'Saving...' : '✓ Arrived'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleMarkArrivalDelayed(item)}
+                                className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                {markingDelayedId === item.id ? 'Noting...' : '⚠ Delayed'}
+                              </button>
                             </>
                           );
                         })()}
@@ -2376,15 +2417,11 @@ export default function ProductionPage() {
     const pending = (window as any).__pendingBulkEnRouteSelectedData as { orderId: string; itemIds: string[]; defaultDays: number } | null;
     if (!pending) return;
     try {
-      await Promise.all(
-        pending.itemIds.map((itemId) =>
-          updateOrderItem(pending.orderId, itemId, {
-            en_route_status: 'en_route',
-            estimated_arrival_days: pending.defaultDays,
-            action_token: actionToken,
-          })
-        )
-      );
+      await bulkEnRouteSelected(pending.orderId, {
+        action_token: actionToken,
+        item_ids: pending.itemIds,
+        default_arrival_days: pending.defaultDays,
+      });
       refresh();
     } catch (err: any) {
       alert('Failed to mark selected items en route: ' + (err.message ?? 'Unknown error'));

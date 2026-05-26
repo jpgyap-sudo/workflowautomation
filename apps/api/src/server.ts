@@ -2534,6 +2534,12 @@ const bulkEnRouteSchema = z.object({
   default_arrival_days: z.number().int().positive().optional(),
 });
 
+const bulkEnRouteSelectedSchema = z.object({
+  action_token: z.string(),
+  item_ids: z.array(z.string()).min(1),
+  default_arrival_days: z.number().int().positive().optional(),
+});
+
 // POST /orders/:id/bulk-en-route — Bulk mark all not-yet items as en_route
 app.post('/orders/:id/bulk-en-route', async (request, reply) => {
   const { id } = request.params as { id: string };
@@ -2584,6 +2590,62 @@ app.post('/orders/:id/bulk-en-route', async (request, reply) => {
   await notifyManualChange(
     'En route (bulk)',
     `Quotation: *${advanceResult.order?.quotation_number ?? 'N/A'}*\nClient: *${advanceResult.order?.client_name ?? 'Unknown'}*\nAll items marked en route`,
+    userEmail,
+  );
+
+  return reply.send({ ok: true, items: updatedItems, order: advanceResult.order });
+});
+
+// POST /orders/:id/bulk-en-route-selected — Bulk mark selected items as en_route
+app.post('/orders/:id/bulk-en-route-selected', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkEnRouteSelectedSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Mark only the selected items as en_route, applying default arrival days if missing
+  await query(
+    `UPDATE order_items
+     SET en_route_status = 'en_route',
+         estimated_arrival_days = COALESCE(estimated_arrival_days, $2),
+         updated_at = NOW()
+     WHERE order_id = $1 AND id = ANY($3::text[]) AND en_route_status = 'not_yet'`,
+    [id, body.default_arrival_days ?? null, body.item_ids]
+  );
+
+  // Fetch updated items
+  const updatedItems = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days, production_finished_at,
+            inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  // Check if all items are now dispatched and advance stage if so
+  const advanceResult = await advanceToEnRouteIfAllDispatched(
+    id,
+    'item_update',
+    'Bulk mark selected items en route via dashboard'
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${advanceResult.order?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  await notifyManualChange(
+    'En route (bulk selected)',
+    `Quotation: *${advanceResult.order?.quotation_number ?? 'N/A'}*\nClient: *${advanceResult.order?.client_name ?? 'Unknown'}*\nSelected items marked en route`,
     userEmail,
   );
 

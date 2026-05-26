@@ -11263,3 +11263,51 @@ Consolidate related actions into the same context (e.g., section header) to redu
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: destructure onBulkEnRouteSelected prop in ProductionFinishedTrackingSection
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c67390923f5160339318797357dd56487a69c0ea
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** c67390923f5160339318797357dd56487a69c0ea
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A runtime error caused by calling `onBulkEnRouteSelected` as a function when it was actually an object (the props object itself, not the destructured function).
+
+**Why it broke:**  
+The component was using `this.props.onBulkEnRouteSelected(...)` without destructuring the prop. The prop `onBulkEnRouteSelected` was passed as a function, but the component accessed it as `this.props.onBulkEnRouteSelected` inside a method, which returned the entire props object (or undefined) instead of the intended callback.
+
+**Reusable takeaway:**  
+Always destructure specific props at the top of the component or method to avoid accidentally referencing the props object instead of the intended property. In class components, use `const { onBulkEnRouteSelected } = this.props` before using the callback. This prevents subtle bugs where `this.props.someProp` is mistaken for the prop value itself.
+
+---
+*Original commit message: fix: destructure onBulkEnRouteSelected prop in ProductionFinishedTrackingSection*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A runtime error caused by calling `onBulkEnRouteSelected` as a function when it was actually an object (the props object itself, not the destructured function).
+
+**Why it broke:**  
+The component was using `this.props.onBulkEnRouteSelected(...)` without destructuring the prop. The prop `onBulkEnRouteSelected` was passed as a function, but the component accessed it as `this.props.onBulkEnRouteSelected` inside a method, which returned the entire props object (or undefined) instead of the intended callback.
+
+**Reusable takeaway:**  
+Always destructure specific props at the top of the component or method to avoid accidentally referencing the props object instead of the intended property. In class components, use `const { onBulkEnRouteSelected } = this.props` before using the callback. This prevents subtle bugs where `this.props.someProp` is mistaken for the prop value itself.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
