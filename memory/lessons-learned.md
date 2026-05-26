@@ -11885,3 +11885,51 @@ When implementing gap analysis (e.g., diffing between states or versions), expli
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: full payment gap — deposit_amount, balance verification, order detail UI
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 733b0163907d81049f2a0829e11a3c626e76e2ad
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 733b0163907d81049f2a0829e11a3c626e76e2ad
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A full payment gap where deposit amounts, balance verification, and order detail UI were inconsistent or missing, causing incorrect payment status display and potential double-payment or underpayment issues.
+
+**Why it broke:**  
+The deposit amount and remaining balance were not being verified against the order total before UI rendering. The order detail view lacked a real-time balance check, so users could see a "paid" status even when the deposit was incomplete or the balance was miscalculated.
+
+**Reusable takeaway:**  
+Always verify payment completeness at the UI layer by cross-referencing deposit amount + balance against the order total. Never rely solely on a single status flag; instead, compute payment status dynamically from actual amounts to prevent display mismatches and financial errors.
+
+---
+*Original commit message: fix: full payment gap — deposit_amount, balance verification, order detail UI*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A full payment gap where deposit amounts, balance verification, and order detail UI were inconsistent or missing, causing incorrect payment status display and potential double-payment or underpayment issues.
+
+**Why it broke:**  
+The deposit amount and remaining balance were not being verified against the order total before UI rendering. The order detail view lacked a real-time balance check, so users could see a "paid" status even when the deposit was incomplete or the balance was miscalculated.
+
+**Reusable takeaway:**  
+Always verify payment completeness at the UI layer by cross-referencing deposit amount + balance against the order total. Never rely solely on a single status flag; instead, compute payment status dynamically from actual amounts to prevent display mismatches and financial errors.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
