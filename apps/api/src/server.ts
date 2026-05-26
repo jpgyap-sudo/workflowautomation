@@ -1900,6 +1900,15 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   const updatedOrder = rows[0] as any;
 
   if (body.production_started) {
+    // Bulk-update any pending items to in_progress so they appear in production sections
+    await query(
+      `UPDATE order_items
+       SET production_status = 'in_progress',
+           updated_at = NOW()
+       WHERE order_id = $1 AND production_status = 'pending'`,
+      [id]
+    );
+
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
        VALUES ($1, 'production_in_progress', 'started', $2, 'system')`,
