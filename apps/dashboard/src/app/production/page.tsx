@@ -1358,6 +1358,7 @@ function ProductionFinishedTrackingSection({
   onViewFiles?: (o: Order) => void;
   onItemEnRouteStatus?: (orderId: string, item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
   onBulkEnRoute?: (order: Order, items: OrderItem[]) => void;
+  onBulkEnRouteSelected?: (order: Order, itemIds: string[]) => void;
 }) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1366,10 +1367,29 @@ function ProductionFinishedTrackingSection({
   const [notesLoading, setNotesLoading] = useState<Record<string, boolean>>({});
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
+  // Multi-select en-route state: per-order set of selected item IDs
+  const [selectedEnRouteIds, setSelectedEnRouteIds] = useState<Record<string, Set<string>>>({});
+
+  function toggleEnRouteItem(orderId: string, itemId: string) {
+    setSelectedEnRouteIds((prev) => {
+      const current = new Set(prev[orderId] ?? []);
+      if (current.has(itemId)) current.delete(itemId); else current.add(itemId);
+      return { ...prev, [orderId]: current };
+    });
+  }
+
+  function toggleEnRouteSelectAll(orderId: string, selectableItems: OrderItem[]) {
+    setSelectedEnRouteIds((prev) => {
+      const current = prev[orderId] ?? new Set<string>();
+      const allSelected = selectableItems.every((i) => current.has(i.id));
+      return { ...prev, [orderId]: allSelected ? new Set() : new Set(selectableItems.map((i) => i.id)) };
+    });
+  }
 
   async function toggleOrderItems(order: Order) {
     if (expandedOrderId === order.id) {
       setExpandedOrderId(null);
+      setSelectedEnRouteIds((prev) => { const next = { ...prev }; delete next[order.id]; return next; });
       return;
     }
     setExpandedOrderId(order.id);
@@ -1568,29 +1588,53 @@ function ProductionFinishedTrackingSection({
                             <div className="text-xs text-gray-400">Loading item list...</div>
                           ) : orderItems.length === 0 ? (
                             <div className="text-xs text-gray-400">No item records found for this order.</div>
-                          ) : (
+                          ) : (() => {
+                            const orderSelected = selectedEnRouteIds[order.id] ?? new Set<string>();
+                            const selectableItems = orderItems.filter((i) => i.production_status === 'finished' && i.en_route_status !== 'arrived');
+                            const allSelected = selectableItems.length > 0 && selectableItems.every((i) => orderSelected.has(i.id));
+                            const someSelected = orderSelected.size > 0 && !allSelected;
+                            return (
                             <div>
-                              {onBulkEnRoute && (
-                                <div className="mb-2 flex items-center justify-end">
-                                  {(() => {
-                                    const notYetItems = orderItems.filter((i) => i.en_route_status === 'not_yet');
-                                    if (notYetItems.length === 0) return null;
-                                    return (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); onBulkEnRoute(order, orderItems); }}
-                                        className="rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
-                                      >
-                                        🚚 Mark All En Route ({notYetItems.length})
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-                              )}
+                              {/* Toolbar */}
+                              <div className="mb-2 flex items-center justify-end gap-2">
+                                {onBulkEnRouteSelected && orderSelected.size > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onBulkEnRouteSelected(order, Array.from(orderSelected)); }}
+                                    className="rounded-md border border-sky-300 bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-sky-700 transition-colors"
+                                  >
+                                    🚚 Mark Selected En Route ({orderSelected.size})
+                                  </button>
+                                )}
+                                {onBulkEnRoute && (() => {
+                                  const notYetItems = orderItems.filter((i) => i.en_route_status === 'not_yet');
+                                  if (notYetItems.length === 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); onBulkEnRoute(order, orderItems); }}
+                                      className="rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+                                    >
+                                      🚚 Mark All En Route ({notYetItems.length})
+                                    </button>
+                                  );
+                                })()}
+                              </div>
                               <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
                               <table className="w-full text-left text-xs">
                                 <thead className="bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                                   <tr>
+                                    <th className="w-8 px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        title="Select all"
+                                        checked={allSelected}
+                                        ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                                        onChange={(e) => { e.stopPropagation(); toggleEnRouteSelectAll(order.id, selectableItems); }}
+                                        disabled={selectableItems.length === 0}
+                                        className="rounded border-gray-300 accent-sky-600 disabled:opacity-30"
+                                      />
+                                    </th>
                                     <th className="px-3 py-2">Item</th>
                                     <th className="px-3 py-2">Qty</th>
                                     <th className="px-3 py-2">Production</th>
@@ -1604,8 +1648,20 @@ function ProductionFinishedTrackingSection({
                                   {orderItems.map((item) => {
                                     const itemArrival = getEstimatedItemInventoryArrivalDate(order, item);
                                     const itemProductionFinishedDate = getItemProductionFinishedDate(item);
+                                    const isSelectable = item.production_status === 'finished' && item.en_route_status !== 'arrived';
+                                    const isChecked = orderSelected.has(item.id);
                                     return (
-                                      <tr key={item.id}>
+                                      <tr key={item.id} className={isChecked ? 'bg-sky-50/40' : ''}>
+                                        <td className="px-3 py-2">
+                                          {isSelectable && (
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={(e) => { e.stopPropagation(); toggleEnRouteItem(order.id, item.id); }}
+                                              className="rounded border-gray-300 accent-sky-600"
+                                            />
+                                          )}
+                                        </td>
                                         <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
                                         <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
                                         <td className="px-3 py-2">
@@ -1646,7 +1702,8 @@ function ProductionFinishedTrackingSection({
                               </table>
                             </div>
                           </div>
-                          )}
+                            );
+                          })()}
                         </td>
                       </tr>
                     )}
@@ -1798,7 +1855,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -1861,6 +1918,7 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'bulkFinish') handleBulkFinishVerified(actionToken);
     else if (otpModal.pendingAction === 'bulkEnRoute') handleBulkEnRouteVerified(actionToken);
     else if (otpModal.pendingAction === 'bulkFinishSelected') handleBulkFinishSelectedVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulkEnRouteSelected') handleBulkEnRouteSelectedVerified(actionToken);
     else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
@@ -2295,6 +2353,45 @@ export default function ProductionPage() {
     }
   }
 
+  // ── Bulk en route selected items ─────────────────────────────────────
+
+  function handleBulkEnRouteSelected(order: Order, itemIds: string[]) {
+    const names = itemIds.length === 1 ? '1 item' : `${itemIds.length} items`;
+    // Prompt for arrival days once, applied to all selected items that don't have one
+    const input = window.prompt(`Estimated arrival days for ${names}? (applied to items missing arrival days)`, '28');
+    if (input === null) return;
+    const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+    if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
+    setOtpModal({
+      open: true,
+      title: 'Mark Selected En Route',
+      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as en route. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulkEnRouteSelected',
+    });
+    (window as any).__pendingBulkEnRouteSelectedData = { orderId: order.id, itemIds, defaultDays: days };
+  }
+
+  async function handleBulkEnRouteSelectedVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkEnRouteSelectedData as { orderId: string; itemIds: string[]; defaultDays: number } | null;
+    if (!pending) return;
+    try {
+      await Promise.all(
+        pending.itemIds.map((itemId) =>
+          updateOrderItem(pending.orderId, itemId, {
+            en_route_status: 'en_route',
+            estimated_arrival_days: pending.defaultDays,
+            action_token: actionToken,
+          })
+        )
+      );
+      refresh();
+    } catch (err: any) {
+      alert('Failed to mark selected items en route: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingBulkEnRouteSelectedData = null;
+    }
+  }
+
   // ── Item production status (from ProductionInfoCards) ────────────────
 
   // These are called from ProductionInfoCards which has access to the order
@@ -2533,6 +2630,7 @@ export default function ProductionPage() {
         onViewFiles={handleViewFiles}
         onItemEnRouteStatus={handleItemEnRouteStatusAction}
         onBulkEnRoute={handleBulkEnRoute}
+        onBulkEnRouteSelected={handleBulkEnRouteSelected}
       />
 
       {/* Dispatch Pending — some items still not confirmed en route */}
