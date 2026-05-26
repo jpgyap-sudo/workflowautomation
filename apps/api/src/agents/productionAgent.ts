@@ -36,12 +36,12 @@ import {
  *   overdue               → 2h  (critical, escalating)
  *
  * Monitors:
- *   1. production_confirmed  — tracks timeline, sends adaptive reminders
+ *   1. production_confirmed + production_in_progress — tracks timeline, sends adaptive reminders
  *   2. en_route              — daily check until inventory arrives
  *   3. partial_production    — item-level: asks about pending items one-by-one;
- *                              auto-advances to production_confirmed when all started
+ *                              auto-advances to production_in_progress when all started
  *   4. item-level tracking   — item-by-item production tracking with process of elimination
- *      (production_confirmed orders that have order_items)
+ *      (production_confirmed + production_in_progress orders that have order_items)
  *   5. en_route + en_route_verification — item-level dispatch & arrival monitoring
  */
 
@@ -137,8 +137,8 @@ async function upsertProductionReminder(
     [orderId, stage, groupChatId, message, nextRun.toISOString()],
   );
 }
+// ── 1. Check production_confirmed / production_in_progress orders ─────
 
-// ── 1. Check production_confirmed orders ──────────────────────────────
 
 async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
   const input = {
@@ -151,7 +151,7 @@ async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
   };
 
   try {
-    const escalationLevel = await getEscalationLevel(order.id, 'production_confirmed');
+    const escalationLevel = await getEscalationLevel(order.id, order.current_stage);
 
     // ⛔ Guard: Do NOT auto-advance if deposit has not been verified
     // Exception: production_exception allows production to proceed without verified downpayment
@@ -224,7 +224,7 @@ async function checkProductionConfirmed(order: OrderRow): Promise<AgentResult> {
 
     const groupChatId = getGroupChatId(AGENT_NAME);
     if (groupChatId) {
-      await upsertProductionReminder(order.id, 'production_confirmed', groupChatId, message, nextRunMs);
+      await upsertProductionReminder(order.id, order.current_stage, groupChatId, message, nextRunMs);
     }
 
     const result: AgentResult = {
@@ -324,7 +324,7 @@ async function checkEnRoute(order: OrderRow): Promise<AgentResult> {
 //
 // Two paths:
 //   a) Item-level (preferred): order has order_items — process of elimination
-//      asking about each pending item; auto-advance to production_confirmed when all started.
+//      asking about each pending item; auto-advance to production_in_progress when all started.
 //   b) Legacy JSONB: purchasing_pending orders with partial_production_items array.
 
 interface PartialOrder extends OrderRow {
@@ -336,7 +336,7 @@ interface PartialOrder extends OrderRow {
  *
  * Runs for orders at `partial_production` stage that have order_items.
  * - Finds the next pending item and asks the production team about it.
- * - If all items are in_progress or finished → auto-advance to production_confirmed.
+ * - If all items are in_progress or finished → auto-advance to production_in_progress.
  */
 async function checkItemLevelPartialProduction(order: OrderRow): Promise<AgentResult | null> {
   const input = { quotation_number: order.quotation_number, stage: order.current_stage };
@@ -384,24 +384,24 @@ Order auto-advanced to En Route. Please verify dispatch item-by-item.`;
       return result;
     }
 
-    // All items started — advance to production_confirmed
+    // All items started — advance to production_in_progress
     if (!pendingItem) {
-      await addProductionLog(null, order.id, `✅ All items started production (${prodPct}% complete). Auto-advancing to production_confirmed.`, 'agent', AGENT_NAME);
-      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) started. Auto-advancing to production_confirmed.`);
+      await addProductionLog(null, order.id, `✅ All items started production (${prodPct}% complete). Auto-advancing to production_in_progress.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) started. Auto-advancing to production_in_progress.`);
 
       const lastHuman = await findLastHumanTrigger(order.id);
-      await advanceStage(order.id, 'production_confirmed', qn, `All items started production (${prodPct}% complete)`, lastHuman);
+      await advanceStage(order.id, 'production_in_progress', qn, `All items started production (${prodPct}% complete)`, lastHuman);
 
       const groupChatId = getGroupChatId(AGENT_NAME);
       if (groupChatId) {
-        const msg = `🏭 <b>All Items Started Production</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) have started.\nOrder auto-advanced to 🏭 Production Confirmed.`;
+        const msg = `🏭 <b>All Items Started Production</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) have started.\nOrder auto-advanced to 🏭 Production In Progress.`;
         await sendTelegramMessage(groupChatId, msg);
       }
 
       const result: AgentResult = {
         status: 'complete',
-        message: `✅ All items started for #${qn}. Auto-advanced to production_confirmed.`,
-        next_stage: 'production_confirmed',
+        message: `✅ All items started for #${qn}. Auto-advanced to production_in_progress.`,
+        next_stage: 'production_in_progress',
         reminder_needed: false,
         escalation_level: escalationLevel,
       };
@@ -657,8 +657,8 @@ async function checkItemLevelProduction(order: OrderRow): Promise<AgentResult | 
   };
 
   try {
-    // Only run for production_confirmed orders that have started production
-    if (order.current_stage !== 'production_confirmed') return null;
+    // Only run for production_confirmed (legacy) or production_in_progress orders that have started production
+    if (order.current_stage !== 'production_confirmed' && order.current_stage !== 'production_in_progress') return null;
     if (!order.production_started) return null;
 
     // Fetch items and completion
@@ -1169,14 +1169,14 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
-  // 1. Production confirmed — adaptive frequency
-  const confirmedOrders = await getActiveOrdersByStage('production_confirmed');
-  for (const order of confirmedOrders) {
+  // 1. Production confirmed + Production in progress — adaptive frequency
+  const productionOrders = await getActiveOrdersByStages(['production_confirmed', 'production_in_progress']);
+  for (const order of productionOrders) {
     // Check if order has item-level tracking items
     const items = await getOrderItems(order.id);
     if (items.length > 0) {
       // Skip legacy check — item-level tracking handles this order
-      console.log(`[ProductionAgent] Skipping legacy check for #${order.quotation_number} — using item-level tracking`);
+      console.log(`[ProductionAgent] Skipping legacy check for #${order.quotation_number} (${order.current_stage}) — using item-level tracking`);
     } else {
       // No items — use legacy check
       results.push(await checkProductionConfirmed(order));
@@ -1198,7 +1198,7 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
   }
 
   // 3a. Partial production (item-level) — partial_production stage orders with order_items
-  //     Asks about each pending item one-by-one; auto-advances to production_confirmed when all started
+  //     Asks about each pending item one-by-one; auto-advances to production_in_progress when all started
   const partialProductionOrders = await getActiveOrdersByStage('partial_production');
   for (const order of partialProductionOrders) {
     const items = await getOrderItems(order.id);
@@ -1227,8 +1227,8 @@ export async function runProductionAgent(): Promise<AgentResult[]> {
     results.push(await checkLegacyPartialProduction(order));
   }
 
-  // 4. Item-level production tracking — production_confirmed orders with order_items
-  for (const order of confirmedOrders) {
+  // 4. Item-level production tracking — production_confirmed and production_in_progress orders with order_items
+  for (const order of productionOrders) {
     const itemResult = await checkItemLevelProduction(order);
     if (itemResult) {
       results.push(itemResult);

@@ -25,7 +25,7 @@ When you **finish**:
 
 | Timestamp | Extension | Task | Status |
 |-----------|-----------|------|--------|
-| 2026-05-26 00:23 | Roo (Code) | Fix: Production tab gap analysis — 7 gaps found and fixed. Commit 83a6f56 pushed to GitHub. Deployed to VPS via MCP server. | ✅ Done |
+| 2026-05-26 13:08 | Roo (Code) | Fix: Bulk Start Production bug — API sets `current_stage = 'production_confirmed'` but Production Confirmed section was removed. Changed to `production_in_progress` in setProduction, report-production-status, production board, item update auto-advance, stage transition map, AGENT_TRIGGER_MAP, and productionAgent.ts (6 locations). | 🔴 Active |
 | 2026-05-26 08:07 | Roo (Code) | Learning Layer: Checked all existing lessons (10710 lines, ~40+ lessons in memory/lessons-learned.md, 3 in Central Brain). Contributed 5 new lessons to SuperRoo Central Brain + local memory/lessons-learned.md: (1) OTP callback wiring pattern for nested React components, (2) Tailscale SSH recovery — tailscale up --reset, (3) MCP stdio server JSON-RPC communication, (4) SSH command construction bug — space before @, (5) Production tab gap analysis — 7 security/UX gaps. All stored locally (Brain v2 API offline). | ✅ Done |
 | 2026-05-26 08:52 | Roo (Code) | Fix: Remove Finish button from Production Pending section — added `order.current_stage !== 'production_pending'` guard to ProductionInfoCards (item-level Finished status button) and OrderRow (order-level Finish Production button). Commit 8c9a531 pushed to GitHub. | ✅ Done |
 | 2026-05-26 10:08 | Roo (Code) | Fix: Remove Production Confirmed section from production page — redundant with Production In Progress section. Commit 7576af0 pushed to GitHub. | ✅ Done |

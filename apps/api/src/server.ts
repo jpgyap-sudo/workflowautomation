@@ -178,7 +178,7 @@ const AGENT_TRIGGER_MAP: Record<string, string[]> = {
   // Purchasing → Production + Collection Agent
   purchasing_pending:    ['production-agent', 'collection-agent'],
   production_pending:    ['production-agent', 'collection-agent'],
-  production_confirmed:  ['production-agent'],
+  production_in_progress: ['production-agent'],
   // Partial Production → production agent monitors item-level progress
   partial_production:    ['production-agent'],
   // Production → En Route
@@ -1847,7 +1847,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
 
   if (body.production_started) {
     setClauses.push(`production_started_at = COALESCE(production_started_at, NOW())`);
-    setClauses.push(`current_stage = 'production_confirmed'`);
+    setClauses.push(`current_stage = 'production_in_progress'`);
   }
 
   if (body.estimated_production_days != null) {
@@ -1867,13 +1867,13 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   if (body.production_started) {
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-       VALUES ($1, 'production_confirmed', 'started', $2, 'system')`,
+       VALUES ($1, 'production_in_progress', 'started', $2, 'system')`,
       [id, body.estimated_production_days
         ? `Production started; estimated ${body.estimated_production_days} day(s)`
         : 'Production started']
     );
 
-    if (previousStage && previousStage !== 'production_confirmed') {
+    if (previousStage && previousStage !== 'production_in_progress') {
       await query(
         `UPDATE reminders SET status='completed', updated_at=NOW()
          WHERE order_id=$1 AND stage=$2 AND status='active'`,
@@ -1932,7 +1932,7 @@ app.post('/orders/:id/set-production', async (request, reply) => {
 
   // Notify production agent immediately that production has started
   if (body.production_started) {
-    triggerAgentsForStage('production_confirmed', updatedOrder.quotation_number, updatedOrder.client_name);
+    triggerAgentsForStage('production_in_progress', updatedOrder.quotation_number, updatedOrder.client_name);
   }
 
   // Notify escalation group about production being started from dashboard
@@ -2136,13 +2136,13 @@ app.post('/orders/:id/report-production-status', async (request, reply) => {
 
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'production_confirmed', $2, $3, 'system')`,
+     VALUES ($1, 'production_in_progress', $2, $3, 'system')`,
     [id, body.on_time ? 'on_time' : 'delayed',
      body.on_time ? 'Production reported on time' : `Production delayed by ${body.delay_days ?? 0} day(s)`]
   );
 
   // Notify production agent immediately about the production status update
-  triggerAgentsForStage('production_confirmed', rows[0].quotation_number, rows[0].client_name);
+  triggerAgentsForStage('production_in_progress', rows[0].quotation_number, rows[0].client_name);
 
   // Notify escalation group about production status report (dashboard only)
   await notifyManualChange(
@@ -2266,7 +2266,7 @@ app.post('/production/board/item', async (request, reply) => {
       `UPDATE orders
        SET production_started = TRUE,
            production_started_at = COALESCE(production_started_at, NOW()),
-           current_stage = CASE WHEN current_stage IN ('purchasing_pending', 'production_pending') THEN 'production_confirmed' ELSE current_stage END,
+           current_stage = CASE WHEN current_stage IN ('purchasing_pending', 'production_pending') THEN 'production_in_progress' ELSE current_stage END,
            updated_at = NOW()
        WHERE id = $1`,
       [orderId],
@@ -4045,7 +4045,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     );
     const currentOrder = stageRows[0];
 
-    if (currentOrder && ['production_pending', 'partial_production', 'production_confirmed'].includes(currentOrder.current_stage)) {
+    if (currentOrder && ['production_pending', 'partial_production', 'production_confirmed', 'production_in_progress'].includes(currentOrder.current_stage)) {
       const allItemStatuses = await query<{ production_status: string; name: string }>(
         `SELECT production_status, name FROM order_items WHERE order_id = $1`,
         [order_id]
@@ -4056,7 +4056,7 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
         const anyStarted = allItemStatuses.some((i) => i.production_status !== 'pending');
         const pendingNames = allItemStatuses.filter((i) => i.production_status === 'pending').map((i) => i.name);
 
-        if (allStarted && currentOrder.current_stage !== 'production_confirmed') {
+        if (allStarted && currentOrder.current_stage !== 'production_in_progress') {
           // All items in progress - advance to production_in_progress
           await query(
             `UPDATE orders SET current_stage = 'production_in_progress', production_started = TRUE,
@@ -4433,10 +4433,9 @@ app.post('/stage-updates', async (request, reply) => {
     deposit_pending:           ['deposit_verification'],
     deposit_verification:      ['purchasing_pending'],
     purchasing_pending:        ['production_pending'],
-    production_pending:        ['production_confirmed', 'partial_production'],
-    production_confirmed:      ['en_route', 'partial_production', 'production_in_progress'],
-    partial_production:        ['production_in_progress', 'en_route'],
+    production_pending:        ['production_in_progress', 'partial_production'],
     production_in_progress:    ['en_route', 'partial_production'],
+    partial_production:        ['production_in_progress', 'en_route'],
     en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due'],
@@ -9970,3 +9969,5 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+
