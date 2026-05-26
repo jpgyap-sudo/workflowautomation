@@ -58,6 +58,7 @@ When you **finish**:
 | 2026-05-25 07:42 | Roo (Code) | Feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ Done |
 | 2026-05-24 19:58 | Codex | Update: item-level inventory verification with arrival dates and inventory/delivery accountability | ✅ Done |
 | 2026-05-24 19:30 | Codex | Update: add manual Proceed to Inventory Verification action for early arrivals | Done |
+| 2026-05-26 16:44 | Roo (Code) | Feat: add deposit slip upload + AI extract modal to Balance Due section in Delivery page (replacing inline payment form). Fix: 401 error when marking selected items en route — new POST /orders/:id/bulk-en-route-selected endpoint. E2E health scan: all 7 containers healthy, API 200, Dashboard 200, DB+Redis connected. Commit 7e3a0c3 deployed to VPS. | ✅ Done |
 | 2026-05-24 19:10 | Codex | Update: add per-item production finished date to Production Finished expandable item list | Done |
 | 2026-05-24 19:04 | Codex | Update: Production Finished orders are expandable and show per-item estimated inventory arrival dates | Done |
 | 2026-05-24 18:44 | Codex | Update: Production Finished section tracks any order with at least one finished item until inventory arrival verification, with estimated inventory arrival date | Done |
