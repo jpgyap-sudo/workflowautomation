@@ -19,6 +19,12 @@ export const ALL_TAB_ROUTES = [
 
 export type TabRoute = (typeof ALL_TAB_ROUTES)[number];
 
+export interface AuthUser {
+  email: string;
+  name: string;
+  role: string;
+}
+
 export interface Account {
   email: string;
   password: string;
@@ -31,7 +37,7 @@ export interface Account {
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: { email: string; name: string; role: string } | null;
+  user: AuthUser | null;
   accounts: Account[];
   sendOtp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (email: string, otp: string) => Promise<{ success: boolean; needsUserCode?: boolean; error?: string }>;
@@ -156,7 +162,7 @@ function persistAccounts(accounts: Account[]) {
   localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
 }
 
-function normalizeTabRoutes(value: unknown): TabRoute[] | undefined {
+export function normalizeTabRoutes(value: unknown): TabRoute[] | undefined {
   if (value == null) return undefined;
   if (Array.isArray(value)) {
     return value.filter((tab): tab is TabRoute =>
@@ -171,6 +177,22 @@ function normalizeTabRoutes(value: unknown): TabRoute[] | undefined {
     }
   }
   return undefined;
+}
+
+export function routeMatchesTab(pathname: string, tab: TabRoute): boolean {
+  if (tab === '/') return pathname === '/';
+  return pathname === tab || pathname.startsWith(`${tab}/`);
+}
+
+export function getAllowedTabsForUser(user: AuthUser | null, accounts: Account[]): TabRoute[] | undefined {
+  if (!user) return [];
+  if (user.role === 'admin') return undefined;
+
+  const account = accounts.find((a) => a.email.toLowerCase() === user.email.toLowerCase());
+  if (!account) return [];
+
+  const normalized = normalizeTabRoutes(account.allowedTabs);
+  return normalized ?? [];
 }
 
 function normalizeServerAccount(s: any): Partial<Account> {
@@ -248,7 +270,7 @@ function mergeServerAccounts(local: Account[], server: Partial<Account>[]): Acco
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<{ email: string; name: string; role: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [, setInitialized] = useState(false);
 

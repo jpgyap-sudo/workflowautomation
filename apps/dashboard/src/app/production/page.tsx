@@ -322,8 +322,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
-                        {/* Production status buttons — hidden for en_route stage (focus on en route actions) */}
-                        {order.current_stage !== 'en_route' && (['pending', 'in_progress', 'finished'] as const).map((status) => {
+                        {/* Production status buttons — only shown when production has started */}
+                        {order.production_started && order.current_stage !== 'en_route' && (['pending', 'in_progress', 'finished'] as const).map((status) => {
                           const isActive = item.production_status === status;
                           const label = status === 'pending' ? 'Pending' : status === 'in_progress' ? 'Started' : 'Finished';
                           return (
@@ -346,6 +346,9 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             </button>
                           );
                         })}
+                        {!order.production_started && (
+                          <span className="text-[10px] text-gray-400 italic">Not started</span>
+                        )}
                         {/* En route action buttons — only shown for en_route stage orders */}
                         {order.current_stage === 'en_route' && (() => {
                           const isBusy = updatingEnRouteItemId === item.id;

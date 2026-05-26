@@ -2,17 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth';
+import { getAllowedTabsForUser, routeMatchesTab, useAuth } from '@/lib/auth';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 
 const PUBLIC_ROUTES = ['/login'];
 
-// Routes accessible to all authenticated roles (admin, editor, viewer)
-const SHARED_ROUTES = ['/orders', '/actions', '/clients', '/purchasing', '/inventory', '/delivery', '/collection'];
-
 export function AuthGuard({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, accounts } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
@@ -40,14 +37,17 @@ export function AuthGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Redirect non-admin users away from admin-only routes
+    // Redirect non-admin users away from unchecked tabs and direct URLs.
     if (isAuthenticated && user?.role !== 'admin') {
-      const isShared = SHARED_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
-      if (!isShared) {
-        router.replace('/orders');
+      const allowedTabs = getAllowedTabsForUser(user, accounts);
+      const hasAllowedTabs = (allowedTabs?.length ?? 0) > 0;
+      const hasAccess = allowedTabs?.some((tab) => routeMatchesTab(pathname, tab)) ?? true;
+
+      if (hasAllowedTabs && !hasAccess) {
+        router.replace(allowedTabs![0]);
       }
     }
-  }, [isAuthenticated, user, pathname, ready, router]);
+  }, [accounts, isAuthenticated, user, pathname, ready, router]);
 
   // Show nothing while hydrating
   if (!ready) {
@@ -70,6 +70,28 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#f4f5f7]">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+      </div>
+    );
+  }
+
+  const allowedTabs = getAllowedTabsForUser(user, accounts);
+  const hasNoAllowedTabs = isAuthenticated && user?.role !== 'admin' && allowedTabs !== undefined && allowedTabs.length === 0;
+
+  if (hasNoAllowedTabs) {
+    return (
+      <div className="flex min-h-dvh w-full overflow-x-hidden bg-[#f4f5f7]">
+        <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Header onMenuClick={() => setMobileMenuOpen(true)} />
+          <main className="flex min-w-0 flex-1 items-center justify-center overflow-x-hidden p-3 sm:p-4 lg:p-6">
+            <div className="max-w-md rounded-xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+              <h1 className="text-lg font-semibold text-gray-900">No tab access assigned</h1>
+              <p className="mt-2 text-sm text-gray-600">
+                Your account has no enabled dashboard tabs. Please ask an admin to update your Tab Access settings.
+              </p>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }

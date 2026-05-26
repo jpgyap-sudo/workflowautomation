@@ -29,10 +29,16 @@ import {
   Smartphone,
   Bug,
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
-import { useAuth, ALL_TAB_ROUTES } from '@/lib/auth';
+import { useState, type ComponentType } from 'react';
+import { getAllowedTabsForUser, useAuth, type TabRoute } from '@/lib/auth';
 
-const ALL_NAV_ITEMS = [
+type NavItem = {
+  href: TabRoute;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+};
+
+const ALL_NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/orders', label: 'All Orders', icon: FileText },
   { href: '/actions', label: 'Quick Actions', icon: Zap },
@@ -59,22 +65,12 @@ const ALL_NAV_ITEMS = [
 
 function useFilteredNavItems() {
   const { user, accounts } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const allowedTabs = getAllowedTabsForUser(user, accounts);
 
-  // Admin sees everything
-  if (isAdmin) return ALL_NAV_ITEMS;
+  // Admin has undefined access (all tabs). Non-admins only get explicitly allowed tabs.
+  if (allowedTabs === undefined) return ALL_NAV_ITEMS;
 
-  // For non-admin users, look up their account's allowedTabs
-  const account = accounts.find((a) => a.email === user?.email);
-  const allowedTabs = account?.allowedTabs;
-
-  // If allowedTabs is explicitly set, filter by it
-  if (allowedTabs !== undefined) {
-    return ALL_NAV_ITEMS.filter((item) => allowedTabs.includes(item.href as any));
-  }
-
-  // Fallback: show all tabs
-  return ALL_NAV_ITEMS;
+  return ALL_NAV_ITEMS.filter((item) => allowedTabs.includes(item.href));
 }
 
 interface SidebarProps {

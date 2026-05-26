@@ -795,7 +795,7 @@ function ItemTrackingSection({
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
   const stageShowsArrivalCols = ['en_route', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(currentStage);
-  const stageAllowsProdEdit = ['production_pending', 'production_confirmed', 'partial_production', 'en_route'].includes(currentStage);
+  const stageAllowsProdEdit = ['production_confirmed', 'partial_production', 'en_route'].includes(currentStage);
   // Allow en-route dispatch edits at en_route, and arrival edits at en_route_verification too
   const stageAllowsEnRouteEdit = ['en_route', 'en_route_verification'].includes(currentStage);
 

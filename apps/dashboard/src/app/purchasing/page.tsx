@@ -192,28 +192,33 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
                                 }`}>
                                   {item.production_status === 'finished' ? '✓ Produced' : item.production_status === 'in_progress' ? '⟳ In Progress' : '○ Pending'}
                                 </span>
-                                {/* Manual production status buttons — independent of Telegram */}
-                                <div className="flex gap-0.5">
-                                  {(['pending', 'in_progress', 'finished'] as const).map((s) => (
-                                    <button
-                                      key={s}
-                                      disabled={updatingItemId === item.id || item.production_status === s}
-                                      onClick={() => handleItemProductionStatus(item.id, s)}
-                                      className={`rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors disabled:opacity-30 ${
-                                        item.production_status === s
-                                          ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                          : s === 'finished'
-                                            ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                                            : s === 'in_progress'
-                                              ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                                              : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
-                                      }`}
-                                      title={`Mark as ${s.replace('_', ' ')}`}
-                                    >
-                                      {updatingItemId === item.id ? '...' : s === 'finished' ? '✓' : s === 'in_progress' ? '⟳' : '○'}
-                                    </button>
-                                  ))}
-                                </div>
+                                {/* Manual production status buttons — only shown when production has started */}
+                                {order.production_started && (
+                                  <div className="flex gap-0.5">
+                                    {(['pending', 'in_progress', 'finished'] as const).map((s) => (
+                                      <button
+                                        key={s}
+                                        disabled={updatingItemId === item.id || item.production_status === s}
+                                        onClick={() => handleItemProductionStatus(item.id, s)}
+                                        className={`rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors disabled:opacity-30 ${
+                                          item.production_status === s
+                                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                            : s === 'finished'
+                                              ? 'bg-green-50 text-green-600 hover:bg-green-100'
+                                              : s === 'in_progress'
+                                                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                                : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                                        }`}
+                                        title={`Mark as ${s.replace('_', ' ')}`}
+                                      >
+                                        {updatingItemId === item.id ? '...' : s === 'finished' ? '✓' : s === 'in_progress' ? '⟳' : '○'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {!order.production_started && (
+                                  <span className="text-[9px] text-gray-400 italic">Not started</span>
+                                )}
                               </div>
                             </td>
                           </tr>
