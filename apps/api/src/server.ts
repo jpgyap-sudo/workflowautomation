@@ -7174,6 +7174,7 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
   }
 
   // Deduct inventory quantities — use adjustInventoryForOrderItem for audit trail
+  const deductions: { item_name: string; quantity: number }[] = [];
   if (body.deduct_inventory) {
     const items = await query<{ id: string; name: string; quantity: number; matched_inventory_item_id: string | null }>(
       `SELECT id, name, quantity, matched_inventory_item_id FROM order_items WHERE order_id = $1`,
@@ -7190,6 +7191,7 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
           `Stock prep deduction for order item: ${item.name} (${item.quantity} units).`,
           body.updated_by ?? 'system',
         );
+        deductions.push({ item_name: item.name, quantity: item.quantity });
       }
     }
   }
@@ -7222,7 +7224,7 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
   }
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
-  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: 'balance_due' });
+  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: 'balance_due', deductions });
 });
 
 /**
@@ -9961,6 +9963,18 @@ app.get('/inventory', async (request, _reply) => {
 app.get('/inventory/count', async (_request, _reply) => {
   const rows = await query(`SELECT COUNT(*)::int AS total FROM inventory_items`);
   return { total: rows[0].total };
+});
+
+app.get('/inventory/:id/movements', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const rows = await query(
+    `SELECT id, inventory_item_id, order_id, order_item_id, item_name, movement_type, quantity_change, quantity_after, note, created_by, created_at
+     FROM inventory_movements
+     WHERE inventory_item_id = $1
+     ORDER BY created_at DESC`,
+    [id]
+  );
+  return reply.send({ ok: true, movements: rows });
 });
 
 /**

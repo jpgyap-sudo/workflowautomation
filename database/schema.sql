@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   dimension TEXT,
   quantity INTEGER NOT NULL DEFAULT 0,
   image_url TEXT,
+  category TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -139,6 +140,7 @@ CREATE TABLE IF NOT EXISTS inventory_drafts (
   dimension TEXT,
   quantity INTEGER,
   image_url TEXT,
+  category TEXT,
   source_type TEXT NOT NULL,
   source_filename TEXT,
   status TEXT DEFAULT 'pending',
@@ -149,3 +151,20 @@ CREATE TABLE IF NOT EXISTS inventory_drafts (
 CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(product_name);
 CREATE INDEX IF NOT EXISTS idx_inventory_drafts_status ON inventory_drafts(status);
 CREATE INDEX IF NOT EXISTS idx_inventory_drafts_created_at ON inventory_drafts(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS inventory_movements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  inventory_item_id UUID REFERENCES inventory_items(id) ON DELETE SET NULL,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  order_item_id UUID REFERENCES order_items(id) ON DELETE SET NULL,
+  item_name TEXT NOT NULL,
+  movement_type TEXT NOT NULL,
+  quantity_change INTEGER NOT NULL,
+  quantity_after INTEGER,
+  note TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_movements_item_id ON inventory_movements(inventory_item_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_movements_order_id ON inventory_movements(order_id);

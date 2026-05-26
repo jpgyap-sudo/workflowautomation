@@ -56,6 +56,20 @@ export async function runDeliveryAgent(): Promise<AgentResult[]> {
     results.push(result);
   }
 
+  // Check orders at stock_preparation stage — from-stock orders waiting for stock prep
+  const stockPrepOrders = await getActiveOrdersByStage('stock_preparation');
+  for (const order of stockPrepOrders) {
+    const result = await checkStockPreparation(order);
+    if (result.reminder_needed) {
+      const groupChatId = getGroupChatId('delivery-agent');
+      if (groupChatId) {
+        await createReminder(order.id, 'stock_preparation', groupChatId, result.message);
+        await notifyDelivery(groupChatId, order, result);
+      }
+    }
+    results.push(result);
+  }
+
   return results;
 }
 
@@ -106,6 +120,94 @@ export async function checkDeliveryPending(order: OrderRow): Promise<AgentResult
       escalation_level: 0,
     };
 
+    await logAgentAction('delivery-agent', input, result, 'error', order.id, errorMsg);
+    return result;
+  }
+}
+
+/**
+ * Check orders at stock_preparation stage.
+ * These are from-stock orders where stock prep should be ready by a specific date.
+ * If stock_prep_ready_at is past due, ask for a status update.
+ */
+export async function checkStockPreparation(order: OrderRow): Promise<AgentResult> {
+  const input = {
+    quotation_number: order.quotation_number,
+    current_stage: order.current_stage,
+  };
+
+  try {
+    const escalationLevel = await getEscalationLevel(order.id, 'stock_preparation');
+
+    // Fetch stock prep ready date
+    const orderRows = await query(
+      `SELECT stock_prep_ready_at, stock_prep_days FROM orders WHERE id = $1`,
+      [order.id]
+    );
+    const stockPrepReadyAt = orderRows[0]?.stock_prep_ready_at;
+    const stockPrepDays = orderRows[0]?.stock_prep_days ?? 0;
+
+    if (!stockPrepReadyAt) {
+      const result: AgentResult = {
+        status: 'ok',
+        message: `Stock preparation for #${order.quotation_number ?? 'unknown'} has no ready date set yet (${stockPrepDays} day(s) prep).`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('delivery-agent', input, result, 'ok', order.id);
+      return result;
+    }
+
+    const now = new Date();
+    const readyAt = new Date(stockPrepReadyAt);
+    const diffMs = now.getTime() - readyAt.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      const result: AgentResult = {
+        status: 'ok',
+        message: `Stock preparation for #${order.quotation_number ?? 'unknown'} ready by ${readyAt.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}. Not yet due.`,
+        next_stage: null,
+        reminder_needed: false,
+        escalation_level: escalationLevel,
+      };
+      await logAgentAction('delivery-agent', input, result, 'ok', order.id);
+      return result;
+    }
+
+    // Past due — ask for status update
+    const result: AgentResult = {
+      status: 'needs_review',
+      message: `Stock preparation for #${order.quotation_number ?? 'unknown'} was due ${diffDays} day(s) ago (${readyAt.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}). Please provide a status update. Is the stock ready for delivery?`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: escalationLevel,
+    };
+
+    await logAgentAction('delivery-agent', input, result, 'needs_review', order.id);
+
+    // Optionally notify inventory group about overdue stock prep
+    const inventoryChatId = process.env.INVENTORY_GROUP_CHAT_ID;
+    if (inventoryChatId) {
+      const inventoryMsg = `📦 <b>Stock Preparation Overdue</b>
+
+Order: #${order.quotation_number ?? 'unknown'}
+Client: ${order.client_name ?? 'Unknown'}
+Stock prep was due ${diffDays} day(s) ago. Please check status.`;
+      await sendTelegramMessage(inventoryChatId, inventoryMsg);
+    }
+
+    return result;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const result: AgentResult = {
+      status: 'blocked',
+      message: `❌ Error checking stock preparation for #${order.quotation_number ?? 'unknown'}: ${errorMsg}`,
+      next_stage: null,
+      reminder_needed: true,
+      escalation_level: 0,
+    };
     await logAgentAction('delivery-agent', input, result, 'error', order.id, errorMsg);
     return result;
   }
@@ -283,6 +385,13 @@ export async function notifyDelivery(
         [
           { text: '✅ Yes, Delivered!', callback_data: `delivery:yes:${id.slice(0, 8)}:${qn}` },
           { text: '❌ Not Yet', callback_data: `delivery:no:${id.slice(0, 8)}:${qn}` },
+        ],
+      ]);
+    } else if (order.current_stage === 'stock_preparation') {
+      keyboard = inlineKeyboard([
+        [
+          { text: '✅ Stock Ready', callback_data: `stock_prep:ready:${qn}` },
+          { text: '⏳ Not Yet', callback_data: `stock_prep:delay:${qn}` },
         ],
       ]);
     }

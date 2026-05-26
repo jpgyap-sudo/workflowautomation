@@ -277,6 +277,13 @@ export async function processDueReminders(): Promise<number> {
       );
       if (itemRows[0]?.en_route_status === 'arrived') stale = true;
     }
+    if (!stale && reminder.item_id && reminder.stage === 'item_level_inventory') {
+      const itemRows = await query(
+        `SELECT en_route_status FROM order_items WHERE id = $1`,
+        [reminder.item_id]
+      );
+      if (itemRows[0]?.en_route_status === 'arrived') stale = true;
+    }
 
     if (stale) {
       await query(
@@ -464,7 +471,8 @@ export async function processDueReminders(): Promise<number> {
       ]);
     } else if (reminder.stage === 'inventory_arrived') {
       // Inventory arrival: ask for all / none / partial so item reminders can eliminate arrived items.
-      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+      const inventoryArrivedChatId = process.env.INVENTORY_GROUP_CHAT_ID ?? reminder.group_chat_id;
+      ok = await sendTelegramInlineKeyboard(inventoryArrivedChatId, text, [
         [
           { text: 'Yes, all arrived', callback_data: `inv_arr:yes:${quotationNumber}` },
           { text: 'No', callback_data: `inv_arr:no:${quotationNumber}` },
@@ -753,7 +761,8 @@ export async function processDueReminders(): Promise<number> {
     } else if (reminder.stage === 'inventory_verification') {
       // Inventory verification ? send the permanent per-order link and pending item list.
       const inventoryDetails = await buildInventoryVerificationReminderDetails(reminder);
-      ok = await sendTelegramMessage(reminder.group_chat_id, text + inventoryDetails);
+      const inventoryVerifChatId = process.env.INVENTORY_GROUP_CHAT_ID ?? reminder.group_chat_id;
+      ok = await sendTelegramMessage(inventoryVerifChatId, text + inventoryDetails);
     } else if (reminder.stage === 'stock_preparation') {
       // From-stock order stock preparation: ask if stock is ready for delivery
       const orderRows = await query(

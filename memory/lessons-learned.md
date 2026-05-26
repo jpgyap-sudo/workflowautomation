@@ -11449,3 +11449,55 @@ Avoid concurrent token-dependent operations in bulk actions. Use a single endpoi
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: clients tab gaps — clickable linked orders, client autocomplete in NewOrderModal, client filter in production/deliv
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d882d2bc3dc5be9e807ee4aed92ada96745c6094
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d882d2bc3dc5be9e807ee4aed92ada96745c6094
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/clients/page.tsx,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/inventory/verification/[quotationNumber]/page.tsx,apps/dashboard/src/app/orders/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/app/stock-prep/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+- Clickable linked orders in the Clients tab  
+- Client autocomplete in NewOrderModal  
+- Client filter in production/delivery/collection/purchasing tabs  
+
+**Why it broke:**  
+The client-related UI components and API endpoints were not properly connected or updated after a prior refactor. This caused missing or broken interactions (e.g., autocomplete not fetching clients, filters not applying, links not navigating).  
+
+**Reusable takeaway:**  
+When refactoring shared data sources (e.g., client list or API endpoints), always audit all dependent UI components—especially autocompletes, filters, and navigation links—across every tab or module. A single missing update can silently break multiple features. Use a cross-module checklist to ensure consistency.
+
+---
+*Original commit message: fix: clients tab gaps — clickable linked orders, client autocomplete in NewOrderModal, client filter in production/delivery/collection/purchasing tabs*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Clickable linked orders in the Clients tab  
+- Client autocomplete in NewOrderModal  
+- Client filter in production/delivery/collection/purchasing tabs  
+
+**Why it broke:**  
+The client-related UI components and API endpoints were not properly connected or updated after a prior refactor. This caused missing or broken interactions (e.g., autocomplete not fetching clients, filters not applying, links not navigating).  
+
+**Reusable takeaway:**  
+When refactoring shared data sources (e.g., client list or API endpoints), always audit all dependent UI components—especially autocompletes, filters, and navigation links—across every tab or module. A single missing update can silently break multiple features. Use a cross-module checklist to ensure consistency.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

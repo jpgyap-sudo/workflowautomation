@@ -10,7 +10,9 @@ import {
   getGroupChatId,
   addAgentNote,
   inlineKeyboard,
+  advanceStage,
 } from '../services/agentRunner.js';
+import { runAgentByName } from '../services/agentScheduler.js';
 import { query } from '../db.js';
 import { cacheDeletePattern } from '../cache.js';
 import { broadcastSSE } from '../sse.js';
@@ -282,43 +284,47 @@ async function checkInventoryVerification(order: OrderRow): Promise<AgentResult 
     const totalItems = items.length;
 
     if (allVerified) {
-      // All items verified — advance to inventory_arrived
+      // All items verified — advance to next stage
       const qn = order.quotation_number ?? 'unknown';
       const client = order.client_name ?? 'Unknown';
 
-      await addProductionLog(null, order.id, `✅ All items verified at inventory (${verificationPct}% of qty). Advancing to inventory_arrived.`, 'agent', AGENT_NAME);
-      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) verified at inventory (${verificationPct}% of qty). Moving to inventory_arrived.`);
+      // Check if balance is already verified to skip inventory_arrived
+      const balanceCheck = await query<{ balance_verified: boolean }>(
+        `SELECT balance_verified FROM orders WHERE id = $1`,
+        [order.id]
+      );
+      const isBalanceVerified = balanceCheck[0]?.balance_verified === true;
+      const nextStage = isBalanceVerified ? 'delivery_pending' : 'inventory_arrived';
 
-      // Update order: set inventory_verified_at and advance stage
+      await addProductionLog(null, order.id, `✅ All items verified at inventory (${verificationPct}% of qty). Advancing to ${nextStage}.`, 'agent', AGENT_NAME);
+      await addAgentNote(order.id, AGENT_NAME, `All ${items.length} item(s) verified at inventory (${verificationPct}% of qty). Moving to ${nextStage}.`);
+
+      // Preserve inventory metadata before using shared helper
       await query(
-        `UPDATE orders SET inventory_verified_at = NOW(), inventory_verification_pct = 100,
-         current_stage = 'inventory_arrived', updated_at = NOW()
-         WHERE id = $1`,
+        `UPDATE orders SET inventory_verified_at = NOW(), inventory_verification_pct = 100, updated_at = NOW() WHERE id = $1`,
         [order.id]
       );
 
-      // Record stage update
-      await query(
-        `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-         VALUES ($1, 'inventory_arrived', 'auto_advanced', 'All items verified at inventory. Proceeding to inventory arrival.', 'inventory-agent')`,
-        [order.id]
+      // Use shared advanceStage helper
+      await advanceStage(
+        order.id,
+        nextStage,
+        qn,
+        isBalanceVerified
+          ? 'All items verified at inventory. Balance already verified — skipping to delivery_pending.'
+          : 'All items verified at inventory. Proceeding to inventory arrival.',
+        AGENT_NAME
       );
 
-      // Complete reminders for inventory_verification
-      await query(
-        `UPDATE reminders SET status = 'completed', updated_at = NOW()
-         WHERE order_id = $1 AND status = 'active' AND stage = 'inventory_verification'`,
-        [order.id]
-      );
-
-      // Invalidate caches and broadcast SSE so dashboard reflects the stage change immediately
-      const cachePatterns = ['dashboard:*', 'orders:*', `order:detail:${qn}`, 'calendar:*', 'sales:*'];
-      for (const pattern of cachePatterns) {
-        await cacheDeletePattern(pattern);
-      }
-      broadcastSSE('order_updated', { id: order.id });
-      broadcastSSE('invalidate', { keys: cachePatterns });
-      await cacheDeletePattern(`order:detail:${qn}`);
+      // Trigger agents for the new stage
+      const agentsToFire = isBalanceVerified ? ['delivery-agent'] : ['inventory-agent'];
+      setImmediate(() => {
+        for (const agentName of agentsToFire) {
+          runAgentByName(agentName).catch((err) => {
+            console.warn(`[inventory-agent] Failed to trigger ${agentName} for stage ${nextStage}:`, err);
+          });
+        }
+      });
 
       // Notify inventory group with permanent record link and verified quantities
       const groupChatId = getGroupChatId(AGENT_NAME);
@@ -344,10 +350,27 @@ ${verifiedList}
         await sendTelegramMessage(groupChatId, msg);
       }
 
+      // Notify delivery group when auto-advancing to inventory_arrived
+      if (!isBalanceVerified) {
+        const deliveryChatId = process.env.DELIVERY_GROUP_CHAT_ID;
+        if (deliveryChatId) {
+          const deliveryMsg = `📦 <b>Inventory Verification Complete</b>
+
+` +
+            `Order: #${qn}
+` +
+            `Client: ${client}
+
+` +
+            `✅ All items accounted for. Proceeding to inventory arrival check.`;
+          await sendTelegramMessage(deliveryChatId, deliveryMsg);
+        }
+      }
+
       const result: AgentResult = {
         status: 'complete',
-        message: `✅ All items verified at inventory for #${qn} (${verificationPct}% of qty). Advanced to inventory_arrived.`,
-        next_stage: 'inventory_arrived',
+        message: `✅ All items verified at inventory for #${qn} (${verificationPct}% of qty). Advanced to ${nextStage}.`,
+        next_stage: nextStage,
         reminder_needed: false,
         escalation_level: escalationLevel,
       };
@@ -516,6 +539,13 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
         ]);
 
         await sendTelegramMessage(groupChatId, msg, keyboard);
+      }
+
+      // Alert collection group that balance collection will soon be needed
+      const collectionChatId = process.env.COLLECTION_GROUP_CHAT_ID;
+      if (collectionChatId) {
+        const collectionMsg = `📦 <b>Inventory Arrival Alert</b>\n\nOrder #${qn} (${client})\nAll ${items.length} item(s) have arrived at inventory (${inventoryPct}% of qty).\n\nBalance collection will soon be needed — please prepare for collection.`;
+        await sendTelegramMessage(collectionChatId, collectionMsg);
       }
 
       const result: AgentResult = {
