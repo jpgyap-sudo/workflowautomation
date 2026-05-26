@@ -18,6 +18,7 @@
 | `1a39260` | Roo (Code) | fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row | ✅ VPS `1a39260` |
 | `09f8836` | Roo (Code) | fix: 401 error when marking selected items en route — action token consumed on first PATCH call, fails on subsequent items. New POST /orders/:id/bulk-en-route-selected endpoint + bulkEnRouteSelected() API function. Updated handleBulkEnRouteSelectedVerified to use single API call instead of Promise.all with individual updateOrderItem calls. | ✅ VPS `09f8836` |
 | `7e3a0c3` | Roo (Code) | feat: add deposit slip upload + AI extract modal to Balance Due section in Delivery page — replaces old inline payment form with full modal-based flow (slip upload, visionExtract, duplicate detection, payBalanceWithFileBulk). Also fix: add missing bulkInventoryVerify import in orders/[quotationNumber]/page.tsx. | ✅ VPS `7e3a0c3` |
+| `d882d2b` | Roo (Code) | fix: clients tab gaps — (1) linked orders in expanded row now clickable (Link to order detail page), (2) client autocomplete in NewOrderModal with searchClients API, (3) client filter in production/delivery/collection/purchasing tabs with autocomplete dropdown | ✅ VPS `d882d2b` |
  
 ## 2026-05-25
 
