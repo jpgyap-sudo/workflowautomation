@@ -10,6 +10,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `0fc0c87` | Roo (Code) | feat: contribute 5 lessons to SuperRoo Central Brain learning layer + local memory/lessons-learned.md | ❌ |
+| `8c9a531` | Roo (Code) | fix: remove Finish button from Production Pending section — add production_pending stage guard to ProductionInfoCards and OrderRow | ❌ |
 
 ## 2026-05-25
 

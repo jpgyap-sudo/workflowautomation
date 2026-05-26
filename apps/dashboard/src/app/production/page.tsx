@@ -1544,9 +1544,6 @@ export default function ProductionPage() {
   const { data: inventoryArrivedOrders = [], isLoading: loadingInventoryArrived, error: errorInventoryArrived, mutate: mutateInventoryArrived } =
     useOrdersByStage('inventory_arrived');
 
-  // Split confirmed orders into in-progress vs finished
-  const inProgressOrders = confirmedOrders.filter((o: Order) => !o.production_finished);
-
   // Fetch item completion for en_route orders so we can split them into
   // "En Route Verification" (some items not yet en_route) vs "En Route" (all tracking)
   const [enRouteCompletion, setEnRouteCompletion] = useState<Record<string, { pct: number; allArrived: boolean }>>({});
@@ -2170,7 +2167,7 @@ export default function ProductionPage() {
   // and Production In Progress (started/finished items)
   const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
 
-  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + inProgressOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
   const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
   return (
@@ -2266,35 +2263,6 @@ export default function ProductionPage() {
         onDelete={handleDeleteClick}
         updatingItemId={updatingItemId}
       />
-
-      {/* Production Confirmed (production_confirmed stage — awaiting items to start) */}
-      <OrderSection
-        icon={<CheckCircle className="h-4 w-4 text-blue-500" />}
-        title="Production Confirmed"
-        count={inProgressOrders.length}
-        countBg="bg-blue-100" countText="text-blue-700"
-        orders={inProgressOrders} isLoading={loadingConfirmed} error={errorConfirmed}
-        onRetry={() => mutateConfirmed()}
-        emptyText="No orders confirmed for production"
-      >
-        {(order) => (
-          <>
-            <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
-              onReportOnTime={handleReportOnTime}
-              onReportDelayed={handleReportDelayed}
-              onFinishProduction={handleFinishProduction}
-              onGrantException={handleGrantException}
-              onRevokeException={handleRevokeException}
-              onItemProductionStatus={makeItemProductionStatusHandler(order)}
-              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
 
       {/* Production Finished */}
       <ProductionFinishedTrackingSection
