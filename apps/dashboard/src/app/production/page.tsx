@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useOrdersByStage, usePartialProductionOrders, useFinishProductionPendingOrders } from '@/lib/useApi';
+import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
@@ -937,6 +937,8 @@ interface ProductionItemSectionProps {
   onDelete?: (o: Order) => void;
   /** Currently updating item ID */
   updatingItemId?: string | null;
+  /** Callback when Finish Production is clicked for an order (order-level) */
+  onFinishProduction?: (order: Order) => void;
 }
 
 function ProductionItemSection({
@@ -947,6 +949,7 @@ function ProductionItemSection({
   onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
+  onFinishProduction,
 }: ProductionItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1079,6 +1082,14 @@ function ProductionItemSection({
                         </button>
                       )}
                     </div>
+                    {onFinishProduction && order.production_started && !order.production_finished && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onFinishProduction(order); }}
+                        className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 transition-colors"
+                      >
+                        Finish Production
+                      </button>
+                    )}
                     {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                   </div>
                 </button>
@@ -1600,8 +1611,6 @@ export default function ProductionPage() {
 
   const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
     useOrdersByStage('production_pending');
-  const { data: finishPendingOrders = [], isLoading: loadingFinishPending, error: errorFinishPending, mutate: mutateFinishPending } =
-    useFinishProductionPendingOrders();
   const { data: partialOrders = [], isLoading: loadingPartial, error: errorPartial, mutate: mutatePartial } =
     usePartialProductionOrders();
   const { data: inProgressStageOrders = [], isLoading: loadingInProgress, error: errorInProgress, mutate: mutateInProgress } =
@@ -1734,7 +1743,7 @@ export default function ProductionPage() {
   // Per-item production action state
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
-  function refresh() { mutatePending(); mutateFinishPending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
+  function refresh() { mutatePending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -2313,7 +2322,7 @@ export default function ProductionPage() {
   // and Production In Progress (started/finished items)
   const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
 
-  const totalActive = pendingOrders.length + finishPendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
 
   return (
     <div className="space-y-6">
@@ -2384,6 +2393,7 @@ export default function ProductionPage() {
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
         updatingItemId={updatingItemId}
+        onFinishProduction={handleFinishProduction}
       />
 
       {/* Production In Progress — shows only started/finished items from both production_in_progress AND partial_production stages */}
@@ -2410,29 +2420,6 @@ export default function ProductionPage() {
         onDelete={handleDeleteClick}
         updatingItemId={updatingItemId}
       />
-
-      {/* Finish Production Pending — orders where all items are finished, ready to be marked as production_finished */}
-      <OrderSection
-        icon={<CheckCircle className="h-4 w-4 text-purple-500" />}
-        title="Finish Production Pending"
-        count={finishPendingOrders.length}
-        countBg="bg-purple-100" countText="text-purple-700"
-        orders={finishPendingOrders} isLoading={loadingFinishPending} error={errorFinishPending}
-        onRetry={() => mutateFinishPending()}
-        emptyText="No orders ready to finish production"
-      >
-        {(order) => (
-          <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onFinishProduction={handleFinishProduction}
-              onItemProductionStatus={makeItemProductionStatusHandler(order)}
-              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
 
       {/* Production Finished */}
       <ProductionFinishedTrackingSection
