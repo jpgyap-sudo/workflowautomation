@@ -1001,6 +1001,16 @@ function ProductionItemSection({
   // Multi-select state: per-order set of selected item IDs (only in_progress items)
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string, Set<string>>>({});
 
+  // Re-fetch items for the expanded order on every parent refresh so item
+  // status changes (started, finished) are reflected without collapse/re-expand
+  useEffect(() => {
+    if (!expandedOrderId) return;
+    getOrderItems(expandedOrderId)
+      .then((res) => setItemsByOrder((prev) => ({ ...prev, [expandedOrderId]: res.items ?? [] })))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
+
   function toggleSelectItem(orderId: string, itemId: string) {
     setSelectedItemIds((prev) => {
       const current = new Set(prev[orderId] ?? []);
@@ -1412,6 +1422,16 @@ function ProductionFinishedTrackingSection({
   const [savingNote, setSavingNote] = useState<Record<string, boolean>>({});
   // Multi-select en-route state: per-order set of selected item IDs
   const [selectedEnRouteIds, setSelectedEnRouteIds] = useState<Record<string, Set<string>>>({});
+
+  // Re-fetch items for the expanded order whenever the orders list refreshes
+  // so that status changes (en route, arrived) are reflected without collapse/re-expand
+  useEffect(() => {
+    if (!expandedOrderId) return;
+    getOrderItems(expandedOrderId)
+      .then((res) => setItemsByOrder((prev) => ({ ...prev, [expandedOrderId]: res.items ?? [] })))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   function toggleEnRouteItem(orderId: string, itemId: string) {
     setSelectedEnRouteIds((prev) => {
