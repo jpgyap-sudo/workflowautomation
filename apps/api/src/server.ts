@@ -463,6 +463,44 @@ async function advanceFromEnRouteToVerificationIfAllDispatched(
   return { advanced: true, order: updatedOrder };
 }
 
+// Advances an order from 'en_route_verification' → 'inventory_verification'
+// once ALL items have en_route_status = 'arrived'.
+async function advanceToInventoryVerificationIfAllArrived(
+  orderId: string,
+  source: string,
+): Promise<{ advanced: boolean; order: any | null }> {
+  const items = await query<{ en_route_status: string }>(
+    `SELECT en_route_status FROM order_items WHERE order_id = $1`,
+    [orderId],
+  );
+  if (items.length === 0) return { advanced: false, order: null };
+  const allArrived = items.every((i) => i.en_route_status === 'arrived');
+  if (!allArrived) return { advanced: false, order: null };
+
+  const orderRows = await query<{ current_stage: string }>(
+    `SELECT current_stage FROM orders WHERE id = $1`, [orderId],
+  );
+  const order = orderRows[0];
+  if (!order || order.current_stage !== 'en_route_verification') return { advanced: false, order: null };
+
+  const rows = await query(
+    `UPDATE orders SET current_stage = 'inventory_verification', updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [orderId],
+  );
+  const updatedOrder = rows[0] ?? null;
+  if (!updatedOrder) return { advanced: false, order: null };
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'inventory_verification', 'all_arrived', $2, $3)`,
+    [orderId, `All items arrived — auto-advancing to inventory_verification`, source],
+  );
+
+  triggerAgentsForStage('inventory_verification', updatedOrder.quotation_number, updatedOrder.client_name);
+  return { advanced: true, order: updatedOrder };
+}
+
 // ── Email (OTP) ──────────────────────────────────────────────────────
 const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -4816,6 +4854,10 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
       order_id,
       'item_update',
     );
+    // Advance en_route_verification → inventory_verification when all items are marked arrived
+    if (body.en_route_status === 'arrived') {
+      await advanceToInventoryVerificationIfAllArrived(order_id, 'item_update');
+    }
   }
 
   // ── Item-Level Production Timeline Reminders ────────────────────────
