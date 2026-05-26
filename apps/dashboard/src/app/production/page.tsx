@@ -323,7 +323,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
                         {/* Production status buttons — only shown when production has started */}
-                        {order.production_started && order.current_stage !== 'en_route' && (['pending', 'in_progress', 'finished'] as const).map((status) => {
+                        {order.production_started && order.current_stage !== 'en_route' && order.current_stage !== 'production_pending' && (['pending', 'in_progress', 'finished'] as const).map((status) => {
                           const isActive = item.production_status === status;
                           const label = status === 'pending' ? 'Pending' : status === 'in_progress' ? 'Started' : 'Finished';
                           return (
@@ -674,7 +674,7 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
               </button>
             )}
             {/* Production Confirmed actions */}
-            {order.production_started && !order.production_finished && order.current_stage !== 'en_route' && (
+            {order.production_started && !order.production_finished && order.current_stage !== 'en_route' && order.current_stage !== 'production_pending' && (
               <>
                 {onReportOnTime && (
                   <button onClick={() => onReportOnTime(order)}

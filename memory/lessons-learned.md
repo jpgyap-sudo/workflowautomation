@@ -10822,3 +10822,68 @@ When building a multi-tab dashboard with security-sensitive actions, establish t
 security, otp, production, dashboard, gap-analysis, react, nextjs, ux
 
 ---
+
+### Lesson: [workflowautomation] fix: enforce dashboard tab access
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c1989b72e7c1778467b5cb672b2b7e8dd0c27047
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c1989b72e7c1778467b5cb672b2b7e8dd0c27047
+**Files:** apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/components/AuthGuard.tsx,apps/dashboard/src/components/Sidebar.tsx,apps/dashboard/src/lib/auth.tsx
+
+**Summary:**
+**What was fixed:** Dashboard tab access was not properly enforced; users could navigate to restricted tabs (e.g., Orders, Production, Purchasing) without authorization.
+
+**Why it broke:** The `AuthGuard` component and `Sidebar` did not check user permissions before rendering or allowing navigation to specific dashboard routes. The `auth.tsx` library lacked role-based access control logic for these tabs.
+
+**Reusable takeaway:** Always enforce access control at both the UI (hiding/disabled tabs) and route level (redirecting unauthorized users). Centralize permission checks in a reusable guard component and apply them consistently across all protected routes and navigation elements.
+
+---
+*Original commit message: fix: enforce dashboard tab access*
+
+#### Lesson Learned
+
+**What was fixed:** Dashboard tab access was not properly enforced; users could navigate to restricted tabs (e.g., Orders, Production, Purchasing) without authorization.
+
+**Why it broke:** The `AuthGuard` component and `Sidebar` did not check user permissions before rendering or allowing navigation to specific dashboard routes. The `auth.tsx` library lacked role-based access control logic for these tabs.
+
+**Reusable takeaway:** Always enforce access control at both the UI (hiding/disabled tabs) and route level (redirecting unauthorized users). Centralize permission checks in a reusable guard component and apply them consistently across all protected routes and navigation elements.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: Dashboard tab access route enforcement
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: local
+Confidence: medium
+Related files:
+Tags:
+
+#### Task Summary
+
+When saving dashboard tab access, enforce it in both Sidebar and AuthGuard. Non-admin users should derive visible nav items from persisted allowedTabs and direct routes should be redirected to the first allowed tab; avoid fallback-to-all for non-admins because it leaks unchecked tabs.
+
+#### Lesson Learned
+
+When saving dashboard tab access, enforce it in both Sidebar and AuthGuard. Non-admin users should derive visible nav items from persisted allowedTabs and direct routes should be redirected to the first allowed tab; avoid fallback-to-all for non-admins because it leaks unchecked tabs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
