@@ -1349,6 +1349,7 @@ function ProductionFinishedTrackingSection({
   onViewFiles,
   onItemEnRouteStatus,
   onBulkEnRoute,
+  onBulkEnRouteSelected,
 }: {
   orders: Order[];
   summaries: Record<string, ProductionFinishedSummary>;
