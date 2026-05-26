@@ -341,6 +341,58 @@ async function advanceToEnRouteIfAllDispatched(
   return { advanced: true, order };
 }
 
+// Advances an order from 'en_route' → 'en_route_verification' once all items are dispatched.
+// This is the counterpart to advanceToEnRouteIfAllDispatched, which only advances TO en_route.
+async function advanceFromEnRouteToVerificationIfAllDispatched(
+  orderId: string,
+  source: string,
+  defaultArrivalDays?: number | null,
+): Promise<{ advanced: boolean; order: any | null }> {
+  const items = await query<{ en_route_status: string; production_status: string; estimated_arrival_days: number | null }>(
+    `SELECT en_route_status, production_status, estimated_arrival_days FROM order_items WHERE order_id = $1`,
+    [orderId],
+  );
+  if (items.length === 0) return { advanced: false, order: null };
+  const allFinished = items.every((i) => i.production_status === 'finished');
+  const allDispatched = items.every((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
+  if (!allFinished || !allDispatched) return { advanced: false, order: null };
+
+  const orderRows = await query<{ current_stage: string; estimated_arrival_days: number | null }>(
+    `SELECT current_stage, estimated_arrival_days FROM orders WHERE id = $1`,
+    [orderId],
+  );
+  const order = orderRows[0];
+  if (!order || order.current_stage !== 'en_route') return { advanced: false, order: null };
+
+  // Derive arrival days: prefer caller-provided default → max of item days → existing order days → 28
+  const itemDays = items.map((i) => i.estimated_arrival_days ?? 0).filter((d) => d > 0);
+  const arrivalDays = defaultArrivalDays
+    ?? (itemDays.length > 0 ? Math.max(...itemDays) : null)
+    ?? order.estimated_arrival_days
+    ?? 28;
+
+  const rows = await query(
+    `UPDATE orders
+     SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
+         estimated_arrival_days = $1,
+         current_stage = 'en_route_verification',
+         updated_at = NOW()
+     WHERE id = $2 RETURNING *`,
+    [arrivalDays, orderId],
+  );
+  const updatedOrder = rows[0] ?? null;
+  if (!updatedOrder) return { advanced: false, order: null };
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'en_route_verification', 'all_dispatched', $2, $3)`,
+    [orderId, `All items dispatched — advancing to en_route_verification (est. ${arrivalDays}d)`, source],
+  );
+
+  triggerAgentsForStage('en_route_verification', updatedOrder.quotation_number, updatedOrder.client_name);
+  return { advanced: true, order: updatedOrder };
+}
+
 // ── Email (OTP) ──────────────────────────────────────────────────────
 const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -2529,6 +2581,67 @@ app.post('/orders/:id/finish-all-items', async (request, reply) => {
   return reply.send({ ok: true, items: updatedItems, order: finalizeResult.order });
 });
 
+const finishSelectedItemsSchema = z.object({
+  action_token: z.string(),
+  item_ids: z.array(z.string()).min(1),
+});
+
+// POST /orders/:id/finish-selected-items — Bulk finish selected items
+app.post('/orders/:id/finish-selected-items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = finishSelectedItemsSchema.parse(request.body);
+
+  // Verify action token (single verification for all items)
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Mark only the selected items as finished
+  await query(
+    `UPDATE order_items
+     SET production_status = 'finished',
+         production_finished_at = COALESCE(production_finished_at, NOW()),
+         updated_at = NOW()
+     WHERE order_id = $1 AND id = ANY($2::text[]) AND production_status != 'finished'`,
+    [id, body.item_ids]
+  );
+
+  // Fetch updated items
+  const updatedItems = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days, production_finished_at,
+            inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  // Finalize order production if all items are now finished
+  const finalizeResult = await finalizeProductionIfAllItemsFinished(
+    id,
+    'item_update',
+    `Bulk finish selected items (${body.item_ids.length}) via dashboard`
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${finalizeResult.order?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  await notifyManualChange(
+    'Production finished (selected)',
+    `Quotation: *${finalizeResult.order?.quotation_number ?? 'N/A'}*\nClient: *${finalizeResult.order?.client_name ?? 'Unknown'}*\n${body.item_ids.length} selected item(s) marked finished${finalizeResult.finalized ? ' — all items done' : ''}`,
+    userEmail,
+  );
+
+  return reply.send({ ok: true, items: updatedItems, order: finalizeResult.order });
+});
+
 const bulkEnRouteSchema = z.object({
   action_token: z.string(),
   default_arrival_days: z.number().int().positive().optional(),
@@ -2578,22 +2691,28 @@ app.post('/orders/:id/bulk-en-route', async (request, reply) => {
   );
 
   // Check if all items are now dispatched and advance stage if so
+  // advanceToEnRouteIfAllDispatched handles stages before en_route (e.g. partial_production → en_route)
+  // advanceFromEnRouteToVerificationIfAllDispatched handles en_route → en_route_verification
   const advanceResult = await advanceToEnRouteIfAllDispatched(
     id,
     'item_update',
     'Bulk mark all items en route via dashboard'
   );
+  const verificationAdvance = !advanceResult.advanced
+    ? await advanceFromEnRouteToVerificationIfAllDispatched(id, 'bulk_en_route', body.default_arrival_days)
+    : { advanced: false, order: null };
+  const effectiveOrder = advanceResult.order ?? verificationAdvance.order;
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${advanceResult.order?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${effectiveOrder?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
 
   await notifyManualChange(
     'En route (bulk)',
-    `Quotation: *${advanceResult.order?.quotation_number ?? 'N/A'}*\nClient: *${advanceResult.order?.client_name ?? 'Unknown'}*\nAll items marked en route`,
+    `Quotation: *${effectiveOrder?.quotation_number ?? 'N/A'}*\nClient: *${effectiveOrder?.client_name ?? 'Unknown'}*\nAll items marked en route${verificationAdvance.advanced ? ' — advanced to En Route Verification' : ''}`,
     userEmail,
   );
 
-  return reply.send({ ok: true, items: updatedItems, order: advanceResult.order });
+  return reply.send({ ok: true, items: updatedItems, order: effectiveOrder });
 });
 
 // POST /orders/:id/bulk-en-route-selected — Bulk mark selected items as en_route
@@ -2639,17 +2758,21 @@ app.post('/orders/:id/bulk-en-route-selected', async (request, reply) => {
     'item_update',
     'Bulk mark selected items en route via dashboard'
   );
+  const verificationAdvance = !advanceResult.advanced
+    ? await advanceFromEnRouteToVerificationIfAllDispatched(id, 'bulk_en_route_selected', body.default_arrival_days)
+    : { advanced: false, order: null };
+  const effectiveOrder = advanceResult.order ?? verificationAdvance.order;
 
-  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${advanceResult.order?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${effectiveOrder?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id });
 
   await notifyManualChange(
     'En route (bulk selected)',
-    `Quotation: *${advanceResult.order?.quotation_number ?? 'N/A'}*\nClient: *${advanceResult.order?.client_name ?? 'Unknown'}*\nSelected items marked en route`,
+    `Quotation: *${effectiveOrder?.quotation_number ?? 'N/A'}*\nClient: *${effectiveOrder?.client_name ?? 'Unknown'}*\nSelected items marked en route${verificationAdvance.advanced ? ' — advanced to En Route Verification' : ''}`,
     userEmail,
   );
 
-  return reply.send({ ok: true, items: updatedItems, order: advanceResult.order });
+  return reply.send({ ok: true, items: updatedItems, order: effectiveOrder });
 });
 
 // ── Confirm En Route ──────────────────────────────────────────────────
@@ -4298,16 +4421,18 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     }
   }
 
-  // ── Auto-advance to en_route when all items are dispatched ──────────
+  // ── Auto-advance when all items are dispatched ──────────────────────
   if (body.en_route_status !== undefined) {
-    const orderRows = await query<{ quotation_number: string | null; client_name: string | null }>(
-      `SELECT quotation_number, client_name FROM orders WHERE id = $1`,
-      [order_id]
-    );
     await advanceToEnRouteIfAllDispatched(
       order_id,
       'item_update',
       `Item en_route_status updated to ${body.en_route_status} — checking if all items dispatched`,
+    );
+    // Also advance from en_route → en_route_verification when order is already in en_route
+    // and all items are now dispatched (advanceToEnRouteIfAllDispatched skips this case)
+    await advanceFromEnRouteToVerificationIfAllDispatched(
+      order_id,
+      'item_update',
     );
   }
 
@@ -5047,6 +5172,9 @@ app.post('/stage-updates', async (request, reply) => {
   if (body.stage === 'delivery_scheduled' && DELIVERY_CHAT_ID) {
     const ref = body.quotation_number;
     const client = order?.client_name ?? 'Unknown';
+    const deliveryDateStr = body.delivery_date
+      ? `\nScheduled Delivery: <b>${body.delivery_date}</b>`
+      : '';
     const reminderMessage = `Delivery has been scheduled for #${ref} (${client}). Please prepare.`;
 
     await upsertStageReminder(orderId, 'delivery_scheduled', DELIVERY_CHAT_ID, reminderMessage);
@@ -5056,8 +5184,9 @@ app.post('/stage-updates', async (request, reply) => {
         DELIVERY_CHAT_ID,
         `🚚 <b>Delivery Scheduled (Dashboard)</b>\n\n` +
         `Quotation: <b>${ref}</b>\n` +
-        `Client: ${client}\n\n` +
-        `Delivery has been scheduled. Please prepare for dispatch.`
+        `Client: ${client}` +
+        deliveryDateStr +
+        `\n\nDelivery has been scheduled. Please prepare for dispatch.`
       );
     });
   }
@@ -5103,6 +5232,9 @@ app.post('/stage-updates', async (request, reply) => {
     const targetChatId = stageToGroup[body.stage];
     if (targetChatId) {
       const stageLabel = body.stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const deliveryDateLine = body.stage === 'delivery_scheduled' && body.delivery_date
+        ? `\nScheduled Delivery: <b>${body.delivery_date}</b>`
+        : '';
       setImmediate(() => {
         notifyGroupChat(
           targetChatId,
@@ -5111,8 +5243,9 @@ app.post('/stage-updates', async (request, reply) => {
           `Client: ${order?.client_name ?? 'N/A'}\n` +
           `Stage: <b>${stageLabel}</b>\n` +
           `Status: ${body.status}\n` +
-          `Remarks: ${body.remarks ?? '-'}\n` +
-          `Updated by: ${actorName ?? 'dashboard'}\n\n` +
+          `Remarks: ${body.remarks ?? '-'}` +
+          deliveryDateLine +
+          `\nUpdated by: ${actorName ?? 'dashboard'}\n\n` +
           `Please check and take necessary action.`
         );
       });
