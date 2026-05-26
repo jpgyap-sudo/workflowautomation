@@ -236,7 +236,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
     }
   }
 
-  if (!order.production_started && !order.partial_production_items?.length && items.length === 0) return null;
+  // Always render if we have items (even if production hasn't started — for item-level Start buttons)
+  if (items.length === 0 && !order.partial_production_items?.length) return null;
   const finishDate = computeFinishDate(order);
   const progress = getProductionProgress(order);
   const actualItemsByName = new Map(items.map((item) => [item.name, item.production_status]));
@@ -346,8 +347,32 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             </button>
                           );
                         })}
+                        {/* Item-level Start button for Production Pending — prompts for production days */}
                         {!order.production_started && (
-                          <span className="text-[10px] text-gray-400 italic">Not started</span>
+                          <button
+                            type="button"
+                            disabled={updatingItemId === item.id}
+                            onClick={async () => {
+                              const input = window.prompt(`Production days for "${item.name}"?`, item.estimated_production_days?.toString() ?? '30');
+                              if (input === null) return;
+                              const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+                              if (!days || days <= 0) { alert('Please enter a valid number of production days.'); return; }
+                              // First save the production days (metadata, no OTP needed)
+                              setUpdatingItemId(item.id);
+                              try {
+                                await updateOrderItem(order.id, item.id, { estimated_production_days: days });
+                                await refreshItemState();
+                                // Then trigger OTP for the status change
+                                handleItemProductionStatus(item, 'in_progress');
+                              } catch (err) {
+                                alert(err instanceof Error ? err.message : 'Failed to set production days');
+                                setUpdatingItemId(null);
+                              }
+                            }}
+                            className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                          >
+                            {updatingItemId === item.id ? 'Saving...' : '▶ Start'}
+                          </button>
                         )}
                         {/* En route action buttons — only shown for en_route stage orders */}
                         {order.current_stage === 'en_route' && (() => {
