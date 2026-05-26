@@ -1057,6 +1057,41 @@ app.get('/orders/partial-production', async (request, reply) => {
   return rows;
 });
 
+// ── Finish Production Pending: production_in_progress orders where all items are finished ──
+app.get('/orders/finish-production-pending', async (request, reply) => {
+  const cacheKey = 'orders:finish_production_pending';
+  const cached = await cacheGet<object[]>(cacheKey);
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.id = (
+       SELECT r2.id FROM reminders r2
+       WHERE r2.order_id = o.id AND r2.stage = o.current_stage AND r2.status = 'active'
+       ORDER BY r2.escalation_level DESC NULLS LAST
+       LIMIT 1
+     )
+     WHERE o.status = 'active'
+       AND o.current_stage = 'production_in_progress'
+       AND o.production_started = TRUE
+       AND o.production_finished IS DISTINCT FROM TRUE
+       AND (
+         -- No order items at all → eligible for finish production
+         NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id)
+         -- OR all order items have production_status = 'finished'
+         OR (
+           EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.production_status IS DISTINCT FROM 'finished')
+         )
+       )
+     GROUP BY o.id
+     ORDER BY o.created_at ASC`
+  );
+  await cacheSet(cacheKey, rows);
+  return rows;
+});
+
 app.get('/orders/stage/:stage', async (request, reply) => {
   const params = z.object({ stage: z.string() }).parse(request.params);
   const cacheKey = `orders:stage:${params.stage}`;

@@ -84,16 +84,23 @@ The **Production Agent** takes over (runs every 60 min):
 
 When all items are finished → stage advances to `en_route`.
 
-### 3d. En Route
+### 3d. En Route (Dashboard Sections)
 
-The **Production Agent** monitors en-route status:
+The **Production Agent** monitors en-route status across three dashboard sections:
 
-- Tracks item-level en-route progress,
-- Sends reminders with inline buttons for each item.
+**Dispatch Pending** — items still need to be confirmed as dispatched/en route.
+- Agent does process of elimination: asks about each unconfirmed item one by one.
+- When all items confirmed dispatched → order moves to "En Route — In Transit".
+
+**En Route — In Transit** — all items dispatched, awaiting physical arrival at inventory.
+- Agent monitors arrival progress, sends daily reminders.
+- When all items arrive → order moves to "Arrival Verification".
+
+**Arrival Verification** — all items arrived at inventory, awaiting arrival confirmation.
+- Agent checks if all items have arrived.
+- When all items confirmed arrived → stage advances to `inventory_verification`.
 
 **Inline buttons**: `✅ Yes` / `❌ No` / `📦 Arrived`
-
-When all items arrive → stage advances to `inventory_verification`.
 
 ## 4. Inventory Verification
 

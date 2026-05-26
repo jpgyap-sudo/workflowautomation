@@ -1565,12 +1565,12 @@ function ItemTrackingSection({
         ) : null;
       })()}
 
-      {/* En Route Verification guidance banner */}
+      {/* Arrival Verification guidance banner */}
       {currentStage === 'en_route_verification' && items.length > 0 && (() => {
         const notArrivedCount = items.filter(i => i.en_route_status !== 'arrived').length;
         return notArrivedCount > 0 ? (
           <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
-            <p className="text-xs font-semibold text-blue-800">🔎 En Route Verification — {notArrivedCount} item{notArrivedCount !== 1 ? 's' : ''} not yet arrived</p>
+            <p className="text-xs font-semibold text-blue-800">🔎 Arrival Verification — {notArrivedCount} item{notArrivedCount !== 1 ? 's' : ''} not yet arrived</p>
             <p className="mt-1 text-[11px] text-blue-700">
               Mark items as <strong>Arrived</strong> (✓ button in the En Route column) as they come in.
               Once all items arrive, the order advances to <strong>Inventory Verification</strong> automatically.

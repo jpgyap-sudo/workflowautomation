@@ -11173,3 +11173,45 @@ Always validate status names against the actual workflow state machine. Use cons
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: estimated arrival date fallback for item-level en route; feat: bulk production finish and bulk en route
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c80463354853211f59e500ce5f5bbd9c0bf2bdd3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c80463354853211f59e500ce5f5bbd9c0bf2bdd3
+**Files:** apps/api/src/agents/escalationAgent.ts,apps/api/src/agents/productionAgent.ts,apps/api/src/server.ts,apps/api/src/services/agentRunner.ts,apps/api/src/services/hermesClaw.ts,apps/api/src/services/productionAssistant.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/calendar/page.tsx,apps/dashboard/src/app/globals.css,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/telegram/page.tsx,apps/dashboard/src/app/workflow/page.tsx,apps/dashboard/src/lib/api.ts,apps/telegram-bot/src/bot.ts,docs/workflow.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Estimated arrival date fallback for item-level en route status.
+
+**Why it broke:** The system lacked a fallback mechanism when calculating estimated arrival dates for individual items in "en route" status. Without this, items could display missing or incorrect arrival estimates.
+
+**Reusable takeaway:** Always implement fallback logic for date calculations in logistics workflows. When primary data (e.g., carrier-provided ETA) is unavailable, derive estimates from secondary sources like historical averages, route distance, or status transitions. This prevents null/incorrect dates from propagating to user-facing dashboards.
+
+---
+*Original commit message: fix: estimated arrival date fallback for item-level en route; feat: bulk production finish and bulk en route*
+
+#### Lesson Learned
+
+**What was fixed:** Estimated arrival date fallback for item-level en route status.
+
+**Why it broke:** The system lacked a fallback mechanism when calculating estimated arrival dates for individual items in "en route" status. Without this, items could display missing or incorrect arrival estimates.
+
+**Reusable takeaway:** Always implement fallback logic for date calculations in logistics workflows. When primary data (e.g., carrier-provided ETA) is unavailable, derive estimates from secondary sources like historical averages, route distance, or status transitions. This prevents null/incorrect dates from propagating to user-facing dashboards.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

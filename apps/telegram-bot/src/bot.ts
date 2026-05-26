@@ -3637,7 +3637,7 @@ interface BoardResponse {
 const BOARD_CATEGORIES: { id: BoardCategory; label: string; icon: string }[] = [
   { id: 'pending_start', label: 'Pending Start', icon: '?' },
   { id: 'in_progress', label: 'In Progress', icon: '??' },
-  { id: 'en_route_verification', label: 'En Route Verification', icon: '?' },
+  { id: 'en_route_verification', label: 'Arrival Verification', icon: '?' },
   { id: 'en_route', label: 'En Route', icon: '??' },
 ];
 
@@ -3871,7 +3871,7 @@ function boardDashboard(orders: BoardOrder[]): { text: string; keyboard: ReturnT
         Markup.button.callback(`? Pending Start (${counts.get('pending_start') ?? 0})`, 'prd:cat:pending_start'),
         Markup.button.callback(`?? In Progress (${counts.get('in_progress') ?? 0})`, 'prd:cat:in_progress'),
       ],
-      [Markup.button.callback(`? En Route Verification (${counts.get('en_route_verification') ?? 0})`, 'prd:cat:en_route_verification')],
+      [Markup.button.callback(`? Arrival Verification (${counts.get('en_route_verification') ?? 0})`, 'prd:cat:en_route_verification')],
       [Markup.button.callback(`?? En Route (${counts.get('en_route') ?? 0})`, 'prd:cat:en_route')],
     ]),
   };

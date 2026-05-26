@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
+import { useOrdersByStage, usePartialProductionOrders, useFinishProductionPendingOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion } from '@/lib/api';
 import {
@@ -1368,7 +1368,7 @@ function ProductionFinishedTrackingSection({
                 <th className="px-6 py-3">Order #</th>
                 <th className="px-4 py-3">Client Name</th>
                 <th className="px-4 py-3">Production Finished</th>
-                <th className="px-4 py-3">En Route Verification</th>
+                <th className="px-4 py-3">Dispatch Pending</th>
                 <th className="px-4 py-3">Estimated Inventory Arrival Date</th>
                 <th className="px-4 py-3">Stage</th>
                 <th className="px-4 py-3">Notes</th>
@@ -1600,6 +1600,8 @@ export default function ProductionPage() {
 
   const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
     useOrdersByStage('production_pending');
+  const { data: finishPendingOrders = [], isLoading: loadingFinishPending, error: errorFinishPending, mutate: mutateFinishPending } =
+    useFinishProductionPendingOrders();
   const { data: partialOrders = [], isLoading: loadingPartial, error: errorPartial, mutate: mutatePartial } =
     usePartialProductionOrders();
   const { data: inProgressStageOrders = [], isLoading: loadingInProgress, error: errorInProgress, mutate: mutateInProgress } =
@@ -1614,7 +1616,7 @@ export default function ProductionPage() {
     useOrdersByStage('inventory_arrived');
 
   // Fetch item completion for en_route orders so we can split them into
-  // "En Route Verification" (some items not yet en_route) vs "En Route" (all tracking)
+  // "Dispatch Pending" (some items not yet en_route) vs "En Route — In Transit" (all tracking)
   const [enRouteCompletion, setEnRouteCompletion] = useState<Record<string, { pct: number; allArrived: boolean }>>({});
   useEffect(() => {
     if (enRouteOrders.length === 0) return;
@@ -1732,7 +1734,7 @@ export default function ProductionPage() {
   // Per-item production action state
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
-  function refresh() { mutatePending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
+  function refresh() { mutatePending(); mutateFinishPending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -2311,7 +2313,7 @@ export default function ProductionPage() {
   // and Production In Progress (started/finished items)
   const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
 
-  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
+  const totalActive = pendingOrders.length + finishPendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
 
   return (
     <div className="space-y-6">
@@ -2409,6 +2411,29 @@ export default function ProductionPage() {
         updatingItemId={updatingItemId}
       />
 
+      {/* Finish Production Pending — orders where all items are finished, ready to be marked as production_finished */}
+      <OrderSection
+        icon={<CheckCircle className="h-4 w-4 text-purple-500" />}
+        title="Finish Production Pending"
+        count={finishPendingOrders.length}
+        countBg="bg-purple-100" countText="text-purple-700"
+        orders={finishPendingOrders} isLoading={loadingFinishPending} error={errorFinishPending}
+        onRetry={() => mutateFinishPending()}
+        emptyText="No orders ready to finish production"
+      >
+        {(order) => (
+          <>
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onFinishProduction={handleFinishProduction}
+              onItemProductionStatus={makeItemProductionStatusHandler(order)}
+              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
+            />
+            {editingOrder?.id === order.id && (
+              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
+            )}
+          </>
+        )}
+      </OrderSection>
+
       {/* Production Finished */}
       <ProductionFinishedTrackingSection
         orders={finishedOrders}
@@ -2421,15 +2446,15 @@ export default function ProductionPage() {
         onBulkEnRoute={handleBulkEnRoute}
       />
 
-      {/* En Route Verification — some items still not confirmed en route */}
+      {/* Dispatch Pending — some items still not confirmed en route */}
       <OrderSection
         icon={<Truck className="h-4 w-4 text-amber-500" />}
-        title="En Route Verification"
+        title="Dispatch Pending"
         count={enRouteVerificationOrders.length}
         countBg="bg-amber-100" countText="text-amber-700"
         orders={enRouteVerificationOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
-        emptyText="No orders awaiting en route confirmation"
+        emptyText="No orders pending dispatch confirmation"
       >
         {(order) => (
           <>
@@ -2448,15 +2473,15 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* En Route — all items confirmed en route, awaiting arrival */}
+      {/* En Route — In Transit — all items confirmed en route, awaiting arrival */}
       <OrderSection
         icon={<Truck className="h-4 w-4 text-sky-500" />}
-        title="En Route"
+        title="En Route — In Transit"
         count={enRouteTrackingOrders.length}
         countBg="bg-sky-100" countText="text-sky-700"
         orders={enRouteTrackingOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
-        emptyText="No orders fully en route"
+        emptyText="No orders in transit"
       >
         {(order) => (
           <>
@@ -2475,15 +2500,15 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* En Route Verification Stage — all items dispatched, waiting for inventory arrival */}
+      {/* Arrival Verification — all items dispatched, waiting for inventory arrival */}
       <OrderSection
         icon={<Truck className="h-4 w-4 text-blue-500" />}
-        title="En Route — Awaiting Arrival"
+        title="Arrival Verification"
         count={enRouteVerificationStageOrders.length}
         countBg="bg-blue-100" countText="text-blue-700"
         orders={enRouteVerificationStageOrders} isLoading={loadingEnRouteStage} error={errorEnRouteStage}
         onRetry={() => mutateEnRouteStage()}
-        emptyText="No orders awaiting inventory arrival confirmation"
+        emptyText="No orders awaiting arrival verification"
       >
         {(order) => (
           <>
