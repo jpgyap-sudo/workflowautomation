@@ -11693,3 +11693,51 @@ When modeling state transitions based on aggregate conditions (e.g., “all item
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: delivery tab gaps — guards, stale reminders, agents, dashboard UI
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8e6523588ffeb519bd51a7ba966566e52ede1562
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 8e6523588ffeb519bd51a7ba966566e52ede1562
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Multiple UI and logic issues in the delivery tab: missing guards caused unhandled edge cases, stale reminders persisted after state changes, agent selection was inconsistent, and the dashboard displayed incorrect or incomplete data.
+
+**Why it broke:**  
+The system lacked proper state synchronization and defensive checks. Reminders were not cleared when delivery status changed, agent lists were not refreshed after updates, and UI components relied on outdated data without validation guards.
+
+**Reusable takeaway:**  
+Always pair state mutations with cleanup logic (e.g., reset reminders on status change). Add guards before rendering or processing data to handle missing or stale values. Ensure all UI components re-fetch or validate their data source after any state-altering action. This prevents silent failures and inconsistent displays.
+
+---
+*Original commit message: fix: delivery tab gaps — guards, stale reminders, agents, dashboard UI*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Multiple UI and logic issues in the delivery tab: missing guards caused unhandled edge cases, stale reminders persisted after state changes, agent selection was inconsistent, and the dashboard displayed incorrect or incomplete data.
+
+**Why it broke:**  
+The system lacked proper state synchronization and defensive checks. Reminders were not cleared when delivery status changed, agent lists were not refreshed after updates, and UI components relied on outdated data without validation guards.
+
+**Reusable takeaway:**  
+Always pair state mutations with cleanup logic (e.g., reset reminders on status change). Add guards before rendering or processing data to handle missing or stale values. Ensure all UI components re-fetch or validate their data source after any state-altering action. This prevents silent failures and inconsistent displays.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

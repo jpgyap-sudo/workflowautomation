@@ -4986,6 +4986,11 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     }
   }
 
+  // Touch orders.updated_at so SWR-fetched order objects reflect the item change.
+  // This lets components that depend on order.updated_at (e.g. ProductionInfoCards)
+  // detect the change and re-fetch their own item lists without a full stage change.
+  await query(`UPDATE orders SET updated_at = NOW() WHERE id = $1`, [order_id]);
+
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { order_id });
   return reply.send({ ok: true, item: updatedItem });
