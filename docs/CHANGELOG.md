@@ -9,7 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `pending` | Roo (Code) | feat: add Guides & Tutorials page (/guides) with step-by-step guides for all tabs, SVG workflow diagrams, search, expandable sections/steps, quick nav chips, internal links. Wire into sidebar + auth system. | ❌ |
+| `7dab5f6` | Roo (Code) | feat: add Guides & Tutorials page (/guides) with step-by-step guides for all tabs, SVG workflow diagrams, search, expandable sections/steps, quick nav chips, internal links. Wire into sidebar + auth system. | ✅ VPS `7dab5f6` |
 
 ## 2026-05-26
 
