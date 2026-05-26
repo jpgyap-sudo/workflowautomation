@@ -10887,3 +10887,145 @@ When saving dashboard tab access, enforce it in both Sidebar and AuthGuard. Non-
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove Finish button from Production Pending section — add production_pending stage guard to ProductionInfoCards (i
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8c9a53103fb61bcfadbb708c46719b10d32edd41
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8c9a53103fb61bcfadbb708c46719b10d32edd41
+**Files:** apps/dashboard/src/app/production/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Removed the Finish button from the Production Pending section in both item-level cards and order-level rows.
+
+**Why it broke:**  
+The button was incorrectly visible in the Production Pending stage, allowing users to mark items/orders as finished before they had actually started production. This violated the intended workflow sequence.
+
+**Reusable takeaway:**  
+Always guard UI actions (like status transitions) with explicit stage checks. A button should only appear when the current stage logically permits that action. In this case, adding a `production_pending` stage guard prevented premature completion. This pattern applies broadly: never rely on implicit state — validate the exact workflow stage before rendering actionable elements.
+
+---
+*Original commit message: fix: remove Finish button from Production Pending section — add production_pending stage guard to ProductionInfoCards (item-level Finished status button) and OrderRow (order-level Finish Production button)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Removed the Finish button from the Production Pending section in both item-level cards and order-level rows.
+
+**Why it broke:**  
+The button was incorrectly visible in the Production Pending stage, allowing users to mark items/orders as finished before they had actually started production. This violated the intended workflow sequence.
+
+**Reusable takeaway:**  
+Always guard UI actions (like status transitions) with explicit stage checks. A button should only appear when the current stage logically permits that action. In this case, adding a `production_pending` stage guard prevented premature completion. This pattern applies broadly: never rely on implicit state — validate the exact workflow stage before rendering actionable elements.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove Production Confirmed section from production page — redundant with Production In Progress section
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7576af05d185d83005448579abefccc847f3cf14
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 7576af05d185d83005448579abefccc847f3cf14
+**Files:** apps/dashboard/src/app/production/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** Removed a redundant "Production Confirmed" section from the production page UI.
+
+**Why it broke:** The "Production Confirmed" section duplicated information already displayed in the "Production In Progress" section, causing confusion and clutter for users.
+
+**Reusable takeaway:** Avoid displaying the same data in multiple UI sections unless there is a clear, distinct purpose (e.g., different status filters or user roles). Redundancy increases cognitive load and maintenance overhead. Before adding a new section, verify it provides unique value not already covered by existing components.
+
+---
+*Original commit message: fix: remove Production Confirmed section from production page — redundant with Production In Progress section*
+
+#### Lesson Learned
+
+**What was fixed:** Removed a redundant "Production Confirmed" section from the production page UI.
+
+**Why it broke:** The "Production Confirmed" section duplicated information already displayed in the "Production In Progress" section, causing confusion and clutter for users.
+
+**Reusable takeaway:** Avoid displaying the same data in multiple UI sections unless there is a clear, distinct purpose (e.g., different status filters or user roles). Redundancy increases cognitive load and maintenance overhead. Before adding a new section, verify it provides unique value not already covered by existing components.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] feat: add Home Atelier logo to acknowledgement receipt PDF and fix balance notice for full payment
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b4eac9cadb9ff4c149f4ba96abd46e2a207bfbba
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b4eac9cadb9ff4c149f4ba96abd46e2a207bfbba
+**Files:** apps/api/src/assets/logo.jpg,apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:**  
+- Added the Home Atelier logo to the acknowledgement receipt PDF.  
+- Corrected the balance notice logic so it no longer appears when payment is made in full.
+
+**Why it broke:**  
+- The logo was missing from the PDF template, likely an oversight during initial receipt generation.  
+- The balance notice was triggered unconditionally, failing to check whether the payment amount covered the total due.
+
+**Reusable takeaway:**  
+When generating financial documents, always include conditional logic for balance/outstanding amounts and verify that all required assets (e.g., logos) are embedded or referenced in the template. A missing asset or unconditional balance check can lead to incorrect or incomplete customer-facing documents.
+
+---
+*Original commit message: feat: add Home Atelier logo to acknowledgement receipt PDF and fix balance notice for full payment*
+
+#### Lesson Learned
+
+**What was fixed:**  
+- Added the Home Atelier logo to the acknowledgement receipt PDF.  
+- Corrected the balance notice logic so it no longer appears when payment is made in full.
+
+**Why it broke:**  
+- The logo was missing from the PDF template, likely an oversight during initial receipt generation.  
+- The balance notice was triggered unconditionally, failing to check whether the payment amount covered the total due.
+
+**Reusable takeaway:**  
+When generating financial documents, always include conditional logic for balance/outstanding amounts and verify that all required assets (e.g., logos) are embedded or referenced in the template. A missing asset or unconditional balance check can lead to incorrect or incomplete customer-facing documents.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -3407,19 +3407,25 @@ function buildAcknowledgementReceiptPdf(data: {
   // Acknowledgement text
   const acknowledgement = `Received from ${data.clientName} the amount of PHP ${data.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} as ${data.paymentType.toLowerCase()} for order ${data.orderNumber}.`;
   text(60, itemsBottomY - 8, 10, 'Acknowledgement', 'F2');
-  wrapText(acknowledgement, 80).forEach((wrapped, index) => text(60, itemsBottomY - 28 - index * 16, 10, wrapped));
+  const ackLines = wrapText(acknowledgement, 80);
+  ackLines.forEach((wrapped, index) => text(60, itemsBottomY - 28 - index * 16, 10, wrapped));
+
+  // Track where content ends so Prepared By always renders below everything
+  let contentBottomY = itemsBottomY - 28 - (ackLines.length - 1) * 16;
 
   // Balance notice: only for Downpayment AND only if full payment has NOT already been made
   // (Full Payment type means the entire amount was paid at once — no balance notice needed)
   if (data.paymentType === 'Downpayment') {
-    const noticeY = itemsBottomY - 76;
+    const noticeY = contentBottomY - 20;
     text(60, noticeY, 9, 'Important: Balance payment must be settled in full before delivery can be arranged.', 'F2');
+    contentBottomY = noticeY;
   }
 
-  // Prepared By — centered, blank for handwriting
-  text(248, 248, 10, 'Prepared By:', 'F2');
-  line(180, 212, 415, 212);
-  text(248, 197, 9, 'Name / Signature');
+  // Prepared By — always below all content, centered, blank for handwriting
+  const preparedByY = contentBottomY - 40;
+  text(248, preparedByY, 10, 'Prepared By:', 'F2');
+  line(180, preparedByY - 36, 415, preparedByY - 36);
+  text(248, preparedByY - 51, 9, 'Name / Signature');
 
   const content = lines.join('\n');
 

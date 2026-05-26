@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
@@ -19,8 +19,8 @@ import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
-  ExternalLink, Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
-  RefreshCw, Package, FileText, Eye, List, Loader2, MessageSquare,
+  Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
+  RefreshCw, Package, Loader2, MessageSquare,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -2094,6 +2094,15 @@ export default function ProductionPage() {
     setUpdatingItemId(item.id);
     try {
       await updateOrderItem(orderId, item.id, { production_status: status, action_token: actionToken });
+      // If starting production on an item and the order doesn't have production_started,
+      // also set production_started on the order so agent reminders fire correctly
+      if (status === 'in_progress') {
+        try {
+          await setProduction(orderId, { production_started: true, action_token: actionToken });
+        } catch {
+          // Non-fatal: item status was already updated, order-level flag is a bonus
+        }
+      }
       refresh();
     } catch (err: any) {
       alert('Failed to update item production status: ' + (err.message ?? 'Unknown error'));
@@ -2193,7 +2202,6 @@ export default function ProductionPage() {
   const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
 
   const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
-  const totalEnRouteSections = enRouteVerificationOrders.length + enRouteTrackingOrders.length;
 
   return (
     <div className="space-y-6">
