@@ -9,6 +9,11 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `26bba17` | Roo (Code) | fix: comprehensive gap analysis across all features — stageToGroup (added production_in_progress, stock_preparation), VALID_TRANSITIONS (added stock_preparation), AGENT_TRIGGER_MAP (added collection-agent to stock_preparation), STAGE_ORDER (added partial_production, stock_preparation, removed duplicate), removed stale finish-production-pending endpoint, updated telegram page mappings, added inline keyboard handlers for production_in_progress and stock_preparation in reminderScheduler.ts | ✅ VPS `26bba17` |
+
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
 | `7dab5f6` | Roo (Code) | feat: add Guides & Tutorials page (/guides) with step-by-step guides for all tabs, SVG workflow diagrams, search, expandable sections/steps, quick nav chips, internal links. Wire into sidebar + auth system. | ✅ VPS `7dab5f6` |
 
 ## 2026-05-26

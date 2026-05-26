@@ -11789,3 +11789,51 @@ When using SWR or similar cache-invalidation patterns, ensure that **all child-l
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: comprehensive gap analysis across all features — stageToGroup, VALID_TRANSITIONS, AGENT_TRIGGER_MAP, STAGE_ORDER, s
+
+Date: 2026-05-26
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 26bba17444637cc347cd7a4fff01f43a1ccbdab7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 26bba17444637cc347cd7a4fff01f43a1ccbdab7
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/telegram/page.tsx,apps/dashboard/src/lib/api.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Multiple gaps across the system: stage-to-group mapping, valid state transitions, agent trigger logic, stage ordering, stale API endpoints, Telegram page routing, and reminder scheduler inline keyboard handlers.
+
+**Why it broke:**  
+Inconsistent updates across features—when one part of the workflow (e.g., stage order) changed, dependent mappings (transitions, triggers, UI) were not updated in parallel. Stale endpoints remained referenced, and keyboard handlers lacked proper state synchronization.
+
+**Reusable takeaway:**  
+When modifying workflow state machines, always perform a **cross-feature gap analysis**—update all dependent mappings (transitions, triggers, UI routes, API endpoints, and handler logic) in a single commit. Use a centralized state definition to prevent drift.
+
+---
+*Original commit message: fix: comprehensive gap analysis across all features — stageToGroup, VALID_TRANSITIONS, AGENT_TRIGGER_MAP, STAGE_ORDER, stale endpoint removal, telegram page mappings, reminderScheduler inline keyboard handlers*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Multiple gaps across the system: stage-to-group mapping, valid state transitions, agent trigger logic, stage ordering, stale API endpoints, Telegram page routing, and reminder scheduler inline keyboard handlers.
+
+**Why it broke:**  
+Inconsistent updates across features—when one part of the workflow (e.g., stage order) changed, dependent mappings (transitions, triggers, UI) were not updated in parallel. Stale endpoints remained referenced, and keyboard handlers lacked proper state synchronization.
+
+**Reusable takeaway:**  
+When modifying workflow state machines, always perform a **cross-feature gap analysis**—update all dependent mappings (transitions, triggers, UI routes, API endpoints, and handler logic) in a single commit. Use a centralized state definition to prevent drift.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
