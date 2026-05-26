@@ -455,6 +455,14 @@ export async function processDueReminders(): Promise<number> {
         ],
         [{ text: '⏳ Not yet', callback_data: `produce:no:${orderId.slice(0, 8)}:${quotationNumber}` }],
       ]);
+    } else if (reminder.stage === 'production_in_progress') {
+      // Production in progress: ask if production is finished
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Finished', callback_data: `finish_prod:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⏳ Still In Progress', callback_data: `finish_prod:no:${orderId.slice(0, 8)}:${quotationNumber}` },
+        ],
+      ]);
     } else if (reminder.stage === 'deposit_pending') {
       // Deposit pending: ask if deposit has been collected
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
@@ -468,6 +476,14 @@ export async function processDueReminders(): Promise<number> {
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
         [
           { text: '🔍 Verify Deposit', callback_data: `verify:deposit:${orderId.slice(0, 8)}:${quotationNumber}` },
+        ],
+      ]);
+    } else if (reminder.stage === 'stock_preparation') {
+      // Stock preparation: ask if stock is ready for delivery
+      ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, text, [
+        [
+          { text: '✅ Stock Ready', callback_data: `stock_ready:yes:${orderId.slice(0, 8)}:${quotationNumber}` },
+          { text: '⏳ Still Preparing', callback_data: `stock_ready:no:${orderId.slice(0, 8)}:${quotationNumber}` },
         ],
       ]);
     } else if (reminder.stage === 'inventory_arrived') {

@@ -19,6 +19,10 @@ When you **finish**:
 
 **Status**: `🔴 Active` / `✅ Done` / `⏸️ Blocked` / `🔄 In Progress`
 
+| Date | Extension | Description | Status |
+|------|-----------|-------------|--------|
+| 2026-05-27 03:56 | Roo (Code) | Comprehensive gap analysis across all features — fixed stageToGroup (added production_in_progress, stock_preparation), VALID_TRANSITIONS (added stock_preparation), AGENT_TRIGGER_MAP (added collection-agent to stock_preparation), STAGE_ORDER (added partial_production, stock_preparation, removed duplicate), removed stale finish-production-pending endpoint, updated telegram page mappings, added missing inline keyboard handlers in reminderScheduler.ts for production_in_progress and stock_preparation | 🔴 Active |
+
 ---
 
 ## Current Status

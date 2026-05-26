@@ -14,10 +14,10 @@ interface TelegramGroup {
 const TELEGRAM_GROUPS: TelegramGroup[] = [
   { name: 'Quotation Group', envVar: 'QUOTATION_GROUP_CHAT_ID', agents: ['quotation-checker'], stages: ['order_confirmation_received', 'math_verified'], color: 'border-blue-200 bg-blue-50', icon: Search },
   { name: 'Purchasing Group', envVar: 'PURCHASING_GROUP_CHAT_ID', agents: ['purchasing-agent'], stages: ['purchasing_pending'], color: 'border-amber-200 bg-amber-50', icon: ShoppingCart },
-  { name: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', agents: ['purchasing-agent', 'production-agent'], stages: ['production_pending', 'production_in_progress', 'en_route'], color: 'border-indigo-200 bg-indigo-50', icon: Factory },
-  { name: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', agents: ['inventory-agent'], stages: ['inventory_arrived'], color: 'border-cyan-200 bg-cyan-50', icon: Package },
-  { name: 'Delivery Group', envVar: 'DELIVERY_GROUP_CHAT_ID', agents: ['delivery-agent'], stages: ['balance_due', 'delivery_scheduled', 'delivered'], color: 'border-purple-200 bg-purple-50', icon: Truck },
-  { name: 'Collection Group', envVar: 'COLLECTION_GROUP_CHAT_ID', agents: ['collection-agent'], stages: ['deposit_pending', 'countered', 'payment_received', 'payment_confirmed'], color: 'border-emerald-200 bg-emerald-50', icon: DollarSign },
+  { name: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', agents: ['purchasing-agent', 'production-agent'], stages: ['production_pending', 'partial_production', 'production_in_progress', 'en_route', 'en_route_verification'], color: 'border-indigo-200 bg-indigo-50', icon: Factory },
+  { name: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', agents: ['inventory-agent'], stages: ['inventory_verification', 'inventory_arrived'], color: 'border-cyan-200 bg-cyan-50', icon: Package },
+  { name: 'Delivery Group', envVar: 'DELIVERY_GROUP_CHAT_ID', agents: ['delivery-agent'], stages: ['stock_preparation', 'balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'countered'], color: 'border-purple-200 bg-purple-50', icon: Truck },
+  { name: 'Collection Group', envVar: 'COLLECTION_GROUP_CHAT_ID', agents: ['collection-agent'], stages: ['deposit_pending', 'deposit_verification', 'balance_verification', 'payment_received', 'payment_confirmed', 'completed'], color: 'border-emerald-200 bg-emerald-50', icon: DollarSign },
   { name: 'Escalation Group', envVar: 'ESCALATION_GROUP_CHAT_ID', agents: ['escalation-agent'], stages: ['*'], color: 'border-rose-200 bg-rose-50', icon: TrendingUp },
 ];
 
@@ -26,11 +26,13 @@ interface InlineKeyboardMapping {
 }
 const INLINE_KEYBOARD_MAPPINGS: InlineKeyboardMapping[] = [
   { stage: 'production_pending', buttons: [{ text: '✅ Yes', action: 'Ask production days → advance to production_in_progress' }, { text: '❌ No', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Has production started for this order?' },
+  { stage: 'production_in_progress', buttons: [{ text: '✅ Finished', action: 'Ask delivery timeline → advance to en_route' }, { text: '⏳ Still In Progress', action: 'Acknowledge, continue adaptive reminders' }], frequency: 'daily', escalation: true, description: 'Is production finished for this order?' },
   { stage: 'production_midpoint', buttons: [{ text: '✅ On Time', action: 'Continue adaptive reminders' }, { text: '⚠️ Delayed', action: 'Ask delay days, update production_delayed flag' }], frequency: 'once (adaptive)', escalation: false, description: 'Midpoint check — is production on time?' },
   { stage: 'production_due', buttons: [{ text: '✅ Finished', action: 'Ask delivery timeline → advance to en_route' }, { text: '❌ Not Yet', action: 'Acknowledge, continue adaptive reminders' }], frequency: 'once (adaptive)', escalation: false, description: 'Production due — is production finished?' },
   { stage: 'en_route_reminder', buttons: [{ text: '✅ Yes', action: 'Ask estimated arrival days → advance to inventory_verification' }, { text: '❌ No', action: 'Acknowledge, continue adaptive reminders' }], frequency: 'adaptive (24h→12h→4h→2h)', escalation: false, description: 'Is the order en route to inventory?' },
   { stage: 'partial_production', buttons: [{ text: '📝 Update Items Produced', action: 'Prompt to list which items are now produced' }], frequency: 'daily (24h)', escalation: false, description: 'Partial production — update which items have been produced' },
   { stage: 'deposit_pending', buttons: [{ text: '✅ Yes, Upload Deposit Slip', action: 'Ask for deposit slip image → AI extract amount → record deposit' }, { text: '❌ Not Yet', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Has the deposit been collected?' },
+  { stage: 'stock_preparation', buttons: [{ text: '✅ Stock Ready', action: 'Advance to balance_due, complete stock_preparation reminders' }, { text: '⏳ Still Preparing', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Is the stock prepared and ready for delivery?' },
   { stage: 'inventory_arrived', buttons: [{ text: '✅ Ready for Delivery', action: 'Advance to balance_due, complete inventory reminders' }, { text: '⏳ Still Waiting', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Have all products arrived? Ready for delivery?' },
   { stage: 'balance_due', buttons: [{ text: '✅ Yes, Client Paid', action: 'Ask proof photo → AI extract amount → record balance → advance to delivery_scheduled' }, { text: '❌ Not Yet', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Has the client paid the remaining balance?' },
   { stage: 'delivery_scheduled', buttons: [{ text: '✅ Yes, Delivered', action: 'Advance to delivered' }, { text: '❌ Not Yet', action: 'Acknowledge, continue daily reminders' }], frequency: 'daily', escalation: true, description: 'Has the item been delivered?' },
@@ -41,11 +43,11 @@ const INLINE_KEYBOARD_MAPPINGS: InlineKeyboardMapping[] = [
 interface AgentGroupMapping { agentName: string; groupName: string; envVar: string; stages: string[]; }
 const AGENT_GROUP_MAPPINGS: AgentGroupMapping[] = [
   { agentName: 'quotation-checker', groupName: 'Quotation Group', envVar: 'QUOTATION_GROUP_CHAT_ID', stages: ['order_confirmation_received', 'math_verified'] },
-  { agentName: 'purchasing-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['production_pending'] },
-  { agentName: 'production-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['production_in_progress', 'en_route'] },
-  { agentName: 'inventory-agent', groupName: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', stages: ['inventory_arrived'] },
-  { agentName: 'delivery-agent', groupName: 'Delivery Group', envVar: 'DELIVERY_GROUP_CHAT_ID', stages: ['balance_due', 'delivery_scheduled', 'delivered'] },
-  { agentName: 'collection-agent', groupName: 'Collection Group', envVar: 'COLLECTION_GROUP_CHAT_ID', stages: ['deposit_pending', 'countered', 'payment_received', 'payment_confirmed'] },
+  { agentName: 'purchasing-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['purchasing_pending', 'production_pending'] },
+  { agentName: 'production-agent', groupName: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', stages: ['production_pending', 'partial_production', 'production_in_progress', 'en_route', 'en_route_verification'] },
+  { agentName: 'inventory-agent', groupName: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', stages: ['inventory_verification', 'inventory_arrived'] },
+  { agentName: 'delivery-agent', groupName: 'Delivery Group', envVar: 'DELIVERY_GROUP_CHAT_ID', stages: ['stock_preparation', 'balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'countered'] },
+  { agentName: 'collection-agent', groupName: 'Collection Group', envVar: 'COLLECTION_GROUP_CHAT_ID', stages: ['deposit_pending', 'deposit_verification', 'balance_verification', 'payment_received', 'payment_confirmed', 'completed'] },
   { agentName: 'escalation-agent', groupName: 'Escalation Group', envVar: 'ESCALATION_GROUP_CHAT_ID', stages: ['*'] },
 ];
 
@@ -57,6 +59,7 @@ const REMINDER_STAGE_LABELS: Record<string, string> = {
   inventory_arrived: '📦 Inventory Arrived', balance_due: '⚖️ Balance Due',
   delivery_scheduled: '🚚 Delivery Scheduled', delivered: '✅ Delivered', countered: '🔄 Countered',
   payment_received: '💰 Payment Received', payment_confirmed: '💵 Payment Confirmed', partial_production: '🏭 Partial Production',
+  stock_preparation: '📦 Stock Preparation',
 };
 
 function formatInterval(ms: number): string {
