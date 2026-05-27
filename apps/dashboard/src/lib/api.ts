@@ -712,6 +712,70 @@ export async function completeInventoryVerificationPartial(
   );
 }
 
+// ── Partial Production Finish ──────────────────────────────────────────
+// Allows advancing from production stages to 'en_route' even when some
+// items are not yet finished.
+
+export async function completeProductionPartial(
+  id: string,
+  actionToken: string,
+  deliveryEstimatedDays?: number,
+  notes?: string
+): Promise<{ ok: boolean; message: string; finished_items: number; total_items: number; pending_items: string[] }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/complete-production-partial`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        action_token: actionToken,
+        delivery_estimated_days: deliveryEstimatedDays,
+        notes,
+      }),
+    }
+  );
+}
+
+// ── Partial Dispatch ───────────────────────────────────────────────────
+// Allows advancing from 'en_route' to 'en_route_verification' even when
+// some items are not yet dispatched.
+
+export async function completeDispatchPartial(
+  id: string,
+  actionToken: string,
+  estimatedArrivalDays?: number,
+  notes?: string
+): Promise<{ ok: boolean; message: string; dispatched_items: number; total_items: number; pending_items: string[] }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/complete-dispatch-partial`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        action_token: actionToken,
+        estimated_arrival_days: estimatedArrivalDays,
+        notes,
+      }),
+    }
+  );
+}
+
+// ── Partial Arrival ────────────────────────────────────────────────────
+// Allows advancing from 'en_route_verification' to 'inventory_verification'
+// even when some items have not yet arrived.
+
+export async function completeArrivalPartial(
+  id: string,
+  actionToken: string,
+  notes?: string
+): Promise<{ ok: boolean; message: string; arrived_items: number; total_items: number; pending_items: string[] }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/complete-arrival-partial`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ action_token: actionToken, notes }),
+    }
+  );
+}
+
 export interface PartialDeliveryResult {
   item_id: string;
   item_name: string;

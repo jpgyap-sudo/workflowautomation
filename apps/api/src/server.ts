@@ -3114,6 +3114,451 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   return reply.send({ ok: true, order: rows[0] });
 });
 
+// ── Complete Production (Partial) ──────────────────────────────────────
+// Allows advancing from production stages to 'en_route' even when some
+// items are not yet finished. Sets partial_production_items for tracking.
+const completeProductionPartialSchema = z.object({
+  action_token: z.string(),
+  delivery_estimated_days: z.number().int().positive().optional(),
+  notes: z.string().optional(),
+});
+
+app.post('/orders/:id/complete-production-partial', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = completeProductionPartialSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[complete-production-partial] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey).catch(() => {});
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
+
+  const orderRows = await query(
+    `SELECT id, current_stage, quotation_number, client_name, production_started, production_finished
+     FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0];
+
+  // Only allow from production stages (not yet en_route)
+  const allowedStages = ['production_in_progress', 'partial_production', 'production_pending'];
+  if (!allowedStages.includes(order.current_stage)) {
+    return reply.code(400).send({
+      error: `Cannot complete production partial in stage '${order.current_stage}'. Allowed stages: ${allowedStages.join(', ')}.`,
+    });
+  }
+
+  // Check that at least SOME items are finished
+  const itemCheck = await query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE production_status = 'finished')::int AS finished
+     FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+
+  if (itemCheck[0] && itemCheck[0].total > 0 && itemCheck[0].finished === 0) {
+    return reply.code(400).send({
+      error: 'Cannot complete production partial: no items have been finished yet. Finish at least some items first.',
+      total_items: itemCheck[0].total,
+      finished_items: 0,
+    });
+  }
+
+  // Get unfinished item names for tracking
+  const unfinishedItems = await query<{ name: string }>(
+    `SELECT name FROM order_items
+     WHERE order_id = $1 AND (production_status IS NULL OR production_status != 'finished')`,
+    [id]
+  );
+  const unfinishedNames = unfinishedItems.map((i) => i.name);
+
+  // Mark order as production finished and advance to en_route
+  const deliveryDays = body.delivery_estimated_days ?? 28;
+  const rows = await query(
+    `UPDATE orders SET
+      production_started = TRUE,
+      production_started_at = COALESCE(production_started_at, NOW()),
+      production_finished = TRUE,
+      production_finished_at = COALESCE(production_finished_at, NOW()),
+      delivery_estimated_days = $1,
+      partial_production_items = $2::jsonb,
+      current_stage = 'en_route',
+      updated_at = NOW()
+     WHERE id = $3 RETURNING *`,
+    [deliveryDays, JSON.stringify(unfinishedNames), id]
+  );
+  if (!rows[0]) return reply.code(500).send({ error: 'Failed to update order' });
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'en_route', 'production_finished_partial', $2, 'system')`,
+    [id, `Partial production completion: ${itemCheck[0].finished}/${itemCheck[0].total} items finished. ${unfinishedNames.length} item(s) pending: ${unfinishedNames.join(', ') || 'none'}. Notes: ${body.notes ?? 'N/A'}`]
+  );
+
+  // Complete production reminders
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active'
+       AND stage IN ('partial_production', 'item_level_production', 'production_pending', 'production_midpoint', 'production_due')`,
+    [id]
+  );
+
+  // Fire agents for en_route stage
+  triggerAgentsForStage('en_route', order.quotation_number, order.client_name);
+
+  // Notify escalation group
+  await notifyManualChange(
+    'Production finished (partial)',
+    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nAdvanced to: En Route (Partial)\nFinished: ${itemCheck[0].finished}/${itemCheck[0].total} items\nPending: ${unfinishedNames.join(', ') || 'None'}`,
+    userEmail,
+  );
+
+  // Notify production group
+  const PRODUCTION_CHAT_ID = process.env.PRODUCTION_CHAT_ID;
+  if (PRODUCTION_CHAT_ID) {
+    const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = order.client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `⚠️ <b>Partial Production Complete (Dashboard)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `<b>Production Status</b>\n` +
+        `- Finished: ${itemCheck[0].finished}/${itemCheck[0].total} items\n` +
+        `- Pending: ${unfinishedNames.join(', ') || 'None'}\n\n` +
+        `⚠️ Order advanced to En Route with partial production.\n` +
+        `Pending items will be tracked for later completion.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({
+    ok: true,
+    message: `Partial production completed. Advanced to en_route with ${itemCheck[0].finished}/${itemCheck[0].total} items finished.`,
+    finished_items: itemCheck[0].finished,
+    total_items: itemCheck[0].total,
+    pending_items: unfinishedNames,
+  });
+});
+
+// ── Complete Dispatch (Partial) ────────────────────────────────────────
+// Allows advancing from 'en_route' to 'en_route_verification' even when
+// some items are not yet dispatched.
+const completeDispatchPartialSchema = z.object({
+  action_token: z.string(),
+  estimated_arrival_days: z.number().int().positive().optional(),
+  notes: z.string().optional(),
+});
+
+app.post('/orders/:id/complete-dispatch-partial', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = completeDispatchPartialSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[complete-dispatch-partial] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey).catch(() => {});
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
+
+  const orderRows = await query(
+    `SELECT id, current_stage, quotation_number, client_name, estimated_arrival_days
+     FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0];
+
+  if (order.current_stage !== 'en_route') {
+    return reply.code(400).send({
+      error: `Cannot complete dispatch partial in stage '${order.current_stage}'. Order must be in 'en_route' stage.`,
+    });
+  }
+
+  // Check that at least SOME items are dispatched
+  const itemCheck = await query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE en_route_status = 'en_route' OR en_route_status = 'arrived')::int AS dispatched
+     FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+
+  if (itemCheck[0] && itemCheck[0].total > 0 && itemCheck[0].dispatched === 0) {
+    return reply.code(400).send({
+      error: 'Cannot complete dispatch partial: no items have been dispatched yet. Dispatch at least some items first.',
+      total_items: itemCheck[0].total,
+      dispatched_items: 0,
+    });
+  }
+
+  // Get undelivered item names for tracking
+  const undeliveredItems = await query<{ name: string }>(
+    `SELECT name FROM order_items
+     WHERE order_id = $1 AND (en_route_status IS NULL OR en_route_status = 'not_yet')`,
+    [id]
+  );
+  const undeliveredNames = undeliveredItems.map((i) => i.name);
+
+  // Derive arrival days
+  const itemDays = await query<{ estimated_arrival_days: number | null }>(
+    `SELECT estimated_arrival_days FROM order_items
+     WHERE order_id = $1 AND estimated_arrival_days IS NOT NULL
+     ORDER BY estimated_arrival_days DESC LIMIT 1`,
+    [id]
+  );
+  const arrivalDays = body.estimated_arrival_days
+    ?? (itemDays[0]?.estimated_arrival_days)
+    ?? order.estimated_arrival_days
+    ?? 28;
+
+  // Advance to en_route_verification
+  const rows = await query(
+    `UPDATE orders SET
+      en_route_confirmed = TRUE,
+      en_route_confirmed_at = NOW(),
+      estimated_arrival_days = $1,
+      current_stage = 'en_route_verification',
+      updated_at = NOW()
+     WHERE id = $2 RETURNING *`,
+    [arrivalDays, id]
+  );
+  if (!rows[0]) return reply.code(500).send({ error: 'Failed to update order' });
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'en_route_verification', 'dispatch_partial', $2, 'system')`,
+    [id, `Partial dispatch completion: ${itemCheck[0].dispatched}/${itemCheck[0].total} items dispatched. ${undeliveredNames.length} item(s) pending: ${undeliveredNames.join(', ') || 'none'}. Est. arrival: ${arrivalDays}d. Notes: ${body.notes ?? 'N/A'}`]
+  );
+
+  // Complete en_route reminders
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active' AND stage = 'en_route_reminder'`,
+    [id]
+  );
+
+  // Fire agents for en_route_verification
+  triggerAgentsForStage('en_route_verification', order.quotation_number, order.client_name);
+
+  // Notify escalation group
+  await notifyManualChange(
+    'Dispatch confirmed (partial)',
+    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nAdvanced to: En Route Verification (Partial)\nDispatched: ${itemCheck[0].dispatched}/${itemCheck[0].total} items\nPending: ${undeliveredNames.join(', ') || 'None'}`,
+    userEmail,
+  );
+
+  // Notify production group
+  const PRODUCTION_CHAT_ID = process.env.PRODUCTION_CHAT_ID;
+  if (PRODUCTION_CHAT_ID) {
+    const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = order.client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        PRODUCTION_CHAT_ID,
+        `⚠️ <b>Partial Dispatch Complete (Dashboard)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `<b>Dispatch Status</b>\n` +
+        `- Dispatched: ${itemCheck[0].dispatched}/${itemCheck[0].total} items\n` +
+        `- Pending: ${undeliveredNames.join(', ') || 'None'}\n` +
+        `- Est. arrival: ${arrivalDays} day(s)\n\n` +
+        `⚠️ Order advanced to En Route Verification with partial dispatch.\n` +
+        `Pending items will be tracked for later dispatch.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({
+    ok: true,
+    message: `Partial dispatch completed. Advanced to en_route_verification with ${itemCheck[0].dispatched}/${itemCheck[0].total} items dispatched.`,
+    dispatched_items: itemCheck[0].dispatched,
+    total_items: itemCheck[0].total,
+    pending_items: undeliveredNames,
+  });
+});
+
+// ── Complete Arrival (Partial) ─────────────────────────────────────────
+// Allows advancing from 'en_route_verification' to 'inventory_verification'
+// even when some items have not yet arrived.
+const completeArrivalPartialSchema = z.object({
+  action_token: z.string(),
+  notes: z.string().optional(),
+});
+
+app.post('/orders/:id/complete-arrival-partial', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = completeArrivalPartialSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[complete-arrival-partial] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey).catch(() => {});
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
+
+  const orderRows = await query(
+    `SELECT id, current_stage, quotation_number, client_name
+     FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0];
+
+  if (order.current_stage !== 'en_route_verification') {
+    return reply.code(400).send({
+      error: `Cannot complete arrival partial in stage '${order.current_stage}'. Order must be in 'en_route_verification' stage.`,
+    });
+  }
+
+  // Check that at least SOME items have arrived
+  const itemCheck = await query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE en_route_status = 'arrived')::int AS arrived
+     FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+
+  if (itemCheck[0] && itemCheck[0].total > 0 && itemCheck[0].arrived === 0) {
+    return reply.code(400).send({
+      error: 'Cannot complete arrival partial: no items have arrived yet. Mark at least some items as arrived first.',
+      total_items: itemCheck[0].total,
+      arrived_items: 0,
+    });
+  }
+
+  // Get not-yet-arrived item names for tracking
+  const notArrivedItems = await query<{ name: string }>(
+    `SELECT name FROM order_items
+     WHERE order_id = $1 AND (en_route_status IS NULL OR en_route_status != 'arrived')`,
+    [id]
+  );
+  const notArrivedNames = notArrivedItems.map((i) => i.name);
+
+  // Advance to inventory_verification
+  const rows = await query(
+    `UPDATE orders SET
+      current_stage = 'inventory_verification',
+      updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  if (!rows[0]) return reply.code(500).send({ error: 'Failed to update order' });
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'inventory_verification', 'arrival_partial', $2, 'system')`,
+    [id, `Partial arrival completion: ${itemCheck[0].arrived}/${itemCheck[0].total} items arrived. ${notArrivedNames.length} item(s) pending: ${notArrivedNames.join(', ') || 'none'}. Notes: ${body.notes ?? 'N/A'}`]
+  );
+
+  // Complete en_route arrival reminders
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active' AND stage IN ('en_route_arrival', 'en_route_midpoint')`,
+    [id]
+  );
+
+  // Fire agents for inventory_verification
+  triggerAgentsForStage('inventory_verification', order.quotation_number, order.client_name);
+
+  // Notify escalation group
+  await notifyManualChange(
+    'Arrival confirmed (partial)',
+    `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nAdvanced to: Inventory Verification (Partial)\nArrived: ${itemCheck[0].arrived}/${itemCheck[0].total} items\nPending: ${notArrivedNames.join(', ') || 'None'}`,
+    userEmail,
+  );
+
+  // Notify inventory group
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID) {
+    const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = order.client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `⚠️ <b>Partial Arrival Complete (Dashboard)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `<b>Arrival Status</b>\n` +
+        `- Arrived: ${itemCheck[0].arrived}/${itemCheck[0].total} items\n` +
+        `- Pending: ${notArrivedNames.join(', ') || 'None'}\n\n` +
+        `⚠️ Order advanced to Inventory Verification with partial arrival.\n` +
+        `Pending items will be tracked for later arrival.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({
+    ok: true,
+    message: `Partial arrival completed. Advanced to inventory_verification with ${itemCheck[0].arrived}/${itemCheck[0].total} items arrived.`,
+    arrived_items: itemCheck[0].arrived,
+    total_items: itemCheck[0].total,
+    pending_items: notArrivedNames,
+  });
+});
+
 // ── Start En Route Tracking ────────────────────────────────────────────
 // Called by the bot when all items are confirmed en route with a days estimate.
 // Does NOT advance the order stage — stays at 'en_route'.
