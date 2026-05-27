@@ -11985,3 +11985,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: bulk selected en-route 500 — cast item_ids to uuid[] not text[]
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 41c5cef04a1978febf124adb891be66df3775ccc
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 41c5cef04a1978febf124adb891be66df3775ccc
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A 500 error when bulk-selecting en-route items. The fix changed the SQL parameter cast from `text[]` to `uuid[]`.
+
+**Why it broke:**  
+The `item_ids` array contained UUID values, but was incorrectly cast as `text[]`. PostgreSQL rejected the implicit type mismatch when comparing `text[]` against a `uuid` column, causing a server error.
+
+**Reusable takeaway:**  
+Always match SQL array casts to the target column’s data type. When filtering by IDs, cast arrays to the exact type (e.g., `uuid[]` for UUID columns) to avoid type coercion failures and silent bugs.
+
+---
+*Original commit message: fix: bulk selected en-route 500 — cast item_ids to uuid[] not text[]*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A 500 error when bulk-selecting en-route items. The fix changed the SQL parameter cast from `text[]` to `uuid[]`.
+
+**Why it broke:**  
+The `item_ids` array contained UUID values, but was incorrectly cast as `text[]`. PostgreSQL rejected the implicit type mismatch when comparing `text[]` against a `uuid` column, causing a server error.
+
+**Reusable takeaway:**  
+Always match SQL array casts to the target column’s data type. When filtering by IDs, cast arrays to the exact type (e.g., `uuid[]` for UUID columns) to avoid type coercion failures and silent bugs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

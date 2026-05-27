@@ -4372,6 +4372,7 @@ app.get('/payments/acknowledgement-receipts', async (request, reply) => {
        AND fg.date_key = COALESCE(p.payment_date::text, '')
        AND fg.created_second = date_trunc('second', p.created_at)
      WHERE NOT (p.source = 'full_payment' AND p.type = 'balance' AND COALESCE(fg.has_deposit, FALSE))
+       AND (p.type != 'balance' OR p.verified = TRUE)
      ORDER BY p.created_at DESC
      LIMIT $1`,
     [limit]
@@ -4401,6 +4402,11 @@ app.get('/payments/:id/acknowledgement-receipt.pdf', async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const payment = await getReceiptPaymentById(id);
   if (!payment) return reply.code(404).send({ error: 'Payment not found' });
+
+  // Only allow PDF download for verified balance payments
+  if (payment.type === 'balance' && !payment.verified) {
+    return reply.code(403).send({ error: 'Acknowledgement receipt is only available after balance payment has been verified.' });
+  }
 
   const amount = await getReceiptAmount(payment);
   const receiptNumber = receiptNumberForPayment(payment);

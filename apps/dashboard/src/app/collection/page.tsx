@@ -258,7 +258,7 @@ function AcknowledgementReceiptsSection({
         <div>
           <h2 className="text-base font-semibold text-gray-800">Acknowledgement Receipts</h2>
           <p className="text-xs text-gray-500">
-            Download PDF receipts automatically generated for downpayment, balance, and full payments.
+            Download PDF receipts for verified payments. Balance payments must be verified first.
           </p>
         </div>
         <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
@@ -289,7 +289,7 @@ function AcknowledgementReceiptsSection({
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
               {receipts.map((receipt) => (
-                <tr key={receipt.payment_id} className="hover:bg-indigo-50/30">
+                <tr key={receipt.payment_id} className={`hover:bg-indigo-50/30 ${!receipt.verified ? 'opacity-60' : ''}`}>
                   <td className="whitespace-nowrap px-6 py-3 font-medium text-gray-800">{receipt.receipt_number}</td>
                   <td className="whitespace-nowrap px-6 py-3 text-[#2490ef]">{receipt.quotation_number ?? receipt.order_id.slice(0, 8)}</td>
                   <td className="whitespace-nowrap px-6 py-3 text-gray-600">{receipt.client_name ?? 'Unknown client'}</td>
@@ -314,19 +314,26 @@ function AcknowledgementReceiptsSection({
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       receipt.verified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                     }`}>
-                      {receipt.verified ? 'Verified' : 'Pending'}
+                      {receipt.verified ? 'Verified' : 'Pending Verification'}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-3">
-                    <a
-                      href={`${API_BASE}${receipt.download_url}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-                    >
-                      <Download className="h-3 w-3" />
-                      Download
-                    </a>
+                    {receipt.verified ? (
+                      <a
+                        href={`${API_BASE}${receipt.download_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                      >
+                        <Download className="h-3 w-3" />
+                        Download
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-400 cursor-not-allowed">
+                        <Clock className="h-3 w-3" />
+                        Pending
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

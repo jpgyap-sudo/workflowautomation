@@ -25,6 +25,7 @@ When you **finish**:
 | 2026-05-27 09:28 | Roo (Code) | Fix: OTP error in verify all — Bug #1: verify-deposit now checks if balance is also paid (full payment) and advances to balance_verification instead of skipping past it. Bug #2: PATCH /payments/:id/verify now advances order stage when all payments verified. Bug #3: removed dead import of verifyPayment from order detail page. | ✅ Done |
 | 2026-05-27 15:43 | Roo (Code) | Committed + deployed: guides page updates, package updates, memory files, new capture-screenshots script. All services rebuilt and restarted on VPS. | ✅ Done |
 | 2026-05-27 16:11 | Roo (Code) | Delivery tab: made "₱X due" amount clickable — opens deposit slip upload + AI extraction modal (same as upload button). | ✅ Done |
+| 2026-05-27 16:29 | Roo (Code) | Fix: acknowledgement receipt gap — balance payments now only get receipts after verification. Server: SQL filter excludes unverified balance payments from receipts list; PDF endpoint rejects unverified balance payments. Dashboard: unverified balance payments shown with "Pending Verification" badge and no download link. | 🔴 Active |
 
 ---
 

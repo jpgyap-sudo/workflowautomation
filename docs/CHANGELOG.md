@@ -16,6 +16,7 @@
 | `9300706` | Kimi | chore: auto-commit (memory files only) | ✅ VPS `9300706` |
 | `696c3a9` | Roo (Code) | fix: OTP error in verify all — Bug #1: verify-deposit now checks balance_paid and advances to balance_verification for full-payment orders. Bug #2: PATCH /payments/:id/verify now advances order current_stage when all payments verified. Bug #3: removed dead import of verifyPayment from order detail page. | ✅ VPS `696c3a9` |
 | `1c62169` | Roo (Code) | chore: commit pending local changes (guides page, package updates, memory files, new capture-screenshots script) | ✅ VPS `1c62169` |
+| `aaba53d` | Roo (Code) | feat: delivery tab — "₱X due" amount now clickable, opens deposit slip upload + AI extraction modal | ✅ VPS `aaba53d` |
 
 ## 2026-05-26
 
