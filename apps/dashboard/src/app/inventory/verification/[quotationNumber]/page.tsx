@@ -15,7 +15,7 @@ import {
   type OrderDetail,
   type OrderItem,
 } from '@/lib/api';
-import { ArrowLeft, CheckCircle, Loader2, Package, Search, Undo2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Loader2, Package, Search, Undo2, Warehouse } from 'lucide-react';
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '?';
@@ -39,6 +39,7 @@ export default function InventoryVerificationDetailPage() {
     itemName: string;
     action: 'all' | 'partial' | 'not_yet';
     verifiedQty?: number;
+    arrivedQty?: number;
   }>({ open: false, itemId: '', itemName: '', action: 'all' });
   const [completeOtpOpen, setCompleteOtpOpen] = useState(false);
 
@@ -46,9 +47,13 @@ export default function InventoryVerificationDetailPage() {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bulkVerifyOtpOpen, setBulkVerifyOtpOpen] = useState(false);
   const [bulkVerifying, setBulkVerifying] = useState(false);
-  const [bulkAction, setBulkAction] = useState<'verify_all' | 'partial' | 'not_yet' | 'unverify'>('verify_all');
+  const [bulkAction, setBulkAction] = useState<'verify_all' | 'partial' | 'not_yet' | 'unverify' | 'arrived'>('verify_all');
   const [bulkPartialQty, setBulkPartialQty] = useState<number>(0);
   const [showBulkPartialInput, setShowBulkPartialInput] = useState(false);
+
+  // Arrived Qty state — per-item input for actual arrived quantity
+  const [arrivedQtyInputs, setArrivedQtyInputs] = useState<Record<string, string>>({});
+  const [bulkArrivedQty, setBulkArrivedQty] = useState<string>('');
 
   const canVerify = order?.current_stage === 'inventory_verification';
   const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -110,16 +115,38 @@ export default function InventoryVerificationDetailPage() {
     setItemOtp({ open: true, itemId: item.id, itemName: item.name, action, verifiedQty });
   }
 
+  /** Open OTP for recording arrived quantity on a single item */
+  function openArrivedQtyOtp(item: OrderItem) {
+    if (!canVerify) return;
+    const input = arrivedQtyInputs[item.id];
+    const qty = Number(input?.replace(/[^0-9]/g, '') ?? item.quantity);
+    if (!Number.isInteger(qty) || qty < 0) {
+      alert('Enter a valid non-negative integer for arrived quantity.');
+      return;
+    }
+    setItemOtp({ open: true, itemId: item.id, itemName: item.name, action: 'partial', arrivedQty: qty });
+  }
+
   async function handleItemOtp(actionToken: string) {
     if (!order || !itemOtp.itemId) return;
     setBusyItemId(itemOtp.itemId);
     try {
-      await inventoryVerifyItem(order.id, {
-        item_id: itemOtp.itemId,
-        action: itemOtp.action,
-        verified_qty: itemOtp.verifiedQty,
-        action_token: actionToken,
-      });
+      if (itemOtp.arrivedQty !== undefined) {
+        // Use arrived_qty mode — passes arrived_qty to server
+        await inventoryVerifyItem(order.id, {
+          item_id: itemOtp.itemId,
+          action: 'partial',
+          arrived_qty: itemOtp.arrivedQty,
+          action_token: actionToken,
+        });
+      } else {
+        await inventoryVerifyItem(order.id, {
+          item_id: itemOtp.itemId,
+          action: itemOtp.action,
+          verified_qty: itemOtp.verifiedQty,
+          action_token: actionToken,
+        });
+      }
       await load();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to verify item');
@@ -143,7 +170,7 @@ export default function InventoryVerificationDetailPage() {
     }
   }
 
-  function handleBulkVerifyClick(action: 'verify_all' | 'partial' | 'not_yet' | 'unverify') {
+  function handleBulkVerifyClick(action: 'verify_all' | 'partial' | 'not_yet' | 'unverify' | 'arrived') {
     if (selectedItemIds.size === 0) return;
 
     if (action === 'partial') {
@@ -174,8 +201,23 @@ export default function InventoryVerificationDetailPage() {
         if (result.warning) {
           alert(result.warning);
         }
+      } else if (bulkAction === 'arrived') {
+        // Bulk arrived_qty — use the bulk endpoint with arrived_qty
+        const arrivedQty = Number(bulkArrivedQty.replace(/[^0-9]/g, ''));
+        if (!Number.isInteger(arrivedQty) || arrivedQty < 0) {
+          alert('Enter a valid non-negative integer for arrived quantity.');
+          return;
+        }
+        const result = await bulkInventoryVerify(order.id, {
+          item_ids: Array.from(selectedItemIds),
+          action_token: actionToken,
+          action: 'partial',
+          arrived_qty: arrivedQty,
+        });
+        if (result.warning) {
+          alert(result.warning);
+        }
       } else if (bulkAction === 'not_yet') {
-        // Use the bulk endpoint with action='not_yet' instead of looping single-item calls
         const result = await bulkInventoryVerify(order.id, {
           item_ids: Array.from(selectedItemIds),
           action_token: actionToken,
@@ -206,6 +248,7 @@ export default function InventoryVerificationDetailPage() {
         }
       }
       setSelectedItemIds(new Set());
+      setBulkArrivedQty('');
       await load();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to verify selected items');
@@ -259,9 +302,28 @@ export default function InventoryVerificationDetailPage() {
       </div>
 
       {canVerify && selectableItems.length > 0 && (
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedItemIds.size > 0 && (
             <>
+              {/* Arrived Qty bulk input */}
+              <div className="flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5">
+                <Warehouse className="h-3.5 w-3.5 text-orange-600" />
+                <input
+                  type="number"
+                  min={0}
+                  value={bulkArrivedQty}
+                  onChange={(e) => setBulkArrivedQty(e.target.value)}
+                  placeholder="Arrived qty"
+                  className="w-20 rounded border border-orange-300 px-2 py-1 text-xs"
+                />
+                <button
+                  onClick={() => handleBulkVerifyClick('arrived')}
+                  disabled={bulkVerifying || !bulkArrivedQty}
+                  className="rounded bg-orange-600 px-2 py-1 text-xs font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+                >
+                  {bulkVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Set Arrived'}
+                </button>
+              </div>
               <button
                 onClick={() => handleBulkVerifyClick('unverify')}
                 disabled={bulkVerifying}
@@ -317,7 +379,8 @@ export default function InventoryVerificationDetailPage() {
                 </th>
               )}
               <th className="px-4 py-3">Item Name</th>
-              <th className="px-4 py-3">Qty</th>
+              <th className="px-4 py-3">Ordered Qty</th>
+              <th className="px-4 py-3">Arrived Qty</th>
               <th className="px-4 py-3">Verified Qty</th>
               <th className="px-4 py-3">Arrival Verified Date</th>
               <th className="px-4 py-3">Delivered</th>
@@ -328,6 +391,8 @@ export default function InventoryVerificationDetailPage() {
             {items.map((item) => {
               const isSelectable = (item.verified_qty ?? 0) < item.quantity;
               const isChecked = selectedItemIds.has(item.id);
+              const itemArrivedQty = item.arrived_qty;
+              const hasExcess = itemArrivedQty != null && itemArrivedQty > item.quantity;
               return (
                 <tr key={item.id} className={isChecked ? 'bg-teal-50/40' : ''}>
                   {canVerify && (
@@ -344,7 +409,43 @@ export default function InventoryVerificationDetailPage() {
                   )}
                   <td className="px-4 py-3 font-medium text-gray-900"><Package className="mr-2 inline h-4 w-4 text-teal-500" />{item.name}</td>
                   <td className="px-4 py-3 text-gray-600">{item.quantity}</td>
-                  <td className="px-4 py-3"><span className="rounded-full bg-teal-100 px-2 py-0.5 font-semibold text-teal-700">{item.verified_qty ?? 0}/{item.quantity}</span></td>
+                  <td className="px-4 py-3">
+                    {canVerify ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          value={arrivedQtyInputs[item.id] ?? itemArrivedQty ?? ''}
+                          onChange={(e) => setArrivedQtyInputs(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          placeholder={String(itemArrivedQty ?? item.quantity)}
+                          className="w-16 rounded border border-gray-300 px-1.5 py-1 text-xs"
+                        />
+                        <button
+                          onClick={() => openArrivedQtyOtp(item)}
+                          disabled={busyItemId === item.id || !arrivedQtyInputs[item.id]}
+                          className="rounded bg-orange-50 px-1.5 py-1 text-[10px] font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                          title="Record arrived quantity (excess goes to inventory stock)"
+                        >
+                          <Warehouse className="h-3 w-3" />
+                        </button>
+                        {hasExcess && (
+                          <span className="text-[10px] font-medium text-green-600" title="Excess added to inventory stock">
+                            +{itemArrivedQty - item.quantity}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-600">
+                        {itemArrivedQty ?? '—'}
+                        {hasExcess && <span className="ml-1 text-[10px] text-green-600">(+{itemArrivedQty - item.quantity} excess → stock)</span>}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 font-semibold ${hasExcess ? 'bg-green-100 text-green-700' : 'bg-teal-100 text-teal-700'}`}>
+                      {item.verified_qty ?? 0}/{item.quantity}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{formatDate(item.inventory_verified_at)}</td>
                   <td className="px-4 py-3 text-gray-600">{item.delivered_qty ?? 0}{item.delivered_at ? ` • ${formatDate(item.delivered_at)}` : ''}</td>
                   <td className="px-4 py-3 text-right">
@@ -367,8 +468,11 @@ export default function InventoryVerificationDetailPage() {
 
       <OtpModal
         open={itemOtp.open}
-        title="Verify Inventory Item"
-        description={`Update verification for ${itemOtp.itemName}. This will update inventory and accountability logs.`}
+        title={itemOtp.arrivedQty !== undefined ? 'Record Arrived Quantity' : 'Verify Inventory Item'}
+        description={itemOtp.arrivedQty !== undefined
+          ? `Record arrived quantity ${itemOtp.arrivedQty} for ${itemOtp.itemName}. Excess over ordered quantity will be added to inventory stock.`
+          : `Update verification for ${itemOtp.itemName}. This will update inventory and accountability logs.`
+        }
         onVerified={handleItemOtp}
         onClose={() => setItemOtp({ open: false, itemId: '', itemName: '', action: 'all' })}
       />
@@ -381,10 +485,12 @@ export default function InventoryVerificationDetailPage() {
       />
       <OtpModal
         open={bulkVerifyOtpOpen}
-        title={bulkAction === 'not_yet' ? 'Bulk Mark as Not Yet' : 'Bulk Verify Inventory Items'}
+        title={bulkAction === 'not_yet' ? 'Bulk Mark as Not Yet' : bulkAction === 'arrived' ? 'Bulk Set Arrived Quantity' : 'Bulk Verify Inventory Items'}
         description={bulkAction === 'not_yet'
           ? `Mark ${selectedItemIds.size} selected item(s) as "not yet verified" for #${order.quotation_number}. This will reset their verified quantity to 0.`
-          : `Verify ${selectedItemIds.size} selected item(s) as fully verified for #${order.quotation_number}.`
+          : bulkAction === 'arrived'
+            ? `Set arrived quantity to ${bulkArrivedQty} for ${selectedItemIds.size} selected item(s) for #${order.quotation_number}. Excess over ordered quantity will be added to inventory stock.`
+            : `Verify ${selectedItemIds.size} selected item(s) as fully verified for #${order.quotation_number}.`
         }
         onVerified={handleBulkVerifyOtp}
         onClose={() => setBulkVerifyOtpOpen(false)}

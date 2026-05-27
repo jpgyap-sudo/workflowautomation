@@ -613,7 +613,7 @@ export async function confirmEnRoute(
 
 export async function inventoryVerifyItem(
   id: string,
-  data: { item_id: string; action: 'all' | 'partial' | 'not_yet'; verified_qty?: number; action_token: string }
+  data: { item_id: string; action: 'all' | 'partial' | 'not_yet'; verified_qty?: number; arrived_qty?: number; action_token: string }
 ): Promise<{ ok: boolean; item_id: string; verified_qty: number; verification_pct: number }> {
   return fetchJson(
     `/orders/${encodeURIComponent(id)}/inventory-verify-item`,
@@ -626,7 +626,7 @@ export async function inventoryVerifyItem(
 
 export async function bulkInventoryVerify(
   id: string,
-  data: { item_ids: string[]; action_token: string; action?: 'all' | 'partial' | 'not_yet'; verified_qty?: number }
+  data: { item_ids: string[]; action_token: string; action?: 'all' | 'partial' | 'not_yet'; verified_qty?: number; arrived_qty?: number }
 ): Promise<{ ok: boolean; verification_pct: number; warning?: string; already_verified?: string[]; verified_count?: number }> {
   return fetchJson(
     `/orders/${encodeURIComponent(id)}/bulk-inventory-verify`,
@@ -690,6 +690,7 @@ export interface OrderItem {
   production_finished_at: string | null;
   inventory_verified_at: string | null;
   verified_qty: number;
+  arrived_qty?: number;
   delivered_qty: number;
   delivered_at: string | null;
   matched_inventory_item_id: string | null;

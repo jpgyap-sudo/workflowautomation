@@ -3178,7 +3178,7 @@ async function adjustInventoryForOrderItem(
   orderItemId: string,
   itemName: string,
   quantityDelta: number,
-  movementType: 'inventory_verified' | 'inventory_unverified' | 'delivery_deduct' | 'stock_prep_deduct',
+  movementType: 'inventory_verified' | 'inventory_unverified' | 'delivery_deduct' | 'stock_prep_deduct' | 'excess_arrival',
   note: string,
   createdBy: string,
 ) {
@@ -3264,13 +3264,14 @@ const inventoryVerifyItemSchema = z.object({
   action: z.enum(['all', 'partial', 'not_yet']),
   verified_qty: z.number().int().min(0).optional(),
   action_token: z.string().optional(),
+  arrived_qty: z.number().int().min(0).optional(),
 });
 
 app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = inventoryVerifyItemSchema.parse(request.body);
 
-  console.log(`[inventory-verify-item] order=${id} item=${body.item_id} action=${body.action} verified_qty=${body.verified_qty}`);
+  console.log(`[inventory-verify-item] order=${id} item=${body.item_id} action=${body.action} verified_qty=${body.verified_qty} arrived_qty=${body.arrived_qty}`);
 
   // Verify the order is in inventory_verification stage
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
@@ -3280,40 +3281,60 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   }
 
   // Get the item
-  const itemRows = await query(`SELECT id, name, quantity, verified_qty, inventory_verified_at FROM order_items WHERE id = $1 AND order_id = $2`, [body.item_id, id]);
+  const itemRows = await query(`SELECT id, name, quantity, verified_qty, arrived_qty, inventory_verified_at FROM order_items WHERE id = $1 AND order_id = $2`, [body.item_id, id]);
   if (!itemRows[0]) return reply.code(404).send({ error: 'Item not found' });
 
   const item = itemRows[0];
   let newVerifiedQty = item.verified_qty ?? 0;
   console.log(`[inventory-verify-item] item=${item.name} qty=${item.quantity} current_verified=${item.verified_qty}`);
 
-  switch (body.action) {
-    case 'all':
-      newVerifiedQty = item.quantity;
-      break;
-    case 'partial':
-      newVerifiedQty = body.verified_qty ?? newVerifiedQty;
-      if (newVerifiedQty > item.quantity) newVerifiedQty = item.quantity;
-      if (newVerifiedQty < 0) newVerifiedQty = 0;
-      break;
-    case 'not_yet':
-      newVerifiedQty = 0;
-      break;
+  // If arrived_qty is provided, use it to determine verified_qty and handle excess
+  if (body.arrived_qty !== undefined) {
+    newVerifiedQty = Math.min(body.arrived_qty, item.quantity);
+    if (newVerifiedQty < 0) newVerifiedQty = 0;
+  } else {
+    switch (body.action) {
+      case 'all':
+        newVerifiedQty = item.quantity;
+        break;
+      case 'partial':
+        newVerifiedQty = body.verified_qty ?? newVerifiedQty;
+        if (newVerifiedQty > item.quantity) newVerifiedQty = item.quantity;
+        if (newVerifiedQty < 0) newVerifiedQty = 0;
+        break;
+      case 'not_yet':
+        newVerifiedQty = 0;
+        break;
+    }
   }
 
   const previousVerifiedQty = Number(item.verified_qty ?? 0);
   const inventoryDelta = newVerifiedQty - previousVerifiedQty;
 
-  // Update verified_qty and the first arrival verification date on the item.
-  const updateResult = await query(
-    `UPDATE order_items
+  // Update verified_qty and arrived_qty on the item.
+  let updateSQL: string;
+  let updateParams: any[];
+
+  if (body.arrived_qty !== undefined) {
+    updateSQL = `UPDATE order_items
+     SET verified_qty = $1,
+         arrived_qty = $2,
+         inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
+         updated_at = NOW()
+     WHERE id = $3
+     RETURNING verified_qty, arrived_qty`;
+    updateParams = [newVerifiedQty, body.arrived_qty, body.item_id];
+  } else {
+    updateSQL = `UPDATE order_items
      SET verified_qty = $1,
          inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
          updated_at = NOW()
      WHERE id = $2
-     RETURNING verified_qty`,
-    [newVerifiedQty, body.item_id]
-  );
+     RETURNING verified_qty`;
+    updateParams = [newVerifiedQty, body.item_id];
+  }
+
+  const updateResult = await query(updateSQL, updateParams);
   console.log(`[inventory-verify-item] updated verified_qty=${updateResult[0]?.verified_qty} delta=${inventoryDelta}`);
 
   if (inventoryDelta !== 0) {
@@ -3324,6 +3345,20 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
       inventoryDelta,
       inventoryDelta > 0 ? 'inventory_verified' : 'inventory_unverified',
       `Inventory verification adjusted ${item.name}: ${previousVerifiedQty} -> ${newVerifiedQty}.`,
+      'inventory-agent',
+    );
+  }
+
+  // If arrived_qty exceeds item.quantity, add the excess to inventory stock
+  if (body.arrived_qty !== undefined && body.arrived_qty > item.quantity) {
+    const excessQty = body.arrived_qty - item.quantity;
+    await adjustInventoryForOrderItem(
+      id,
+      body.item_id,
+      item.name,
+      excessQty,
+      'excess_arrival',
+      `Excess arrival: ${item.name} — arrived ${body.arrived_qty}, ordered ${item.quantity}. Excess ${excessQty} added to inventory stock.`,
       'inventory-agent',
     );
   }
@@ -3344,10 +3379,13 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   );
 
   // Log the action
+  const actionLabel = body.arrived_qty !== undefined
+    ? `arrived ${body.arrived_qty}, verified ${newVerifiedQty}/${item.quantity}${body.arrived_qty > item.quantity ? `, excess ${body.arrived_qty - item.quantity} → stock` : ''}`
+    : body.action === 'all' ? 'all verified' : body.action === 'partial' ? `partial (${newVerifiedQty}/${item.quantity})` : 'not yet';
   await query(
     `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
      VALUES ($1, $2, $3, 'agent', 'inventory-agent')`,
-    [id, body.item_id, `Inventory verification: ${item.name} — ${body.action} (verified ${newVerifiedQty}/${item.quantity})`]
+    [id, body.item_id, `Inventory verification: ${item.name} — ${actionLabel}`]
   );
 
   // Notify inventory group chat about manual verification
@@ -3356,7 +3394,9 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
     const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = orderRows[0].client_name ?? 'Unknown';
     const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
-    const actionLabel = body.action === 'all' ? 'All verified' : body.action === 'partial' ? `Partial (${newVerifiedQty}/${item.quantity})` : 'Not yet';
+    const displayLabel = body.arrived_qty !== undefined
+      ? `Arrived ${body.arrived_qty}, Verified ${newVerifiedQty}/${item.quantity}${body.arrived_qty > item.quantity ? ` (excess ${body.arrived_qty - item.quantity} → stock)` : ''}`
+      : body.action === 'all' ? 'All verified' : body.action === 'partial' ? `Partial (${newVerifiedQty}/${item.quantity})` : 'Not yet';
     setImmediate(() => {
       notifyGroupChat(
         INVENTORY_GROUP_CHAT_ID,
@@ -3369,7 +3409,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
 ` +
         `Item: ${item.name}
 ` +
-        `Status: ${actionLabel}
+        `Status: ${displayLabel}
 ` +
         `Verified Qty: ${newVerifiedQty}/${item.quantity}
 ` +
@@ -3391,11 +3431,13 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
 
 // POST /orders/:id/bulk-inventory-verify — Bulk verify selected items
 // Supports actions: 'all' (default, full qty), 'partial' (set specific qty), 'not_yet' (set to 0)
+// When arrived_qty is provided and exceeds item.quantity, the excess is auto-added to inventory stock.
 const bulkInventoryVerifySchema = z.object({
   item_ids: z.array(z.string()).min(1, 'At least one item must be selected'),
   action_token: z.string(),
   action: z.enum(['all', 'partial', 'not_yet']).optional().default('all'),
   verified_qty: z.number().int().min(0).optional(),
+  arrived_qty: z.number().int().min(0).optional(),
 });
 
 app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
@@ -3437,9 +3479,9 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
     return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
   }
 
-  // Fetch selected items
-  const selectedItems = await query<{ id: string; name: string; quantity: number; verified_qty: number | null }>(
-    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::uuid[]) ORDER BY created_at ASC`,
+  // Fetch selected items (also fetch arrived_qty if it exists)
+  const selectedItems = await query<{ id: string; name: string; quantity: number; verified_qty: number | null; arrived_qty: number | null }>(
+    `SELECT id, name, quantity, verified_qty, arrived_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::uuid[]) ORDER BY created_at ASC`,
     [id, body.item_ids]
   );
 
@@ -3451,60 +3493,108 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
   const verifiedNames: string[] = [];
   const alreadyVerifiedNames: string[] = [];
   const skippedNames: string[] = [];
+  const excessNames: string[] = [];
 
   for (const item of selectedItems) {
     const previousVerifiedQty = Number(item.verified_qty ?? 0);
+    const previousArrivedQty = Number(item.arrived_qty ?? 0);
 
     // Determine target verified_qty based on action
     let newVerifiedQty: number;
-    switch (action) {
-      case 'all':
-        newVerifiedQty = item.quantity;
-        break;
-      case 'partial':
-        newVerifiedQty = body.verified_qty ?? previousVerifiedQty;
-        if (newVerifiedQty > item.quantity) newVerifiedQty = item.quantity;
-        if (newVerifiedQty < 0) newVerifiedQty = 0;
-        break;
-      case 'not_yet':
-        newVerifiedQty = 0;
-        break;
-      default:
-        newVerifiedQty = item.quantity;
+    let arrivedQty: number | null = null;
+
+    // If arrived_qty is provided at the body level, use it for all items
+    // Otherwise fall back to the existing action logic
+    if (body.arrived_qty !== undefined) {
+      // arrived_qty is the actual quantity that arrived (can exceed item.quantity)
+      arrivedQty = body.arrived_qty;
+      // verified_qty is capped at item.quantity (what's needed for the order)
+      newVerifiedQty = Math.min(arrivedQty, item.quantity);
+      if (newVerifiedQty < 0) newVerifiedQty = 0;
+    } else {
+      switch (action) {
+        case 'all':
+          newVerifiedQty = item.quantity;
+          break;
+        case 'partial':
+          newVerifiedQty = body.verified_qty ?? previousVerifiedQty;
+          if (newVerifiedQty > item.quantity) newVerifiedQty = item.quantity;
+          if (newVerifiedQty < 0) newVerifiedQty = 0;
+          break;
+        case 'not_yet':
+          newVerifiedQty = 0;
+          break;
+        default:
+          newVerifiedQty = item.quantity;
+      }
     }
 
     const inventoryDelta = newVerifiedQty - previousVerifiedQty;
 
-    if (inventoryDelta === 0) {
+    if (inventoryDelta === 0 && arrivedQty === null) {
       alreadyVerifiedNames.push(item.name);
       continue;
     }
 
     try {
-      await query(
-        `UPDATE order_items
+      // Build the UPDATE query dynamically — include arrived_qty if provided
+      let updateSQL: string;
+      let updateParams: any[];
+
+      if (arrivedQty !== null) {
+        updateSQL = `UPDATE order_items
+         SET verified_qty = $1,
+             arrived_qty = $2,
+             inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
+             updated_at = NOW()
+         WHERE id = $3`;
+        updateParams = [newVerifiedQty, arrivedQty, item.id];
+      } else {
+        updateSQL = `UPDATE order_items
          SET verified_qty = $1,
              inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
              updated_at = NOW()
-         WHERE id = $2`,
-        [newVerifiedQty, item.id]
-      );
+         WHERE id = $2`;
+        updateParams = [newVerifiedQty, item.id];
+      }
 
-      await adjustInventoryForOrderItem(
-        id,
-        item.id,
-        item.name,
-        inventoryDelta,
-        inventoryDelta > 0 ? 'inventory_verified' : 'inventory_unverified',
-        `Bulk inventory verification: ${item.name} — ${previousVerifiedQty} -> ${newVerifiedQty} (${action}).`,
-        'inventory-agent',
-      );
+      await query(updateSQL, updateParams);
 
-      const actionLabel = action === 'all' ? 'all verified' : action === 'partial' ? `partial (${newVerifiedQty}/${item.quantity})` : 'not yet';
+      // Adjust inventory for the verified quantity delta
+      if (inventoryDelta !== 0) {
+        await adjustInventoryForOrderItem(
+          id,
+          item.id,
+          item.name,
+          inventoryDelta,
+          inventoryDelta > 0 ? 'inventory_verified' : 'inventory_unverified',
+          `Bulk inventory verification: ${item.name} — ${previousVerifiedQty} -> ${newVerifiedQty} (${action}).`,
+          'inventory-agent',
+        );
+      }
+
+      // If arrived_qty exceeds item.quantity, add the excess to inventory stock
+      if (arrivedQty !== null && arrivedQty > item.quantity) {
+        const excessQty = arrivedQty - item.quantity;
+        await adjustInventoryForOrderItem(
+          id,
+          item.id,
+          item.name,
+          excessQty,
+          'excess_arrival',
+          `Excess arrival: ${item.name} — arrived ${arrivedQty}, ordered ${item.quantity}. Excess ${excessQty} added to inventory stock.`,
+          'inventory-agent',
+        );
+        excessNames.push(`${item.name} (+${excessQty} excess → stock)`);
+      }
+
+      const actionLabel = arrivedQty !== null
+        ? `arrived ${arrivedQty}, verified ${newVerifiedQty}/${item.quantity}${arrivedQty > item.quantity ? `, excess ${arrivedQty - item.quantity} → stock` : ''}`
+        : action === 'all' ? 'all verified' : action === 'partial' ? `partial (${newVerifiedQty}/${item.quantity})` : 'not yet';
       await query(
         `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
          VALUES ($1, $2, $3, 'agent', 'inventory-agent')`,
-        [id, item.id, `Bulk inventory verification: ${item.name} — ${actionLabel} (${newVerifiedQty}/${item.quantity})`]
+        [id, item.id, `Bulk inventory verification: ${item.name} — ${actionLabel}`]
       );
 
       verifiedNames.push(`${item.name} (${newVerifiedQty}/${item.quantity})`);

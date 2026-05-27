@@ -12033,3 +12033,45 @@ Always match SQL array casts to the target column’s data type. When filtering 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: acknowledgement receipt gap — only issue receipts for verified balance payments
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7f13558f5d2bcc5e5df024c583023095e824b6be
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 7f13558f5d2bcc5e5df024c583023095e824b6be
+**Files:** apps/api/src/server.ts,apps/dashboard/public/screenshots/stages-main.png,apps/dashboard/public/screenshots/telegram-main.png,apps/dashboard/src/app/collection/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Fix:** Receipts are now only issued for payments with a verified balance, closing an acknowledgement receipt gap.
+
+**Root Cause:** The system previously issued receipts for all payment attempts, including those where the balance was unverified or insufficient. This created a gap where users received acknowledgements for payments that had not actually cleared.
+
+**Reusable Takeaway:** Always gate receipt generation behind a balance verification check. Do not issue payment confirmations until the underlying transaction is fully validated. This prevents false acknowledgements and maintains audit integrity.
+
+---
+*Original commit message: fix: acknowledgement receipt gap — only issue receipts for verified balance payments*
+
+#### Lesson Learned
+
+**Fix:** Receipts are now only issued for payments with a verified balance, closing an acknowledgement receipt gap.
+
+**Root Cause:** The system previously issued receipts for all payment attempts, including those where the balance was unverified or insufficient. This created a gap where users received acknowledgements for payments that had not actually cleared.
+
+**Reusable Takeaway:** Always gate receipt generation behind a balance verification check. Do not issue payment confirmations until the underlying transaction is fully validated. This prevents false acknowledgements and maintains audit integrity.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
