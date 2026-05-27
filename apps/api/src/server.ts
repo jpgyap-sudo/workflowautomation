@@ -2907,6 +2907,118 @@ app.post('/orders/:id/bulk-en-route-selected', async (request, reply) => {
   return reply.send({ ok: true, items: updatedItems, order: effectiveOrder });
 });
 
+// POST /orders/:id/bulk-arrive-all — Bulk mark all en_route items as arrived
+const bulkArriveAllSchema = z.object({
+  action_token: z.string(),
+});
+
+app.post('/orders/:id/bulk-arrive-all', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkArriveAllSchema.parse(request.body);
+
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Mark all non-arrived items as arrived
+  await query(
+    `UPDATE order_items
+     SET en_route_status = 'arrived', updated_at = NOW()
+     WHERE order_id = $1 AND en_route_status != 'arrived'`,
+    [id]
+  );
+
+  const updatedItems = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days, production_finished_at,
+            inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  const orderRows = await query(`SELECT * FROM orders WHERE id = $1`, [id]);
+  const effectiveOrder = orderRows[0] ?? null;
+
+  // Auto-advance to inventory_verification if all items arrived
+  const advanceResult = await advanceToInventoryVerificationIfAllArrived(id, 'bulk_arrive_all');
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${effectiveOrder?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  await notifyManualChange(
+    'Arrive All (bulk)',
+    `Quotation: *${effectiveOrder?.quotation_number ?? 'N/A'}*\nClient: *${effectiveOrder?.client_name ?? 'Unknown'}*\nAll items marked arrived${advanceResult.advanced ? ' — advanced to Inventory Verification' : ''}`,
+    userEmail,
+  );
+
+  return reply.send({ ok: true, items: updatedItems, order: advanceResult.order ?? effectiveOrder });
+});
+
+// POST /orders/:id/bulk-arrive-selected — Bulk mark selected items as arrived
+const bulkArriveSelectedSchema = z.object({
+  action_token: z.string(),
+  item_ids: z.array(z.string()).min(1),
+});
+
+app.post('/orders/:id/bulk-arrive-selected', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = bulkArriveSelectedSchema.parse(request.body);
+
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Mark only selected items as arrived
+  await query(
+    `UPDATE order_items
+     SET en_route_status = 'arrived', updated_at = NOW()
+     WHERE order_id = $1 AND id = ANY($2::uuid[]) AND en_route_status != 'arrived'`,
+    [id, body.item_ids]
+  );
+
+  const updatedItems = await query(
+    `SELECT id, order_id, name, quantity, production_status, en_route_status,
+            estimated_arrival_days, estimated_production_days, production_finished_at,
+            inventory_verified_at, delivered_qty, delivered_at, created_at, updated_at
+     FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
+    [id]
+  );
+
+  const orderRows = await query(`SELECT * FROM orders WHERE id = $1`, [id]);
+  const effectiveOrder = orderRows[0] ?? null;
+
+  // Auto-advance to inventory_verification if all items are now arrived
+  const advanceResult = await advanceToInventoryVerificationIfAllArrived(id, 'bulk_arrive_selected');
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${effectiveOrder?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  const names = body.item_ids.length === 1 ? '1 item' : `${body.item_ids.length} items`;
+  await notifyManualChange(
+    'Arrived (bulk selected)',
+    `Quotation: *${effectiveOrder?.quotation_number ?? 'N/A'}*\nClient: *${effectiveOrder?.client_name ?? 'Unknown'}*\n${names} marked arrived${advanceResult.advanced ? ' — advanced to Inventory Verification' : ''}`,
+    userEmail,
+  );
+
+  return reply.send({ ok: true, items: updatedItems, order: advanceResult.order ?? effectiveOrder });
+});
+
 // ── Confirm En Route ──────────────────────────────────────────────────
 // After production is finished, the order is in 'en_route' stage awaiting
 // dispatch confirmation. When confirmed, this endpoint is called with

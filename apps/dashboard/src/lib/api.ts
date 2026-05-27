@@ -583,6 +583,26 @@ export async function bulkFinishSelected(
   });
 }
 
+export async function bulkArriveAll(
+  id: string,
+  data: { action_token: string }
+): Promise<{ ok: boolean; items: OrderItem[]; order: Order | null }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[]; order: Order | null }>(`/orders/${encodeURIComponent(id)}/bulk-arrive-all`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function bulkArriveSelected(
+  id: string,
+  data: { action_token: string; item_ids: string[] }
+): Promise<{ ok: boolean; items: OrderItem[]; order: Order | null }> {
+  return fetchJson<{ ok: boolean; items: OrderItem[]; order: Order | null }>(`/orders/${encodeURIComponent(id)}/bulk-arrive-selected`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function recalcProductionReminders(
   id: string,
   data: { estimated_production_days: number; action_token?: string }

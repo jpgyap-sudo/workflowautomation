@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
 import {
   updateOrder, deleteOrder,
-  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, bulkFinishSelected, confirmEnRoute, setProduction,
+  reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, bulkFinishSelected, bulkArriveAll, bulkArriveSelected, confirmEnRoute, setProduction,
   recordStageUpdate,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
@@ -144,9 +144,11 @@ interface ProductionInfoCardsProps {
   onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived', refresh?: () => void) => void;
   onBulkEnRoute?: (order: Order, items: OrderItem[], refresh?: () => void) => void;
   onBulkEnRouteSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
+  onBulkArriveAll?: (order: Order, refresh?: () => void) => void;
+  onBulkArriveSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
 }
 
-function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected }: ProductionInfoCardsProps) {
+function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: ProductionInfoCardsProps) {
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [loadingCompletion, setLoadingCompletion] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -155,6 +157,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
   const [updatingEnRouteItemId, setUpdatingEnRouteItemId] = useState<string | null>(null);
   const [markingDelayedId, setMarkingDelayedId] = useState<string | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [selectedArrivalItemIds, setSelectedArrivalItemIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +211,19 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
   function toggleEnRouteSelectAll(selectableItems: OrderItem[]) {
     const allSelected = selectableItems.every((i) => selectedItemIds.has(i.id));
     setSelectedItemIds(allSelected ? new Set() : new Set(selectableItems.map((i) => i.id)));
+  }
+
+  function toggleArrivalItem(itemId: string) {
+    setSelectedArrivalItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  }
+
+  function toggleArrivalSelectAll(arrivableItems: OrderItem[]) {
+    const allSelected = arrivableItems.length > 0 && arrivableItems.every((i) => selectedArrivalItemIds.has(i.id));
+    setSelectedArrivalItemIds(allSelected ? new Set() : new Set(arrivableItems.map((i) => i.id)));
   }
 
   async function handleItemProductionStatus(
@@ -305,9 +321,13 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
         <div className="mb-3">
           {(() => {
             const isEnRoute = order.current_stage === 'en_route';
+            const isArrivalTracking = ['en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(order.current_stage);
             const selectableItems = isEnRoute ? items.filter((i) => i.en_route_status === 'not_yet') : [];
+            const arrivableItems = isArrivalTracking ? items.filter((i) => i.en_route_status !== 'arrived') : [];
             const allSelected = selectableItems.length > 0 && selectableItems.every((i) => selectedItemIds.has(i.id));
             const someSelected = selectedItemIds.size > 0 && !allSelected;
+            const allArrivalSelected = arrivableItems.length > 0 && arrivableItems.every((i) => selectedArrivalItemIds.has(i.id));
+            const someArrivalSelected = selectedArrivalItemIds.size > 0 && !allArrivalSelected;
             return (
               <>
                 <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -336,6 +356,28 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                       )}
                     </div>
                   )}
+                  {isArrivalTracking && arrivableItems.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      {selectedArrivalItemIds.size > 0 && onBulkArriveSelected && (
+                        <button
+                          type="button"
+                          onClick={() => { onBulkArriveSelected(order, Array.from(selectedArrivalItemIds), refreshItemState); setSelectedArrivalItemIds(new Set()); }}
+                          className="rounded-md border border-emerald-300 bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 transition-colors"
+                        >
+                          📦 Arrive Selected ({selectedArrivalItemIds.size})
+                        </button>
+                      )}
+                      {onBulkArriveAll && (
+                        <button
+                          type="button"
+                          onClick={() => { onBulkArriveAll(order, refreshItemState); setSelectedArrivalItemIds(new Set()); }}
+                          className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                        >
+                          📦 Arrive All ({arrivableItems.length})
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full text-left text-xs">
@@ -354,6 +396,19 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                       />
                     </th>
                   )}
+                  {isArrivalTracking && (
+                    <th className="w-8 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        title="Select all not-yet-arrived items"
+                        checked={allArrivalSelected}
+                        ref={(el) => { if (el) el.indeterminate = someArrivalSelected; }}
+                        onChange={() => toggleArrivalSelectAll(arrivableItems)}
+                        disabled={arrivableItems.length === 0}
+                        className="rounded border-gray-300 accent-emerald-600 disabled:opacity-30"
+                      />
+                    </th>
+                  )}
                   <th className="px-3 py-2">Item</th>
                   <th className="px-3 py-2">Qty</th>
                   <th className="px-3 py-2">Production</th>
@@ -366,8 +421,10 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                 {items.map((item) => {
                   const isSelectable = isEnRoute && item.en_route_status === 'not_yet';
                   const isChecked = selectedItemIds.has(item.id);
+                  const isArrivalSelectable = isArrivalTracking && item.en_route_status !== 'arrived';
+                  const isArrivalChecked = selectedArrivalItemIds.has(item.id);
                   return (
-                  <tr key={item.id} className={`hover:bg-gray-50${isChecked ? ' bg-sky-50/50' : ''}`}>
+                  <tr key={item.id} className={`hover:bg-gray-50${isChecked ? ' bg-sky-50/50' : isArrivalChecked ? ' bg-emerald-50/50' : ''}`}>
                     {isEnRoute && (
                       <td className="px-3 py-2">
                         {isSelectable && (
@@ -376,6 +433,18 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             checked={isChecked}
                             onChange={() => toggleEnRouteItem(item.id)}
                             className="rounded border-gray-300 accent-sky-600"
+                          />
+                        )}
+                      </td>
+                    )}
+                    {isArrivalTracking && (
+                      <td className="px-3 py-2">
+                        {isArrivalSelectable && (
+                          <input
+                            type="checkbox"
+                            checked={isArrivalChecked}
+                            onChange={() => toggleArrivalItem(item.id)}
+                            className="rounded border-gray-300 accent-emerald-600"
                           />
                         )}
                       </td>
@@ -707,9 +776,11 @@ interface OrderRowProps {
   onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived', refresh?: () => void) => void;
   onBulkEnRoute?: (order: Order, items: OrderItem[], refresh?: () => void) => void;
   onBulkEnRouteSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
+  onBulkArriveAll?: (order: Order, refresh?: () => void) => void;
+  onBulkArriveSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -842,7 +913,7 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
 
       {expanded && (
         <>
-          <ProductionInfoCards order={order} onItemProductionStatus={onItemProductionStatus} onItemEnRouteStatus={onItemEnRouteStatus} onBulkEnRoute={onBulkEnRoute} onBulkEnRouteSelected={onBulkEnRouteSelected} />
+          <ProductionInfoCards order={order} onItemProductionStatus={onItemProductionStatus} onItemEnRouteStatus={onItemEnRouteStatus} onBulkEnRoute={onBulkEnRoute} onBulkEnRouteSelected={onBulkEnRouteSelected} onBulkArriveAll={onBulkArriveAll} onBulkArriveSelected={onBulkArriveSelected} />
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
             {/* Start Production button for production_pending orders */}
             {onStartProduction && !order.production_started && (
@@ -2078,7 +2149,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected' | 'bulkArriveAll' | 'bulkArriveSelected';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -2142,6 +2213,8 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'bulkEnRoute') handleBulkEnRouteVerified(actionToken);
     else if (otpModal.pendingAction === 'bulkFinishSelected') handleBulkFinishSelectedVerified(actionToken);
     else if (otpModal.pendingAction === 'bulkEnRouteSelected') handleBulkEnRouteSelectedVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulkArriveAll') handleBulkArriveAllVerified(actionToken);
+    else if (otpModal.pendingAction === 'bulkArriveSelected') handleBulkArriveSelectedVerified(actionToken);
     else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
@@ -2612,6 +2685,62 @@ export default function ProductionPage() {
     }
   }
 
+  // ── Bulk arrive all items ────────────────────────────────────────────
+
+  function handleBulkArriveAll(order: Order, refreshCallback?: () => void) {
+    setOtpModal({
+      open: true,
+      title: 'Mark All Items Arrived',
+      description: `You are about to mark all pending items in order "${order.quotation_number ?? '—'}" as arrived. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulkArriveAll',
+    });
+    (window as any).__pendingBulkArriveAllData = { orderId: order.id, refreshCallback };
+  }
+
+  async function handleBulkArriveAllVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkArriveAllData as { orderId: string; refreshCallback?: () => void } | null;
+    if (!pending) return;
+    try {
+      await bulkArriveAll(pending.orderId, { action_token: actionToken });
+      refresh();
+      pending.refreshCallback?.();
+    } catch (err: any) {
+      alert('Failed to mark all items arrived: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingBulkArriveAllData = null;
+    }
+  }
+
+  // ── Bulk arrive selected items ───────────────────────────────────────
+
+  function handleBulkArriveSelected(order: Order, itemIds: string[], refreshCallback?: () => void) {
+    const names = itemIds.length === 1 ? '1 item' : `${itemIds.length} items`;
+    setOtpModal({
+      open: true,
+      title: 'Mark Selected Items Arrived',
+      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as arrived. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'bulkArriveSelected',
+    });
+    (window as any).__pendingBulkArriveSelectedData = { orderId: order.id, itemIds, refreshCallback };
+  }
+
+  async function handleBulkArriveSelectedVerified(actionToken: string) {
+    const pending = (window as any).__pendingBulkArriveSelectedData as { orderId: string; itemIds: string[]; refreshCallback?: () => void } | null;
+    if (!pending) return;
+    try {
+      await bulkArriveSelected(pending.orderId, {
+        action_token: actionToken,
+        item_ids: pending.itemIds,
+      });
+      refresh();
+      pending.refreshCallback?.();
+    } catch (err: any) {
+      alert('Failed to mark selected items arrived: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingBulkArriveSelectedData = null;
+    }
+  }
+
   // ── Item production status (from ProductionInfoCards) ────────────────
 
   // These are called from ProductionInfoCards which has access to the order
@@ -2959,6 +3088,8 @@ export default function ProductionPage() {
               onRevokeException={handleRevokeException}
               onItemProductionStatus={makeItemProductionStatusHandler(order)}
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
+              onBulkArriveAll={handleBulkArriveAll}
+              onBulkArriveSelected={handleBulkArriveSelected}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
@@ -2986,6 +3117,8 @@ export default function ProductionPage() {
               onRevokeException={handleRevokeException}
               onItemProductionStatus={makeItemProductionStatusHandler(order)}
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
+              onBulkArriveAll={handleBulkArriveAll}
+              onBulkArriveSelected={handleBulkArriveSelected}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
