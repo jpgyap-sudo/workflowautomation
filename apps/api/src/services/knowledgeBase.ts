@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 // ── Configuration ──────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
-const EMBEDDING_MODEL = process.env.KNOWLEDGE_EMBEDDING_MODEL ?? 'text-embedding-004';
+const EMBEDDING_MODEL = process.env.KNOWLEDGE_EMBEDDING_MODEL ?? 'text-embedding-005';
 const EMBEDDING_DIMENSIONS = parseInt(process.env.KNOWLEDGE_EMBEDDING_DIMENSIONS ?? '768', 10);
 const CHUNK_SIZE = parseInt(process.env.KNOWLEDGE_CHUNK_SIZE ?? '1000', 10);
 const CHUNK_OVERLAP = parseInt(process.env.KNOWLEDGE_CHUNK_OVERLAP ?? '200', 10);
@@ -51,7 +51,6 @@ const KNOWLEDGE_SOURCES: KnowledgeSource[] = [
   { name: 'Architecture', type: 'markdown', path: 'docs/architecture.md', url: null, tags: ['architecture', 'system-design'] },
   { name: 'Workflow', type: 'markdown', path: 'docs/workflow.md', url: null, tags: ['workflow', 'process'] },
   { name: 'Features Reference', type: 'markdown', path: 'docs/features.md', url: null, tags: ['features', 'reference', 'how-to'] },
-  { name: 'Guides Page', type: 'code', path: 'apps/dashboard/src/app/guides/page.tsx', url: '/guides', tags: ['guides', 'tutorials'] },
   { name: 'Quotation Checker Agent', type: 'agent-md', path: 'agents/quotation-checker/agent.md', url: null, tags: ['agent', 'quotation'] },
   { name: 'Purchasing Agent', type: 'agent-md', path: 'agents/purchasing-agent/agent.md', url: null, tags: ['agent', 'purchasing'] },
   { name: 'Inventory Agent', type: 'agent-md', path: 'agents/inventory-agent/agent.md', url: null, tags: ['agent', 'inventory'] },
