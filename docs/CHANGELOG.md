@@ -24,7 +24,8 @@
 | `f10baad` | Roo (Code) | feat: add OpenRouter fallback for chat completions (Gemini → OpenRouter → KB fallback) | ❌ |
 | `56267ac` | Roo (Code) | feat: production tab — add estimated arrival date display + bulk en-route item selection in ProductionInfoCards. Updated "Arrival Est." card to show computed date. Added inline "Est. Arrival" badge with color coding (red=overdue, amber=due soon, sky=on track). Added bulk en-route item checkboxes + "En Route Selected (N)" button. | ✅ VPS `56267ac` |
 | `eb510c2` | Roo (Code) | fix: acknowledgement receipt wrong amount on full payment — getReceiptAmount now returns total_amount when balance_paid or deposit_is_full_payment is TRUE. Same fix applied to receipts list endpoint. | ❌ |
-| | Roo (Code) | feat: auto-fill sales agent from logged-in user — NewOrderModal and VisionPageContent auto-fill salesAgent from useAuth().user.name when a sub-user (Mariella/Cathlyn) is logged in. | ❌ |
+| `467351c` | Roo (Code) | feat: auto-fill sales agent from logged-in user — NewOrderModal and VisionPageContent auto-fill salesAgent from useAuth().user.name when a sub-user (Mariella/Cathlyn) is logged in. | ❌ |
+| | Roo (Code) | feat: AI chatbox draggable — ChatFloatingIcon supports mouse/touch drag via the header. Uses CSS transform translate() for smooth repositioning. | ❌ |
 
 ## 2026-05-26
 

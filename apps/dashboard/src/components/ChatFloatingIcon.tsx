@@ -417,6 +417,46 @@ export default function ChatFloatingIcon() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
   const widgetRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  // ── Drag state ────────────────────────────────────────────────────────
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
+
+  function onDragStart(e: React.MouseEvent | React.TouchEvent) {
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    dragRef.current = {
+      isDragging: true,
+      startX: clientX,
+      startY: clientY,
+      origX: position.x,
+      origY: position.y,
+    };
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('touchend', onDragEnd);
+  }
+
+  function onDragMove(e: MouseEvent | TouchEvent) {
+    const d = dragRef.current;
+    if (!d.isDragging) return;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setPosition({
+      x: d.origX + (clientX - d.startX),
+      y: d.origY + (clientY - d.startY),
+    });
+  }
+
+  function onDragEnd() {
+    dragRef.current.isDragging = false;
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+    document.removeEventListener('touchmove', onDragMove);
+    document.removeEventListener('touchend', onDragEnd);
+  }
 
   // Don't render on chat page itself
   if (pathname === '/chat') return null;
@@ -607,12 +647,24 @@ export default function ChatFloatingIcon() {
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
 
   return (
-    <div ref={widgetRef} className="fixed bottom-6 right-6 z-50">
+    <div
+      ref={widgetRef}
+      className="fixed bottom-6 right-6 z-50"
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        transition: dragRef.current.isDragging ? 'none' : 'transform 0.15s ease-out',
+      }}
+    >
       {/* Chat Widget Panel */}
       {isOpen && (
         <div className="absolute bottom-16 right-0 mb-2 flex h-[520px] w-[380px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-[#2490ef] to-[#6366f1] px-4 py-3">
+          {/* Header — drag handle */}
+          <div
+            ref={headerRef}
+            onMouseDown={onDragStart}
+            onTouchStart={onDragStart}
+            className="flex cursor-grab items-center justify-between border-b border-gray-200 bg-gradient-to-r from-[#2490ef] to-[#6366f1] px-4 py-3 active:cursor-grabbing select-none"
+          >
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-white" />
               <div>
