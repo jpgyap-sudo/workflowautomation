@@ -1702,3 +1702,122 @@ export const STAGE_ORDER = [
   'payment_confirmed',
   'completed',
 ];
+
+// ── Chat API ────────────────────────────────────────────────────────────
+
+export interface ChatConversation {
+  id: string;
+  user_email: string;
+  user_name: string | null;
+  title: string;
+  message_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  sources?: { title: string; url: string | null }[];
+  suggestions?: string[];
+  created_at: string;
+}
+
+export interface SendMessageResult {
+  user_message: ChatMessage;
+  assistant_message: ChatMessage;
+  conversation: ChatConversation;
+}
+
+export async function createChatConversation(
+  userEmail: string,
+  userName?: string | null,
+  title?: string
+): Promise<ChatConversation> {
+  return fetchJson<ChatConversation>('/chat/conversations', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_email: userEmail,
+      user_name: userName ?? null,
+      title,
+    }),
+  });
+}
+
+export async function getUserChatConversations(email: string): Promise<ChatConversation[]> {
+  return fetchJson<ChatConversation[]>(`/chat/conversations?email=${encodeURIComponent(email)}`);
+}
+
+export async function getChatMessages(conversationId: string): Promise<ChatMessage[]> {
+  return fetchJson<ChatMessage[]>(`/chat/conversations/${conversationId}/messages`);
+}
+
+export async function sendChatMessage(
+  conversationId: string,
+  content: string,
+  userEmail: string,
+  userName?: string | null,
+  userRole?: string,
+  currentPage?: string
+): Promise<SendMessageResult> {
+  return fetchJson<SendMessageResult>(`/chat/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      content,
+      user_email: userEmail,
+      user_name: userName ?? null,
+      user_role: userRole ?? 'viewer',
+      current_page: currentPage,
+    }),
+  });
+}
+
+export async function resetChatConversation(conversationId: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/chat/conversations/${conversationId}/reset`, {
+    method: 'POST',
+  });
+}
+
+// ── Knowledge Base API ──────────────────────────────────────────────────
+
+export async function triggerKnowledgeIngest(actionToken: string): Promise<{ ok: boolean; message: string }> {
+  return fetchJson<{ ok: boolean; message: string }>('/knowledge/ingest', {
+    method: 'POST',
+    body: JSON.stringify({ action_token: actionToken }),
+  });
+}
+
+export interface KnowledgeBaseStatus {
+  document_count: number;
+  embedding_count: number;
+  last_ingestion: {
+    status: string;
+    documents_added: number;
+    documents_updated: number;
+    documents_removed: number;
+    started_at: string;
+    completed_at: string | null;
+  } | null;
+}
+
+export async function getKnowledgeBaseStatus(): Promise<KnowledgeBaseStatus> {
+  return fetchJson<KnowledgeBaseStatus>('/knowledge/status');
+}
+
+// ── Update Logs API ─────────────────────────────────────────────────────
+
+export interface UpdateLogEntry {
+  date: string;
+  extension: string;
+  description: string;
+  status: string;
+}
+
+export async function getUpdateLogs(email: string, role: string, limit = 50): Promise<UpdateLogEntry[]> {
+  return fetchJson<UpdateLogEntry[]>(
+    `/update-logs?email=${encodeURIComponent(email)}&role=${encodeURIComponent(role)}&limit=${limit}`
+  );
+}

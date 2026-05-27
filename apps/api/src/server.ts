@@ -8658,6 +8658,165 @@ Text to parse: "${text.substring(0, 1000)}"`;
   }
 });
 
+// ── Chat API ──────────────────────────────────────────────────────────
+
+import {
+  createConversation,
+  getUserConversations,
+  getConversationMessages,
+  sendMessage,
+  resetConversation,
+  getUpdateLogs,
+} from './services/chatService.js';
+import {
+  ingestAllSources,
+  getKnowledgeBaseStatus,
+} from './services/knowledgeBase.js';
+
+/**
+ * POST /chat/conversations — Create a new conversation
+ */
+app.post('/chat/conversations', async (request, reply) => {
+  const body = z.object({
+    user_email: z.string().email(),
+    user_name: z.string().nullable().optional(),
+    title: z.string().optional(),
+  }).parse(request.body);
+
+  const conversation = await createConversation(
+    body.user_email,
+    body.user_name ?? null,
+    body.title
+  );
+  return conversation;
+});
+
+/**
+ * GET /chat/conversations — Get user's conversations
+ */
+app.get('/chat/conversations', async (request) => {
+  const query_params = request.query as any;
+  const email = query_params.email as string;
+  if (!email) return [];
+  return getUserConversations(email);
+});
+
+/**
+ * GET /chat/conversations/:id/messages — Get messages for a conversation
+ */
+app.get('/chat/conversations/:id/messages', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  return getConversationMessages(params.id);
+});
+
+/**
+ * POST /chat/conversations/:id/messages — Send a message
+ */
+app.post('/chat/conversations/:id/messages', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    content: z.string().min(1).max(4000),
+    user_email: z.string().email(),
+    user_name: z.string().nullable().optional(),
+    user_role: z.string().default('viewer'),
+    current_page: z.string().optional(),
+  }).parse(request.body);
+
+  try {
+    const result = await sendMessage(
+      params.id,
+      body.content,
+      body.user_email,
+      body.user_name ?? null,
+      body.user_role,
+      body.current_page
+    );
+    return result;
+  } catch (err: any) {
+    console.error('[chat] Error sending message:', err);
+    return reply.code(500).send({ error: 'Failed to send message', details: err.message });
+  }
+});
+
+/**
+ * POST /chat/conversations/:id/reset — Reset a conversation
+ */
+app.post('/chat/conversations/:id/reset', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  await resetConversation(params.id);
+  return { ok: true };
+});
+
+// ── Knowledge Base API ────────────────────────────────────────────────
+
+/**
+ * POST /knowledge/ingest — Trigger knowledge base re-ingestion (admin only)
+ */
+app.post('/knowledge/ingest', async (request, reply) => {
+  const body = z.object({ action_token: z.string() }).parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
+  // Run ingestion asynchronously
+  setImmediate(async () => {
+    try {
+      await ingestAllSources();
+    } catch (err: any) {
+      console.error('[knowledge] Ingestion error:', err);
+    }
+  });
+
+  return { ok: true, message: 'Knowledge base ingestion started. This may take a few minutes.' };
+});
+
+/**
+ * GET /knowledge/status — Get knowledge base status
+ */
+app.get('/knowledge/status', async () => {
+  return getKnowledgeBaseStatus();
+});
+
+// ── Update Logs API ───────────────────────────────────────────────────
+
+/**
+ * GET /update-logs — Get update logs (admin/bot only)
+ * Protected by action_token in query params for admin access.
+ */
+app.get('/update-logs', async (request, reply) => {
+  const query_params = request.query as any;
+  const email = query_params.email as string;
+  const role = query_params.role as string;
+
+  // Only admin and bot can access update logs
+  if (role !== 'admin' && role !== 'bot') {
+    return reply.status(403).send({ error: 'Access denied. Only admin and bot can view update logs.' });
+  }
+
+  const limit = parseInt((query_params.limit as string) ?? '50', 10);
+  const logs = await getUpdateLogs(limit);
+
+  // Log access
+  if (email) {
+    try {
+      await query(
+        `INSERT INTO update_log_access (user_email, action) VALUES ($1, 'viewed')`,
+        [email]
+      );
+    } catch { /* ignore */ }
+  }
+
+  return logs;
+});
+
 // ── Dashboard Stats ─────────────────────────────────────────────────
 
 app.get('/dashboard/stats', async () => {
