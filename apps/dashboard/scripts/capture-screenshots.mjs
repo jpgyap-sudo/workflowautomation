@@ -113,6 +113,13 @@ async function main() {
     if (msg.type() === 'error') process.stdout.write('');
   });
 
+  // Warm up the browser with a lightweight first hit so Chromium's JIT is
+  // ready before the first real page capture (avoids cold-start timeouts).
+  try {
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+    await page.waitForTimeout(600);
+  } catch { /* ignore warm-up failures */ }
+
   let ok = 0; let failed = 0;
   console.log(`\n🎬  Capturing ${PAGES.length} screenshots → ${SCREENSHOTS_DIR}\n`);
 
