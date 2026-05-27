@@ -11933,3 +11933,55 @@ Always verify payment completeness at the UI layer by cross-referencing deposit 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: OTP error in verify all — Bug #1: verify-deposit checks balance_paid and advances to balance_verification for full-
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 696c3a96567391dda01ba579a901fa37aab19a7c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 696c3a96567391dda01ba579a901fa37aab19a7c
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**Summary**
+
+**What was fixed:** Three bugs in the OTP verification flow:  
+1. `verify-deposit` now correctly checks `balance_paid` and advances to `balance_verification` only for full-payment orders.  
+2. `PATCH /payments/:id/verify` now advances the order’s `current_stage`.  
+3. Removed a dead import of `verifyPayment` from the order detail page.
+
+**Why it broke:** The original logic did not differentiate between partial and full payments, causing incorrect stage transitions. The PATCH endpoint lacked stage advancement, leaving orders stuck. A stale import caused a runtime error.
+
+**Reusable takeaway:** Always validate payment status against order type before advancing workflow stages. Ensure all state transitions are explicitly handled in API endpoints, not just in UI logic. Remove dead imports to prevent silent failures.
+
+---
+*Original commit message: fix: OTP error in verify all — Bug #1: verify-deposit checks balance_paid and advances to balance_verification for full-payment orders. Bug #2: PATCH /payments/:id/verify now advances order current_stage. Bug #3: removed dead import of verifyPayment from order detail page.*
+
+#### Lesson Learned
+
+**Summary**
+
+**What was fixed:** Three bugs in the OTP verification flow:  
+1. `verify-deposit` now correctly checks `balance_paid` and advances to `balance_verification` only for full-payment orders.  
+2. `PATCH /payments/:id/verify` now advances the order’s `current_stage`.  
+3. Removed a dead import of `verifyPayment` from the order detail page.
+
+**Why it broke:** The original logic did not differentiate between partial and full payments, causing incorrect stage transitions. The PATCH endpoint lacked stage advancement, leaving orders stuck. A stale import caused a runtime error.
+
+**Reusable takeaway:** Always validate payment status against order type before advancing workflow stages. Ensure all state transitions are explicitly handled in API endpoints, not just in UI logic. Remove dead imports to prevent silent failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

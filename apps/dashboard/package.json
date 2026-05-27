@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "screenshots": "node scripts/capture-screenshots.mjs",
+    "screenshots:install": "npx playwright install chromium --with-deps"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",
@@ -17,6 +19,7 @@
     "swr": "^2.4.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
