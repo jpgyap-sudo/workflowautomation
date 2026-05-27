@@ -5,7 +5,7 @@ import { Fragment, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, verifyPayment, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';

@@ -22,6 +22,7 @@ When you **finish**:
 | Date | Extension | Description | Status |
 |------|-----------|-------------|--------|
 | 2026-05-27 03:56 | Roo (Code) | Comprehensive gap analysis across all features — fixed stageToGroup (added production_in_progress, stock_preparation), VALID_TRANSITIONS (added stock_preparation), AGENT_TRIGGER_MAP (added collection-agent to stock_preparation), STAGE_ORDER (added partial_production, stock_preparation, removed duplicate), removed stale finish-production-pending endpoint, updated telegram page mappings, added missing inline keyboard handlers in reminderScheduler.ts for production_in_progress and stock_preparation | ✅ Done |
+| 2026-05-27 09:28 | Roo (Code) | Fix: OTP error in verify all — Bug #1: verify-deposit now checks if balance is also paid (full payment) and advances to balance_verification instead of skipping past it. Bug #2: PATCH /payments/:id/verify now advances order stage when all payments verified. Bug #3: removed dead import of verifyPayment from order detail page. | ✅ Done |
 
 ---
 

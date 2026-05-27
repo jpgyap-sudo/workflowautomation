@@ -4487,15 +4487,46 @@ app.patch('/payments/:id/verify', async (request, reply) => {
 
     // Update order-level verification flag if all payments of this type are verified
     if (allVerified) {
+      // Also fetch the order's current stage to determine the correct next stage
+      const orderRows = await query(
+        `SELECT current_stage, balance_paid, order_type FROM orders WHERE id = $1`,
+        [orderId]
+      );
+      const orderStage = orderRows[0]?.current_stage ?? '';
+      const orderBalancePaid = !!orderRows[0]?.balance_paid;
+      const isFromStock = orderRows[0]?.order_type === 'from_stock';
+
       if (payment.type === 'deposit') {
+        // Determine next stage: if balance is also paid, go to balance_verification
+        const nextStage = orderBalancePaid
+          ? 'balance_verification'
+          : isFromStock
+            ? 'stock_preparation'
+            : 'purchasing_pending';
         await query(
-          `UPDATE orders SET deposit_verified=TRUE, deposit_verified_at=NOW(), deposit_verified_by=$2, updated_at=NOW() WHERE id=$1`,
-          [orderId, verifier]
+          `UPDATE orders SET deposit_verified=TRUE, deposit_verified_at=NOW(), deposit_verified_by=$2, current_stage=$3, updated_at=NOW() WHERE id=$1`,
+          [orderId, verifier, nextStage]
+        );
+        await query(
+          `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+           VALUES ($1, 'deposit_verification', 'deposit_verified', $2, $3)`,
+          [orderId, `Deposit verified via payment record. Advancing to ${nextStage}.`, verifier]
         );
       } else if (payment.type === 'balance') {
+        // Determine next stage based on current stage
+        const nextStage = (orderStage === 'delivered' || orderStage === 'countered')
+          ? 'payment_received'
+          : (orderStage === 'balance_due' || orderStage === 'inventory_arrived' || orderStage === 'delivery_scheduled' || orderStage === 'balance_verification')
+            ? 'delivery_pending'
+            : orderStage;
         await query(
-          `UPDATE orders SET balance_verified=TRUE, balance_verified_at=NOW(), balance_verified_by=$2, updated_at=NOW() WHERE id=$1`,
-          [orderId, verifier]
+          `UPDATE orders SET balance_verified=TRUE, balance_verified_at=NOW(), balance_verified_by=$2, current_stage=$3, updated_at=NOW() WHERE id=$1`,
+          [orderId, verifier, nextStage]
+        );
+        await query(
+          `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+           VALUES ($1, $2, 'balance_verified', $3, $4)`,
+          [orderId, nextStage, `Balance verified via payment record. Advancing to ${nextStage}.`, verifier]
         );
       }
     }
@@ -6979,7 +7010,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   }
 
   const orders = await query(
-    `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified, order_type, stock_prep_days, stock_prep_ready_at
+    `SELECT id, quotation_number, client_name, current_stage, deposit_paid, deposit_verified, balance_paid, order_type, stock_prep_days, stock_prep_ready_at
      FROM orders WHERE id = $1 AND status = 'active'`,
     [id],
   );
@@ -7000,9 +7031,18 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     });
   }
 
-  // From-stock orders skip purchasing/production/en_route/inventory — go straight to stock_preparation
+  // Determine next stage:
+  // - If balance is also paid (full payment), advance to balance_verification so the user
+  //   can verify the balance in a second step (instead of skipping past it).
+  // - From-stock orders skip purchasing/production/en_route/inventory — go straight to stock_preparation.
+  // - Otherwise, standard advance to purchasing_pending.
   const isFromStock = order.order_type === 'from_stock';
-  const nextStage = isFromStock ? 'stock_preparation' : 'purchasing_pending';
+  const balanceAlsoPaid = !!order.balance_paid;
+  const nextStage = balanceAlsoPaid
+    ? 'balance_verification'
+    : isFromStock
+      ? 'stock_preparation'
+      : 'purchasing_pending';
 
   // Mark all deposit payment records as verified
   await query(
@@ -7035,15 +7075,24 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
      VALUES ($1, 'deposit_verification', 'deposit_verified', $2, $3)`,
     [id, `Deposit verified by ${body.verified_by ?? 'team'}. Advancing to ${nextStage}.`, body.verified_by ?? null],
   );
-  await query(
-    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, $2, 'ready', $3, $4)`,
-    [id, nextStage,
-      isFromStock
-        ? `From-stock order — skipping production/en_route. Preparing from existing inventory.`
-        : 'Downpayment verified; ready for purchasing/production preparation.',
-      body.verified_by ?? null],
-  );
+  if (balanceAlsoPaid) {
+    // Full-payment order: deposit verified, now awaiting balance verification
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'balance_verification', 'awaiting_verification', $2, $3)`,
+      [id, `Deposit verified — balance payment also recorded and awaiting verification.`, body.verified_by ?? null],
+    );
+  } else {
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, $2, 'ready', $3, $4)`,
+      [id, nextStage,
+        isFromStock
+          ? `From-stock order — skipping production/en_route. Preparing from existing inventory.`
+          : 'Downpayment verified; ready for purchasing/production preparation.',
+        body.verified_by ?? null],
+    );
+  }
 
   // Complete deposit_verification reminders
   await query(
@@ -7055,7 +7104,20 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   // Trigger agents and send notifications based on order type
   triggerAgentsForStage(nextStage, order.quotation_number, order.client_name, userEmail ?? body.verified_by ?? undefined);
 
-  if (isFromStock) {
+  if (balanceAlsoPaid) {
+    // Full-payment order: notify collection group that deposit is verified, balance still needs verification
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `✅ <b>Deposit Verified (Full Payment)</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${order.client_name ?? 'N/A'}\n` +
+        `Verified by: ${body.verified_by ?? 'team'}\n\n` +
+        `Deposit has been verified. The balance payment also needs verification before the order can advance.\n` +
+        `Please verify the balance on the <b>Collection</b> page.`
+      );
+    });
+  } else if (isFromStock) {
     // From-stock: notify inventory/delivery group about stock preparation
     const inventoryGroupChatId = process.env.INVENTORY_GROUP_CHAT_ID;
     const prepLabel = prepDays === 0
@@ -7161,9 +7223,14 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
 
   // Notify escalation group (dashboard only)
   if (isDashboardOrigin(body.verified_by)) {
+    const escalationStageLabel = balanceAlsoPaid
+      ? 'Balance Verification (full payment)'
+      : isFromStock
+        ? 'Stock Preparation'
+        : 'Purchasing Pending';
     await notifyManualChange(
       'Deposit verified',
-      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${isFromStock ? 'Stock Preparation' : 'Purchasing Pending'}`,
+      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${escalationStageLabel}`,
       userEmail,
     );
   }
