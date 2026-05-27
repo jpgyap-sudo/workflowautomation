@@ -150,10 +150,13 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 async function loadSourceDocument(source: KnowledgeSource): Promise<{ title: string; content: string; checksum: string } | null> {
   const projectRoot = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..'));
 
-  // Try multiple paths
+  // Try multiple paths — order matters for performance
   const paths = [
+    // Local development: projectRoot resolves to repo root
     join(projectRoot, source.path),
-    join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', source.path),
+    // Docker container: projectRoot resolves to /, but volumes mount at /app/docs and /app/agents
+    join('/app', source.path),
+    // Fallback: VPS host path (only works if container has host access)
     join('/opt/quotation-automation', source.path),
   ];
 
