@@ -7,8 +7,8 @@ import { createHash } from 'crypto';
 // ── Configuration ──────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
-const EMBEDDING_MODEL = process.env.KNOWLEDGE_EMBEDDING_MODEL ?? 'text-embedding-005';
-const EMBEDDING_DIMENSIONS = parseInt(process.env.KNOWLEDGE_EMBEDDING_DIMENSIONS ?? '768', 10);
+const EMBEDDING_MODEL = process.env.KNOWLEDGE_EMBEDDING_MODEL ?? 'gemini-embedding-2';
+const EMBEDDING_DIMENSIONS = parseInt(process.env.KNOWLEDGE_EMBEDDING_DIMENSIONS ?? '3072', 10);
 const CHUNK_SIZE = parseInt(process.env.KNOWLEDGE_CHUNK_SIZE ?? '1000', 10);
 const CHUNK_OVERLAP = parseInt(process.env.KNOWLEDGE_CHUNK_OVERLAP ?? '200', 10);
 const EMBEDDING_TIMEOUT_MS = parseInt(process.env.KNOWLEDGE_EMBEDDING_TIMEOUT_MS ?? '30000', 10);
