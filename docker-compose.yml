@@ -86,6 +86,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - ./database/migrations:/app/database/migrations:ro
+      - ./docs:/app/docs:ro
+      - ./agents:/app/agents:ro
     depends_on:
       postgres:
         condition: service_healthy

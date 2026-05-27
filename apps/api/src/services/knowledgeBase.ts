@@ -50,6 +50,7 @@ const KNOWLEDGE_SOURCES: KnowledgeSource[] = [
   { name: 'BUG_LOG', type: 'markdown', path: 'docs/BUG_LOG.md', url: null, tags: ['bugs', 'troubleshooting'] },
   { name: 'Architecture', type: 'markdown', path: 'docs/architecture.md', url: null, tags: ['architecture', 'system-design'] },
   { name: 'Workflow', type: 'markdown', path: 'docs/workflow.md', url: null, tags: ['workflow', 'process'] },
+  { name: 'Features Reference', type: 'markdown', path: 'docs/features.md', url: null, tags: ['features', 'reference', 'how-to'] },
   { name: 'Guides Page', type: 'code', path: 'apps/dashboard/src/app/guides/page.tsx', url: '/guides', tags: ['guides', 'tutorials'] },
   { name: 'Quotation Checker Agent', type: 'agent-md', path: 'agents/quotation-checker/agent.md', url: null, tags: ['agent', 'quotation'] },
   { name: 'Purchasing Agent', type: 'agent-md', path: 'agents/purchasing-agent/agent.md', url: null, tags: ['agent', 'purchasing'] },
