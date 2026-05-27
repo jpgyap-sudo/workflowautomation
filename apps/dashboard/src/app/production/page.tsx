@@ -2803,15 +2803,15 @@ export default function ProductionPage() {
         onBulkEnRouteSelected={handleBulkEnRouteSelected}
       />
 
-      {/* Dispatch Pending — some items still not confirmed en route */}
+      {/* En Route — In Transit — all items confirmed en route, awaiting arrival */}
       <OrderSection
-        icon={<Truck className="h-4 w-4 text-amber-500" />}
-        title="Dispatch Pending"
+        icon={<Truck className="h-4 w-4 text-sky-500" />}
+        title="En Route — In Transit"
         count={filteredEnRouteVerificationStageOrders.length}
-        countBg="bg-amber-100" countText="text-amber-700"
+        countBg="bg-sky-100" countText="text-sky-700"
         orders={filteredEnRouteVerificationStageOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
-        emptyText="No orders pending dispatch confirmation"
+        emptyText="No orders in transit"
       >
         {(order) => (
           <>
@@ -2830,15 +2830,15 @@ export default function ProductionPage() {
         )}
       </OrderSection>
 
-      {/* En Route — In Transit — all items confirmed en route, awaiting arrival */}
+      {/* Dispatch Pending — some items still not confirmed en route */}
       <OrderSection
-        icon={<Truck className="h-4 w-4 text-sky-500" />}
-        title="En Route — In Transit"
+        icon={<Truck className="h-4 w-4 text-amber-500" />}
+        title="Dispatch Pending"
         count={filteredEnRouteOrders.length}
-        countBg="bg-sky-100" countText="text-sky-700"
+        countBg="bg-amber-100" countText="text-amber-700"
         orders={filteredEnRouteOrders} isLoading={loadingEnRoute} error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
-        emptyText="No orders in transit"
+        emptyText="No orders pending dispatch confirmation"
       >
         {(order) => (
           <>
