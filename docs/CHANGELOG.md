@@ -32,7 +32,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| | Roo (Code) | feat: partial inventory verification + partial delivery — migration 041_partial_delivery.sql adds partial_delivery_count, remaining_qty, last_partial_delivery_at to order_items; partial_delivery, partial_delivery_notes to orders; partial_delivery_logs table; get_delivery_completion_pct function. Server: complete-inventory-verification-partial, partial-delivery, delivery-progress endpoints. Dashboard: inventory verification page shows "Complete (Partial)" button; delivery page shows "Partial Delivery" button + modal with item selection, summary stats, delivery note, OTP confirmation; production page shows "Partial Delivery" badge on orders with partial delivery enabled. Telegram notifications sent for partial verification and partial delivery events. | ❌ |
+| `ecba8a9` | Roo (Code) | feat: partial inventory verification + partial delivery — migration 041_partial_delivery.sql adds partial_delivery_count, remaining_qty, last_partial_delivery_at to order_items; partial_delivery, partial_delivery_notes to orders; partial_delivery_logs table; get_delivery_completion_pct function. Server: complete-inventory-verification-partial, partial-delivery, delivery-progress endpoints. Dashboard: inventory verification page shows "Complete (Partial)" button; delivery page shows "Partial Delivery" button + modal with item selection, summary stats, delivery note, OTP confirmation; production page shows "Partial Delivery" badge on orders with partial delivery enabled. Telegram notifications sent for partial verification and partial delivery events. | ❌ |
 
 ## 2026-05-26
 
