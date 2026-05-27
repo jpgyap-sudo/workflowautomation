@@ -2706,7 +2706,7 @@ app.post('/orders/:id/finish-selected-items', async (request, reply) => {
      SET production_status = 'finished',
          production_finished_at = COALESCE(production_finished_at, NOW()),
          updated_at = NOW()
-     WHERE order_id = $1 AND id = ANY($2::text[]) AND production_status != 'finished'`,
+     WHERE order_id = $1 AND id = ANY($2::uuid[]) AND production_status != 'finished'`,
     [id, body.item_ids]
   );
 
@@ -2859,7 +2859,7 @@ app.post('/orders/:id/bulk-en-route-selected', async (request, reply) => {
      SET en_route_status = 'en_route',
          estimated_arrival_days = COALESCE(estimated_arrival_days, $2),
          updated_at = NOW()
-     WHERE order_id = $1 AND id = ANY($3::text[]) AND en_route_status = 'not_yet'`,
+     WHERE order_id = $1 AND id = ANY($3::uuid[]) AND en_route_status = 'not_yet'`,
     [id, body.default_arrival_days ?? null, body.item_ids]
   );
 
@@ -3439,7 +3439,7 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
 
   // Fetch selected items
   const selectedItems = await query<{ id: string; name: string; quantity: number; verified_qty: number | null }>(
-    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::text[]) ORDER BY created_at ASC`,
+    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::uuid[]) ORDER BY created_at ASC`,
     [id, body.item_ids]
   );
 
@@ -3621,7 +3621,7 @@ app.post('/orders/:id/bulk-inventory-unverify', async (request, reply) => {
 
   // Fetch selected items that have verified_qty > 0
   const selectedItems = await query<{ id: string; name: string; quantity: number; verified_qty: number | null }>(
-    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::text[]) AND COALESCE(verified_qty, 0) > 0 ORDER BY created_at ASC`,
+    `SELECT id, name, quantity, verified_qty FROM order_items WHERE order_id = $1 AND id = ANY($2::uuid[]) AND COALESCE(verified_qty, 0) > 0 ORDER BY created_at ASC`,
     [id, body.item_ids]
   );
 
