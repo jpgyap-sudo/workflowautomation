@@ -27,7 +27,7 @@
 | `467351c` | Roo (Code) | feat: auto-fill sales agent from logged-in user — NewOrderModal and VisionPageContent auto-fill salesAgent from useAuth().user.name when a sub-user (Mariella/Cathlyn) is logged in. | ✅ VPS `cd170ef` |
 | `cd170ef` | Roo (Code) | feat: AI chatbox draggable — ChatFloatingIcon supports mouse/touch drag via the header. Uses CSS transform translate() for smooth repositioning. | ✅ VPS `cd170ef` |
 | `5fcfd84` | Roo (Code) | fix: draggable chatbox — two bugs fixed: (1) click-outside handler skips during drag via dragRef.current.isDragging check; (2) transform: translate() moved from outer container to chat panel only, so floating button always stays at bottom-6 right-6 | ✅ VPS `5fcfd84` |
-| | Roo (Code) | feat: partial production finish, partial dispatch, partial en-route arrival — 3 new API endpoints (complete-production-partial, complete-dispatch-partial, complete-arrival-partial), API client functions, "Complete (Partial)" buttons in OrderRow and ProductionItemSection, OTP handlers, wired into all relevant production sections | ❌ |
+| `11685ce` | Roo (Code) | feat: partial production finish, partial dispatch, partial en-route arrival — 3 new API endpoints (complete-production-partial, complete-dispatch-partial, complete-arrival-partial), API client functions, "Complete (Partial)" buttons in OrderRow and ProductionItemSection, OTP handlers, wired into all relevant production sections | ✅ VPS `11685ce` |
 
 ## 2026-05-28
 
