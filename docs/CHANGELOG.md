@@ -15,7 +15,7 @@
 | `733b016` | Kimi | fix: Full payment gap — recordFullPaymentForOrder sets deposit_amount = totalAmount for first full payment, clearer stage update remarks, order detail page shows "Full payment recorded — no balance due" when remaining_balance = 0 | ✅ VPS `733b016` |
 | `9300706` | Kimi | chore: auto-commit (memory files only) | ✅ VPS `9300706` |
 | `696c3a9` | Roo (Code) | fix: OTP error in verify all — Bug #1: verify-deposit now checks balance_paid and advances to balance_verification for full-payment orders. Bug #2: PATCH /payments/:id/verify now advances order current_stage when all payments verified. Bug #3: removed dead import of verifyPayment from order detail page. | ✅ VPS `696c3a9` |
-| `pending` | Roo (Code) | chore: commit pending local changes (guides page, package updates, memory files, new scripts) | 🔴 Pending |
+| `1c62169` | Roo (Code) | chore: commit pending local changes (guides page, package updates, memory files, new capture-screenshots script) | ✅ VPS `1c62169` |
 
 ## 2026-05-26
 
