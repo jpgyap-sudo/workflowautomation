@@ -31,7 +31,8 @@ When you **finish**:
 | 2026-05-27 21:02 | Roo (Code) | Feat: AI Assistant Chat + Update Logs page — created tutorial agent (agents/tutorial-agent/agent.md), knowledge base ingestion pipeline (pgvector + OpenAI embeddings), chat API (Fastify routes + OpenAI gpt-4o-mini), chat UI page (/chat) with conversation management, update logs page (/update-logs, admin-only), migration 041 (knowledge_base.sql), docker-compose postgres image changed to pgvector/pgvector:pg16. Wired into sidebar + auth system. | ✅ Done |
 | 2026-05-27 22:09 | Roo (Code) | Feat: Replace sidebar AI Assistant link with floating chat icon — created ChatFloatingIcon.tsx (floating bubble bottom-right, 380x520px panel, conversation management, message rendering, QAS WelcomeScreen, click-outside-to-close). Wired into AuthGuard.tsx. Removed /chat link from Sidebar.tsx. | ✅ Done |
 | 2026-05-27 22:31 | Roo (Code) | Fix: AI chat box knowledge base — changed embedding model from text-embedding-004 (404 error) to text-embedding-005, removed inaccessible Guides Page source from KNOWLEDGE_SOURCES. Committed + deploying to VPS. | ✅ Done |
-| 2026-05-27 22:46 | Roo (Code) | Feat: full payment deposit skips balance due/verification — verify-deposit auto-verifies balance when deposit >= total for non-from_stock orders. confirm-inventory-arrived sees balance_verified=TRUE and advances to delivery_pending. Dashboard shows "Balance auto-verified" badge and updated verification banner text. | 🔴 Active |
+| 2026-05-27 22:46 | Roo (Code) | Feat: full payment deposit skips balance due/verification — verify-deposit auto-verifies balance when deposit >= total for non-from_stock orders. confirm-inventory-arrived sees balance_verified=TRUE and advances to delivery_pending. Dashboard shows "Balance auto-verified" badge and updated verification banner text. | ✅ Done |
+| 2026-05-27 23:21 | Roo (Code) | Feat: production tab — added estimated arrival date display in En Route — In Transit and Arrival Verification sections. Updated "Arrival Est." card in ProductionInfoCards to show computed date (en_route_confirmed_at + estimated_arrival_days). Added inline "Est. Arrival" badge in OrderRow header with color coding (red=overdue, amber=due soon, sky=on track). | 🔴 Active |
 
 ---
 
@@ -72,62 +73,3 @@ When you **finish**:
 | 2026-05-24 20:32 | Roo (Code) | Feat: replace Production Finished Actions column with notes input — users can add/view notes per order | ✅ Done |
 | 2026-05-25 07:42 | Roo (Code) | Feat: add all delivery tab manual button gaps — Balance Verification, Payment Received, Payment Confirmed sections + skip-payment buttons + OTP handlers + Telegram notifications | ✅ Done |
 | 2026-05-24 19:58 | Codex | Update: item-level inventory verification with arrival dates and inventory/delivery accountability | ✅ Done |
-| 2026-05-24 19:30 | Codex | Update: add manual Proceed to Inventory Verification action for early arrivals | Done |
-| 2026-05-26 16:44 | Roo (Code) | Feat: add deposit slip upload + AI extract modal to Balance Due section in Delivery page (replacing inline payment form). Fix: 401 error when marking selected items en route — new POST /orders/:id/bulk-en-route-selected endpoint. E2E health scan: all 7 containers healthy, API 200, Dashboard 200, DB+Redis connected. Commit 7e3a0c3 deployed to VPS. | ✅ Done |
-| 2026-05-24 19:10 | Codex | Update: add per-item production finished date to Production Finished expandable item list | Done |
-| 2026-05-24 19:04 | Codex | Update: Production Finished orders are expandable and show per-item estimated inventory arrival dates | Done |
-| 2026-05-24 18:44 | Codex | Update: Production Finished section tracks any order with at least one finished item until inventory arrival verification, with estimated inventory arrival date | Done |
-| 2026-05-24 18:00 | Codex | Update: make item production Telegram reminders context-aware with Started vs Finished/On Time/Delayed flow | Done |
-| 2026-05-24 17:44 | Codex | Fix: auto-finish production when all partial-production items are finished and trigger en-route Telegram workflow | Done |
-| 2026-05-24 15:35 | Codex | Fix: include payment verification fields in orders list API for dashboard sync | Done |
-| 2026-05-24 15:10 | Codex | Update: add balance payment date and payment verification columns to order tables | Done |
-| 2026-05-24 14:30 | Codex | Fix: split production workflow acknowledgement from actual production start in dashboard and Telegram | Done |
-| 2026-05-24 12:45 | Codex | Fix: restore En Route Verification in stage pipeline tab after `ada6e80` regression | Done |
-| 2026-05-24 12:18 | Codex | Fix: restore VPS API container to resolve dashboard OTP 502 Bad Gateway | ? Done |
-| 2026-05-24 12:01 | Codex | Audit/fix: inventory/delivery workflow tabs and Telegram reminder item sync gaps | ? Done |
-| 2026-05-24 11:37 | Codex | Test: validate cross-extension logging files and `.clinerules` references | ? Done |
-| 2026-05-24 11:29 | Roo (Code) | Verified all services deployed at `ada6e80`, created changelog/bug/update log system | ✅ Done |
-| 2026-05-24 11:58 | Roo (Code) | Deploy: 2 pending commits — en_route_verification stage + bot fix | ✅ Done |
-| 2026-05-24 14:19 | Roo (Code) | Fix: deposit sync failure — removed mandatory action_token requirement from POST /deposits, added OTP modals to all deposit flows, fixed recordDepositWithFile() to pass action_token | ✅ Done |
-| 2026-05-24 14:39 | Roo (Code) | Fix: auto-detect deposit slip when photo sent to collection group chat — no button clicks required | ✅ Done |
-| 2026-05-24 14:44 | Roo (Code) | Fix: add client_name and actor_name to stage_updates table for traceability | ✅ Done |
-| 2026-05-24 15:31 | Roo (Code) | Fix: add manual stage advancement buttons on order detail page + manual production status editing on purchasing page — Telegram-independent dashboard progression | ✅ Done |
-| 2026-05-24 15:39 | Roo (Code) | Deploy: gap fixes — en_route_verification/inventory/balance/delivery reminder creation, stageToGroup map, manual production status on purchasing page, stage advancement on order detail page | ✅ Done |
-
----
-
-## History
-
-| Timestamp | Extension | Task | Status |
-|-----------|-----------|------|--------|
-| 2026-05-24 11:22 | Roo (Code) | Deploy: git pull + rebuild all services on VPS | ✅ Done |
-| 2026-05-24 11:20 | Roo (Code) | Fix: VPS divergent branch — reset to origin/master | ✅ Done |
-| 2026-05-24 11:15 | Roo (Code) | Check: git status clean, VPS behind by 5 commits | ✅ Done |
-| 2026-05-23 23:44 | Roo (Code) | Fix: sales.homeu "Invalid email address" — SW cache name bump to v3 | ✅ Done |
-| 2026-05-23 23:30 | Roo (Code) | Fix: sales.homeu sub-users not showing — merge subUsers in getStoredAccounts() | ✅ Done |
-| 2026-05-23 22:00 | Roo (Code) | Deploy: sub-user login flow + all pending changes | ✅ Done |
-| 2026-05-23 21:00 | Roo (Code) | Fix: Docker stale image references — down --remove-orphans then rebuild | ✅ Done |
-| 2026-05-22 | Roo (Code) | Feat: sub-user login flow for shared accounts | ✅ Done |
-| 2026-05-22 | Roo (Code) | Feat: 888 passcode guard for Telegram bot GUI actions | ✅ Done |
-| 2026-05-22 | Roo (Code) | Feat: role-based route guard in AuthGuard | ✅ Done |
-| 2026-05-21 | Roo (Code) | Feat: production tracking lifecycle (midpoint, due, delivery timeline) | ✅ Done |
-| 2026-05-21 | Roo (Code) | Feat: Hermes Claw (Gemini API) integration for production agent | ✅ Done |
-| 2026-05-21 | Roo (Code) | Feat: OTP gate for all dashboard edits/deletes | ✅ Done |
-| 2026-05-21 | Roo (Code) | Feat: agent notes system with API + dashboard UI | ✅ Done |
-| 2026-05-21 | Roo (Code) | Feat: Telegram UX overhaul — inline buttons, smart order picker, PHT reminders | ✅ Done |
-| 2026-05-21 | Roo (Code) | Security: remove all hardcoded credentials from public files | ✅ Done |
-| 2026-05-20 | Roo (Code) | Feat: clients page with address/contact propagation, order history | ✅ Done |
-| 2026-05-20 | Roo (Code) | Feat: inventory overhaul — category/type, en route tracking | ✅ Done |
-| 2026-05-20 | Roo (Code) | Feat: delivery gap fixes + delivery_date column | ✅ Done |
-| 2026-05-20 | Roo (Code) | Feat: collection tab overhaul — For Payment Before Delivery, delivery exception | ✅ Done |
-| 2026-05-20 | Roo (Code) | Feat: Google Drive upload with retry + token refresh | ✅ Done |
-| 2026-05-20 | Roo (Code) | Fix: Telegram bot 409/429 on restart — close + retry logic | ✅ Done |
-| 2026-05-20 | Roo (Code) | Fix: Dashboard Docker OOM — use npm install instead of npm ci | ✅ Done |
-| 2026-05-26 11:24 | Roo (Code) | E2E gap analysis: fix item-level Start to also set production_started on order for agent reminders; remove unused imports/variable | ✅ Done |
-| 2026-05-26 11:27 | Roo (Code) | Deploy: git pull + docker compose up -d --build on VPS (commits 8b041c9, e6a0632) | ✅ Done |
-| 2026-05-26 18:15 | Roo (Code) | Fix: remove separate Finish Production Pending section — add Finish Production button directly inside Production In Progress section header row | ✅ Done |
-| 2026-05-26 20:42 | Roo (Code) | Fix: QTN Florence inventory arrival date not showing — order-level estimated_arrival_days was null for item-level tracking orders. Updated advanceToEnRouteIfAllDispatched to propagate item-level estimated_arrival_days to order level + backfilled QTN Florence data + flushed Redis cache | ✅ Done |
-| 2026-05-26 23:56 | Roo (Code) | Fix: 401 error when marking selected items en route in Production Finished section — action token consumed on first item PATCH call, failed on subsequent items. Created new POST /orders/:id/bulk-en-route-selected endpoint + bulkEnRouteSelected() API function. Updated handleBulkEnRouteSelectedVerified to use single API call instead of Promise.all with individual updateOrderItem calls. | ✅ Done |
-| 2026-05-27 01:03 | Roo (Code) | Fix: add delivery date to Telegram notification for delivery_scheduled stage updates — both persistent reminder and Stage Update message now show the scheduled delivery date | ✅ Done |
-| 2026-05-27 02:24 | Roo (Code) | Feat: add Guides & Tutorials page (/guides) with step-by-step guides for all tabs, SVG workflow diagrams, search, expandable sections/steps, quick nav chips, internal links. Wire into sidebar + auth system. | ✅ Done |
-| 2026-05-27 23:14 | Roo (Code) | Deployed OpenRouter fallback for chat completions — Gemini → OpenRouter → KB fallback. Set OPENROUTER_API_KEY on VPS. | ✅ Done |

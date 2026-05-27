@@ -544,9 +544,17 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
           {order.estimated_arrival_days && (
             <div className="rounded-lg bg-white p-2.5 shadow-sm">
               <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                <Package className="h-3 w-3 text-sky-500" /> Arrival Est.
+                <Package className="h-3 w-3 text-sky-500" /> Est. Arrival Date
               </span>
-              <p className="mt-1 font-semibold text-gray-800">{order.estimated_arrival_days} days</p>
+              <p className="mt-1 font-semibold text-gray-800">
+                {(() => {
+                  const d = getEstimatedInventoryArrivalDate(order);
+                  return d ? formatDate(d) : `${order.estimated_arrival_days} days`;
+                })()}
+              </p>
+              {order.estimated_arrival_days && (
+                <p className="text-[10px] text-gray-400">{order.estimated_arrival_days} day(s) from en-route</p>
+              )}
             </div>
           )}
         </div>
@@ -688,6 +696,22 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
                 )}
               </>
             )}
+            {/* Estimated arrival date badge for en-route / arrival stages */}
+            {['en_route', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(order.current_stage) && (() => {
+              const estArrival = getEstimatedInventoryArrivalDate(order);
+              if (!estArrival) return null;
+              const now = new Date();
+              const isOverdue = estArrival < now;
+              const isDueSoon = !isOverdue && (estArrival.getTime() - now.getTime()) <= 3 * 86_400_000;
+              return (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  isOverdue ? 'bg-red-100 text-red-700' : isDueSoon ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'
+                }`} title={`Estimated arrival: ${formatDate(estArrival)}`}>
+                  <Calendar className="h-3 w-3" />
+                  Est. Arrival: {formatDate(estArrival)}
+                </span>
+              );
+            })()}
             {progress && !order.production_finished && (
               <>
                 {progress.isOverdue && (
