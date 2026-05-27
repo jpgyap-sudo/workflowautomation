@@ -80,6 +80,18 @@ export function usePartialProductionOrders() {
   return useSWR<Order[]>('/orders/partial-production', fetcher, SWR_CONFIG);
 }
 
+// Returns early-stage orders (quotation_received → deposit_pending) with no deposit paid yet
+// and no production exception granted. Used in Purchasing → "Downpayment Pending" section.
+export function useAwaitingDownpayment() {
+  return useSWR<Order[]>('/orders/awaiting-downpayment', fetcher, SWR_CONFIG);
+}
+
+// Returns ALL orders with production_exception=TRUE, shown until 60 days post-delivery.
+// Includes full payment/delivery tracking. Used in Purchasing → "Production Exception" section.
+export function useProductionExceptionOrders() {
+  return useSWR<Order[]>('/orders/production-exception-active', fetcher, SWR_CONFIG);
+}
+
 // ── Hook: Single Order Detail ────────────────────────────────────────
 export function useOrder(quotationNumber: string | undefined) {
   return useSWR<OrderDetail>(
@@ -124,42 +136,66 @@ export function useRealtimeSubscription() {
         const { keys } = JSON.parse(event.data);
         console.log('[realtime] Invalidation event:', keys);
 
-        // Map API path patterns to SWR cache keys and revalidate them
+        // Server sends Redis-style patterns like 'orders:*', 'dashboard:*', etc.
+        // Map these to SWR cache URL keys used by hooks in this file.
         const swrKeys: string[] = [];
         for (const key of keys) {
-          if (key.includes('dashboard/stats')) swrKeys.push('/dashboard/stats');
-          if (key.includes('/orders/')) swrKeys.push('/orders');
-          if (key.includes('/orders')) swrKeys.push('/orders');
-          if (key.includes('/sales/')) swrKeys.push('/sales/monthly');
-          if (key.includes('/reminders')) swrKeys.push('/reminders');
-          if (key.includes('/agent-logs')) swrKeys.push('/agent-logs');
-          if (key.includes('/calendar/')) {
-            swrKeys.push('/calendar/events');
-            swrKeys.push('/calendar/notes');
+          // Dashboard stats
+          if (key.includes('dashboard')) swrKeys.push('/dashboard/stats');
+
+          // All orders-related hooks — server uses 'orders:*' Redis pattern
+          if (key.includes('orders')) {
+            swrKeys.push('/orders');
+            swrKeys.push('/orders/awaiting-downpayment');
+            swrKeys.push('/orders/production-exception-active');
+            swrKeys.push('/orders/partial-production');
           }
-          if (key.includes('/sales/')) {
+
+          // Stage-specific — server may send 'orders:stage:X'
+          if (key.includes('orders:stage:')) {
+            const stage = key.replace('orders:stage:', '').replace(':*', '').replace('*', '');
+            if (stage) swrKeys.push(`/orders/stage/${stage}`);
+          }
+
+          // Sales
+          if (key.includes('sales')) {
             swrKeys.push('/sales/monthly');
             swrKeys.push('/sales/by-agent');
             swrKeys.push('/sales/by-client');
           }
-          if (key.includes('/backups') || key.includes('supabase-backup')) swrKeys.push('/backups');
-          if (key.includes('/bot-logs')) swrKeys.push('/bot-logs');
-          if (key.includes('/clients')) swrKeys.push('/clients');
-          if (key.includes('/inventory')) {
+
+          // Calendar
+          if (key.includes('calendar')) {
+            swrKeys.push('/calendar/events');
+            swrKeys.push('/calendar/notes');
+          }
+
+          // Reminders
+          if (key.includes('reminders')) swrKeys.push('/reminders');
+
+          // Agent logs
+          if (key.includes('agent-logs')) swrKeys.push('/agent-logs');
+
+          // Backups
+          if (key.includes('backup')) swrKeys.push('/backups');
+
+          // Bot logs
+          if (key.includes('bot-log')) swrKeys.push('/bot-logs');
+
+          // Clients
+          if (key.includes('clients')) swrKeys.push('/clients');
+
+          // Inventory
+          if (key.includes('inventory')) {
             swrKeys.push('/inventory');
             swrKeys.push('/inventory/drafts');
           }
         }
 
-        // Also revalidate any stage-specific keys
-        const stageMatch = keys.find((k: string) => k.includes('/orders/stage/'));
-        if (stageMatch) {
-          swrKeys.push(stageMatch);
-        }
-
-        // Trigger SWR revalidation for all matched keys
+        // Trigger SWR revalidation for all matched keys (deduplicated)
+        const seen = new Set<string>();
         for (const swrKey of swrKeys) {
-          mutate(swrKey);
+          if (!seen.has(swrKey)) { seen.add(swrKey); mutate(swrKey); }
         }
       } catch (e) {
         console.error('[realtime] Failed to parse invalidation event', e);

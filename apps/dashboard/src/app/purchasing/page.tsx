@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useOrdersByStage } from '@/lib/useApi';
+import { useOrdersByStage, useAwaitingDownpayment, useProductionExceptionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients, grantProductionException, revokeProductionException } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -14,8 +14,13 @@ import {
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, CheckCircle,
   Shield, DollarSign, ShieldAlert, Loader2,
-  Search, XCircle,
+  Search, XCircle, Zap, RotateCcw, Calendar, BadgeCheck, BadgeX,
 } from 'lucide-react';
+
+function fmtDate(d: string | null | undefined) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 interface OrderRowProps {
   order: Order;
@@ -25,9 +30,11 @@ interface OrderRowProps {
   onViewFiles?: (order: Order) => void;
   onVerifyDeposit?: (order: Order) => void;
   onMarkDepositPaid?: (order: Order) => void;
+  onGrantSpecialCase?: (order: Order) => void;
+  onRevokeException?: (order: Order) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onMarkDepositPaid }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onMarkDepositPaid, onGrantSpecialCase, onRevokeException }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -252,7 +259,7 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
+          <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-white px-6 py-3">
             {onMarkDepositPaid && !order.deposit_paid && (
               <button
                 onClick={() => onMarkDepositPaid(order)}
@@ -280,6 +287,26 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
                 Start Production Workflow
               </button>
             )}
+            {/* Special Case — allow production before downpayment */}
+            {onGrantSpecialCase && !order.production_exception && (
+              <button
+                onClick={() => onGrantSpecialCase(order)}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              >
+                <Zap className="mr-1 inline-block h-3.5 w-3.5 text-amber-600" />
+                Special Case
+              </button>
+            )}
+            {/* Revoke Exception */}
+            {onRevokeException && order.production_exception && (
+              <button
+                onClick={() => onRevokeException(order)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                <RotateCcw className="mr-1 inline-block h-3.5 w-3.5" />
+                Revoke Exception
+              </button>
+            )}
 
             <span className="self-center text-xs text-gray-500">
               Downpayment: {order.deposit_paid ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}` : 'Pending'}
@@ -287,6 +314,86 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
               Balance: {order.balance_paid ? 'Paid' : 'Pending'}
             </span>
           </div>
+
+          {/* Production Exception tracking panel — shows full payment & delivery trail */}
+          {order.production_exception && (
+            <div className="border-t border-amber-100 bg-amber-50/40 px-6 py-4">
+              {order.production_exception_notes && (
+                <p className="mb-3 text-xs text-amber-800">
+                  <span className="font-semibold">Exception reason:</span> {order.production_exception_notes}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                {/* Downpayment */}
+                <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                  <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    <DollarSign className="h-3 w-3 text-pink-500" /> Downpayment
+                  </span>
+                  <p className={`mt-1 font-semibold ${order.deposit_paid ? 'text-green-600' : 'text-red-500'}`}>
+                    {order.deposit_paid
+                      ? `Paid${order.deposit_amount ? ` ₱${Number(order.deposit_amount).toLocaleString()}` : ''}`
+                      : 'Not Paid'}
+                  </p>
+                </div>
+                {/* DP Date */}
+                <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                  <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    <Calendar className="h-3 w-3 text-pink-400" /> DP Date
+                  </span>
+                  <p className="mt-1 font-semibold text-gray-700">{fmtDate(order.deposit_paid_at)}</p>
+                </div>
+                {/* DP Verification */}
+                <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                  <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    {order.deposit_verified
+                      ? <BadgeCheck className="h-3 w-3 text-green-500" />
+                      : <BadgeX className="h-3 w-3 text-red-400" />}
+                    DP Verified
+                  </span>
+                  <p className={`mt-1 font-semibold ${order.deposit_verified ? 'text-green-600' : 'text-red-500'}`}>
+                    {order.deposit_verified ? fmtDate(order.deposit_verified_at) : 'Pending'}
+                  </p>
+                </div>
+                {/* Balance */}
+                <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                  <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    <DollarSign className="h-3 w-3 text-indigo-500" /> Balance
+                  </span>
+                  <p className={`mt-1 font-semibold ${order.balance_paid ? 'text-green-600' : 'text-amber-600'}`}>
+                    {order.balance_paid ? 'Paid' : 'Pending'}
+                  </p>
+                </div>
+                {/* Balance Date */}
+                <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                  <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    <Calendar className="h-3 w-3 text-indigo-400" /> Balance Date
+                  </span>
+                  <p className="mt-1 font-semibold text-gray-700">{fmtDate(order.balance_paid_at)}</p>
+                </div>
+                {/* Balance Verification */}
+                <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                  <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    {order.balance_verified
+                      ? <BadgeCheck className="h-3 w-3 text-green-500" />
+                      : <BadgeX className="h-3 w-3 text-gray-400" />}
+                    Bal. Verified
+                  </span>
+                  <p className={`mt-1 font-semibold ${order.balance_verified ? 'text-green-600' : 'text-gray-500'}`}>
+                    {order.balance_verified ? fmtDate(order.balance_verified_at) : 'Pending'}
+                  </p>
+                </div>
+                {/* Delivery Date */}
+                {(order.delivery_date || order.current_stage === 'completed') && (
+                  <div className="rounded-lg bg-white p-2.5 shadow-sm">
+                    <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                      <Calendar className="h-3 w-3 text-sky-500" /> Delivery
+                    </span>
+                    <p className="mt-1 font-semibold text-gray-700">{fmtDate(order.delivery_date)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -398,12 +505,14 @@ export default function PurchasingPage() {
 
   const { data: pendingOrders = [], isLoading: loadingPending, error: errorPending, mutate: mutatePending } =
     useOrdersByStage('purchasing_pending');
+  // Awaiting downpayment: covers quotation_received, order_confirmation_received, math_verified, deposit_pending
   const { data: depositPendingOrders = [], isLoading: loadingDepositPending, error: errorDepositPending, mutate: mutateDepositPending } =
-    useOrdersByStage('deposit_pending');
+    useAwaitingDownpayment();
   const { data: depositVerificationOrders = [], isLoading: loadingDepositVerification, error: errorDepositVerification, mutate: mutateDepositVerification } =
     useOrdersByStage('deposit_verification');
+  // Production Exception: all orders with exception flag, shown until 60 days post-delivery
   const { data: exceptionOrders = [], isLoading: loadingExceptions, error: errorExceptions, mutate: mutateExceptions } =
-    useOrdersByStage('production_exception');
+    useProductionExceptionOrders();
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -412,7 +521,8 @@ export default function PurchasingPage() {
   const [verifyingDepositOrder, setVerifyingDepositOrder] = useState<Order | null>(null);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'markDepositPaid';
+    open: boolean; title: string; description: string;
+    pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'markDepositPaid' | 'grantProductionException' | 'revokeProductionException';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
@@ -511,6 +621,8 @@ export default function PurchasingPage() {
     else if (otpModal.pendingAction === 'startProductionWorkflow') handleStartProductionWorkflowVerified(actionToken);
     else if (otpModal.pendingAction === 'verifyDeposit') handleVerifyDepositVerified(actionToken);
     else if (otpModal.pendingAction === 'markDepositPaid') handleMarkDepositPaidVerified(actionToken);
+    else if (otpModal.pendingAction === 'grantProductionException') handleGrantProductionExceptionVerified(actionToken);
+    else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeProductionExceptionVerified(actionToken);
   }
 
   async function handleMarkDepositPaidVerified(actionToken: string) {
@@ -613,6 +725,62 @@ export default function PurchasingPage() {
     (window as any).__pendingMarkDepositPaidData = { order };
   }
 
+  // ── Special Case (Production Exception) ─────────────────────────────
+
+  function handleGrantSpecialCase(order: Order) {
+    const reason = window.prompt(
+      `Enter reason for Special Case — "${order.quotation_number ?? order.id}":\n(Production will be allowed to start before downpayment is received.)`
+    );
+    if (!reason || !reason.trim()) return;
+    setOtpModal({
+      open: true,
+      title: 'Grant Special Case',
+      description: `You are granting a production exception for "${order.quotation_number ?? '—'}". Reason: "${reason.trim()}". Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'grantProductionException',
+    });
+    (window as any).__pendingGrantExceptionData = { order, reason: reason.trim() };
+  }
+
+  async function handleGrantProductionExceptionVerified(actionToken: string) {
+    const pending = (window as any).__pendingGrantExceptionData as { order: Order; reason: string } | null;
+    if (!pending) return;
+    try {
+      await grantProductionException(pending.order.id, {
+        notes: pending.reason,
+        granted_by: 'dashboard',
+        action_token: actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to grant exception: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingGrantExceptionData = null;
+    }
+  }
+
+  function handleRevokeException(order: Order) {
+    setOtpModal({
+      open: true,
+      title: 'Revoke Production Exception',
+      description: `You are about to revoke the production exception for "${order.quotation_number ?? '—'}". The order will return to the normal downpayment-required flow. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'revokeProductionException',
+    });
+    (window as any).__pendingRevokeExceptionData = { order };
+  }
+
+  async function handleRevokeProductionExceptionVerified(actionToken: string) {
+    const pending = (window as any).__pendingRevokeExceptionData as { order: Order } | null;
+    if (!pending) return;
+    try {
+      await revokeProductionException(pending.order.id, actionToken);
+      refresh();
+    } catch (err: any) {
+      alert('Failed to revoke exception: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingRevokeExceptionData = null;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -689,7 +857,12 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onMarkDepositPaid={handleMarkDepositPaid} onViewFiles={handleViewFiles} />
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick}
+              onMarkDepositPaid={handleMarkDepositPaid}
+              onGrantSpecialCase={handleGrantSpecialCase}
+              onViewFiles={handleViewFiles}
+            />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -717,7 +890,7 @@ export default function PurchasingPage() {
         )}
       </OrderSection>
 
-      {/* Production Exception */}
+      {/* Production Exception — shown until 60 days after delivery */}
       <OrderSection
         icon={<ShieldAlert className="h-4 w-4 text-red-500" />}
         title="Production Exception"
@@ -729,7 +902,14 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProductionWorkflow={handleStartProductionWorkflow} onViewFiles={handleViewFiles} />
+            <OrderRow
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick}
+              onStartProductionWorkflow={!order.production_started ? handleStartProductionWorkflow : undefined}
+              onVerifyDeposit={order.deposit_paid && !order.deposit_verified ? handleVerifyDeposit : undefined}
+              onMarkDepositPaid={!order.deposit_paid ? handleMarkDepositPaid : undefined}
+              onRevokeException={handleRevokeException}
+              onViewFiles={handleViewFiles}
+            />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}

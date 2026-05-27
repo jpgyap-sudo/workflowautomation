@@ -1276,6 +1276,63 @@ app.post('/orders/unsynced-payments/sync', async (request, reply) => {
   return { ok: true };
 });
 
+// GET /orders/awaiting-downpayment
+// Returns all active orders in early stages (quotation_received → deposit_pending)
+// where the deposit has NOT been paid yet AND no production exception has been granted.
+// This fills the gap where quotation_received orders don't appear in Downpayment Pending.
+app.get('/orders/awaiting-downpayment', async (request, reply) => {
+  const cacheKey = 'orders:awaiting-downpayment';
+  const cached = await cacheGet<object[]>(cacheKey);
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending')
+       AND o.deposit_paid = FALSE
+       AND (o.production_exception IS NULL OR o.production_exception = FALSE)
+       AND o.status = 'active'
+     GROUP BY o.id
+     ORDER BY o.created_at DESC`, []
+  );
+  await cacheSet(cacheKey, rows);
+  return rows;
+});
+
+// GET /orders/production-exception-unpaid (legacy alias — redirects to new endpoint)
+app.get('/orders/production-exception-unpaid', async (request, reply) => {
+  return reply.redirect('/orders/production-exception-active');
+});
+
+// GET /orders/production-exception-active
+// Returns ALL orders where a production exception was granted.
+// Shown in the Production Exception section until 60 days after delivery is complete.
+// Includes full payment/delivery tracking (downpayment, balance, delivery date).
+app.get('/orders/production-exception-active', async (request, reply) => {
+  const cacheKey = 'orders:production-exception-active';
+  const cached = await cacheGet<object[]>(cacheKey);
+  if (cached) return cached;
+  const rows = await query(
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.production_exception = TRUE
+       AND (
+         -- Still active in any stage
+         o.status = 'active'
+         OR
+         -- Completed within the last 60 days
+         (o.status = 'completed' AND o.updated_at >= NOW() - INTERVAL '60 days')
+       )
+     GROUP BY o.id
+     ORDER BY o.created_at DESC`, []
+  );
+  await cacheSet(cacheKey, rows);
+  return rows;
+});
+
 app.get('/orders/picker', async (request, reply) => {
   const { action } = z.object({ action: z.string() }).parse(request.query);
 
