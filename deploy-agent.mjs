@@ -20,9 +20,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Configuration ──────────────────────────────────────────────
 const CONFIG = {
-  sshHost: process.env.QAS_VPS_HOST ?? '127.0.0.1',
-  sshUser: process.env.QAS_SSH_USER ?? 'deploy',
-  sshIdentityFile: process.env.QAS_DEPLOY_KEY ?? resolve(process.env.HOME || process.env.USERPROFILE || '.', '.ssh', 'id_rsa'),
+  sshHost: (process.env.QAS_VPS_HOST ?? '127.0.0.1').trim(),
+  sshUser: (process.env.QAS_SSH_USER ?? 'deploy').trim(),
+  sshIdentityFile: (process.env.QAS_DEPLOY_KEY ?? resolve(process.env.HOME || process.env.USERPROFILE || '.', '.ssh', 'id_rsa')).trim(),
   // Target directory on VPS
   vpsPath: '/opt/quotation-automation',
   // Project root (this file's directory)

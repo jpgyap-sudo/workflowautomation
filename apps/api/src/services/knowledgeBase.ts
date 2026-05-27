@@ -6,11 +6,12 @@ import { createHash } from 'crypto';
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? '';
-const EMBEDDING_MODEL = process.env.KNOWLEDGE_EMBEDDING_MODEL ?? 'text-embedding-3-small';
-const EMBEDDING_DIMENSIONS = parseInt(process.env.KNOWLEDGE_EMBEDDING_DIMENSIONS ?? '1536', 10);
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const EMBEDDING_MODEL = process.env.KNOWLEDGE_EMBEDDING_MODEL ?? 'text-embedding-004';
+const EMBEDDING_DIMENSIONS = parseInt(process.env.KNOWLEDGE_EMBEDDING_DIMENSIONS ?? '768', 10);
 const CHUNK_SIZE = parseInt(process.env.KNOWLEDGE_CHUNK_SIZE ?? '1000', 10);
 const CHUNK_OVERLAP = parseInt(process.env.KNOWLEDGE_CHUNK_OVERLAP ?? '200', 10);
+const EMBEDDING_TIMEOUT_MS = parseInt(process.env.KNOWLEDGE_EMBEDDING_TIMEOUT_MS ?? '30000', 10);
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -104,33 +105,39 @@ function chunkText(text: string, chunkSize: number, overlap: number): string[] {
 // ── Embedding Generation ───────────────────────────────────────────────
 
 async function generateEmbedding(text: string): Promise<number[] | null> {
-  if (!OPENAI_API_KEY) {
-    console.warn('[knowledgeBase] No OPENAI_API_KEY set — skipping embedding generation');
+  if (!GEMINI_API_KEY) {
+    console.warn('[knowledgeBase] No GEMINI_API_KEY set — skipping embedding generation');
     return null;
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: text,
-        dimensions: EMBEDDING_DIMENSIONS,
-      }),
-    });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[knowledgeBase] OpenAI embedding error ${response.status}: ${errorText}`);
-      return null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: `models/${EMBEDDING_MODEL}`,
+          content: { parts: [{ text }] },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[knowledgeBase] Gemini embedding error ${response.status}: ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json() as any;
+      return data.embedding?.values as number[] ?? null;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const data = await response.json() as any;
-    return data.data[0].embedding as number[];
   } catch (err: any) {
     console.error(`[knowledgeBase] Failed to generate embedding: ${err.message}`);
     return null;

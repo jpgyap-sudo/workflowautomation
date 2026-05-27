@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS knowledge_embeddings (
   document_id   UUID NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
   chunk_index   INT NOT NULL DEFAULT 0,   -- Which chunk of the document this is
   chunk_text    TEXT NOT NULL,             -- The text chunk that was embedded
-  embedding     VECTOR(1536),             -- OpenAI text-embedding-3-small (1536d)
+  embedding     VECTOR(768),              -- Gemini text-embedding-004 (768d)
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

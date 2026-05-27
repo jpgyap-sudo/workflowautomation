@@ -6,11 +6,13 @@ import { fileURLToPath } from 'url';
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? '';
-const CHAT_MODEL = process.env.CHAT_MODEL ?? 'gpt-4o-mini';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const CHAT_MODEL = process.env.CHAT_MODEL ?? 'gemini-2.0-flash';
 const CHAT_TEMPERATURE = parseFloat(process.env.CHAT_TEMPERATURE ?? '0.3');
 const CHAT_MAX_TOKENS = parseInt(process.env.CHAT_MAX_TOKENS ?? '1024', 10);
 const MAX_HISTORY = parseInt(process.env.CHAT_MAX_HISTORY ?? '20', 10);
+const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS ?? '30000', 10);
+const API_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}`;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -127,39 +129,59 @@ async function callChatAPI(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<string | null> {
-  if (!OPENAI_API_KEY) {
-    console.warn('[chatService] No OPENAI_API_KEY set — returning fallback response');
+  if (!GEMINI_API_KEY) {
+    console.warn('[chatService] No GEMINI_API_KEY set — returning fallback response');
     return null;
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: CHAT_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ],
-        temperature: CHAT_TEMPERATURE,
-        max_tokens: CHAT_MAX_TOKENS,
-      }),
-    });
+    // Build Gemini contents array: system prompt as first user message, then conversation
+    const contents = [
+      { role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\nPlease answer the following questions based on the above instructions.` }] },
+      { role: 'model', parts: [{ text: 'I understand. I will follow those guidelines carefully.' }] },
+      ...messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
+    ];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[chatService] OpenAI API error ${response.status}: ${errorText}`);
-      return null;
+    const url = `${API_BASE}:generateContent?key=${GEMINI_API_KEY}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          generation_config: {
+            temperature: CHAT_TEMPERATURE,
+            max_output_tokens: CHAT_MAX_TOKENS,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[chatService] Gemini API error ${response.status}: ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json() as any;
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        console.warn('[chatService] Gemini returned empty response');
+        return null;
+      }
+      return text;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const data = await response.json() as any;
-    return data.choices[0].message.content as string;
   } catch (err: any) {
-    console.error(`[chatService] Failed to call OpenAI: ${err.message}`);
+    console.error(`[chatService] Failed to call Gemini: ${err.message}`);
     return null;
   }
 }
