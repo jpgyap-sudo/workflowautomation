@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ScanEye, Upload, FileText, User, DollarSign, Hash, Loader2, CheckCircle, XCircle, AlertCircle, ExternalLink, Clock, Image as ImageIcon, Eye } from 'lucide-react';
 import OtpModal from '@/components/OtpModal';
+import { useAuth } from '@/lib/auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
@@ -104,6 +105,7 @@ type Step = 'idle' | 'extracting' | 'review' | 'creating' | 'done' | 'error';
 type OtpAction = 'createOrder' | 'recordPayment';
 
 function VisionPageContent() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +139,13 @@ function VisionPageContent() {
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentPaidBy, setPaymentPaidBy] = useState('');
+
+  // Auto-fill sales agent from logged-in user (only if not already set by AI extraction)
+  useEffect(() => {
+    if (user?.name && !salesAgent) {
+      setSalesAgent(user.name);
+    }
+  }, [user]);
 
   // Load shared data from Telegram bot via ?token=xxx
   useEffect(() => {

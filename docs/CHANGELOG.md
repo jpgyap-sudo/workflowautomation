@@ -23,6 +23,8 @@
 | | Roo (Code) | feat: AI Assistant Chat + Update Logs — tutorial agent (agents/tutorial-agent/agent.md), knowledge base ingestion pipeline (pgvector + OpenAI embeddings), chat API (Fastify + gpt-4o-mini), chat UI (/chat) with conversation management, update logs page (/update-logs, admin-only), migration 041, docker-compose postgres → pgvector/pgvector:pg16. Wired into sidebar + auth system. | ❌ |
 | `f10baad` | Roo (Code) | feat: add OpenRouter fallback for chat completions (Gemini → OpenRouter → KB fallback) | ❌ |
 | `56267ac` | Roo (Code) | feat: production tab — add estimated arrival date display + bulk en-route item selection in ProductionInfoCards. Updated "Arrival Est." card to show computed date. Added inline "Est. Arrival" badge with color coding (red=overdue, amber=due soon, sky=on track). Added bulk en-route item checkboxes + "En Route Selected (N)" button. | ✅ VPS `56267ac` |
+| `eb510c2` | Roo (Code) | fix: acknowledgement receipt wrong amount on full payment — getReceiptAmount now returns total_amount when balance_paid or deposit_is_full_payment is TRUE. Same fix applied to receipts list endpoint. | ❌ |
+| | Roo (Code) | feat: auto-fill sales agent from logged-in user — NewOrderModal and VisionPageContent auto-fill salesAgent from useAuth().user.name when a sub-user (Mariella/Cathlyn) is logged in. | ❌ |
 
 ## 2026-05-26
 

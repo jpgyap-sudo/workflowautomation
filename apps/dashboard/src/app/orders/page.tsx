@@ -7,9 +7,11 @@ import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit,
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
+import { useAuth } from '@/lib/auth';
 import { X, Check, Plus, Loader2, Trash2, Upload, Sparkles as SparklesIcon, ChevronDown } from 'lucide-react';
 
 function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { user } = useAuth();
   const [qn, setQn] = useState('');
   const [clientName, setClientName] = useState('');
   const [salesAgent, setSalesAgent] = useState('');
@@ -24,6 +26,13 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [searchingClient, setSearchingClient] = useState(false);
   const clientInputRef = useRef<HTMLInputElement>(null);
   const clientDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Auto-fill sales agent from logged-in user
+  useEffect(() => {
+    if (user?.name && !salesAgent) {
+      setSalesAgent(user.name);
+    }
+  }, [user]);
 
   // Close client dropdown on outside click
   useEffect(() => {
