@@ -4143,17 +4143,15 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
   const totalVerified = verifiedItemRows.reduce((sum, item) => sum + Number(item.verified_qty ?? 0), 0);
   const pct = totalQty > 0 ? Math.round((totalVerified / totalQty) * 100) : 0;
 
-  // Set remaining_qty for items that are not fully verified — these need to be tracked for later delivery
+  // Set remaining_qty for ALL items — fully-verified items get 0, partially-verified items get the difference
   for (const item of verifiedItemRows) {
     const verified = Number(item.verified_qty ?? 0);
     const ordered = Number(item.quantity ?? 0);
     const remaining = Math.max(0, ordered - verified);
-    if (remaining > 0) {
-      await query(
-        `UPDATE order_items SET remaining_qty = $1, updated_at = NOW() WHERE order_id = $2 AND name = $3`,
-        [remaining, id, item.name]
-      );
-    }
+    await query(
+      `UPDATE order_items SET remaining_qty = $1, updated_at = NOW() WHERE order_id = $2 AND name = $3`,
+      [remaining, id, item.name]
+    );
   }
 
   const verifiedItemList = verifiedItemRows.length
@@ -4302,8 +4300,8 @@ app.post('/orders/:id/partial-delivery', async (request, reply) => {
 
   const order = orderRows[0];
 
-  // Allow partial delivery from: inventory_arrived, balance_due, balance_verification, delivery_pending, delivery_scheduled
-  const allowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
+  // Allow partial delivery from: inventory_arrived, en_route_verification, balance_due, balance_verification, delivery_pending, delivery_scheduled
+  const allowedStages = ['inventory_arrived', 'en_route_verification', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
   if (!allowedStages.includes(order.current_stage)) {
     return reply.code(400).send({
       error: `Cannot record partial delivery in stage '${order.current_stage}'. Allowed stages: ${allowedStages.join(', ')}.`,
@@ -4577,7 +4575,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   const tokenPayload = JSON.parse(tokenData);
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
-  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, order_type, balance_verified FROM orders WHERE id = $1`, [id]);
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, order_type, balance_verified, partial_delivery FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
   if (orderRows[0].current_stage !== 'inventory_arrived') {
     return reply.code(400).send({ error: 'Order is not in inventory arrival stage' });
@@ -4587,6 +4585,7 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
   // Fully paid + balance-verified orders skip balance_due and move straight to delivery scheduling.
   const isReplenishment = orderRows[0].order_type === 'stock_replenishment';
   const isBalanceAlreadyVerified = orderRows[0].balance_verified === true;
+  const isPartialDelivery = orderRows[0].partial_delivery === true;
   const nextStage = isReplenishment ? 'completed' : (isBalanceAlreadyVerified ? 'delivery_pending' : 'balance_due');
   const stageRemark = isReplenishment
     ? 'Inventory arrived and confirmed. Stock replenishment complete.'
@@ -4595,11 +4594,14 @@ app.post('/orders/:id/confirm-inventory-arrived', async (request, reply) => {
       : 'Inventory arrival confirmed. Proceeding to balance due.';
 
 
+  // Preserve existing inventory_verification_pct for partial delivery orders
+  // so the partial verification percentage is not overwritten
   await query(
     `UPDATE orders SET current_stage = $1, inventory_verified_at = NOW(),
-     inventory_verification_pct = 100, updated_at = NOW()
+     inventory_verification_pct = CASE WHEN $3 = TRUE THEN inventory_verification_pct ELSE 100 END,
+     updated_at = NOW()
      WHERE id = $2`,
-    [nextStage, id]
+    [nextStage, id, isPartialDelivery]
   );
 
   await query(

@@ -1118,16 +1118,6 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
-                      {order.partial_delivery && (
-                        <button
-                          onClick={() => handleOpenPartialDelivery(order)}
-                          disabled={actionLoading === order.id}
-                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
-                          title="Record partial delivery of verified items"
-                        >
-                          {actionLoading === order.id ? '…' : <><Package className="mr-1 inline h-3 w-3" />Partial Delivery</>}
-                        </button>
-                      )}
                       <button
                         onClick={() => handleAdvanceBalanceDue(order)}
                         disabled={actionLoading === order.id}
