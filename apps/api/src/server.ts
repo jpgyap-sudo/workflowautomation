@@ -7606,7 +7606,7 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
   const currentStage = order.current_stage;
   const nextStage = (currentStage === 'delivered' || currentStage === 'countered')
     ? 'payment_received'
-    : (currentStage === 'balance_due' || currentStage === 'inventory_arrived' || currentStage === 'delivery_scheduled')
+    : (currentStage === 'balance_due' || currentStage === 'inventory_arrived' || currentStage === 'delivery_scheduled' || currentStage === 'balance_verification')
       ? 'delivery_pending'
       : currentStage;
 

@@ -53,6 +53,20 @@ function VerificationPill({ verified }: { verified: boolean | null | undefined }
   );
 }
 
+// Stages that have already passed balance verification — use to infer balance_verified
+// for orders that were manually advanced without going through the verify-balance step.
+const BALANCE_VERIFIED_STAGES = new Set([
+  'delivery_pending', 'delivery_scheduled', 'delivered',
+  'countered', 'payment_received', 'payment_confirmed', 'completed',
+]);
+
+// When an order is at (or past) a stage that requires balance verification to reach,
+// treat it as verified even if the DB flag is still FALSE (legacy/manual advancement gap).
+function effectiveBalanceVerified(order: Order): boolean {
+  if (order.balance_verified) return true;
+  return !!(order.balance_paid && BALANCE_VERIFIED_STAGES.has(order.current_stage));
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return '\u2014';
   return <Timestamp value={value} variant="compact" />;
@@ -278,17 +292,21 @@ export default function OrderTable({
                 <div>
                   <dt className="text-gray-400">Math</dt>
                   <dd className="mt-1">
-                    <StatusPill
-                      className={
-                        order.math_status === 'verified'
-                          ? 'bg-green-100 text-green-700'
-                          : order.math_status === 'failed'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                      }
-                    >
-                      {order.math_status}
-                    </StatusPill>
+                    {order.computed_amount == null ? (
+                      <span className="text-xs text-gray-400">—</span>
+                    ) : (
+                      <StatusPill
+                        className={
+                          order.math_status === 'verified'
+                            ? 'bg-green-100 text-green-700'
+                            : order.math_status === 'failed'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                        }
+                      >
+                        {order.math_status}
+                      </StatusPill>
+                    )}
                   </dd>
                 </div>
                 {showOrderDate && (
@@ -319,7 +337,7 @@ export default function OrderTable({
                 {showBalance && (
                   <div>
                     <dt className="text-gray-400">Balance Verified</dt>
-                    <dd className="mt-1"><VerificationPill verified={order.balance_verified} /></dd>
+                    <dd className="mt-1"><VerificationPill verified={effectiveBalanceVerified(order)} /></dd>
                     {order.balance_verified_at && <dd className="mt-1 text-[11px] text-gray-400">{formatDate(order.balance_verified_at)}</dd>}
                   </div>
                 )}
@@ -492,22 +510,26 @@ export default function OrderTable({
                   )}
                   {showBalance && (
                     <td className="px-4 py-3">
-                      <VerificationPill verified={order.balance_verified} />
+                      <VerificationPill verified={effectiveBalanceVerified(order)} />
                       {order.balance_verified_at && <div className="mt-1 text-[11px] text-gray-400">{formatDate(order.balance_verified_at)}</div>}
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    <StatusPill
-                      className={
-                        order.math_status === 'verified'
-                          ? 'bg-green-100 text-green-700'
-                          : order.math_status === 'failed'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                      }
-                    >
-                      {order.math_status}
-                    </StatusPill>
+                    {order.computed_amount == null ? (
+                      <span className="text-xs text-gray-400">—</span>
+                    ) : (
+                      <StatusPill
+                        className={
+                          order.math_status === 'verified'
+                            ? 'bg-green-100 text-green-700'
+                            : order.math_status === 'failed'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                        }
+                      >
+                        {order.math_status}
+                      </StatusPill>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500"><Timestamp value={order.created_at} variant="compact" /></td>
                   <td className="px-4 py-3 text-xs text-gray-500"><Timestamp value={order.updated_at} variant="relative" /></td>
