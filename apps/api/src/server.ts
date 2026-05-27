@@ -7159,8 +7159,9 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   // - If balance is also paid (full payment) AND the order is from_stock, advance to balance_verification
   //   since there's no production to go through.
   // - If balance is also paid but the order is NOT from_stock, advance to purchasing_pending (normal
-  //   production flow). The balance verification happens naturally after production → delivery.
-  //   Skipping production would leave the order stuck without items being manufactured.
+  //   production flow). Also auto-verify the balance so that when inventory arrives later,
+  //   confirm-inventory-arrived sees balance_verified=TRUE and skips to delivery_pending
+  //   instead of getting stuck at balance_due.
   // - Otherwise, standard advance to purchasing_pending.
   const isFromStock = order.order_type === 'from_stock';
   const balanceAlsoPaid = !!order.balance_paid;
@@ -7181,16 +7182,25 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     ? (prepDays === 0 ? new Date() : new Date(Date.now() + prepDays * 86_400_000))
     : null;
 
+  // For non-from-stock orders where balance is also paid (full payment deposit),
+  // auto-verify the balance so that when inventory arrives later,
+  // confirm-inventory-arrived sees balance_verified=TRUE and skips to delivery_pending
+  // instead of getting stuck at balance_due with no one to verify the balance.
+  const autoVerifyBalance = balanceAlsoPaid && !isFromStock;
+
   await query(
     `UPDATE orders SET
        deposit_verified = TRUE,
        deposit_verified_at = NOW(),
        deposit_verified_by = $2,
+       balance_verified = CASE WHEN $5 THEN TRUE ELSE balance_verified END,
+       balance_verified_at = CASE WHEN $5 THEN NOW() ELSE balance_verified_at END,
+       balance_verified_by = CASE WHEN $5 THEN $2 ELSE balance_verified_by END,
        current_stage = $3,
        stock_prep_ready_at = COALESCE(stock_prep_ready_at, $4),
        updated_at = NOW()
      WHERE id = $1`,
-    [id, body.verified_by ?? null, nextStage, readyAt?.toISOString() ?? null],
+    [id, body.verified_by ?? null, nextStage, readyAt?.toISOString() ?? null, autoVerifyBalance],
   );
 
   // Record stage updates
@@ -7214,7 +7224,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
         isFromStock
           ? `From-stock order — skipping production/en_route. Preparing from existing inventory.`
           : balanceAlsoPaid
-            ? 'Downpayment verified. Full payment recorded — order proceeds through production workflow. Balance will be verified after delivery.'
+            ? 'Downpayment verified. Full payment recorded — balance auto-verified. Order proceeds through production workflow and will skip to delivery_pending after inventory arrival.'
             : 'Downpayment verified; ready for purchasing/production preparation.',
         body.verified_by ?? null],
     );
@@ -7299,26 +7309,28 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   } else {
     // Standard order: notify production group
     setImmediate(() => {
+      const paymentLabel = balanceAlsoPaid ? 'Full Payment' : 'Downpayment';
       notifyGroupChat(
         COLLECTION_CHAT_ID,
-        `✅ <b>Deposit Verified</b>\n\n` +
+        `✅ <b>Deposit Verified${balanceAlsoPaid ? ' (Full Payment)' : ''}</b>\n\n` +
         `Quotation: <b>${order.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n` +
         `Verified by: ${body.verified_by ?? 'team'}\n` +
         `Next stage: <b>Purchasing Pending</b>\n\n` +
-        `Deposit has been verified on the dashboard.`
+        `${paymentLabel} has been verified on the dashboard.${balanceAlsoPaid ? '\nBalance auto-verified — order will skip to delivery_pending after inventory arrival.' : ''}`
       );
     });
 
     setImmediate(() => {
       const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
       if (prodGroupChatId && _TELEGRAM_BOT_TOKEN) {
+        const paymentLabel = balanceAlsoPaid ? 'Full Payment' : 'Downpayment';
         notifyGroupChatWithButtons(
           prodGroupChatId,
-          `💰 <b>Downpayment Verified</b>\n\n` +
+          `💰 <b>${paymentLabel} Verified</b>\n\n` +
           `Quotation: <b>${order.quotation_number}</b>\n` +
           `Client: ${order.client_name ?? 'N/A'}\n\n` +
-          `The client has made the downpayment and the deposit is now verified.\n\n` +
+          `The client has made the ${paymentLabel.toLowerCase()} and the deposit is now verified.\n\n` +
           `❓ <b>Do we proceed to start the production workflow?</b>`,
           [
             [
@@ -7351,7 +7363,7 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   if (isDashboardOrigin(body.verified_by)) {
     const escalationStageLabel = isFromStock
       ? (balanceAlsoPaid ? 'Balance Verification (full payment)' : 'Stock Preparation')
-      : 'Purchasing Pending';
+      : (balanceAlsoPaid ? 'Purchasing Pending (full payment, balance auto-verified)' : 'Purchasing Pending');
     await notifyManualChange(
       'Deposit verified',
       `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${escalationStageLabel}`,

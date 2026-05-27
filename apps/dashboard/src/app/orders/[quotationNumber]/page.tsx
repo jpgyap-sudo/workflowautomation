@@ -47,7 +47,11 @@ export default function OrderDetailPage() {
         action_token: actionToken,
       });
       if (res.ok) {
-        setVerifyDepositResult({ ok: true, message: `✅ Deposit verified! Advancing to ${res.next_stage?.replace(/_/g, ' ') ?? 'next stage'}.` });
+        const isFullPayment = order.deposit_amount != null && order.total_amount != null && order.deposit_amount >= order.total_amount;
+        const balanceNote = isFullPayment && order.order_type !== 'from_stock'
+          ? ' Balance auto-verified — will skip to delivery after production.'
+          : '';
+        setVerifyDepositResult({ ok: true, message: `✅ Deposit verified! Advancing to ${res.next_stage?.replace(/_/g, ' ') ?? 'next stage'}.${balanceNote}` });
         setTimeout(() => window.location.reload(), 1500);
       } else {
         setVerifyDepositResult({ ok: false, message: 'Failed to verify deposit.' });
@@ -389,7 +393,9 @@ export default function OrderDetailPage() {
               <p className="text-xs font-semibold text-rose-800">Deposit Verification Required</p>
             </div>
             <p className="text-xs text-rose-700">
-              Deposits have been recorded but not yet verified. Verify them to advance to purchasing.
+              {order.deposit_amount != null && order.total_amount != null && order.deposit_amount >= order.total_amount
+                ? 'Full payment recorded as deposit. Verifying will auto-verify the balance — order will skip to delivery after production.'
+                : 'Deposits have been recorded but not yet verified. Verify them to advance to purchasing.'}
             </p>
             {verifyDepositResult ? (
               <p className={`text-xs font-medium ${verifyDepositResult.ok ? 'text-green-700' : 'text-red-600'}`}>
@@ -490,6 +496,13 @@ export default function OrderDetailPage() {
                   </span>
                 )}
               </>
+            )}
+            {order.deposit_amount >= order.total_amount && order.balance_verified && (
+              <div className="mt-1">
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                  ✅ Balance auto-verified (full payment deposit)
+                </span>
+              </div>
             )}
           </div>
         )}
