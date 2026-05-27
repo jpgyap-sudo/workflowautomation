@@ -4437,18 +4437,34 @@ async function getReceiptPaymentById(paymentId: string): Promise<ReceiptPaymentR
 }
 
 async function getReceiptAmount(payment: ReceiptPaymentRow): Promise<number> {
-  if (payment.source !== 'full_payment') return Number(payment.amount);
-  const rows = await query<{ total: string | number }>(
-    `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM payments
-     WHERE order_id = $1
-       AND source = 'full_payment'
-       AND COALESCE(reference_number, '') = COALESCE($2, '')
-       AND COALESCE(payment_date::text, '') = COALESCE($3::text, '')
-       AND ABS(EXTRACT(EPOCH FROM (created_at - $4::timestamptz))) < 5`,
-    [payment.order_id, payment.reference_number ?? '', payment.payment_date ?? '', payment.created_at]
-  );
-  return Number(rows[0]?.total ?? payment.amount);
+  // Case 1: The payment itself is a full_payment record — sum all payments for this order
+  // (handles both source='full_payment' and source=<user-email> from dashboard full-payment flow)
+  if (payment.source === 'full_payment') {
+    const rows = await query<{ total: string | number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS total
+       FROM payments
+       WHERE order_id = $1
+         AND source = 'full_payment'
+         AND COALESCE(reference_number, '') = COALESCE($2, '')
+         AND COALESCE(payment_date::text, '') = COALESCE($3::text, '')
+         AND ABS(EXTRACT(EPOCH FROM (created_at - $4::timestamptz))) < 5`,
+      [payment.order_id, payment.reference_number ?? '', payment.payment_date ?? '', payment.created_at]
+    );
+    return Number(rows[0]?.total ?? payment.amount);
+  }
+
+  // Case 2: Deposit covers the full order total (deposit_is_full_payment) — show total_amount
+  if (payment.deposit_is_full_payment && payment.total_amount != null) {
+    return Number(payment.total_amount);
+  }
+
+  // Case 3: Order is fully settled (balance_paid) — show total_amount
+  if (payment.balance_paid && payment.total_amount != null) {
+    return Number(payment.total_amount);
+  }
+
+  // Case 4: Regular individual payment — show just this payment's amount
+  return Number(payment.amount);
 }
 
 // GET /payments/acknowledgement-receipts — List downloadable acknowledgement receipts for recorded payments
@@ -4482,21 +4498,39 @@ app.get('/payments/acknowledgement-receipts', async (request, reply) => {
     [limit]
   );
 
-  const receipts = rows.map((p) => ({
-    payment_id: p.id,
-    receipt_number: receiptNumberForPayment(p),
-    order_id: p.order_id,
-    quotation_number: p.quotation_number,
-    client_name: p.client_name,
-    payment_type: paymentKindLabel(p),
-    amount: p.source === 'full_payment' ? Number(p.full_group_total ?? p.amount) : Number(p.amount),
-    payment_date: p.payment_date,
-    reference_number: p.reference_number,
-    source: p.source,
-    verified: p.verified,
-    created_at: p.created_at,
-    download_url: `/payments/${p.id}/acknowledgement-receipt.pdf`,
-  }));
+  const receipts = rows.map((p) => {
+    // Determine the display amount for the receipt list
+    let displayAmount: number;
+    if (p.source === 'full_payment') {
+      // Full-payment source: use the grouped total (deposit + balance portions)
+      displayAmount = Number(p.full_group_total ?? p.amount);
+    } else if (p.deposit_is_full_payment && p.total_amount != null) {
+      // Deposit covers full order total: show total_amount
+      displayAmount = Number(p.total_amount);
+    } else if (p.balance_paid && p.total_amount != null) {
+      // Order fully settled: show total_amount
+      displayAmount = Number(p.total_amount);
+    } else {
+      // Regular individual payment
+      displayAmount = Number(p.amount);
+    }
+
+    return {
+      payment_id: p.id,
+      receipt_number: receiptNumberForPayment(p),
+      order_id: p.order_id,
+      quotation_number: p.quotation_number,
+      client_name: p.client_name,
+      payment_type: paymentKindLabel(p),
+      amount: displayAmount,
+      payment_date: p.payment_date,
+      reference_number: p.reference_number,
+      source: p.source,
+      verified: p.verified,
+      created_at: p.created_at,
+      download_url: `/payments/${p.id}/acknowledgement-receipt.pdf`,
+    };
+  });
 
   return reply.send({ ok: true, receipts });
 });
