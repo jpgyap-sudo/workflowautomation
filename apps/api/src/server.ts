@@ -4168,6 +4168,10 @@ type ReceiptPaymentRow = {
   client_name: string | null;
   sales_agent: string | null;
   total_amount: number | string | null;
+  /** TRUE when the deposit amount covers the entire order total (full payment via deposit flow) */
+  deposit_is_full_payment?: boolean | null;
+  /** TRUE when the order's balance has been fully settled */
+  balance_paid?: boolean | null;
 };
 
 function formatReceiptDate(value: string | Date | null | undefined): string {
@@ -4182,8 +4186,9 @@ function receiptNumberForPayment(payment: { id: string; created_at?: string | nu
   return `AR-${year}-${payment.id.slice(0, 8).toUpperCase()}`;
 }
 
-function paymentKindLabel(payment: { type: string; source?: string | null }): string {
+function paymentKindLabel(payment: { type: string; source?: string | null; deposit_is_full_payment?: boolean | null }): string {
   if (payment.source === 'full_payment') return 'Full Payment';
+  if (payment.type === 'deposit' && payment.deposit_is_full_payment) return 'Full Payment';
   return payment.type === 'deposit' ? 'Downpayment' : 'Balance Payment';
 }
 
@@ -4263,6 +4268,8 @@ function buildAcknowledgementReceiptPdf(data: {
   verified: boolean;
   verifiedBy?: string | null;
   items?: { name: string; quantity: number }[];
+  /** When TRUE, suppresses the "balance must be settled before delivery" notice */
+  balancePaid?: boolean | null;
 }): Buffer {
   const width = 595;
   const height = 842;
@@ -4357,9 +4364,11 @@ function buildAcknowledgementReceiptPdf(data: {
   // Track where content ends so Prepared By always renders below everything
   let contentBottomY = itemsBottomY - 28 - (ackLines.length - 1) * 16;
 
-  // Balance notice: only for Downpayment AND only if full payment has NOT already been made
-  // (Full Payment type means the entire amount was paid at once — no balance notice needed)
-  if (data.paymentType === 'Downpayment') {
+  // Balance notice: only for partial downpayments where balance has NOT yet been settled.
+  // Suppressed when:
+  //   • paymentType is 'Full Payment' (entire amount paid at once — nothing more owed), OR
+  //   • balancePaid = TRUE (balance has since been fully settled via a separate payment)
+  if (data.paymentType === 'Downpayment' && !data.balancePaid) {
     const noticeY = contentBottomY - 20;
     text(60, noticeY, 9, 'Important: Balance payment must be settled in full before delivery can be arranged.', 'F2');
     contentBottomY = noticeY;
@@ -4413,7 +4422,9 @@ async function getReceiptPaymentById(paymentId: string): Promise<ReceiptPaymentR
   const rows = await query<ReceiptPaymentRow>(
     `SELECT p.id, p.order_id, p.type, p.amount, p.reference_number, p.paid_by, p.payment_date,
             p.image_url, p.source, p.verified, p.verified_at, p.verified_by, p.created_at,
-            o.quotation_number, o.client_name, o.sales_agent, o.total_amount
+            o.quotation_number, o.client_name, o.sales_agent, o.total_amount, o.balance_paid,
+            (p.type = 'deposit' AND o.total_amount IS NOT NULL
+             AND CAST(p.amount AS NUMERIC) >= CAST(o.total_amount AS NUMERIC)) AS deposit_is_full_payment
      FROM payments p
      JOIN orders o ON o.id = p.order_id
      WHERE p.id = $1`,
@@ -4452,7 +4463,9 @@ app.get('/payments/acknowledgement-receipts', async (request, reply) => {
      )
      SELECT p.id, p.order_id, p.type, p.amount, p.reference_number, p.paid_by, p.payment_date,
             p.image_url, p.source, p.verified, p.verified_at, p.verified_by, p.created_at,
-            o.quotation_number, o.client_name, o.sales_agent, o.total_amount,
+            o.quotation_number, o.client_name, o.sales_agent, o.total_amount, o.balance_paid,
+            (p.type = 'deposit' AND o.total_amount IS NOT NULL
+             AND CAST(p.amount AS NUMERIC) >= CAST(o.total_amount AS NUMERIC)) AS deposit_is_full_payment,
             fg.full_group_total,
             COALESCE(fg.has_deposit, FALSE) AS has_full_deposit_pair
      FROM payments p
@@ -4520,6 +4533,7 @@ app.get('/payments/:id/acknowledgement-receipt.pdf', async (request, reply) => {
     verified: payment.verified,
     verifiedBy: payment.verified_by,
     items: itemRows,
+    balancePaid: payment.balance_paid ?? false,
   });
 
   return reply
@@ -6015,7 +6029,15 @@ app.post('/deposits', async (request, reply) => {
     // Recompute deposit total from payments table
     const { depositTotal } = await getPaymentTotals(orderId);
 
+    // Detect whether this deposit covers the full order amount (full payment via deposit flow)
+    const orderTotalForDeposit = totalAmount != null ? Number(totalAmount) : null;
+    const depositCoversFullAmount =
+      orderTotalForDeposit != null && orderTotalForDeposit > 0 && depositTotal >= orderTotalForDeposit;
+
     // Update order summary fields (backward-compatible)
+    // When the deposit covers the full order total, also mark balance_paid so that
+    // verify-deposit will route the order through balance_verification (or auto-skip)
+    // instead of leaving it stranded as a "balance due" order with ₱0 balance.
     await query(
       `UPDATE orders SET
          deposit_paid=TRUE,
@@ -6023,6 +6045,8 @@ app.post('/deposits', async (request, reply) => {
          deposit_amount=$1,
          deposit_image_url=COALESCE($2, deposit_image_url),
          deposit_paid_at=COALESCE($4, deposit_paid_at),
+         balance_paid=CASE WHEN $5 THEN TRUE ELSE balance_paid END,
+         balance_paid_at=CASE WHEN $5 AND balance_paid_at IS NULL THEN COALESCE($4, NOW()) ELSE balance_paid_at END,
          current_stage=CASE
            WHEN current_stage IN ('quotation_received', 'order_confirmation_received', 'math_verified', 'deposit_pending', 'purchasing_pending', 'production_pending')
            THEN 'deposit_verification'
@@ -6030,17 +6054,19 @@ app.post('/deposits', async (request, reply) => {
          END,
          updated_at=NOW()
        WHERE id=$3`,
-      [depositTotal, body.image_url ?? null, orderId, body.deposit_paid_at ?? null]
+      [depositTotal, body.image_url ?? null, orderId, body.deposit_paid_at ?? null, depositCoversFullAmount]
     );
+
+    const paymentLabel = depositCoversFullAmount ? 'Full payment' : 'Downpayment';
 
     // Record stage update for deposit_pending → deposit_paid
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-      [orderId, 'deposit_pending', 'deposit_paid', `Downpayment of ₱${body.amount} recorded`, body.updated_by ?? null]
+      [orderId, 'deposit_pending', 'deposit_paid', `${paymentLabel} of ₱${body.amount} recorded`, body.updated_by ?? null]
     );
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by) VALUES ($1, $2, $3, $4, $5)`,
-      [orderId, 'deposit_verification', 'pending', 'Downpayment recorded; awaiting payment verification', body.updated_by ?? null]
+      [orderId, 'deposit_verification', 'pending', `${paymentLabel} recorded; awaiting payment verification`, body.updated_by ?? null]
     );
 
     // Complete any deposit reminders for this order
@@ -7128,17 +7154,18 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   }
 
   // Determine next stage:
-  // - If balance is also paid (full payment), advance to balance_verification so the user
-  //   can verify the balance in a second step (instead of skipping past it).
   // - From-stock orders skip purchasing/production/en_route/inventory — go straight to stock_preparation.
+  // - If balance is also paid (full payment) AND the order is from_stock, advance to balance_verification
+  //   since there's no production to go through.
+  // - If balance is also paid but the order is NOT from_stock, advance to purchasing_pending (normal
+  //   production flow). The balance verification happens naturally after production → delivery.
+  //   Skipping production would leave the order stuck without items being manufactured.
   // - Otherwise, standard advance to purchasing_pending.
   const isFromStock = order.order_type === 'from_stock';
   const balanceAlsoPaid = !!order.balance_paid;
-  const nextStage = balanceAlsoPaid
-    ? 'balance_verification'
-    : isFromStock
-      ? 'stock_preparation'
-      : 'purchasing_pending';
+  const nextStage = isFromStock
+    ? (balanceAlsoPaid ? 'balance_verification' : 'stock_preparation')
+    : 'purchasing_pending';
 
   // Mark all deposit payment records as verified
   await query(
@@ -7171,8 +7198,8 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
      VALUES ($1, 'deposit_verification', 'deposit_verified', $2, $3)`,
     [id, `Deposit verified by ${body.verified_by ?? 'team'}. Advancing to ${nextStage}.`, body.verified_by ?? null],
   );
-  if (balanceAlsoPaid) {
-    // Full-payment order: deposit verified, now awaiting balance verification
+  if (balanceAlsoPaid && isFromStock) {
+    // From-stock full-payment order: deposit verified, now awaiting balance verification
     await query(
       `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
        VALUES ($1, 'balance_verification', 'awaiting_verification', $2, $3)`,
@@ -7185,7 +7212,9 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
       [id, nextStage,
         isFromStock
           ? `From-stock order — skipping production/en_route. Preparing from existing inventory.`
-          : 'Downpayment verified; ready for purchasing/production preparation.',
+          : balanceAlsoPaid
+            ? 'Downpayment verified. Full payment recorded — order proceeds through production workflow. Balance will be verified after delivery.'
+            : 'Downpayment verified; ready for purchasing/production preparation.',
         body.verified_by ?? null],
     );
   }
@@ -7200,12 +7229,12 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   // Trigger agents and send notifications based on order type
   triggerAgentsForStage(nextStage, order.quotation_number, order.client_name, userEmail ?? body.verified_by ?? undefined);
 
-  if (balanceAlsoPaid) {
-    // Full-payment order: notify collection group that deposit is verified, balance still needs verification
+  if (balanceAlsoPaid && isFromStock) {
+    // From-stock full-payment order: notify collection group that deposit is verified, balance still needs verification
     setImmediate(() => {
       notifyGroupChat(
         COLLECTION_CHAT_ID,
-        `✅ <b>Deposit Verified (Full Payment)</b>\n\n` +
+        `✅ <b>Deposit Verified (Full Payment — From Stock)</b>\n\n` +
         `Quotation: <b>${order.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n` +
         `Verified by: ${body.verified_by ?? 'team'}\n\n` +
@@ -7319,11 +7348,9 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
 
   // Notify escalation group (dashboard only)
   if (isDashboardOrigin(body.verified_by)) {
-    const escalationStageLabel = balanceAlsoPaid
-      ? 'Balance Verification (full payment)'
-      : isFromStock
-        ? 'Stock Preparation'
-        : 'Purchasing Pending';
+    const escalationStageLabel = isFromStock
+      ? (balanceAlsoPaid ? 'Balance Verification (full payment)' : 'Stock Preparation')
+      : 'Purchasing Pending';
     await notifyManualChange(
       'Deposit verified',
       `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${escalationStageLabel}`,

@@ -27,6 +27,7 @@ When you **finish**:
 | 2026-05-27 16:11 | Roo (Code) | Delivery tab: made "₱X due" amount clickable — opens deposit slip upload + AI extraction modal (same as upload button). | ✅ Done |
 | 2026-05-27 16:29 | Roo (Code) | Fix: acknowledgement receipt gap — balance payments now only get receipts after verification. Server: SQL filter excludes unverified balance payments from receipts list; PDF endpoint rejects unverified balance payments. Dashboard: unverified balance payments shown with "Pending Verification" badge and no download link. | ✅ Done |
 | 2026-05-27 18:07 | Roo (Code) | Feat: excess arrival → inventory stock — when actual arrived quantity exceeds ordered quantity, excess is auto-added to inventory stock. Migration 040 adds arrived_qty column to order_items. Server: adjustInventoryForOrderItem supports excess_arrival movement type; bulk-inventory-verify and inventory-verify-item accept arrived_qty, auto-add excess to stock. Dashboard: "Arrived Qty" column with per-item input + warehouse icon button, bulk "Set Arrived" input, excess badges (+X → stock), green highlight on verified_qty when excess exists. | ✅ Done |
+| 2026-05-27 18:33 | Roo (Code) | Fix: full downpayment order no longer skips production — verify-deposit now advances full-payment standard orders to purchasing_pending instead of balance_verification. Non-from-stock orders must go through production workflow even when fully paid. Balance verification happens naturally after delivery. | 🔴 Active |
 
 ---
 

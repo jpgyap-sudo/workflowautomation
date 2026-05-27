@@ -82,6 +82,10 @@ function OrderPaymentInfo({ order }: { order: Order }) {
   const totalAmount = Number(order.total_amount ?? 0);
   const depositAmount = Number(order.deposit_amount ?? 0);
   const balance = totalAmount - depositAmount;
+  // If the deposit covers the full order amount it was a one-shot full payment,
+  // not a partial downpayment — show the correct label.
+  const depositIsFullPayment =
+    order.total_amount != null && totalAmount > 0 && depositAmount >= totalAmount;
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
@@ -89,9 +93,9 @@ function OrderPaymentInfo({ order }: { order: Order }) {
         <span>Total: ₱{totalAmount.toLocaleString()}</span>
       )}
       {order.deposit_amount != null && (
-        <span>Downpayment: ₱{depositAmount.toLocaleString()}</span>
+        <span>{depositIsFullPayment ? 'Full Payment' : 'Downpayment'}: ₱{depositAmount.toLocaleString()}</span>
       )}
-      {order.total_amount != null && (
+      {order.total_amount != null && !depositIsFullPayment && (
         <span className={balance > 0 ? 'font-medium text-violet-600' : 'text-green-600'}>
           Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()} due`}
         </span>
