@@ -1172,7 +1172,13 @@ export default function DeliveryPage() {
                           Exception Granted
                         </span>
                       ) : (
-                        <span className="text-xs font-medium text-violet-600">₱{balance.toLocaleString()} due</span>
+                        <button
+                          onClick={() => handlePaymentConfirmClick(order)}
+                          className="text-xs font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
+                          title="Upload deposit slip and record balance payment"
+                        >
+                          ₱{balance.toLocaleString()} due
+                        </button>
                       )}
                       <StageBadge stage={order.current_stage} />
                       <button
