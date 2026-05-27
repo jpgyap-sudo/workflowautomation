@@ -112,7 +112,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS);
