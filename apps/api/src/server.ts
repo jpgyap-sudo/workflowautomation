@@ -4186,9 +4186,12 @@ function receiptNumberForPayment(payment: { id: string; created_at?: string | nu
   return `AR-${year}-${payment.id.slice(0, 8).toUpperCase()}`;
 }
 
-function paymentKindLabel(payment: { type: string; source?: string | null; deposit_is_full_payment?: boolean | null }): string {
+function paymentKindLabel(payment: { type: string; source?: string | null; deposit_is_full_payment?: boolean | null; balance_paid?: boolean | null }): string {
   if (payment.source === 'full_payment') return 'Full Payment';
   if (payment.type === 'deposit' && payment.deposit_is_full_payment) return 'Full Payment';
+  // When the order has been fully settled (balance paid via a separate payment),
+  // label the deposit receipt as "Full Payment" so it reflects the order's settled status.
+  if (payment.type === 'deposit' && payment.balance_paid) return 'Full Payment';
   return payment.type === 'deposit' ? 'Downpayment' : 'Balance Payment';
 }
 
@@ -4454,12 +4457,11 @@ app.get('/payments/acknowledgement-receipts', async (request, reply) => {
   const rows = await query<ReceiptPaymentRow & { full_group_total?: string | number; has_full_deposit_pair?: boolean }>(
     `WITH full_groups AS (
        SELECT order_id, COALESCE(reference_number, '') AS ref_key, COALESCE(payment_date::text, '') AS date_key,
-              date_trunc('second', created_at) AS created_second,
               SUM(amount) AS full_group_total,
               BOOL_OR(type = 'deposit') AS has_deposit
        FROM payments
        WHERE source = 'full_payment'
-       GROUP BY order_id, COALESCE(reference_number, ''), COALESCE(payment_date::text, ''), date_trunc('second', created_at)
+       GROUP BY order_id, COALESCE(reference_number, ''), COALESCE(payment_date::text, '')
      )
      SELECT p.id, p.order_id, p.type, p.amount, p.reference_number, p.paid_by, p.payment_date,
             p.image_url, p.source, p.verified, p.verified_at, p.verified_by, p.created_at,
@@ -4473,7 +4475,6 @@ app.get('/payments/acknowledgement-receipts', async (request, reply) => {
      LEFT JOIN full_groups fg ON fg.order_id = p.order_id
        AND fg.ref_key = COALESCE(p.reference_number, '')
        AND fg.date_key = COALESCE(p.payment_date::text, '')
-       AND fg.created_second = date_trunc('second', p.created_at)
      WHERE NOT (p.source = 'full_payment' AND p.type = 'balance' AND COALESCE(fg.has_deposit, FALSE))
        AND (p.type != 'balance' OR p.verified = TRUE)
      ORDER BY p.created_at DESC
