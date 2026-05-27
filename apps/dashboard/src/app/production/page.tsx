@@ -140,11 +140,13 @@ function ItemCompletionBar({ pct, label, color }: { pct: number; label: string; 
 
 interface ProductionInfoCardsProps {
   order: Order;
-  onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished') => void;
-  onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
+  onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished', refresh?: () => void) => void;
+  onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived', refresh?: () => void) => void;
+  onBulkEnRoute?: (order: Order, items: OrderItem[], refresh?: () => void) => void;
+  onBulkEnRouteSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
 }
 
-function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatus }: ProductionInfoCardsProps) {
+function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected }: ProductionInfoCardsProps) {
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [loadingCompletion, setLoadingCompletion] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -152,6 +154,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [updatingEnRouteItemId, setUpdatingEnRouteItemId] = useState<string | null>(null);
   const [markingDelayedId, setMarkingDelayedId] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -194,6 +197,19 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
     if (completionRes?.ok) setCompletion(completionRes);
   }
 
+  function toggleEnRouteItem(itemId: string) {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  }
+
+  function toggleEnRouteSelectAll(selectableItems: OrderItem[]) {
+    const allSelected = selectableItems.every((i) => selectedItemIds.has(i.id));
+    setSelectedItemIds(allSelected ? new Set() : new Set(selectableItems.map((i) => i.id)));
+  }
+
   async function handleItemProductionStatus(
     item: OrderItem,
     productionStatus: 'pending' | 'in_progress' | 'finished'
@@ -219,7 +235,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
     enRouteStatus: 'not_yet' | 'en_route' | 'arrived'
   ) {
     if (onItemEnRouteStatus) {
-      onItemEnRouteStatus(item, enRouteStatus);
+      onItemEnRouteStatus(item, enRouteStatus, refreshItemState);
     } else {
       let estimatedArrivalDays: number | null = item.estimated_arrival_days ?? null;
       if (enRouteStatus === 'en_route' && !estimatedArrivalDays) {
@@ -287,13 +303,57 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
       {/* Item-level production status table */}
       {items.length > 0 && (
         <div className="mb-3">
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            Items ({items.length})
-          </p>
+          {(() => {
+            const isEnRoute = order.current_stage === 'en_route';
+            const selectableItems = isEnRoute ? items.filter((i) => i.en_route_status === 'not_yet') : [];
+            const allSelected = selectableItems.length > 0 && selectableItems.every((i) => selectedItemIds.has(i.id));
+            const someSelected = selectedItemIds.size > 0 && !allSelected;
+            return (
+              <>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Items ({items.length})
+                  </p>
+                  {isEnRoute && (
+                    <div className="flex items-center gap-1.5">
+                      {selectedItemIds.size > 0 && onBulkEnRouteSelected && (
+                        <button
+                          type="button"
+                          onClick={() => { onBulkEnRouteSelected(order, Array.from(selectedItemIds), refreshItemState); setSelectedItemIds(new Set()); }}
+                          className="rounded-md border border-sky-300 bg-sky-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-sky-700 transition-colors"
+                        >
+                          🚚 En Route Selected ({selectedItemIds.size})
+                        </button>
+                      )}
+                      {onBulkEnRoute && selectableItems.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { onBulkEnRoute(order, items, refreshItemState); setSelectedItemIds(new Set()); }}
+                          className="rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+                        >
+                          🚚 En Route All ({selectableItems.length})
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  {isEnRoute && (
+                    <th className="w-8 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        title="Select all not-yet items"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                        onChange={() => toggleEnRouteSelectAll(selectableItems)}
+                        disabled={selectableItems.length === 0}
+                        className="rounded border-gray-300 accent-sky-600 disabled:opacity-30"
+                      />
+                    </th>
+                  )}
                   <th className="px-3 py-2">Item</th>
                   <th className="px-3 py-2">Qty</th>
                   <th className="px-3 py-2">Production</th>
@@ -303,8 +363,23 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {items.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
+                {items.map((item) => {
+                  const isSelectable = isEnRoute && item.en_route_status === 'not_yet';
+                  const isChecked = selectedItemIds.has(item.id);
+                  return (
+                  <tr key={item.id} className={`hover:bg-gray-50${isChecked ? ' bg-sky-50/50' : ''}`}>
+                    {isEnRoute && (
+                      <td className="px-3 py-2">
+                        {isSelectable && (
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleEnRouteItem(item.id)}
+                            className="rounded border-gray-300 accent-sky-600"
+                          />
+                        )}
+                      </td>
+                    )}
                     <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
                     <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
                     <td className="px-3 py-2">
@@ -466,10 +541,14 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+        </>
+        );
+      })()}
         </div>
       )}
       {loadingItems && items.length === 0 && (
@@ -624,11 +703,13 @@ interface OrderRowProps {
   onProceedInventoryVerification?: (o: Order) => void;
   onGrantException?: (o: Order) => void;
   onRevokeException?: (o: Order) => void;
-  onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished') => void;
-  onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => void;
+  onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished', refresh?: () => void) => void;
+  onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived', refresh?: () => void) => void;
+  onBulkEnRoute?: (order: Order, items: OrderItem[], refresh?: () => void) => void;
+  onBulkEnRouteSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -761,7 +842,7 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
 
       {expanded && (
         <>
-          <ProductionInfoCards order={order} onItemProductionStatus={onItemProductionStatus} onItemEnRouteStatus={onItemEnRouteStatus} />
+          <ProductionInfoCards order={order} onItemProductionStatus={onItemProductionStatus} onItemEnRouteStatus={onItemEnRouteStatus} onBulkEnRoute={onBulkEnRoute} onBulkEnRouteSelected={onBulkEnRouteSelected} />
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
             {/* Start Production button for production_pending orders */}
             {onStartProduction && !order.production_started && (
@@ -2459,7 +2540,7 @@ export default function ProductionPage() {
 
   // ── Bulk en route all items ──────────────────────────────────────────
 
-  function handleBulkEnRoute(order: Order, items: OrderItem[]) {
+  function handleBulkEnRoute(order: Order, items: OrderItem[], refreshCallback?: () => void) {
     const itemsNeedingDays = items.filter((i) => i.en_route_status === 'not_yet' && !i.estimated_arrival_days);
     let defaultDays: number | undefined;
     if (itemsNeedingDays.length > 0) {
@@ -2478,7 +2559,7 @@ export default function ProductionPage() {
       description: `You are about to mark all not-yet items in order "${order.quotation_number ?? '—'}" as en route. Enter the OTP sent to your email to confirm.`,
       pendingAction: 'bulkEnRoute',
     });
-    (window as any).__pendingBulkEnRouteData = { orderId: order.id, defaultDays };
+    (window as any).__pendingBulkEnRouteData = { orderId: order.id, defaultDays, refreshCallback };
   }
 
   async function handleBulkEnRouteVerified(actionToken: string) {
@@ -2487,6 +2568,7 @@ export default function ProductionPage() {
     try {
       await bulkEnRoute(pending.orderId, { action_token: actionToken, default_arrival_days: pending.defaultDays });
       refresh();
+      pending.refreshCallback?.();
     } catch (err: any) {
       alert('Failed to mark all items en route: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -2496,7 +2578,7 @@ export default function ProductionPage() {
 
   // ── Bulk en route selected items ─────────────────────────────────────
 
-  function handleBulkEnRouteSelected(order: Order, itemIds: string[]) {
+  function handleBulkEnRouteSelected(order: Order, itemIds: string[], refreshCallback?: () => void) {
     const names = itemIds.length === 1 ? '1 item' : `${itemIds.length} items`;
     // Prompt for arrival days once, applied to all selected items that don't have one
     const input = window.prompt(`Estimated arrival days for ${names}? (applied to items missing arrival days)`, '28');
@@ -2509,11 +2591,11 @@ export default function ProductionPage() {
       description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as en route. Enter the OTP sent to your email to confirm.`,
       pendingAction: 'bulkEnRouteSelected',
     });
-    (window as any).__pendingBulkEnRouteSelectedData = { orderId: order.id, itemIds, defaultDays: days };
+    (window as any).__pendingBulkEnRouteSelectedData = { orderId: order.id, itemIds, defaultDays: days, refreshCallback };
   }
 
   async function handleBulkEnRouteSelectedVerified(actionToken: string) {
-    const pending = (window as any).__pendingBulkEnRouteSelectedData as { orderId: string; itemIds: string[]; defaultDays: number } | null;
+    const pending = (window as any).__pendingBulkEnRouteSelectedData as { orderId: string; itemIds: string[]; defaultDays: number; refreshCallback?: () => void } | null;
     if (!pending) return;
     try {
       await bulkEnRouteSelected(pending.orderId, {
@@ -2522,6 +2604,7 @@ export default function ProductionPage() {
         default_arrival_days: pending.defaultDays,
       });
       refresh();
+      pending.refreshCallback?.();
     } catch (err: any) {
       alert('Failed to mark selected items en route: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -2568,7 +2651,7 @@ export default function ProductionPage() {
     }
   }
 
-  function handleItemEnRouteStatusAction(orderId: string, item: OrderItem, enRouteStatus: 'not_yet' | 'en_route' | 'arrived') {
+  function handleItemEnRouteStatusAction(orderId: string, item: OrderItem, enRouteStatus: 'not_yet' | 'en_route' | 'arrived', refreshCallback?: () => void) {
     let estimatedArrivalDays: number | null = item.estimated_arrival_days ?? null;
     if (enRouteStatus === 'en_route' && !estimatedArrivalDays) {
       const input = window.prompt(`Estimated arrival days for "${item.name}"?`, '28');
@@ -2583,14 +2666,14 @@ export default function ProductionPage() {
       description: `You are about to change en route status of item "${item.name}" to "${enRouteStatus}". Enter the OTP sent to your email to confirm.`,
       pendingAction: 'itemEnRouteStatus',
     });
-    (window as any).__pendingItemEnRouteStatusData = { orderId, item, enRouteStatus, estimatedArrivalDays };
+    (window as any).__pendingItemEnRouteStatusData = { orderId, item, enRouteStatus, estimatedArrivalDays, refreshCallback };
   }
 
   async function handleItemEnRouteStatusVerified(actionToken: string) {
     const pending = (window as any).__pendingItemEnRouteStatusData;
     if (!pending) return;
-    const { orderId, item, enRouteStatus, estimatedArrivalDays } = pending as {
-      orderId: string; item: OrderItem; enRouteStatus: 'not_yet' | 'en_route' | 'arrived'; estimatedArrivalDays: number | null;
+    const { orderId, item, enRouteStatus, estimatedArrivalDays, refreshCallback } = pending as {
+      orderId: string; item: OrderItem; enRouteStatus: 'not_yet' | 'en_route' | 'arrived'; estimatedArrivalDays: number | null; refreshCallback?: () => void;
     };
     setUpdatingItemId(item.id);
     try {
@@ -2600,6 +2683,7 @@ export default function ProductionPage() {
         action_token: actionToken,
       });
       refresh();
+      refreshCallback?.();
     } catch (err: any) {
       alert('Failed to update en route status: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -2647,8 +2731,8 @@ export default function ProductionPage() {
     };
   }
   function makeItemEnRouteStatusHandler(order: Order) {
-    return (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived') => {
-      handleItemEnRouteStatusAction(order.id, item, status);
+    return (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived', refresh?: () => void) => {
+      handleItemEnRouteStatusAction(order.id, item, status, refresh);
     };
   }
 
@@ -2846,6 +2930,8 @@ export default function ProductionPage() {
               onRevokeException={handleRevokeException}
               onItemProductionStatus={makeItemProductionStatusHandler(order)}
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
+              onBulkEnRoute={handleBulkEnRoute}
+              onBulkEnRouteSelected={handleBulkEnRouteSelected}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
