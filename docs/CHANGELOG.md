@@ -22,7 +22,7 @@
 | `666ce7d` | Roo (Code) | fix: full downpayment order no longer skips production — verify-deposit now advances full-payment standard orders to purchasing_pending instead of balance_verification. Non-from-stock orders must go through production workflow even when fully paid. Balance verification happens naturally after delivery. Also improves acknowledgement receipt: detects deposit_is_full_payment, shows "Full Payment" label, suppresses balance notice when balance_paid. | ✅ VPS `666ce7d` |
 | | Roo (Code) | feat: AI Assistant Chat + Update Logs — tutorial agent (agents/tutorial-agent/agent.md), knowledge base ingestion pipeline (pgvector + OpenAI embeddings), chat API (Fastify + gpt-4o-mini), chat UI (/chat) with conversation management, update logs page (/update-logs, admin-only), migration 041, docker-compose postgres → pgvector/pgvector:pg16. Wired into sidebar + auth system. | ❌ |
 | `f10baad` | Roo (Code) | feat: add OpenRouter fallback for chat completions (Gemini → OpenRouter → KB fallback) | ❌ |
-| `5a198b2` | Roo (Code) | feat: production tab — add estimated arrival date display in En Route — In Transit and Arrival Verification sections. Updated "Arrival Est." card to show computed date. Added inline "Est. Arrival" badge with color coding (red=overdue, amber=due soon, sky=on track). | 🔄 Deploying |
+| `56267ac` | Roo (Code) | feat: production tab — add estimated arrival date display + bulk en-route item selection in ProductionInfoCards. Updated "Arrival Est." card to show computed date. Added inline "Est. Arrival" badge with color coding (red=overdue, amber=due soon, sky=on track). Added bulk en-route item checkboxes + "En Route Selected (N)" button. | ✅ VPS `56267ac` |
 
 ## 2026-05-26
 
