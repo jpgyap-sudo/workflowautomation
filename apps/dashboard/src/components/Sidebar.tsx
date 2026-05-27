@@ -64,7 +64,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: '/backup', label: 'Backups', icon: Database },
   { href: '/vision', label: 'Vision Upload', icon: ScanEye },
   { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/chat', label: 'AI Assistant', icon: MessageSquare },
   { href: '/update-logs', label: 'Update Logs', icon: History },
 ];
 

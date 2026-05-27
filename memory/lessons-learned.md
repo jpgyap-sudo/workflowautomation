@@ -12075,3 +12075,295 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: full downpayment order no longer skips production — verify-deposit advances full-payment standard orders to purchas
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 666ce7d0e1f1ee578daac8877975628f3fb006dd
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 666ce7d0e1f1ee578daac8877975628f3fb006dd
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/collection/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** Full downpayment orders were incorrectly skipping the production workflow. The `verify-deposit` function now advances full-payment standard orders to `purchasing_pending` instead of `balance_verification`.
+
+**Why it broke:** The system assumed fully paid non-from-stock orders could bypass production. In reality, these orders still require production steps (e.g., manufacturing, assembly) before delivery. Balance verification was happening prematurely, before production completion.
+
+**Reusable takeaway:** Payment status and production workflow are independent concerns. Full payment does not imply readiness for delivery—production must always execute for non-stock items. Always route orders through all required workflow stages regardless of payment completeness. Additionally, improve UI clarity by explicitly labeling full payment and suppressing balance notices when balance is already paid.
+
+---
+*Original commit message: fix: full downpayment order no longer skips production — verify-deposit advances full-payment standard orders to purchasing_pending instead of balance_verification. Non-from-stock orders must go through production workflow even when fully paid. Balance verification happens naturally after delivery. Also improves acknowledgement receipt: detects deposit_is_full_payment, shows 'Full Payment' label, suppresses balance notice when balance_paid.*
+
+#### Lesson Learned
+
+**What was fixed:** Full downpayment orders were incorrectly skipping the production workflow. The `verify-deposit` function now advances full-payment standard orders to `purchasing_pending` instead of `balance_verification`.
+
+**Why it broke:** The system assumed fully paid non-from-stock orders could bypass production. In reality, these orders still require production steps (e.g., manufacturing, assembly) before delivery. Balance verification was happening prematurely, before production completion.
+
+**Reusable takeaway:** Payment status and production workflow are independent concerns. Full payment does not imply readiness for delivery—production must always execute for non-stock items. Always route orders through all required workflow stages regardless of payment completeness. Additionally, improve UI clarity by explicitly labeling full payment and suppressing balance notices when balance is already paid.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: mark full payment fix as deployed (666ce7d)
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e18cdb338e2e380c4673703373ccf1b632f146d2
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e18cdb338e2e380c4673703373ccf1b632f146d2
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where full payment status was not correctly recognized or handled in the workflow automation system.
+
+**Why it broke:**  
+The root cause was a logic error in payment status detection—likely a missing or incorrect condition that failed to mark a payment as "full" when all required criteria were met.
+
+**Reusable takeaway:**  
+When implementing payment or status-checking logic, always validate all edge cases (e.g., partial vs. full payments) and ensure boolean conditions are exhaustive. Use explicit checks rather than relying on default fallthroughs.
+
+---
+*Original commit message: chore: mark full payment fix as deployed (666ce7d)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where full payment status was not correctly recognized or handled in the workflow automation system.
+
+**Why it broke:**  
+The root cause was a logic error in payment status detection—likely a missing or incorrect condition that failed to mark a payment as "full" when all required criteria were met.
+
+**Reusable takeaway:**  
+When implementing payment or status-checking logic, always validate all edge cases (e.g., partial vs. full payments) and ensure boolean conditions are exhaustive. Use explicit checks rather than relying on default fallthroughs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: balance verified showing Pending for advanced orders; verify-balance stuck at balance_verification stage; math show
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e6b1686dc1cad9529eb3be1ed55d51a66994ed94
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** e6b1686dc1cad9529eb3be1ed55d51a66994ed94
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A bug where advanced orders showed "Pending" indefinitely during balance verification, and the `verify-balance` step got stuck at the `balance_verification` stage. The math logic incorrectly reported pending status even when no AI extraction was needed.
+
+**Why it broke:**  
+The balance verification logic did not account for advanced orders that skip AI extraction. The system assumed all orders require AI extraction before balance verification, causing a deadlock when no extraction was triggered.
+
+**Reusable takeaway:**  
+When designing multi-stage workflows, ensure conditional paths (e.g., "skip extraction") are explicitly handled in downstream verification steps. A missing state transition for a valid path can cause indefinite blocking. Always test edge cases where a stage is bypassed.
+
+---
+*Original commit message: fix: balance verified showing Pending for advanced orders; verify-balance stuck at balance_verification stage; math shows pending with no AI extraction*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where advanced orders showed "Pending" indefinitely during balance verification, and the `verify-balance` step got stuck at the `balance_verification` stage. The math logic incorrectly reported pending status even when no AI extraction was needed.
+
+**Why it broke:**  
+The balance verification logic did not account for advanced orders that skip AI extraction. The system assumed all orders require AI extraction before balance verification, causing a deadlock when no extraction was triggered.
+
+**Reusable takeaway:**  
+When designing multi-stage workflows, ensure conditional paths (e.g., "skip extraction") are explicitly handled in downstream verification steps. A missing state transition for a valid path can cause indefinite blocking. Always test edge cases where a stage is bypassed.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: acknowledgement receipt full-payment label and amount
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit fb227e692f3ad9302a1fe5a76656c570145d32aa
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** fb227e692f3ad9302a1fe5a76656c570145d32aa
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+The acknowledgement receipt incorrectly displayed the label and amount for full-payment transactions, likely showing partial or mismatched values.
+
+**Why it broke:**  
+A logic error in the receipt generation code failed to correctly map the payment status (full vs. partial) to the corresponding label and amount fields. This likely occurred when a conditional branch for full-payment was missing or misaligned with the data model.
+
+**Reusable takeaway:**  
+When generating documents or receipts that depend on payment status, always validate that each status branch (full, partial, pending) has a dedicated, tested mapping for labels and amounts. Use explicit conditionals rather than fall-through logic, and add unit tests that cover all payment statuses to catch mismatches early.
+
+---
+*Original commit message: fix: acknowledgement receipt full-payment label and amount*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The acknowledgement receipt incorrectly displayed the label and amount for full-payment transactions, likely showing partial or mismatched values.
+
+**Why it broke:**  
+A logic error in the receipt generation code failed to correctly map the payment status (full vs. partial) to the corresponding label and amount fields. This likely occurred when a conditional branch for full-payment was missing or misaligned with the data model.
+
+**Reusable takeaway:**  
+When generating documents or receipts that depend on payment status, always validate that each status branch (full, partial, pending) has a dedicated, tested mapping for labels and amounts. Use explicit conditionals rather than fall-through logic, and add unit tests that cover all payment statuses to catch mismatches early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: switch chatbot from OpenAI to Gemini API — chatService.ts now uses Gemini 2.0 Flash (gpt-4o-mini → gemini-2.0-flash
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5f819dafc618480d995724b96e8e3a4bb400da81
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5f819dafc618480d995724b96e8e3a4bb400da81
+**Files:** apps/api/src/services/chatService.ts,apps/api/src/services/knowledgeBase.ts,database/migrations/041_knowledge_base.sql,deploy-agent.mjs
+
+**Summary:**
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+- Switched chatbot from OpenAI to Gemini API (GPT-4o-mini → Gemini 2.0 Flash, text-embedding-3-small → Gemini text-embedding-004).  
+- Updated vector dimension from 1536 to 768 in migration 041.  
+- Fixed trailing space trimming in `deploy-agent.mjs` to prevent SSH errors.
+
+**Why it broke:**  
+- OpenAI API dependency caused cost and latency issues; embedding dimension mismatch (1536 vs 768) would break vector search.  
+- Trailing spaces in environment variables caused SSH authentication failures during deployment.
+
+**Reusable takeaway:**  
+When switching AI providers, always update: (1) model endpoints, (2) embedding dimensions in database schema, and (3) all vector-related queries. Trim environment variables to avoid silent deployment failures from whitespace.
+
+---
+*Original commit message: fix: switch chatbot from OpenAI to Gemini API — chatService.ts now uses Gemini 2.0 Flash (gpt-4o-mini → gemini-2.0-flash), knowledgeBase.ts uses Gemini text-embedding-004 (text-embedding-3-small → text-embedding-004, 1536d → 768d), migration 041 updated to VECTOR(768). Also fixed deploy-agent.mjs env var trimming to prevent trailing space SSH errors.*
+
+#### Lesson Learned
+
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+- Switched chatbot from OpenAI to Gemini API (GPT-4o-mini → Gemini 2.0 Flash, text-embedding-3-small → Gemini text-embedding-004).  
+- Updated vector dimension from 1536 to 768 in migration 041.  
+- Fixed trailing space trimming in `deploy-agent.mjs` to prevent SSH errors.
+
+**Why it broke:**  
+- OpenAI API dependency caused cost and latency issues; embedding dimension mismatch (1536 vs 768) would break vector search.  
+- Trailing spaces in environment variables caused SSH authentication failures during deployment.
+
+**Reusable takeaway:**  
+When switching AI providers, always update: (1) model endpoints, (2) embedding dimensions in database schema, and (3) all vector-related queries. Trim environment variables to avoid silent deployment failures from whitespace.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: swap Dispatch Pending and En Route — In Transit section labels
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b37fc376f6b8aedd88771aa1f1759e9534629b0a
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** b37fc376f6b8aedd88771aa1f1759e9534629b0a
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+Swapped the "Dispatch Pending" and "En Route" labels in the "In Transit" section of a workflow UI.
+
+**Why it broke:**  
+The labels were placed in the wrong order, likely due to a misalignment between the data model and the display logic. The "Dispatch Pending" status (waiting for dispatch) was shown after "En Route" (already dispatched), creating a logical inconsistency.
+
+**Reusable takeaway:**  
+When mapping status labels to a sequence, always verify the order matches the actual workflow progression. Use a single source of truth (e.g., an ordered enum or config array) to prevent mismatches between backend states and frontend display. Test UI labels against the expected lifecycle flow, not just individual state values.
+
+---
+*Original commit message: fix: swap Dispatch Pending and En Route — In Transit section labels*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Swapped the "Dispatch Pending" and "En Route" labels in the "In Transit" section of a workflow UI.
+
+**Why it broke:**  
+The labels were placed in the wrong order, likely due to a misalignment between the data model and the display logic. The "Dispatch Pending" status (waiting for dispatch) was shown after "En Route" (already dispatched), creating a logical inconsistency.
+
+**Reusable takeaway:**  
+When mapping status labels to a sequence, always verify the order matches the actual workflow progression. Use a single source of truth (e.g., an ordered enum or config array) to prevent mismatches between backend states and frontend display. Test UI labels against the expected lifecycle flow, not just individual state values.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

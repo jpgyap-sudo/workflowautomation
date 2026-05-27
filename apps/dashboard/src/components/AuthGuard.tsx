@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { getAllowedTabsForUser, routeMatchesTab, useAuth } from '@/lib/auth';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
+import ChatFloatingIcon from '@/components/ChatFloatingIcon';
 
 const PUBLIC_ROUTES = ['/login'];
 
@@ -107,6 +108,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <ChatFloatingIcon />
     </>
   );
 }
