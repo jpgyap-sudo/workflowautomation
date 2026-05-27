@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
-import type { Order, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import type { Order, Client, PaymentCounter } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, updatePaymentCounter, getPaymentCounter, uploadOrderFile, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -171,12 +171,13 @@ export default function DeliveryPage() {
   const { data: balanceVerificationOrders = [], isLoading: loadingBalanceVerification, mutate: mutateBalanceVerification } = useOrdersByStage('balance_verification');
   const { data: pendingOrders = [], isLoading: loadingPending, mutate: mutatePending } = useOrdersByStage('delivery_pending');
   const { data: scheduledOrders = [], isLoading: loadingScheduled, mutate: mutateScheduled } = useOrdersByStage('delivery_scheduled');
+  const { data: counteredOrders = [], isLoading: loadingCountered, mutate: mutateCountered } = useOrdersByStage('countered');
   const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
   const { data: paymentReceivedOrders = [], isLoading: loadingPaymentReceived, mutate: mutatePaymentReceived } = useOrdersByStage('payment_received');
   const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, mutate: mutatePaymentConfirmed } = useOrdersByStage('payment_confirmed');
   const { data: stockPrepOrders = [], isLoading: loadingStockPrep, mutate: mutateStockPrep } = useOrdersByStage('stock_preparation');
 
-  const loading = loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingStockPrep;
+  const loading = loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingStockPrep;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -194,8 +195,43 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  // ── Special Case Modal ──────────────────────────────────────────────
+  const [specialCaseModal, setSpecialCaseModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    notes: string;
+    submitting: boolean;
+  }>({ open: false, order: null, notes: '', submitting: false });
+
+  // ── Payment Counter Modal ───────────────────────────────────────────
+  const [paymentCounterModal, setPaymentCounterModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    counter: PaymentCounter | null;
+    salesInvoiceStatus: 'pending' | 'received';
+    deliveryInvoiceStatus: 'pending' | 'received';
+    receivedDate: string;
+    deliveryDate: string;
+    salesInvoiceFile: File | null;
+    deliveryInvoiceFile: File | null;
+    loading: boolean;
+    submitting: boolean;
+  }>({
+    open: false,
+    order: null,
+    counter: null,
+    salesInvoiceStatus: 'pending',
+    deliveryInvoiceStatus: 'pending',
+    receivedDate: '',
+    deliveryDate: '',
+    salesInvoiceFile: null,
+    deliveryInvoiceFile: null,
+    loading: false,
+    submitting: false,
+  });
 
   // ── Partial Delivery Modal ───────────────────────────────────────────
   const [partialDeliveryModal, setPartialDeliveryModal] = useState<{
@@ -219,7 +255,7 @@ export default function DeliveryPage() {
   });
 
   function mutateAll() {
-    mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
+    mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
   }
 
   // ── Client filter ──────────────────────────────────────────────────────
@@ -627,6 +663,143 @@ export default function DeliveryPage() {
     }
   }
 
+  // ── Special Case ──────────────────────────────────────────────────────
+
+  function handleSpecialCase(order: Order) {
+    setSpecialCaseModal({
+      open: true,
+      order,
+      notes: '',
+      submitting: false,
+    });
+  }
+
+  async function executeSpecialCase(order: Order, actionToken: string) {
+    setSpecialCaseModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      await grantSpecialCase(order.id, {
+        notes: specialCaseModal.notes,
+        action_token: actionToken,
+      });
+      setSpecialCaseModal((prev) => ({ ...prev, open: false, submitting: false }));
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to grant special case: ' + (err.message ?? 'Unknown error'));
+      setSpecialCaseModal((prev) => ({ ...prev, submitting: false }));
+    }
+  }
+
+  // ── Payment Counter ───────────────────────────────────────────────────
+
+  async function handleOpenPaymentCounter(order: Order) {
+    setPaymentCounterModal((prev) => ({ ...prev, open: true, order, loading: true }));
+    try {
+      const result = await getPaymentCounter(order.id);
+      const counter = result.payment_counter;
+      if (counter) {
+        setPaymentCounterModal((prev) => ({
+          ...prev,
+          counter,
+          salesInvoiceStatus: counter.sales_invoice_status,
+          deliveryInvoiceStatus: counter.delivery_invoice_status,
+          receivedDate: counter.received_date ?? '',
+          deliveryDate: counter.delivery_date ?? '',
+          loading: false,
+        }));
+      } else {
+        setPaymentCounterModal((prev) => ({ ...prev, loading: false }));
+      }
+    } catch (err: any) {
+      alert('Failed to load payment counter: ' + (err.message ?? 'Unknown error'));
+      setPaymentCounterModal((prev) => ({ ...prev, open: false, loading: false }));
+    }
+  }
+
+  async function handlePaymentCounterSubmit() {
+    const order = paymentCounterModal.order;
+    if (!order) return;
+    setPaymentCounterModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      // Helper to convert File to base64 and upload
+      async function uploadFileAsOrderFile(file: File): Promise<string | null> {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            const base64 = (ev.target?.result as string)?.split(',')[1];
+            if (!base64) { resolve(null); return; }
+            try {
+              const result = await uploadOrderFile({
+                order_id: order!.id,
+                file_type: 'invoice',
+                original_filename: file.name,
+                mime_type: file.type,
+                file_data: base64,
+              });
+              resolve(result.ok && result.file ? result.file.id : null);
+            } catch { resolve(null); }
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      let salesInvoiceFileId: string | null = paymentCounterModal.counter?.sales_invoice_file_id ?? null;
+      let deliveryInvoiceFileId: string | null = paymentCounterModal.counter?.delivery_invoice_file_id ?? null;
+
+      if (paymentCounterModal.salesInvoiceFile) {
+        salesInvoiceFileId = await uploadFileAsOrderFile(paymentCounterModal.salesInvoiceFile);
+      }
+      if (paymentCounterModal.deliveryInvoiceFile) {
+        deliveryInvoiceFileId = await uploadFileAsOrderFile(paymentCounterModal.deliveryInvoiceFile);
+      }
+
+      // Trigger OTP for payment counter update
+      (window as any).__pendingActionOrder = order;
+      (window as any).__pendingPaymentCounterData = {
+        salesInvoiceStatus: paymentCounterModal.salesInvoiceStatus,
+        deliveryInvoiceStatus: paymentCounterModal.deliveryInvoiceStatus,
+        receivedDate: paymentCounterModal.receivedDate || null,
+        deliveryDate: paymentCounterModal.deliveryDate || null,
+        salesInvoiceFileId,
+        deliveryInvoiceFileId,
+      };
+      setOtpModal({
+        open: true,
+        title: 'Update Payment Counter',
+        description: `Confirm payment counter update for "${order.quotation_number ?? '—'}".`,
+        pendingAction: 'payment_counter',
+      });
+      setPaymentCounterModal((prev) => ({ ...prev, submitting: false }));
+    } catch (err: any) {
+      alert('Failed to prepare payment counter update: ' + (err.message ?? 'Unknown error'));
+      setPaymentCounterModal((prev) => ({ ...prev, submitting: false }));
+    }
+  }
+
+  async function executePaymentCounter(order: Order, actionToken: string) {
+    const data = (window as any).__pendingPaymentCounterData;
+    if (!data) return;
+    setActionLoading(order.id);
+    try {
+      await updatePaymentCounter(order.id, {
+        sales_invoice_status: data.salesInvoiceStatus,
+        delivery_invoice_status: data.deliveryInvoiceStatus,
+        received_date: data.receivedDate,
+        delivery_date: data.deliveryDate,
+        sales_invoice_file_id: data.salesInvoiceFileId,
+        delivery_invoice_file_id: data.deliveryInvoiceFileId,
+        action_token: actionToken,
+      });
+      setPaymentCounterModal((prev) => ({ ...prev, open: false }));
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to update payment counter: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+      (window as any).__pendingPaymentCounterData = null;
+    }
+  }
+
   // ── Edit / Delete ───────────────────────────────────────────────────────
 
   function handleEditSave(data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string; delivery_address?: string | null; contact_number?: string | null; authorized_receiver_name?: string | null; authorized_receiver_contact?: string | null }) {
@@ -896,6 +1069,18 @@ export default function DeliveryPage() {
       return;
     }
     if (otpModal.pendingAction === 'partial_delivery') { handlePartialDeliveryOtp(actionToken); return; }
+    if (otpModal.pendingAction === 'special_case') {
+      const pending = (window as any).__pendingActionOrder as Order | undefined;
+      if (pending) executeSpecialCase(pending, actionToken);
+      (window as any).__pendingActionOrder = null;
+      return;
+    }
+    if (otpModal.pendingAction === 'payment_counter') {
+      const pending = (window as any).__pendingActionOrder as Order | undefined;
+      if (pending) executePaymentCounter(pending, actionToken);
+      (window as any).__pendingActionOrder = null;
+      return;
+    }
     if (!order) return;
     if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order, actionToken);
     else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order, actionToken);
@@ -982,6 +1167,7 @@ export default function DeliveryPage() {
   const filteredBalanceVerificationOrders = filterByClient(balanceVerificationOrders);
   const filteredPendingOrders = filterByClient(pendingOrders);
   const filteredScheduledOrders = filterByClient(scheduledOrders);
+  const filteredCounteredOrders = filterByClient(counteredOrders);
   const filteredDeliveredOrders = filterByClient(deliveredOrders);
   const filteredPaymentReceivedOrders = filterByClient(paymentReceivedOrders);
   const filteredPaymentConfirmedOrders = filterByClient(paymentConfirmedOrders);
@@ -1261,6 +1447,17 @@ export default function DeliveryPage() {
                       >
                         <Upload className="h-4 w-4" />
                       </button>
+                      {/* Special Case button for non-exception orders */}
+                      {!hasException && (
+                        <button
+                          onClick={() => handleSpecialCase(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40"
+                          title="Skip payment — grant special case (goes through countered section)"
+                        >
+                          <ShieldAlert className="h-3.5 w-3.5 inline mr-0.5" />Special Case
+                        </button>
+                      )}
                       {/* Skip-payment buttons for exception orders */}
                       {hasException && (
                         <>
@@ -1620,6 +1817,87 @@ export default function DeliveryPage() {
                           </button>
                         </>
                       )}
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Countered (Awaiting Payment) ───────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <DollarSign className="h-4 w-4 text-orange-500" />
+          <h2 className="text-base font-semibold text-gray-800">Countered (Awaiting Payment)</h2>
+          <span className="ml-auto rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+            {filteredCounteredOrders.length}
+          </span>
+        </div>
+        {filteredCounteredOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No countered orders</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filteredCounteredOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              const isSpecialCase = order.special_case === true;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                        {isSpecialCase && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />Special Case
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.special_case_notes && (
+                        <p className="mt-1 text-[11px] italic text-amber-600">Reason: {order.special_case_notes}</p>
+                      )}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | Balance: ₱{balance.toLocaleString()}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleMarkPaymentReceived(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                        title="Mark payment received"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleMarkPaymentConfirmed(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40"
+                        title="Mark payment confirmed"
+                      >
+                        <ThumbsUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleOpenPaymentCounter(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg px-2 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
+                        title="Update payment counter (invoices, dates)"
+                      >
+                        <FileText className="h-3.5 w-3.5 inline mr-0.5" />Payment Counter
+                      </button>
                       <RowActions order={order} />
                     </div>
                   </div>
@@ -2066,6 +2344,214 @@ export default function DeliveryPage() {
                       <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
                     ) : (
                       <><PackageCheck className="h-3.5 w-3.5" /> Deliver Selected ({partialDeliveryModal.selectedItemIds.size})</>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Special Case Modal ──────────────────────────────────────────── */}
+      {specialCaseModal.open && specialCaseModal.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-auto w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="border-b border-gray-200 px-6 py-4">
+              <h3 className="text-base font-semibold text-gray-800">Grant Special Case</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Skip balance payment for "{specialCaseModal.order.quotation_number ?? '—'}" and advance to Countered section.
+              </p>
+            </div>
+            <div className="px-6 py-4">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Reason for Special Case *</label>
+              <textarea
+                value={specialCaseModal.notes}
+                onChange={(e) => setSpecialCaseModal((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="e.g., Client will pay upon delivery, approved by management"
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+              <button
+                onClick={() => setSpecialCaseModal((prev) => ({ ...prev, open: false }))}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!specialCaseModal.notes.trim()) {
+                    alert('Please provide a reason for the special case.');
+                    return;
+                  }
+                  (window as any).__pendingActionOrder = specialCaseModal.order;
+                  setOtpModal({
+                    open: true,
+                    title: 'Grant Special Case',
+                    description: `Confirm special case for "${specialCaseModal.order!.quotation_number ?? '—'}" with reason: ${specialCaseModal.notes}`,
+                    pendingAction: 'special_case',
+                  });
+                }}
+                disabled={specialCaseModal.submitting}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {specialCaseModal.submitting ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
+                ) : (
+                  <><ShieldAlert className="h-3.5 w-3.5" /> Confirm Special Case</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment Counter Modal ──────────────────────────────────────── */}
+      {paymentCounterModal.open && paymentCounterModal.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-auto w-full max-w-lg rounded-xl bg-white shadow-xl">
+            <div className="border-b border-gray-200 px-6 py-4">
+              <h3 className="text-base font-semibold text-gray-800">Payment Counter</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Update invoice status and dates for "{paymentCounterModal.order.quotation_number ?? '—'}"
+              </p>
+            </div>
+            {paymentCounterModal.loading ? (
+              <div className="flex items-center justify-center px-6 py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4 px-6 py-4">
+                  {/* Sales Invoice Status */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Sales Invoice Status</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, salesInvoiceStatus: 'pending' }))}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                          paymentCounterModal.salesInvoiceStatus === 'pending'
+                            ? 'bg-gray-200 text-gray-800'
+                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                        }`}
+                      >
+                        Pending
+                      </button>
+                      <button
+                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, salesInvoiceStatus: 'received' }))}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                          paymentCounterModal.salesInvoiceStatus === 'received'
+                            ? 'bg-emerald-200 text-emerald-800'
+                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                        }`}
+                      >
+                        Received
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Delivery Invoice Status */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Invoice Status</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceStatus: 'pending' }))}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                          paymentCounterModal.deliveryInvoiceStatus === 'pending'
+                            ? 'bg-gray-200 text-gray-800'
+                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                        }`}
+                      >
+                        Pending
+                      </button>
+                      <button
+                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceStatus: 'received' }))}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                          paymentCounterModal.deliveryInvoiceStatus === 'received'
+                            ? 'bg-emerald-200 text-emerald-800'
+                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                        }`}
+                      >
+                        Received
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Received Date */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Received Date</label>
+                    <input
+                      type="date"
+                      value={paymentCounterModal.receivedDate}
+                      onChange={(e) => setPaymentCounterModal((prev) => ({ ...prev, receivedDate: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  {/* Delivery Date */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Date</label>
+                    <input
+                      type="date"
+                      value={paymentCounterModal.deliveryDate}
+                      onChange={(e) => setPaymentCounterModal((prev) => ({ ...prev, deliveryDate: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  {/* Sales Invoice File Upload */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Upload Sales Invoice</label>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setPaymentCounterModal((prev) => ({ ...prev, salesInvoiceFile: file }));
+                      }}
+                      className="w-full text-xs text-gray-500 file:mr-2 file:rounded-lg file:border-0 file:bg-amber-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-amber-700 hover:file:bg-amber-100"
+                    />
+                    {paymentCounterModal.counter?.sales_invoice_file_id && (
+                      <p className="mt-1 text-[10px] text-gray-400">Existing file attached (re-upload to replace)</p>
+                    )}
+                  </div>
+
+                  {/* Delivery Invoice File Upload */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Upload Delivery Invoice</label>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceFile: file }));
+                      }}
+                      className="w-full text-xs text-gray-500 file:mr-2 file:rounded-lg file:border-0 file:bg-amber-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-amber-700 hover:file:bg-amber-100"
+                    />
+                    {paymentCounterModal.counter?.delivery_invoice_file_id && (
+                      <p className="mt-1 text-[10px] text-gray-400">Existing file attached (re-upload to replace)</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+                  <button
+                    onClick={() => setPaymentCounterModal((prev) => ({ ...prev, open: false }))}
+                    className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handlePaymentCounterSubmit}
+                    disabled={paymentCounterModal.submitting}
+                    className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {paymentCounterModal.submitting ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                    ) : (
+                      <><FileText className="h-3.5 w-3.5" /> Save Payment Counter</>
                     )}
                   </button>
                 </div>

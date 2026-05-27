@@ -28,6 +28,7 @@
 | `cd170ef` | Roo (Code) | feat: AI chatbox draggable — ChatFloatingIcon supports mouse/touch drag via the header. Uses CSS transform translate() for smooth repositioning. | ✅ VPS `cd170ef` |
 | `5fcfd84` | Roo (Code) | fix: draggable chatbox — two bugs fixed: (1) click-outside handler skips during drag via dragRef.current.isDragging check; (2) transform: translate() moved from outer container to chat panel only, so floating button always stays at bottom-6 right-6 | ✅ VPS `5fcfd84` |
 | `11685ce` | Roo (Code) | feat: partial production finish, partial dispatch, partial en-route arrival — 3 new API endpoints (complete-production-partial, complete-dispatch-partial, complete-arrival-partial), API client functions, "Complete (Partial)" buttons in OrderRow and ProductionItemSection, OTP handlers, wired into all relevant production sections | ✅ VPS `11685ce` |
+| | Roo (Code) | feat: Special Case on Balance Due — new "Special Case" button on balance_due orders (non-exception) that skips balance payment and advances to countered → payment_received → payment_confirmed → completed. Migration 043 adds special_case columns + payment_counter table. Server: POST /orders/special-case, POST/GET /orders/:id/payment-counter endpoints. Dashboard: Special Case button, Countered section (between Delivered and Payment Received), Payment Counter modal (invoice status, dates, file uploads). Guard added for balance_due → countered requiring special_case or delivery_exception. | ❌ |
 
 ## 2026-05-28
 

@@ -6564,7 +6564,7 @@ app.post('/stage-updates', async (request, reply) => {
     } catch { /* non-fatal */ }
   }
   const orders = await query(
-    `SELECT id, quotation_number, client_name, total_amount, deposit_amount, balance_paid, current_stage, deposit_verified, production_exception
+    `SELECT id, quotation_number, client_name, total_amount, deposit_amount, balance_paid, current_stage, deposit_verified, production_exception, delivery_exception, special_case
      FROM orders WHERE quotation_number=$1`,
     [body.quotation_number]
   );
@@ -6638,6 +6638,17 @@ app.post('/stage-updates', async (request, reply) => {
       error: 'Cannot schedule delivery: balance must be paid first, unless a delivery exception is granted.',
       current_stage: previousStage,
       balance_paid: order.balance_paid,
+      delivery_exception: order.delivery_exception,
+    });
+  }
+
+  // Guard: Block balance_due → countered unless special case is granted
+  if (previousStage === 'balance_due' && body.stage === 'countered' && !(order.special_case || order.delivery_exception)) {
+    return reply.code(400).send({
+      error: 'Cannot mark as countered: balance must be paid first, unless a special case or delivery exception is granted.',
+      current_stage: previousStage,
+      balance_paid: order.balance_paid,
+      special_case: order.special_case,
       delivery_exception: order.delivery_exception,
     });
   }
@@ -6869,6 +6880,26 @@ app.post('/stage-updates', async (request, reply) => {
         `Quotation: <b>${ref}</b>\n` +
         `Client: ${client}\n\n` +
         `The order has reached the balance due stage. Please collect the remaining payment.`
+      );
+    });
+  }
+
+  // When advancing to countered, create a persistent reminder
+  // asking the collection team to collect payment and update invoice status.
+  if (body.stage === 'countered' && COLLECTION_CHAT_ID) {
+    const ref = body.quotation_number;
+    const client = order?.client_name ?? 'Unknown';
+    const reminderMessage = `Order #${ref} (${client}) is countered — awaiting payment collection and invoice status update.`;
+
+    await upsertStageReminder(orderId, 'countered', COLLECTION_CHAT_ID, reminderMessage);
+
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `🔄 <b>Countered (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `The order has been marked as countered. Please collect payment and update the invoice status (sales invoice & delivery invoice).`
       );
     });
   }
@@ -8921,6 +8952,245 @@ app.post('/orders/delivery-exception', async (request, reply) => {
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
   return reply.send({ ok: true, order: rows[0] });
+});
+
+// ── Special Case (Skip Balance Payment) ─────────────────────────────
+// Allows an order at balance_due to proceed to delivery without paying the balance.
+// The order advances to 'countered' stage and must go through:
+//   countered → payment_received → payment_confirmed → completed
+// A payment_counter record is created to track sales invoice and delivery invoice status.
+const specialCaseSchema = z.object({
+  order_id: z.string(),
+  notes: z.string().optional(),
+  granted_by: z.string().optional(),
+  action_token: z.string(),
+});
+
+app.post('/orders/special-case', async (request, reply) => {
+  const body = specialCaseSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Fetch the order to validate current stage
+  const orderRows = await query(
+    `SELECT id, quotation_number, client_name, current_stage, total_amount, deposit_amount FROM orders WHERE id=$1`,
+    [body.order_id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0];
+
+  // Only allow special case from balance_due stage
+  if (order.current_stage !== 'balance_due') {
+    return reply.code(400).send({
+      error: `Special case can only be granted from 'balance_due' stage. Current stage: '${order.current_stage}'`,
+    });
+  }
+
+  // Update order: set special_case flags and advance to countered
+  const updatedRows = await query(
+    `UPDATE orders SET
+      special_case = TRUE,
+      special_case_notes = $2,
+      special_case_granted_at = NOW(),
+      special_case_granted_by = $3,
+      current_stage = 'countered',
+      updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [body.order_id, body.notes ?? null, body.granted_by ?? null]
+  );
+
+  // Create payment_counter record for this order
+  await query(
+    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_invoice_status)
+     VALUES ($1, 'pending', 'pending')
+     ON CONFLICT (order_id) DO NOTHING`,
+    [body.order_id]
+  );
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [body.order_id, 'countered', 'special_case',
+     `Special case granted — skipped balance payment. Notes: ${body.notes ?? 'None provided'}`,
+     body.granted_by ?? null, order.client_name ?? null, userEmail]
+  );
+
+  // Auto-complete balance_due reminders
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='balance_due' AND status='active'`,
+    [body.order_id]
+  );
+
+  // Notify about special case
+  await notifyManualChange(
+    'Special case granted — balance payment skipped',
+    `Order: *${order.quotation_number ?? order.client_name ?? body.order_id.slice(0, 8)}*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}\nAdvanced to: countered`,
+    userEmail,
+  );
+
+  // Notify delivery group
+  if (DELIVERY_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `🔄 <b>Special Case Granted (Dashboard)</b>\n\n` +
+        `Order: <b>${order.quotation_number ?? body.order_id.slice(0, 8)}</b>\n` +
+        `Client: ${order.client_name ?? 'Unknown'}\n` +
+        `Notes: ${body.notes ?? 'None provided'}\n` +
+        `Granted by: ${body.granted_by ?? 'dashboard'}\n\n` +
+        `A special case has been granted — balance payment was skipped. The order is now at <b>Countered</b> stage and awaits payment collection with invoice tracking.`
+      );
+    });
+  }
+
+  // Notify collection group
+  if (COLLECTION_CHAT_ID) {
+    setImmediate(() => {
+      notifyGroupChat(
+        COLLECTION_CHAT_ID,
+        `🔄 <b>Special Case — Awaiting Payment (Dashboard)</b>\n\n` +
+        `Order: <b>${order.quotation_number ?? body.order_id.slice(0, 8)}</b>\n` +
+        `Client: ${order.client_name ?? 'Unknown'}\n` +
+        `Notes: ${body.notes ?? 'None provided'}\n\n` +
+        `A special case was granted and the order is now at <b>Countered</b> stage. Please collect payment and update invoice status.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id: body.order_id });
+  return reply.send({ ok: true, order: updatedRows[0] });
+});
+
+// ── Payment Counter ──────────────────────────────────────────────────
+// Tracks sales invoice and delivery invoice status for special case orders.
+// Allows uploading invoice files and marking them as received.
+
+const updatePaymentCounterSchema = z.object({
+  sales_invoice_status: z.enum(['pending', 'received']).optional(),
+  delivery_invoice_status: z.enum(['pending', 'received']).optional(),
+  received_date: z.string().nullable().optional(),
+  delivery_date: z.string().nullable().optional(),
+  sales_invoice_file_id: z.string().nullable().optional(),
+  delivery_invoice_file_id: z.string().nullable().optional(),
+  action_token: z.string(),
+});
+
+app.post('/orders/:id/payment-counter', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = updatePaymentCounterSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Build dynamic SET clause
+  const setClauses: string[] = [];
+  const values: any[] = [];
+  let paramIdx = 1;
+
+  if (body.sales_invoice_status !== undefined) {
+    setClauses.push(`sales_invoice_status = $${paramIdx++}`);
+    values.push(body.sales_invoice_status);
+  }
+  if (body.delivery_invoice_status !== undefined) {
+    setClauses.push(`delivery_invoice_status = $${paramIdx++}`);
+    values.push(body.delivery_invoice_status);
+  }
+  if (body.received_date !== undefined) {
+    setClauses.push(`received_date = $${paramIdx++}`);
+    values.push(body.received_date);
+  }
+  if (body.delivery_date !== undefined) {
+    setClauses.push(`delivery_date = $${paramIdx++}`);
+    values.push(body.delivery_date);
+  }
+  if (body.sales_invoice_file_id !== undefined) {
+    setClauses.push(`sales_invoice_file_id = $${paramIdx++}`);
+    values.push(body.sales_invoice_file_id);
+  }
+  if (body.delivery_invoice_file_id !== undefined) {
+    setClauses.push(`delivery_invoice_file_id = $${paramIdx++}`);
+    values.push(body.delivery_invoice_file_id);
+  }
+
+  if (setClauses.length === 0) {
+    return reply.code(400).send({ error: 'No fields to update' });
+  }
+
+  setClauses.push(`updated_at = NOW()`);
+  values.push(id);
+
+  await query(
+    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_invoice_status)
+     VALUES ($1, 'pending', 'pending')
+     ON CONFLICT (order_id) DO NOTHING`,
+    [id]
+  );
+
+  const result = await query(
+    `UPDATE payment_counter SET ${setClauses.join(', ')} WHERE order_id = $${paramIdx} RETURNING *`,
+    values
+  );
+
+  if (!result[0]) return reply.code(404).send({ error: 'Payment counter not found for this order' });
+
+  // Record stage update for invoice tracking
+  if (body.sales_invoice_status === 'received' || body.delivery_invoice_status === 'received') {
+    const remarks = [
+      body.sales_invoice_status === 'received' ? 'Sales invoice marked as received' : null,
+      body.delivery_invoice_status === 'received' ? 'Delivery invoice marked as received' : null,
+    ].filter(Boolean).join('; ');
+
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, actor_name)
+       VALUES ($1, 'countered', 'invoice_updated', $2, $3, $4)`,
+      [id, remarks, 'dashboard', userEmail]
+    );
+  }
+
+  await notifyManualChange(
+    'Payment counter updated',
+    `Order ID: *${id.slice(0, 8)}...*\nSales Invoice: ${body.sales_invoice_status ?? 'unchanged'}\nDelivery Invoice: ${body.delivery_invoice_status ?? 'unchanged'}`,
+    userEmail,
+  );
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+  return reply.send({ ok: true, payment_counter: result[0] });
+});
+
+app.get('/orders/:id/payment-counter', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const rows = await query(
+    `SELECT * FROM payment_counter WHERE order_id = $1`,
+    [id]
+  );
+  if (!rows[0]) {
+    return reply.send({ ok: true, payment_counter: null });
+  }
+  return reply.send({ ok: true, payment_counter: rows[0] });
 });
 
 // ── Revoke Delivery Exception ───────────────────────────────────────

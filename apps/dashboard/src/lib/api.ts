@@ -63,6 +63,10 @@ export interface Order {
   stock_prep_ready_at: string | null;
   partial_delivery: boolean | null;
   partial_delivery_notes: string | null;
+  special_case: boolean | null;
+  special_case_notes: string | null;
+  special_case_granted_at: string | null;
+  special_case_granted_by: string | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -1073,6 +1077,53 @@ export async function revokeProductionException(
     method: 'POST',
     body: JSON.stringify({ order_id: orderId, action_token: actionToken }),
   });
+}
+
+// ── Special Case (Skip Balance Payment) ─────────────────────────────────
+
+export interface PaymentCounter {
+  id: string;
+  order_id: string;
+  sales_invoice_status: 'pending' | 'received';
+  delivery_invoice_status: 'pending' | 'received';
+  received_date: string | null;
+  delivery_date: string | null;
+  sales_invoice_file_id: string | null;
+  delivery_invoice_file_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function grantSpecialCase(
+  orderId: string,
+  data: { notes?: string; granted_by?: string; action_token: string },
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>('/orders/special-case', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId, ...data }),
+  });
+}
+
+export async function updatePaymentCounter(
+  orderId: string,
+  data: {
+    sales_invoice_status?: 'pending' | 'received';
+    delivery_invoice_status?: 'pending' | 'received';
+    received_date?: string | null;
+    delivery_date?: string | null;
+    sales_invoice_file_id?: string | null;
+    delivery_invoice_file_id?: string | null;
+    action_token: string;
+  },
+): Promise<{ ok: boolean; payment_counter: PaymentCounter }> {
+  return fetchJson<{ ok: boolean; payment_counter: PaymentCounter }>(`/orders/${orderId}/payment-counter`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getPaymentCounter(orderId: string): Promise<{ ok: boolean; payment_counter: PaymentCounter | null }> {
+  return fetchJson<{ ok: boolean; payment_counter: PaymentCounter | null }>(`/orders/${orderId}/payment-counter`);
 }
 
 // Stage display configuration
