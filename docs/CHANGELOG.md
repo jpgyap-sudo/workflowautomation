@@ -26,7 +26,13 @@
 | `eb510c2` | Roo (Code) | fix: acknowledgement receipt wrong amount on full payment — getReceiptAmount now returns total_amount when balance_paid or deposit_is_full_payment is TRUE. Same fix applied to receipts list endpoint. | ✅ VPS `cd170ef` |
 | `467351c` | Roo (Code) | feat: auto-fill sales agent from logged-in user — NewOrderModal and VisionPageContent auto-fill salesAgent from useAuth().user.name when a sub-user (Mariella/Cathlyn) is logged in. | ✅ VPS `cd170ef` |
 | `cd170ef` | Roo (Code) | feat: AI chatbox draggable — ChatFloatingIcon supports mouse/touch drag via the header. Uses CSS transform translate() for smooth repositioning. | ✅ VPS `cd170ef` |
-| `5fcfd84` | Roo (Code) | fix: draggable chatbox — two bugs fixed: (1) click-outside handler skips during drag via dragRef.current.isDragging check; (2) transform: translate() moved from outer container to chat panel only, so floating button always stays at bottom-6 right-6 | ❌ |
+| `5fcfd84` | Roo (Code) | fix: draggable chatbox — two bugs fixed: (1) click-outside handler skips during drag via dragRef.current.isDragging check; (2) transform: translate() moved from outer container to chat panel only, so floating button always stays at bottom-6 right-6 | ✅ VPS `5fcfd84` |
+
+## 2026-05-28
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
+| | Roo (Code) | feat: partial inventory verification + partial delivery — migration 041_partial_delivery.sql adds partial_delivery_count, remaining_qty, last_partial_delivery_at to order_items; partial_delivery, partial_delivery_notes to orders; partial_delivery_logs table; get_delivery_completion_pct function. Server: complete-inventory-verification-partial, partial-delivery, delivery-progress endpoints. Dashboard: inventory verification page shows "Complete (Partial)" button; delivery page shows "Partial Delivery" button + modal with item selection, summary stats, delivery note, OTP confirmation; production page shows "Partial Delivery" badge on orders with partial delivery enabled. Telegram notifications sent for partial verification and partial delivery events. | ❌ |
 
 ## 2026-05-26
 

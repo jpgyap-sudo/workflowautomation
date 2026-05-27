@@ -10,6 +10,7 @@ import {
   getOrderItems,
   inventoryVerifyItem,
   completeInventoryVerification,
+  completeInventoryVerificationPartial,
   bulkInventoryVerify,
   bulkInventoryUnverify,
   type OrderDetail,
@@ -42,6 +43,8 @@ export default function InventoryVerificationDetailPage() {
     arrivedQty?: number;
   }>({ open: false, itemId: '', itemName: '', action: 'all' });
   const [completeOtpOpen, setCompleteOtpOpen] = useState(false);
+  const [completePartialOtpOpen, setCompletePartialOtpOpen] = useState(false);
+  const [completingPartial, setCompletingPartial] = useState(false);
 
   // Multi-select state for bulk verify
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -170,6 +173,21 @@ export default function InventoryVerificationDetailPage() {
     }
   }
 
+  async function handleCompletePartialOtp(actionToken: string) {
+    if (!order) return;
+    setCompletingPartial(true);
+    try {
+      const notes = `Partial verification: ${fullyVerified}/${items.length} items fully verified (${pct}%)`;
+      await completeInventoryVerificationPartial(order.id, actionToken, notes);
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to complete partial verification');
+    } finally {
+      setCompletingPartial(false);
+      setCompletePartialOtpOpen(false);
+    }
+  }
+
   function handleBulkVerifyClick(action: 'verify_all' | 'partial' | 'not_yet' | 'unverify' | 'arrived') {
     if (selectedItemIds.size === 0) return;
 
@@ -287,14 +305,27 @@ export default function InventoryVerificationDetailPage() {
             </p>
           </div>
           {canVerify ? (
-            <button
-              onClick={() => setCompleteOtpOpen(true)}
-              disabled={completing || items.some((item) => (item.verified_qty ?? 0) < item.quantity)}
-              className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              Complete Verification
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setCompleteOtpOpen(true)}
+                disabled={completing || items.some((item) => (item.verified_qty ?? 0) < item.quantity)}
+                className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Complete Verification
+              </button>
+              {items.some((item) => (item.verified_qty ?? 0) < item.quantity) && (
+                <button
+                  onClick={() => setCompletePartialOtpOpen(true)}
+                  disabled={completingPartial || items.every((item) => (item.verified_qty ?? 0) === 0)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Complete verification with partial items — enables partial delivery"
+                >
+                  {completingPartial ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  Complete (Partial)
+                </button>
+              )}
+            </div>
           ) : (
             <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">Read-only after leaving inventory verification</span>
           )}
@@ -482,6 +513,13 @@ export default function InventoryVerificationDetailPage() {
         description={`Complete inventory verification for #${order.quotation_number}.`}
         onVerified={handleCompleteOtp}
         onClose={() => setCompleteOtpOpen(false)}
+      />
+      <OtpModal
+        open={completePartialOtpOpen}
+        title="Complete Partial Inventory Verification"
+        description={`Complete inventory verification for #${order.quotation_number} with ${fullyVerified}/${items.length} items fully verified (${pct}%). This enables partial delivery — verified items can be delivered while pending items are tracked for later.`}
+        onVerified={handleCompletePartialOtp}
+        onClose={() => setCompletePartialOtpOpen(false)}
       />
       <OtpModal
         open={bulkVerifyOtpOpen}

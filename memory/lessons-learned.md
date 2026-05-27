@@ -12691,3 +12691,97 @@ Before adding a vector index type (IVFFlat, HNSW, etc.), verify its dimension li
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: acknowledgement receipt shows wrong amount (₱750 instead of ₱1,500) when full payment recorded via dashboard
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit eb510c203492def886188bbc58a40d3670e64e2b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** eb510c203492def886188bbc58a40d3670e64e2b
+**Files:** apps/api/src/server.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**Fix:** Corrected the acknowledgement receipt amount display when a full payment of ₱1,500 was recorded via the dashboard. The receipt was incorrectly showing ₱750.
+
+**Root Cause:** A logic error in `apps/api/src/server.ts` caused the receipt generation to use a partial payment amount instead of the full payment amount when the payment was recorded through the dashboard interface. The dashboard payment flow was not properly updating the receipt amount variable.
+
+**Reusable Takeaway:** When processing payments through different entry points (e.g., dashboard vs. API), ensure the payment amount variable is consistently set and validated before being passed to receipt generation. Always test receipt output for all payment scenarios (partial, full, and different entry points) to catch amount mismatches early.
+
+---
+*Original commit message: fix: acknowledgement receipt shows wrong amount (₱750 instead of ₱1,500) when full payment recorded via dashboard*
+
+#### Lesson Learned
+
+**Fix:** Corrected the acknowledgement receipt amount display when a full payment of ₱1,500 was recorded via the dashboard. The receipt was incorrectly showing ₱750.
+
+**Root Cause:** A logic error in `apps/api/src/server.ts` caused the receipt generation to use a partial payment amount instead of the full payment amount when the payment was recorded through the dashboard interface. The dashboard payment flow was not properly updating the receipt amount variable.
+
+**Reusable Takeaway:** When processing payments through different entry points (e.g., dashboard vs. API), ensure the payment amount variable is consistently set and validated before being passed to receipt generation. Always test receipt output for all payment scenarios (partial, full, and different entry points) to catch amount mismatches early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: draggable chatbox — two bugs fixed
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5fcfd849412f5b333444bc9fd0ad8316986a5b14
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5fcfd849412f5b333444bc9fd0ad8316986a5b14
+**Files:** apps/dashboard/src/components/ChatFloatingIcon.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Two bugs in the draggable chatbox component:  
+1. Chat icon position resetting unexpectedly.  
+2. Drag behavior breaking when the chatbox was opened/closed.
+
+**Why it broke:**  
+State management for drag position was not properly isolated from the chatbox visibility toggle. When the chatbox closed, the drag state was reset or lost, causing the icon to snap back to default position and breaking subsequent drag interactions.
+
+**Reusable takeaway:**  
+When building draggable UI elements that toggle visibility, persist drag position state independently of visibility state. Use a stable reference (e.g., `useRef` or a dedicated state slice) for position data that does not reinitialize on open/close cycles. This prevents position resets and ensures drag behavior remains consistent across visibility toggles.
+
+---
+*Original commit message: fix: draggable chatbox — two bugs fixed*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Two bugs in the draggable chatbox component:  
+1. Chat icon position resetting unexpectedly.  
+2. Drag behavior breaking when the chatbox was opened/closed.
+
+**Why it broke:**  
+State management for drag position was not properly isolated from the chatbox visibility toggle. When the chatbox closed, the drag state was reset or lost, causing the icon to snap back to default position and breaking subsequent drag interactions.
+
+**Reusable takeaway:**  
+When building draggable UI elements that toggle visibility, persist drag position state independently of visibility state. Use a stable reference (e.g., `useRef` or a dedicated state slice) for position data that does not reinitialize on open/close cycles. This prevents position resets and ensures drag behavior remains consistent across visibility toggles.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

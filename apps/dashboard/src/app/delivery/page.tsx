@@ -3,11 +3,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -194,8 +194,29 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  // ── Partial Delivery Modal ───────────────────────────────────────────
+  const [partialDeliveryModal, setPartialDeliveryModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    items: DeliveryProgressItem[];
+    summary: DeliveryProgressSummary | null;
+    selectedItemIds: Set<string>;
+    loading: boolean;
+    submitting: boolean;
+    deliveryNote: string;
+  }>({
+    open: false,
+    order: null,
+    items: [],
+    summary: null,
+    selectedItemIds: new Set(),
+    loading: false,
+    submitting: false,
+    deliveryNote: '',
+  });
 
   function mutateAll() {
     mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
@@ -874,6 +895,7 @@ export default function DeliveryPage() {
       if (pending) executeCompleteDirectly(pending.order, actionToken);
       return;
     }
+    if (otpModal.pendingAction === 'partial_delivery') { handlePartialDeliveryOtp(actionToken); return; }
     if (!order) return;
     if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order, actionToken);
     else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order, actionToken);
@@ -885,6 +907,56 @@ export default function DeliveryPage() {
     else if (otpModal.pendingAction === 'advance_payment_received') executeAdvancePaymentReceived(order, actionToken);
     else if (otpModal.pendingAction === 'advance_payment_confirmed') executeAdvancePaymentConfirmed(order, actionToken);
     (window as any).__pendingActionOrder = null;
+  }
+
+  // ── Partial Delivery ────────────────────────────────────────────────────
+
+  async function handleOpenPartialDelivery(order: Order) {
+    setPartialDeliveryModal((prev) => ({ ...prev, open: true, order, loading: true }));
+    try {
+      const data = await getDeliveryProgress(order.id);
+      setPartialDeliveryModal((prev) => ({
+        ...prev,
+        items: data.items,
+        summary: data.summary,
+        selectedItemIds: new Set(
+          data.items
+            .filter((item) => !item.fully_delivered && item.verified_qty > 0)
+            .map((item) => item.id)
+        ),
+        loading: false,
+      }));
+    } catch (err: any) {
+      alert('Failed to load delivery progress: ' + (err.message ?? 'Unknown error'));
+      setPartialDeliveryModal((prev) => ({ ...prev, open: false, loading: false }));
+    }
+  }
+
+  function togglePartialDeliveryItem(itemId: string) {
+    setPartialDeliveryModal((prev) => {
+      const next = new Set(prev.selectedItemIds);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return { ...prev, selectedItemIds: next };
+    });
+  }
+
+  function handlePartialDeliveryOtp(actionToken: string) {
+    const modal = partialDeliveryModal;
+    if (!modal.order || modal.selectedItemIds.size === 0) return;
+    executePartialDelivery(modal.order, Array.from(modal.selectedItemIds), modal.deliveryNote, actionToken);
+  }
+
+  async function executePartialDelivery(order: Order, itemIds: string[], deliveryNote: string, actionToken: string) {
+    setPartialDeliveryModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const result = await partialDelivery(order.id, itemIds, actionToken, deliveryNote || undefined);
+      alert(result.message);
+      setPartialDeliveryModal((prev) => ({ ...prev, open: false, submitting: false }));
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to record partial delivery: ' + (err.message ?? 'Unknown error'));
+      setPartialDeliveryModal((prev) => ({ ...prev, submitting: false }));
+    }
   }
 
   // ── Shared row actions (edit + delete buttons) ─────────────────────────
@@ -1046,6 +1118,16 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
+                      {order.partial_delivery && (
+                        <button
+                          onClick={() => handleOpenPartialDelivery(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+                          title="Record partial delivery of verified items"
+                        >
+                          {actionLoading === order.id ? '…' : <><Package className="mr-1 inline h-3 w-3" />Partial Delivery</>}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleAdvanceBalanceDue(order)}
                         disabled={actionLoading === order.id}
@@ -1841,6 +1923,167 @@ export default function DeliveryPage() {
           </div>
         );
       })()}
+
+      {/* ── Partial Delivery Modal ──────────────────────────────────────── */}
+      {partialDeliveryModal.open && partialDeliveryModal.order && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 py-10">
+          <div className="mx-auto w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-amber-600" />
+                <h2 className="text-base font-semibold text-gray-900">
+                  Partial Delivery — #{partialDeliveryModal.order.quotation_number ?? '—'}
+                </h2>
+              </div>
+              <button
+                onClick={() => setPartialDeliveryModal((prev) => ({ ...prev, open: false }))}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {partialDeliveryModal.loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                {/* Summary */}
+                {partialDeliveryModal.summary && (
+                  <div className="grid grid-cols-4 gap-3 border-b border-gray-100 bg-amber-50/50 px-6 py-3">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-gray-800">{partialDeliveryModal.summary.total_quantity}</p>
+                      <p className="text-[10px] text-gray-500">Total Units</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-emerald-700">{partialDeliveryModal.summary.total_delivered}</p>
+                      <p className="text-[10px] text-gray-500">Delivered</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-amber-700">{partialDeliveryModal.summary.delivery_pct}%</p>
+                      <p className="text-[10px] text-gray-500">Progress</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-gray-800">{partialDeliveryModal.summary.pending_items}</p>
+                      <p className="text-[10px] text-gray-500">Pending</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Items list */}
+                <div className="max-h-80 overflow-y-auto px-6 py-4">
+                  <p className="mb-2 text-xs font-medium text-gray-500">
+                    Select items to deliver (only verified, undelivered items are selectable):
+                  </p>
+                  {partialDeliveryModal.items.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-gray-400">No items found for this order.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {partialDeliveryModal.items.map((item) => {
+                        const canDeliver = !item.fully_delivered && item.verified_qty > 0;
+                        const isSelected = partialDeliveryModal.selectedItemIds.has(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+                              item.fully_delivered
+                                ? 'border-green-200 bg-green-50 opacity-60'
+                                : canDeliver
+                                  ? isSelected
+                                    ? 'border-amber-300 bg-amber-50'
+                                    : 'border-gray-200 hover:border-amber-200 hover:bg-amber-50/50 cursor-pointer'
+                                  : 'border-gray-100 bg-gray-50 opacity-50'
+                            }`}
+                            onClick={() => {
+                              if (canDeliver) togglePartialDeliveryItem(item.id);
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={!canDeliver}
+                              onChange={() => {
+                                if (canDeliver) togglePartialDeliveryItem(item.id);
+                              }}
+                              className="rounded border-gray-300 accent-amber-600 disabled:opacity-30"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                              <p className="text-xs text-gray-500">
+                                Ordered: {item.quantity} | Verified: {item.verified_qty} | Delivered: {item.delivered_qty}
+                                {item.remaining_qty > 0 && (
+                                  <span className="ml-2 font-medium text-amber-600">Remaining: {item.remaining_qty}</span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              {item.fully_delivered ? (
+                                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">✅ Done</span>
+                              ) : item.verified_qty > 0 ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                  {item.verified_qty - item.delivered_qty} ready
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">Not verified</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Delivery note */}
+                <div className="border-t border-gray-100 px-6 py-3">
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Note (optional)</label>
+                  <input
+                    type="text"
+                    value={partialDeliveryModal.deliveryNote}
+                    onChange={(e) => setPartialDeliveryModal((prev) => ({ ...prev, deliveryNote: e.target.value }))}
+                    placeholder="e.g., Delivered 5 units of Item A to client"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                  />
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+                  <button
+                    onClick={() => setPartialDeliveryModal((prev) => ({ ...prev, open: false }))}
+                    className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (partialDeliveryModal.selectedItemIds.size === 0) {
+                        alert('Please select at least one item to deliver.');
+                        return;
+                      }
+                      setOtpModal({
+                        open: true,
+                        title: 'Record Partial Delivery',
+                        description: `Deliver ${partialDeliveryModal.selectedItemIds.size} selected item(s) for #${partialDeliveryModal.order?.quotation_number ?? '—'}.`,
+                        pendingAction: 'partial_delivery',
+                      });
+                    }}
+                    disabled={partialDeliveryModal.selectedItemIds.size === 0 || partialDeliveryModal.submitting}
+                    className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {partialDeliveryModal.submitting ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
+                    ) : (
+                      <><PackageCheck className="h-3.5 w-3.5" /> Deliver Selected ({partialDeliveryModal.selectedItemIds.size})</>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* OTP Modal */}
       <OtpModal

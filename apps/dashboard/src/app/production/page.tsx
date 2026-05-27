@@ -14,6 +14,7 @@ import {
   createStockReplenishmentOrder,
   getOrderNotes, postProductionNote,
   searchClients,
+  getDeliveryProgress,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -844,6 +845,12 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
                 {completion.inventory_completion_pct >= 100 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
                     <CheckCircle className="h-3 w-3" /> All Arrived
+                  </span>
+                )}
+                {/* Partial delivery badge — shown when order has partial delivery enabled */}
+                {order.partial_delivery && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700" title="This order has partial delivery enabled — some items delivered, others pending">
+                    <Package className="h-3 w-3" /> Partial Delivery
                   </span>
                 )}
               </>
@@ -1715,6 +1722,7 @@ function ProductionFinishedTrackingSection({
                 <th className="px-4 py-3">Dispatch Pending</th>
                 <th className="px-4 py-3">Estimated Inventory Arrival Date</th>
                 <th className="px-4 py-3">Stage</th>
+                <th className="px-4 py-3">Delivery</th>
                 <th className="px-4 py-3">Notes</th>
               </tr>
             </thead>
@@ -1757,6 +1765,15 @@ function ProductionFinishedTrackingSection({
                       </td>
                       <td className="px-4 py-4"><StageBadge stage={order.current_stage} /></td>
                       <td className="px-4 py-4">
+                        {order.partial_delivery ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700" title="Partial delivery in progress">
+                            <Package className="h-3 w-3" /> Partial
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-400">
                             {orderNotes.length > 0 ? `${orderNotes.length} note${orderNotes.length === 1 ? '' : 's'}` : 'No notes'}
@@ -1777,7 +1794,7 @@ function ProductionFinishedTrackingSection({
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-items`} className="bg-gray-50/70">
-                        <td colSpan={7} className="px-6 py-4">
+                        <td colSpan={8} className="px-6 py-4">
                           {/* Notes section */}
                           <div className="mb-4 rounded-lg border border-gray-200 bg-white p-3">
                             <div className="mb-2 flex items-center gap-2">

@@ -3347,6 +3347,7 @@ async function deductInventoryForDeliveredOrder(orderId: string, createdBy: stri
   for (const item of items) {
     const alreadyDelivered = Number(item.delivered_qty ?? 0);
     const targetDelivered = Number(item.quantity ?? 0);
+    // If already partially delivered, only deduct the remaining delta
     const deltaToDeduct = Math.max(0, targetDelivered - alreadyDelivered);
     if (deltaToDeduct <= 0) continue;
 
@@ -3363,6 +3364,7 @@ async function deductInventoryForDeliveredOrder(orderId: string, createdBy: stri
     await query(
       `UPDATE order_items
        SET delivered_qty = LEAST(quantity, COALESCE(delivered_qty, 0) + $1),
+           remaining_qty = GREATEST(0, quantity - LEAST(quantity, COALESCE(delivered_qty, 0) + $1)),
            delivered_at = COALESCE(delivered_at, NOW()),
            updated_at = NOW()
        WHERE id = $2`,
@@ -4062,6 +4064,495 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
   broadcastSSE('order_updated', { id });
 
   return reply.send({ ok: true, message: 'Inventory verification completed. Advanced to inventory_arrived.' });
+});
+
+/**
+ * POST /orders/:id/complete-inventory-verification-partial
+ * Complete inventory verification even when some items are not yet fully verified.
+ * This enables partial delivery — items that have arrived can be delivered,
+ * while pending items remain tracked.
+ */
+const completeInventoryVerificationPartialSchema = z.object({
+  action_token: z.string(),
+  notes: z.string().optional(),
+});
+
+app.post('/orders/:id/complete-inventory-verification-partial', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = completeInventoryVerificationPartialSchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[complete-inventory-verification-partial] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey).catch(() => {});
+
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
+
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  if (orderRows[0].current_stage !== 'inventory_verification') {
+    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  }
+
+  // Check that at least SOME items have been verified (not all zero)
+  const itemCheck = await query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE verified_qty > 0)::int AS any_verified,
+            COUNT(*) FILTER (WHERE verified_qty >= quantity)::int AS fully_verified
+     FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+
+  if (itemCheck[0] && itemCheck[0].total > 0 && itemCheck[0].any_verified === 0) {
+    return reply.code(400).send({
+      error: 'Cannot complete partial verification: no items have been verified yet. Verify at least some items first.',
+      total_items: itemCheck[0].total,
+      verified_items: 0,
+    });
+  }
+
+  // Get verification summary for notifications
+  const verifiedItemRows = await query<{ name: string; quantity: number; verified_qty: number; arrived_qty: number | null }>(
+    `SELECT name, quantity, COALESCE(verified_qty, 0) AS verified_qty, arrived_qty
+     FROM order_items
+     WHERE order_id = $1
+     ORDER BY created_at ASC`,
+    [id]
+  );
+
+  // Calculate verification percentage based on what's actually verified
+  const totalQty = verifiedItemRows.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+  const totalVerified = verifiedItemRows.reduce((sum, item) => sum + Number(item.verified_qty ?? 0), 0);
+  const pct = totalQty > 0 ? Math.round((totalVerified / totalQty) * 100) : 0;
+
+  // Set remaining_qty for items that are not fully verified — these need to be tracked for later delivery
+  for (const item of verifiedItemRows) {
+    const verified = Number(item.verified_qty ?? 0);
+    const ordered = Number(item.quantity ?? 0);
+    const remaining = Math.max(0, ordered - verified);
+    if (remaining > 0) {
+      await query(
+        `UPDATE order_items SET remaining_qty = $1, updated_at = NOW() WHERE order_id = $2 AND name = $3`,
+        [remaining, id, item.name]
+      );
+    }
+  }
+
+  const verifiedItemList = verifiedItemRows.length
+    ? verifiedItemRows.map((item) => {
+        const v = Number(item.verified_qty ?? 0);
+        const q = Number(item.quantity ?? 0);
+        const a = item.arrived_qty != null ? Number(item.arrived_qty) : null;
+        const arrivedStr = a != null ? ` (arrived: ${a})` : '';
+        return `- ${item.name}: ${v}/${q} verified${arrivedStr}${v < q ? ' ⏳ PENDING' : ' ✅'}`;
+      }).join('\n')
+    : '- No item quantities recorded';
+
+  const verificationRef = orderRows[0].quotation_number ?? id.slice(0, 8);
+  const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(verificationRef)}`;
+
+  // Mark order as partial delivery and advance to inventory_arrived
+  await query(
+    `UPDATE orders SET
+      inventory_verified_at = NOW(),
+      inventory_verification_pct = $1,
+      partial_delivery = TRUE,
+      partial_delivery_notes = $2,
+      current_stage = 'inventory_arrived',
+      updated_at = NOW()
+     WHERE id = $3`,
+    [pct, body.notes ?? `Partial verification: ${itemCheck[0].fully_verified}/${itemCheck[0].total} items fully verified (${pct}%)`, id]
+  );
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, 'inventory_arrived', 'auto_advanced', $2, 'inventory-agent')`,
+    [id, `Partial inventory verification completed. ${itemCheck[0].fully_verified}/${itemCheck[0].total} items fully verified. Pending items tracked for later delivery.`]
+  );
+
+  // Complete reminders for inventory_verification
+  await query(
+    `UPDATE reminders SET status = 'completed', updated_at = NOW()
+     WHERE order_id = $1 AND status = 'active' AND stage = 'inventory_verification'`,
+    [id]
+  );
+
+  // Fire inventory agent for the new stage
+  triggerAgentsForStage('inventory_arrived', orderRows[0].quotation_number, orderRows[0].client_name);
+
+  // Notify escalation group
+  await notifyManualChange(
+    'Partial inventory verification completed',
+    `Quotation: *${orderRows[0].quotation_number ?? 'N/A'}*\nClient: *${orderRows[0].client_name ?? 'Unknown'}*\nAdvanced to: Inventory Arrived (Partial)\nVerified: ${itemCheck[0].fully_verified}/${itemCheck[0].total} items\nNotes: ${body.notes ?? 'None'}`,
+    userEmail,
+  );
+
+  // Notify delivery group
+  if (DELIVERY_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        `<b>⚠️ Partial Inventory Verification Complete (Dashboard)</b>\n\n` +
+        `Order: <b>#${ref}</b>\n` +
+        `Client: ${client}\n` +
+        `Link: <a href="${verificationUrl}">Permanent Verification Link</a>\n\n` +
+        `<b>Verified Items</b>\n${verifiedItemList}\n\n` +
+        `⚠️ Only ${itemCheck[0].fully_verified}/${itemCheck[0].total} items are fully verified.\n` +
+        `Order is now in Inventory Arrived stage with partial delivery enabled.\n` +
+        `Pending items will be tracked for later delivery.`
+      );
+    });
+  }
+
+  // Notify inventory group chat
+  const INVENTORY_GROUP_CHAT_ID = process.env.INVENTORY_GROUP_CHAT_ID;
+  if (INVENTORY_GROUP_CHAT_ID) {
+    const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0].client_name ?? 'Unknown';
+    setImmediate(() => {
+      notifyGroupChat(
+        INVENTORY_GROUP_CHAT_ID,
+        `📦 <b>⚠️ Partial Inventory Verification Complete (Dashboard)</b>\n\n` +
+        `Quotation: <b>${ref}</b>\n` +
+        `Client: ${client}\n\n` +
+        `⚠️ Only ${itemCheck[0].fully_verified}/${itemCheck[0].total} items fully verified.\n` +
+        `Partial delivery enabled. Pending items will be tracked.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${orderRows[0].quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({
+    ok: true,
+    message: `Partial inventory verification completed. Advanced to inventory_arrived with ${itemCheck[0].fully_verified}/${itemCheck[0].total} items verified.`,
+    fully_verified: itemCheck[0].fully_verified,
+    total_items: itemCheck[0].total,
+    verification_pct: pct,
+  });
+});
+
+/**
+ * POST /orders/:id/partial-delivery
+ * Record delivery of specific items that have arrived, while tracking
+ * which items remain to be delivered later.
+ */
+const partialDeliverySchema = z.object({
+  item_ids: z.array(z.string()).min(1, 'At least one item must be selected for delivery'),
+  action_token: z.string(),
+  delivery_note: z.string().optional(),
+});
+
+app.post('/orders/:id/partial-delivery', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = partialDeliverySchema.parse(request.body);
+
+  // Verify action token and extract email
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  let tokenData: string | null;
+  try {
+    tokenData = await cacheClient.get(tokenKey);
+  } catch (err) {
+    console.error('[partial-delivery] Redis get error:', err);
+    return reply.status(503).send({ error: 'Action verification service error' });
+  }
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey).catch(() => {});
+
+  let tokenPayload: Record<string, unknown>;
+  try {
+    tokenPayload = JSON.parse(tokenData);
+  } catch {
+    return reply.status(401).send({ error: 'Invalid action token data. Please verify OTP again.' });
+  }
+  const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
+
+  const orderRows = await query(
+    `SELECT id, current_stage, quotation_number, client_name, partial_delivery
+     FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orderRows[0];
+
+  // Allow partial delivery from: inventory_arrived, balance_due, balance_verification, delivery_pending, delivery_scheduled
+  const allowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
+  if (!allowedStages.includes(order.current_stage)) {
+    return reply.code(400).send({
+      error: `Cannot record partial delivery in stage '${order.current_stage}'. Allowed stages: ${allowedStages.join(', ')}.`,
+    });
+  }
+
+  // Fetch the selected items
+  const items = await query<{
+    id: string; name: string; quantity: number;
+    verified_qty: number; delivered_qty: number; arrived_qty: number | null;
+  }>(
+    `SELECT id, name, quantity, COALESCE(verified_qty, 0) AS verified_qty,
+            COALESCE(delivered_qty, 0) AS delivered_qty, arrived_qty
+     FROM order_items WHERE order_id = $1 AND id = ANY($2::uuid[])`,
+    [id, body.item_ids]
+  );
+
+  if (items.length === 0) {
+    return reply.code(400).send({ error: 'No valid items found for delivery.' });
+  }
+
+  const deliveryResults: {
+    item_id: string;
+    item_name: string;
+    quantity_delivered: number;
+    quantity_remaining: number;
+    fully_delivered: boolean;
+  }[] = [];
+
+  for (const item of items) {
+    const verified = Number(item.verified_qty ?? 0);
+    const alreadyDelivered = Number(item.delivered_qty ?? 0);
+    const maxDeliverable = Math.max(0, verified - alreadyDelivered);
+
+    if (maxDeliverable <= 0) {
+      deliveryResults.push({
+        item_id: item.id,
+        item_name: item.name,
+        quantity_delivered: 0,
+        quantity_remaining: Math.max(0, Number(item.quantity ?? 0) - alreadyDelivered),
+        fully_delivered: alreadyDelivered >= Number(item.quantity ?? 0),
+      });
+      continue;
+    }
+
+    // Deliver all verified-but-not-yet-delivered quantity
+    const deltaToDeduct = maxDeliverable;
+    const newDeliveredQty = alreadyDelivered + deltaToDeduct;
+    const remaining = Math.max(0, Number(item.quantity ?? 0) - newDeliveredQty);
+
+    // Deduct from inventory
+    await adjustInventoryForOrderItem(
+      id,
+      item.id,
+      item.name,
+      -deltaToDeduct,
+      'delivery_deduct',
+      `Partial delivery: ${deltaToDeduct} units delivered (${newDeliveredQty}/${item.quantity} total delivered).`,
+      userEmail ?? 'delivery-agent',
+    );
+
+    // Update order_items
+    await query(
+      `UPDATE order_items
+       SET delivered_qty = LEAST(quantity, COALESCE(delivered_qty, 0) + $1),
+           remaining_qty = GREATEST(0, quantity - LEAST(quantity, COALESCE(delivered_qty, 0) + $1)),
+           partial_delivery_count = COALESCE(partial_delivery_count, 0) + 1,
+           delivered_at = CASE WHEN $2 = 0 THEN delivered_at ELSE COALESCE(delivered_at, NOW()) END,
+           last_partial_delivery_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $3`,
+      [deltaToDeduct, remaining, item.id]
+    );
+
+    // Log the partial delivery
+    await query(
+      `INSERT INTO partial_delivery_logs
+         (order_id, item_id, item_name, quantity_delivered, quantity_remaining, delivery_note, delivered_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, item.id, item.name, deltaToDeduct, remaining, body.delivery_note ?? null, userEmail ?? 'delivery-agent']
+    );
+
+    deliveryResults.push({
+      item_id: item.id,
+      item_name: item.name,
+      quantity_delivered: deltaToDeduct,
+      quantity_remaining: remaining,
+      fully_delivered: remaining === 0,
+    });
+  }
+
+  // Check if all items are now fully delivered
+  const allItemsCheck = await query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE COALESCE(delivered_qty, 0) >= quantity)::int AS fully_delivered
+     FROM order_items WHERE order_id = $1`,
+    [id]
+  );
+
+  const allFullyDelivered = allItemsCheck[0] && allItemsCheck[0].total > 0 &&
+    allItemsCheck[0].fully_delivered >= allItemsCheck[0].total;
+
+  // If all items are delivered, advance to 'delivered' stage
+  if (allFullyDelivered) {
+    await query(
+      `UPDATE orders SET current_stage = 'delivered', delivered_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [id]
+    );
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'delivered', 'auto_advanced', 'All items delivered via partial delivery completion.', 'delivery-agent')`,
+      [id]
+    );
+    triggerAgentsForStage('delivered', order.quotation_number, order.client_name);
+  } else {
+    // Update order to reflect partial delivery
+    await query(
+      `UPDATE orders SET partial_delivery = TRUE, updated_at = NOW() WHERE id = $1`,
+      [id]
+    );
+  }
+
+  // Notify delivery group
+  if (DELIVERY_CHAT_ID) {
+    const ref = order.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = order.client_name ?? 'Unknown';
+    const deliverySummary = deliveryResults
+      .map((r) => `- ${r.item_name}: ${r.quantity_delivered} delivered (${r.quantity_remaining} remaining)${r.fully_delivered ? ' ✅' : ' ⏳'}`)
+      .join('\n');
+
+    setImmediate(() => {
+      notifyGroupChat(
+        DELIVERY_CHAT_ID,
+        allFullyDelivered
+          ? `✅ <b>Delivery Complete (Partial Delivery)</b>\n\n` +
+            `Order: <b>#${ref}</b>\n` +
+            `Client: ${client}\n\n` +
+            `<b>Delivered Items</b>\n${deliverySummary}\n\n` +
+            `All items have been delivered. Order advanced to Delivered stage.`
+          : `🚚 <b>Partial Delivery Recorded</b>\n\n` +
+            `Order: <b>#${ref}</b>\n` +
+            `Client: ${client}\n\n` +
+            `<b>Delivered Items</b>\n${deliverySummary}\n\n` +
+            `⚠️ Some items remain undelivered. They will be tracked for later delivery.`
+      );
+    });
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id });
+
+  return reply.send({
+    ok: true,
+    message: allFullyDelivered
+      ? 'All items delivered. Order advanced to Delivered stage.'
+      : `Partial delivery recorded. ${deliveryResults.filter(r => r.fully_delivered).length}/${deliveryResults.length} items fully delivered.`,
+    items: deliveryResults,
+    all_delivered: allFullyDelivered,
+  });
+});
+
+/**
+ * GET /orders/:id/delivery-progress
+ * Get delivery progress for all items in an order.
+ * Returns per-item delivery status and overall progress.
+ */
+app.get('/orders/:id/delivery-progress', async (request, reply) => {
+  const { id } = request.params as { id: string };
+
+  const orderRows = await query(
+    `SELECT id, quotation_number, client_name, current_stage, partial_delivery
+     FROM orders WHERE id = $1`,
+    [id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const items = await query<{
+    id: string; name: string; quantity: number;
+    verified_qty: number; delivered_qty: number;
+    arrived_qty: number | null; remaining_qty: number | null;
+    partial_delivery_count: number;
+    delivered_at: string | null; last_partial_delivery_at: string | null;
+  }>(
+    `SELECT id, name, quantity,
+            COALESCE(verified_qty, 0) AS verified_qty,
+            COALESCE(delivered_qty, 0) AS delivered_qty,
+            arrived_qty,
+            remaining_qty,
+            COALESCE(partial_delivery_count, 0) AS partial_delivery_count,
+            delivered_at,
+            last_partial_delivery_at
+     FROM order_items
+     WHERE order_id = $1
+     ORDER BY created_at ASC`,
+    [id]
+  );
+
+  const totalQty = items.reduce((sum, i) => sum + Number(i.quantity ?? 0), 0);
+  const totalDelivered = items.reduce((sum, i) => sum + Number(i.delivered_qty ?? 0), 0);
+  const deliveryPct = totalQty > 0 ? Math.round((totalDelivered / totalQty) * 100) : 0;
+
+  // Get partial delivery logs
+  const logs = await query<{
+    id: string; item_name: string; quantity_delivered: number;
+    quantity_remaining: number; delivery_note: string | null;
+    delivered_by: string | null; created_at: string;
+  }>(
+    `SELECT id, item_name, quantity_delivered, quantity_remaining,
+            delivery_note, delivered_by, created_at
+     FROM partial_delivery_logs
+     WHERE order_id = $1
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [id]
+  );
+
+  return reply.send({
+    ok: true,
+    order: {
+      id: orderRows[0].id,
+      quotation_number: orderRows[0].quotation_number,
+      client_name: orderRows[0].client_name,
+      current_stage: orderRows[0].current_stage,
+      partial_delivery: orderRows[0].partial_delivery,
+    },
+    items: items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      quantity: Number(item.quantity),
+      verified_qty: Number(item.verified_qty),
+      delivered_qty: Number(item.delivered_qty),
+      arrived_qty: item.arrived_qty,
+      remaining_qty: item.remaining_qty ?? Math.max(0, Number(item.quantity) - Number(item.delivered_qty)),
+      partial_delivery_count: Number(item.partial_delivery_count),
+      delivered_at: item.delivered_at,
+      last_partial_delivery_at: item.last_partial_delivery_at,
+      fully_delivered: Number(item.delivered_qty) >= Number(item.quantity),
+    })),
+    summary: {
+      total_items: items.length,
+      total_quantity: totalQty,
+      total_delivered: totalDelivered,
+      delivery_pct: deliveryPct,
+      fully_delivered_items: items.filter((i) => Number(i.delivered_qty ?? 0) >= Number(i.quantity ?? 0)).length,
+      partially_delivered_items: items.filter((i) => Number(i.delivered_qty ?? 0) > 0 && Number(i.delivered_qty ?? 0) < Number(i.quantity ?? 0)).length,
+      pending_items: items.filter((i) => Number(i.delivered_qty ?? 0) === 0).length,
+    },
+    logs,
+  });
 });
 
 /**
@@ -5592,7 +6083,7 @@ app.post('/stage-updates', async (request, reply) => {
     stock_preparation:         ['balance_due'],
     en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
-    inventory_arrived:         ['balance_due'],
+    inventory_arrived:         ['balance_due', 'delivered'],
     balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
     balance_verification:      ['delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],
     delivery_pending:          ['delivery_scheduled', 'delivered', 'countered'],

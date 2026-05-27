@@ -61,6 +61,8 @@ export interface Order {
   order_type: string | null;
   stock_prep_days: number | null;
   stock_prep_ready_at: string | null;
+  partial_delivery: boolean | null;
+  partial_delivery_notes: string | null;
   created_at: string;
   updated_at: string;
   escalation_level: number;
@@ -694,6 +696,95 @@ export async function confirmInventoryArrived(
       body: JSON.stringify({ action_token: actionToken }),
     }
   );
+}
+
+export async function completeInventoryVerificationPartial(
+  id: string,
+  actionToken: string,
+  notes?: string
+): Promise<{ ok: boolean; message: string; fully_verified: number; total_items: number; verification_pct: number }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/complete-inventory-verification-partial`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ action_token: actionToken, notes }),
+    }
+  );
+}
+
+export interface PartialDeliveryResult {
+  item_id: string;
+  item_name: string;
+  quantity_delivered: number;
+  quantity_remaining: number;
+  fully_delivered: boolean;
+}
+
+export async function partialDelivery(
+  id: string,
+  itemIds: string[],
+  actionToken: string,
+  deliveryNote?: string
+): Promise<{ ok: boolean; message: string; items: PartialDeliveryResult[]; all_delivered: boolean }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/partial-delivery`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ item_ids: itemIds, action_token: actionToken, delivery_note: deliveryNote }),
+    }
+  );
+}
+
+export interface DeliveryProgressItem {
+  id: string;
+  name: string;
+  quantity: number;
+  verified_qty: number;
+  delivered_qty: number;
+  arrived_qty: number | null;
+  remaining_qty: number;
+  partial_delivery_count: number;
+  delivered_at: string | null;
+  last_partial_delivery_at: string | null;
+  fully_delivered: boolean;
+}
+
+export interface DeliveryProgressSummary {
+  total_items: number;
+  total_quantity: number;
+  total_delivered: number;
+  delivery_pct: number;
+  fully_delivered_items: number;
+  partially_delivered_items: number;
+  pending_items: number;
+}
+
+export interface DeliveryProgressLog {
+  id: string;
+  item_name: string;
+  quantity_delivered: number;
+  quantity_remaining: number;
+  delivery_note: string | null;
+  delivered_by: string | null;
+  created_at: string;
+}
+
+export interface DeliveryProgressResponse {
+  ok: boolean;
+  order: {
+    id: string;
+    quotation_number: string | null;
+    client_name: string | null;
+    current_stage: string;
+    partial_delivery: boolean | null;
+  };
+  items: DeliveryProgressItem[];
+  summary: DeliveryProgressSummary;
+  logs: DeliveryProgressLog[];
+}
+
+export async function getDeliveryProgress(id: string): Promise<DeliveryProgressResponse> {
+  return fetchJson(`/orders/${encodeURIComponent(id)}/delivery-progress`);
 }
 
 // ── Order Items (Item-Level Production Tracking) ─────────────────────
