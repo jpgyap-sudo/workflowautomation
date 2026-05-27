@@ -12785,3 +12785,51 @@ When building draggable UI elements that toggle visibility, persist drag positio
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: E2E gap analysis — 4 gaps fixed for partial delivery feature
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6908a3f1fea3bc739bd18cec4e1941054f7bdc06
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6908a3f1fea3bc739bd18cec4e1941054f7bdc06
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Four gaps in the partial delivery feature’s end-to-end flow: API server logic, dashboard UI rendering, and two documentation files (CHANGELOG, UPDATE_LOG).
+
+**Why it broke:**  
+The partial delivery feature was implemented without full end-to-end integration testing. The API endpoint and dashboard page were developed in isolation, causing mismatches in data contracts and UI state handling. Documentation was also not updated to reflect the new feature.
+
+**Reusable takeaway:**  
+When adding cross-cutting features (e.g., partial delivery), always perform end-to-end gap analysis before closing the feature. Verify that API, UI, and docs are aligned on data contracts and behavior. Use a checklist that covers all layers (backend, frontend, docs) to prevent partial delivery of the feature itself.
+
+---
+*Original commit message: fix: E2E gap analysis — 4 gaps fixed for partial delivery feature*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Four gaps in the partial delivery feature’s end-to-end flow: API server logic, dashboard UI rendering, and two documentation files (CHANGELOG, UPDATE_LOG).
+
+**Why it broke:**  
+The partial delivery feature was implemented without full end-to-end integration testing. The API endpoint and dashboard page were developed in isolation, causing mismatches in data contracts and UI state handling. Documentation was also not updated to reflect the new feature.
+
+**Reusable takeaway:**  
+When adding cross-cutting features (e.g., partial delivery), always perform end-to-end gap analysis before closing the feature. Verify that API, UI, and docs are aligned on data contracts and behavior. Use a checklist that covers all layers (backend, frontend, docs) to prevent partial delivery of the feature itself.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

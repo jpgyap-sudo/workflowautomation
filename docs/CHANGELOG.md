@@ -33,7 +33,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `ecba8a9` | Roo (Code) | feat: partial inventory verification + partial delivery — migration 041_partial_delivery.sql adds partial_delivery_count, remaining_qty, last_partial_delivery_at to order_items; partial_delivery, partial_delivery_notes to orders; partial_delivery_logs table; get_delivery_completion_pct function. Server: complete-inventory-verification-partial, partial-delivery, delivery-progress endpoints. Dashboard: inventory verification page shows "Complete (Partial)" button; delivery page shows "Partial Delivery" button + modal with item selection, summary stats, delivery note, OTP confirmation; production page shows "Partial Delivery" badge on orders with partial delivery enabled. Telegram notifications sent for partial verification and partial delivery events. | ❌ |
-| (pending) | Roo (Code) | fix: E2E gap analysis — 4 gaps fixed: (1) confirm-inventory-arrived preserves inventory_verification_pct for partial delivery orders; (2) removed stale Partial Delivery button from Stock Prep section; (3) added en_route_verification to allowed stages for partial delivery; (4) remaining_qty set for ALL items in partial completion. | ❌ |
+| `6908a3f` | Roo (Code) | fix: E2E gap analysis — 4 gaps fixed: (1) confirm-inventory-arrived preserves inventory_verification_pct for partial delivery orders; (2) removed stale Partial Delivery button from Stock Prep section; (3) added en_route_verification to allowed stages for partial delivery; (4) remaining_qty set for ALL items in partial completion. | ❌ |
 
 ## 2026-05-26
 
