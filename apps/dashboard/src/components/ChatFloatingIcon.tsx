@@ -508,10 +508,11 @@ export default function ChatFloatingIcon() {
     load();
   }, [activeConversationId]);
 
-  // Close on click outside
+  // Close on click outside (skip during drag)
   useEffect(() => {
     if (!isOpen) return;
     function handleClick(e: MouseEvent) {
+      if (dragRef.current.isDragging) return;
       if (widgetRef.current && !widgetRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
@@ -650,14 +651,16 @@ export default function ChatFloatingIcon() {
     <div
       ref={widgetRef}
       className="fixed bottom-6 right-6 z-50"
-      style={{
-        transform: `translate(${position.x}px, ${position.y}px)`,
-        transition: dragRef.current.isDragging ? 'none' : 'transform 0.15s ease-out',
-      }}
     >
-      {/* Chat Widget Panel */}
+      {/* Chat Widget Panel — only this gets the drag transform */}
       {isOpen && (
-        <div className="absolute bottom-16 right-0 mb-2 flex h-[520px] w-[380px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div
+          className="absolute bottom-16 right-0 mb-2 flex h-[520px] w-[380px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+          style={{
+            transform: `translate(${position.x}px, ${position.y}px)`,
+            transition: dragRef.current.isDragging ? 'none' : 'transform 0.15s ease-out',
+          }}
+        >
           {/* Header — drag handle */}
           <div
             ref={headerRef}
@@ -756,7 +759,7 @@ export default function ChatFloatingIcon() {
         </div>
       )}
 
-      {/* Floating Button */}
+      {/* Floating Button — always stays at bottom-6 right-6 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#2490ef] to-[#6366f1] text-white shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"

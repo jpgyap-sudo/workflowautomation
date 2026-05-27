@@ -26,6 +26,7 @@
 | `eb510c2` | Roo (Code) | fix: acknowledgement receipt wrong amount on full payment — getReceiptAmount now returns total_amount when balance_paid or deposit_is_full_payment is TRUE. Same fix applied to receipts list endpoint. | ✅ VPS `cd170ef` |
 | `467351c` | Roo (Code) | feat: auto-fill sales agent from logged-in user — NewOrderModal and VisionPageContent auto-fill salesAgent from useAuth().user.name when a sub-user (Mariella/Cathlyn) is logged in. | ✅ VPS `cd170ef` |
 | `cd170ef` | Roo (Code) | feat: AI chatbox draggable — ChatFloatingIcon supports mouse/touch drag via the header. Uses CSS transform translate() for smooth repositioning. | ✅ VPS `cd170ef` |
+| | Roo (Code) | fix: draggable chatbox — two bugs fixed: (1) click-outside handler skips during drag via dragRef.current.isDragging check; (2) transform: translate() moved from outer container to chat panel only, so floating button always stays at bottom-6 right-6 | ❌ |
 
 ## 2026-05-26
 
