@@ -12367,3 +12367,327 @@ When mapping status labels to a sequence, always verify the order matches the ac
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: create features.md reference doc + fix knowledge base ingestion on VPS
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5037017475fe57d60dca6a6f53ae5981d9c9413f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5037017475fe57d60dca6a6f53ae5981d9c9413f
+**Files:** apps/api/src/services/knowledgeBase.ts,docker-compose.yml,docs/features.md
+
+**Summary:**
+**What was fixed:**  
+Knowledge base ingestion on the VPS was failing due to a missing or misconfigured dependency in the Docker Compose setup.
+
+**Why it broke:**  
+The `knowledgeBase.ts` service relied on an external service or volume that was not properly declared or mounted in `docker-compose.yml`, causing runtime failures during ingestion in the production-like VPS environment.
+
+**Reusable takeaway:**  
+When adding new features that depend on external services (databases, file stores, APIs), always update the infrastructure-as-code files (e.g., Docker Compose, Helm charts) in the same commit. This prevents silent failures in non-local environments. Additionally, maintain a `docs/features.md` to document these dependencies and their configuration, making it easier to debug environment-specific issues.
+
+---
+*Original commit message: feat: create features.md reference doc + fix knowledge base ingestion on VPS*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Knowledge base ingestion on the VPS was failing due to a missing or misconfigured dependency in the Docker Compose setup.
+
+**Why it broke:**  
+The `knowledgeBase.ts` service relied on an external service or volume that was not properly declared or mounted in `docker-compose.yml`, causing runtime failures during ingestion in the production-like VPS environment.
+
+**Reusable takeaway:**  
+When adding new features that depend on external services (databases, file stores, APIs), always update the infrastructure-as-code files (e.g., Docker Compose, Helm charts) in the same commit. This prevents silent failures in non-local environments. Additionally, maintain a `docs/features.md` to document these dependencies and their configuration, making it easier to debug environment-specific issues.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add /app path fallback for knowledge base file loading in Docker container
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 15a01893b82c2d4bbe37dc2adc1e3d45c81d5b86
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 15a01893b82c2d4bbe37dc2adc1e3d45c81d5b86
+**Files:** apps/api/src/services/knowledgeBase.ts
+
+**Summary:**
+**What was fixed:**  
+Knowledge base file loading failed in Docker containers because the hardcoded path `/app` was missing as a fallback.
+
+**Why it broke:**  
+The code assumed the working directory matched the container’s root path. In Docker, the working directory can differ (e.g., `/app` vs. `/`), so file lookups failed when the expected base path wasn’t present.
+
+**Reusable takeaway:**  
+When loading files in containerized environments, always include a fallback to the container’s default root path (e.g., `/app`) or use environment variables to define the base directory. Never rely solely on the runtime working directory.
+
+---
+*Original commit message: fix: add /app path fallback for knowledge base file loading in Docker container*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Knowledge base file loading failed in Docker containers because the hardcoded path `/app` was missing as a fallback.
+
+**Why it broke:**  
+The code assumed the working directory matched the container’s root path. In Docker, the working directory can differ (e.g., `/app` vs. `/`), so file lookups failed when the expected base path wasn’t present.
+
+**Reusable takeaway:**  
+When loading files in containerized environments, always include a fallback to the container’s default root path (e.g., `/app`) or use environment variables to define the base directory. Never rely solely on the runtime working directory.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: use v1 API for Gemini embeddings (text-embedding-004 not available on v1beta)
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 878c17509555eb0b5323fe50ceba57acad7a156a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 878c17509555eb0b5323fe50ceba57acad7a156a
+**Files:** apps/api/src/services/knowledgeBase.ts
+
+**Summary:**
+**What was fixed:** The Gemini embeddings API call was downgraded from `v1beta` to `v1` because the `text-embedding-004` model is not available on the beta endpoint.
+
+**Why it broke:** The code referenced a model (`text-embedding-004`) that only exists on the stable `v1` API, but the request was routed to `v1beta`, causing a model-not-found error.
+
+**Reusable takeaway:** Always verify model availability across all API versions before using a newer endpoint. A model released on the stable channel may not be immediately present on beta, and vice versa. When in doubt, pin both the API version and the model name to the same release stage to avoid silent failures.
+
+---
+*Original commit message: fix: use v1 API for Gemini embeddings (text-embedding-004 not available on v1beta)*
+
+#### Lesson Learned
+
+**What was fixed:** The Gemini embeddings API call was downgraded from `v1beta` to `v1` because the `text-embedding-004` model is not available on the beta endpoint.
+
+**Why it broke:** The code referenced a model (`text-embedding-004`) that only exists on the stable `v1` API, but the request was routed to `v1beta`, causing a model-not-found error.
+
+**Reusable takeaway:** Always verify model availability across all API versions before using a newer endpoint. A model released on the stable channel may not be immediately present on beta, and vice versa. When in doubt, pin both the API version and the model name to the same release stage to avoid silent failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: change embedding model from text-embedding-004 to text-embedding-005, remove inaccessible Guides Page source
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit da241775e340e14679c1c33ef70cbb9e31cf199b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** da241775e340e14679c1c33ef70cbb9e31cf199b
+**Files:** apps/api/src/services/knowledgeBase.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Updated the embedding model from `text-embedding-004` to `text-embedding-005` in the knowledge base service, and removed a broken Guides Page source from documentation.
+
+**Why it broke:**  
+The previous embedding model (`004`) was deprecated or no longer accessible, causing failures in vector embedding generation. The Guides Page source referenced a resource that was removed or moved, making it unreachable.
+
+**Reusable takeaway:**  
+When external dependencies (e.g., ML models, APIs, data sources) are updated or deprecated, proactively update all references and remove dead links. Always pin model versions and test embedding pipelines after provider changes to avoid silent failures.
+
+---
+*Original commit message: fix: change embedding model from text-embedding-004 to text-embedding-005, remove inaccessible Guides Page source*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated the embedding model from `text-embedding-004` to `text-embedding-005` in the knowledge base service, and removed a broken Guides Page source from documentation.
+
+**Why it broke:**  
+The previous embedding model (`004`) was deprecated or no longer accessible, causing failures in vector embedding generation. The Guides Page source referenced a resource that was removed or moved, making it unreachable.
+
+**Reusable takeaway:**  
+When external dependencies (e.g., ML models, APIs, data sources) are updated or deprecated, proactively update all references and remove dead links. Always pin model versions and test embedding pipelines after provider changes to avoid silent failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: move Dispatch Pending above En Route — In Transit in production tab
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8a8452e5ef35bd5563b4e3a343f14fba8329633c
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 8a8452e5ef35bd5563b4e3a343f14fba8329633c
+**Files:** 
+
+**Summary:**
+**What was fixed:** The order of statuses in the production tab was corrected so that "Dispatch Pending" appears above "En Route — In Transit."
+
+**Why it broke:** The statuses were likely listed alphabetically or in an arbitrary order, not reflecting the actual workflow sequence (Dispatch Pending → En Route → In Transit).
+
+**Reusable takeaway:** When displaying workflow statuses, always sort by logical process order (e.g., by sequence number or explicit priority field), not by alphabetical or default insertion order. This prevents misrepresenting the pipeline and confusing operators.
+
+---
+*Original commit message: fix: move Dispatch Pending above En Route — In Transit in production tab*
+
+#### Lesson Learned
+
+**What was fixed:** The order of statuses in the production tab was corrected so that "Dispatch Pending" appears above "En Route — In Transit."
+
+**Why it broke:** The statuses were likely listed alphabetically or in an arbitrary order, not reflecting the actual workflow sequence (Dispatch Pending → En Route → In Transit).
+
+**Reusable takeaway:** When displaying workflow statuses, always sort by logical process order (e.g., by sequence number or explicit priority field), not by alphabetical or default insertion order. This prevents misrepresenting the pipeline and confusing operators.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: switch embedding model to gemini-embedding-2 (3072d), add migration 042
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5b435b0f8e9890b0c29ad52dbcbdb132ca2a15f1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5b435b0f8e9890b0c29ad52dbcbdb132ca2a15f1
+**Files:** apps/api/src/services/knowledgeBase.ts,database/migrations/042_knowledge_base_3072d.sql
+
+**Summary:**
+**What was fixed:**  
+The embedding model was switched from a lower-dimensional model to `gemini-embedding-2` (3072 dimensions), and a database migration (042) was added to update the schema accordingly.
+
+**Why it broke:**  
+The previous embedding model produced vectors with fewer dimensions, causing dimension mismatch errors when storing or querying vectors in the knowledge base. The database schema was not aligned with the new model's output size.
+
+**Reusable takeaway:**  
+When changing embedding models, always verify that the vector dimension size matches the database schema (e.g., column type or index configuration). Add a migration to update the schema before deploying the code change. Test dimension compatibility between model output and storage layer to prevent silent data corruption or runtime failures.
+
+---
+*Original commit message: fix: switch embedding model to gemini-embedding-2 (3072d), add migration 042*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The embedding model was switched from a lower-dimensional model to `gemini-embedding-2` (3072 dimensions), and a database migration (042) was added to update the schema accordingly.
+
+**Why it broke:**  
+The previous embedding model produced vectors with fewer dimensions, causing dimension mismatch errors when storing or querying vectors in the knowledge base. The database schema was not aligned with the new model's output size.
+
+**Reusable takeaway:**  
+When changing embedding models, always verify that the vector dimension size matches the database schema (e.g., column type or index configuration). Add a migration to update the schema before deploying the code change. Test dimension compatibility between model output and storage layer to prevent silent data corruption or runtime failures.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove IVFFlat index creation from migration 042 (pgvector 2000-dim limit)
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit cc37edaa6b4966755a60fecabe25c4df6e17a2fa
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** cc37edaa6b4966755a60fecabe25c4df6e17a2fa
+**Files:** database/migrations/042_knowledge_base_3072d.sql
+
+**Summary:**
+**What was fixed:**  
+Removed the creation of an IVFFlat index on a `vector(3072)` column in migration 042, because pgvector’s IVFFlat index has a hard limit of 2000 dimensions.
+
+**Why it broke:**  
+The migration attempted to build an IVFFlat index on a 3072-dimensional embedding column. pgvector’s IVFFlat implementation only supports up to 2000 dimensions, causing the migration to fail.
+
+**Reusable takeaway:**  
+Before adding a vector index type (IVFFlat, HNSW, etc.), verify its dimension limits against your embedding model’s output size. For high-dimensional vectors (>2000), use HNSW (supports up to 2000 as well) or avoid indexing until you reduce dimensionality. Always test migrations against the actual vector dimensions used in production.
+
+---
+*Original commit message: fix: remove IVFFlat index creation from migration 042 (pgvector 2000-dim limit)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Removed the creation of an IVFFlat index on a `vector(3072)` column in migration 042, because pgvector’s IVFFlat index has a hard limit of 2000 dimensions.
+
+**Why it broke:**  
+The migration attempted to build an IVFFlat index on a 3072-dimensional embedding column. pgvector’s IVFFlat implementation only supports up to 2000 dimensions, causing the migration to fail.
+
+**Reusable takeaway:**  
+Before adding a vector index type (IVFFlat, HNSW, etc.), verify its dimension limits against your embedding model’s output size. For high-dimensional vectors (>2000), use HNSW (supports up to 2000 as well) or avoid indexing until you reduce dimensionality. Always test migrations against the actual vector dimensions used in production.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

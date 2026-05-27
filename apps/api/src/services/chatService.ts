@@ -14,6 +14,12 @@ const MAX_HISTORY = parseInt(process.env.CHAT_MAX_HISTORY ?? '20', 10);
 const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS ?? '30000', 10);
 const API_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}`;
 
+// ── OpenRouter Fallback Configuration ──────────────────────────────────
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.0-flash-001';
+const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1/chat/completions';
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export interface ChatMessage {
@@ -123,14 +129,14 @@ function formatKnowledgeContext(results: SearchResult[]): string {
     .join('\n\n');
 }
 
-// ── Call OpenAI Chat API ───────────────────────────────────────────────
+// ── Call Gemini Chat API ───────────────────────────────────────────────
 
-async function callChatAPI(
+async function callGemini(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<string | null> {
   if (!GEMINI_API_KEY) {
-    console.warn('[chatService] No GEMINI_API_KEY set — returning fallback response');
+    console.warn('[chatService] No GEMINI_API_KEY set');
     return null;
   }
 
@@ -184,6 +190,90 @@ async function callChatAPI(
     console.error(`[chatService] Failed to call Gemini: ${err.message}`);
     return null;
   }
+}
+
+// ── Call OpenRouter (Fallback) Chat API ────────────────────────────────
+
+async function callOpenRouter(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<string | null> {
+  if (!OPENROUTER_API_KEY) {
+    console.warn('[chatService] No OPENROUTER_API_KEY set — no fallback available');
+    return null;
+  }
+
+  try {
+    const body = {
+      model: OPENROUTER_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages.map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        })),
+      ],
+      temperature: CHAT_TEMPERATURE,
+      max_tokens: CHAT_MAX_TOKENS,
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(OPENROUTER_API_BASE, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'unknown error');
+        console.error(`[chatService] OpenRouter API error ${res.status}: ${errText}`);
+        return null;
+      }
+
+      const data = await res.json() as any;
+      const text = data.choices?.[0]?.message?.content;
+      if (!text) {
+        console.warn('[chatService] OpenRouter returned empty response');
+        return null;
+      }
+      return text;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err: any) {
+    console.error(`[chatService] Failed to call OpenRouter: ${err.message}`);
+    return null;
+  }
+}
+
+// ── Call AI with Gemini → OpenRouter fallback ──────────────────────────
+
+async function callChatAPI(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<string | null> {
+  // Try Gemini first
+  const geminiResult = await callGemini(messages, systemPrompt);
+  if (geminiResult !== null) {
+    return geminiResult;
+  }
+
+  // Fallback to OpenRouter if Gemini fails (quota exhausted, rate-limited, etc.)
+  console.log('[chatService] Gemini unavailable, trying OpenRouter fallback...');
+  const openRouterResult = await callOpenRouter(messages, systemPrompt);
+  if (openRouterResult !== null) {
+    return openRouterResult;
+  }
+
+  console.warn('[chatService] Both Gemini and OpenRouter failed — using fallback response');
+  return null;
 }
 
 // ── Create Conversation ────────────────────────────────────────────────
