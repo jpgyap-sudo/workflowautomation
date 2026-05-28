@@ -15,3 +15,4 @@ console.log*
 docs/production-server.md
 *.png
 !apps/dashboard/public/screenshots/*.png
+test-*.mjs
