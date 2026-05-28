@@ -48,6 +48,7 @@ When you **finish**:
 | 2026-05-28 17:06 | Roo (Code) | Investigating: website slowness — checked VPS resources (1.9GB RAM, 615MB swap used, 44% disk), Docker stats, API response times (fast), found separate PM2 process (trading-signal-bot at /root/xsjprd55/) consuming 161MB RAM with 263 restarts in 2 days | ✅ Done |
 | 2026-05-28 17:14 | Roo (Code) | Feat: itemized progression across production tab — converted Dispatch Pending, En Route — In Transit, Arrival Verification from OrderSection (order-level) to ProductionItemSection (item-level). Added EnRouteStatusBadge component, en route status column in table, filtered variables for enRouteVerificationOrders and enRouteTrackingOrders. Inventory and delivery tabs already had itemized progression. | ✅ Done |
 | 2026-05-28 17:26 | Roo (Code) | Feat: add --local-build flag to deploy-agent.mjs — builds Docker images locally, saves as tar, SCPs to VPS, loads images, restarts containers. One-command local build + deploy workflow. | ✅ Done |
+| 2026-05-28 17:40 | Roo (Code) | Fix: en_route filtering gap — orders with partial en_route progress (some items 'en_route', some 'not_yet') now show their 'en_route' items in "En Route — In Transit" section. Created filteredEnRouteInTransitOrders combining enRouteVerificationOrders + enRouteTrackingOrders. | 🔴 Active |
 
 ---
 

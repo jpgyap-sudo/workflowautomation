@@ -13107,3 +13107,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add test-*.mjs to .gitignore to prevent credential leaks
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6f45e09d8aec8bee4d0d6bb1a22a036de0e36683
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6f45e09d8aec8bee4d0d6bb1a22a036de0e36683
+**Files:** .gitignore,test-415-error.mjs
+
+**Summary:**
+**What was fixed:**  
+Added `test-*.mjs` to `.gitignore` to prevent credential leaks from test files.
+
+**Why it broke:**  
+A test file (`test-415-error.mjs`) containing hardcoded credentials was accidentally committed because the `.gitignore` pattern only covered `test-*.js` and not the newer `.mjs` extension used for ES modules.
+
+**Reusable takeaway:**  
+When introducing a new file extension or naming convention (e.g., `.mjs`, `.tsx`, `.config.yaml`), immediately update all relevant ignore patterns and CI checks. A single missing wildcard can expose secrets. Prefer broad, extension-agnostic patterns like `test-*` over extension-specific ones, and audit `.gitignore` whenever a new file type is added to the project.
+
+---
+*Original commit message: fix: add test-*.mjs to .gitignore to prevent credential leaks*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added `test-*.mjs` to `.gitignore` to prevent credential leaks from test files.
+
+**Why it broke:**  
+A test file (`test-415-error.mjs`) containing hardcoded credentials was accidentally committed because the `.gitignore` pattern only covered `test-*.js` and not the newer `.mjs` extension used for ES modules.
+
+**Reusable takeaway:**  
+When introducing a new file extension or naming convention (e.g., `.mjs`, `.tsx`, `.config.yaml`), immediately update all relevant ignore patterns and CI checks. A single missing wildcard can expose secrets. Prefer broad, extension-agnostic patterns like `test-*` over extension-specific ones, and audit `.gitignore` whenever a new file type is added to the project.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

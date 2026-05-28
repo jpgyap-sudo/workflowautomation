@@ -2993,6 +2993,11 @@ export default function ProductionPage() {
   const filteredEnRouteVerificationStageOrders = filterByClient(enRouteVerificationStageOrders);
   const filteredEnRouteVerificationOrders = filterByClient(enRouteVerificationOrders);
   const filteredEnRouteTrackingOrders = filterByClient(enRouteTrackingOrders);
+  // En Route — In Transit must include orders with partial en_route progress too,
+  // so that items already marked 'en_route' appear even when other items are still 'not_yet'.
+  const filteredEnRouteInTransitOrders = filterByClient(
+    [...new Map([...enRouteVerificationOrders, ...enRouteTrackingOrders].map((o) => [o.id, o])).values()]
+  );
   const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
   const filteredInProgressMergedOrders = dedupeOrders([...filteredInProgressStageOrders, ...filteredPartialOrders]);
@@ -3181,9 +3186,9 @@ export default function ProductionPage() {
       <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-sky-500" />}
         title="En Route — In Transit"
-        count={filteredEnRouteTrackingOrders.length}
+        count={filteredEnRouteInTransitOrders.length}
         countBg="bg-sky-100" countText="text-sky-700"
-        orders={filteredEnRouteTrackingOrders}
+        orders={filteredEnRouteInTransitOrders}
         isLoading={loadingEnRoute}
         error={errorEnRoute}
         onRetry={() => mutateEnRoute()}

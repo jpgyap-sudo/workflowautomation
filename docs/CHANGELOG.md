@@ -43,6 +43,7 @@
 | `af500b5` | Roo (Code) | fix: add 'countered' to delivered VALID_TRANSITIONS — allows Mark as Countered from delivered stage | ✅ VPS `af500b5` |
 | `d06914c` | Roo (Code) | feat: itemized progression across production tab — converted Dispatch Pending, En Route — In Transit, Arrival Verification from OrderSection (order-level) to ProductionItemSection (item-level). Added EnRouteStatusBadge component, en route status column in table, filtered variables for enRouteVerificationOrders and enRouteTrackingOrders. | ✅ VPS `d06914c` |
 | | Roo (Code) | feat: add --local-build flag to deploy-agent.mjs — builds Docker images locally, saves as tar, SCPs to VPS, loads images, restarts containers. One-command local build + deploy workflow. | ❌ |
+| | `pending` | Roo (Code) | fix: en_route filtering gap — orders with partial en_route progress now show their 'en_route' items in "En Route — In Transit" section. Created filteredEnRouteInTransitOrders combining enRouteVerificationOrders + enRouteTrackingOrders. | ❌ |
 
 ## 2026-05-26
 
