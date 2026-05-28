@@ -6592,7 +6592,7 @@ app.post('/stage-updates', async (request, reply) => {
     balance_verification:      ['delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],
     delivery_pending:          ['delivery_scheduled', 'delivered', 'countered'],
     delivery_scheduled:        ['delivery_pending', 'delivered', 'countered'],
-    delivered:                 ['payment_received', 'payment_confirmed', 'completed'],
+    delivered:                 ['payment_received', 'payment_confirmed', 'completed', 'countered'],
     countered:                 ['payment_received', 'payment_confirmed', 'completed'],
     payment_received:          ['payment_confirmed', 'completed'],
     payment_confirmed:         ['completed'],
