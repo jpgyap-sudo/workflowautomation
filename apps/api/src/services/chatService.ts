@@ -1,24 +1,23 @@
 import { query } from '../db.js';
 import { semanticSearch, type SearchResult } from './knowledgeBase.js';
+import { openRouterChat, isOpenRouterConfigured } from './openRouterService.js';
 import { readFile } from 'fs/promises';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const GEMINI_KEYS = [
+  process.env.GEMINI_API_KEY   ?? '',
+  process.env.GEMINI_API_KEY_2 ?? '',
+  process.env.GEMINI_API_KEY_3 ?? '',
+].filter(Boolean);
 const CHAT_MODEL = process.env.CHAT_MODEL ?? 'gemini-2.0-flash';
 const CHAT_TEMPERATURE = parseFloat(process.env.CHAT_TEMPERATURE ?? '0.3');
 const CHAT_MAX_TOKENS = parseInt(process.env.CHAT_MAX_TOKENS ?? '1024', 10);
 const MAX_HISTORY = parseInt(process.env.CHAT_MAX_HISTORY ?? '20', 10);
 const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS ?? '30000', 10);
 const API_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}`;
-
-// ── OpenRouter Fallback Configuration ──────────────────────────────────
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.0-flash-001';
-const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -129,126 +128,98 @@ function formatKnowledgeContext(results: SearchResult[]): string {
     .join('\n\n');
 }
 
-// ── Call Gemini Chat API ───────────────────────────────────────────────
+// ── Call Gemini Chat API (tries all keys in sequence) ─────────────────
+
+async function callGeminiWithKey(
+  messages: { role: string; content: string }[],
+  systemPrompt: string,
+  apiKey: string
+): Promise<string> {
+  const contents = [
+    { role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\nPlease answer the following questions based on the above instructions.` }] },
+    { role: 'model', parts: [{ text: 'I understand. I will follow those guidelines carefully.' }] },
+    ...messages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+  ];
+
+  const url = `${API_BASE}:generateContent?key=${apiKey}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        generation_config: { temperature: CHAT_TEMPERATURE, max_output_tokens: CHAT_MAX_TOKENS },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json() as any;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Gemini returned empty response');
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function callGemini(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<string | null> {
-  if (!GEMINI_API_KEY) {
-    console.warn('[chatService] No GEMINI_API_KEY set');
+  if (GEMINI_KEYS.length === 0) {
+    console.warn('[chatService] No Gemini API keys configured');
     return null;
   }
 
-  try {
-    // Build Gemini contents array: system prompt as first user message, then conversation
-    const contents = [
-      { role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\nPlease answer the following questions based on the above instructions.` }] },
-      { role: 'model', parts: [{ text: 'I understand. I will follow those guidelines carefully.' }] },
-      ...messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-    ];
-
-    const url = `${API_BASE}:generateContent?key=${GEMINI_API_KEY}`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
-
+  for (const [i, key] of GEMINI_KEYS.entries()) {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          generation_config: {
-            temperature: CHAT_TEMPERATURE,
-            max_output_tokens: CHAT_MAX_TOKENS,
-          },
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[chatService] Gemini API error ${response.status}: ${errorText}`);
-        return null;
-      }
-
-      const data = await response.json() as any;
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        console.warn('[chatService] Gemini returned empty response');
-        return null;
-      }
-      return text;
-    } finally {
-      clearTimeout(timeout);
+      return await callGeminiWithKey(messages, systemPrompt, key);
+    } catch (err: any) {
+      console.warn(`[chatService] Gemini key${i + 1} failed: ${err.message}`);
     }
-  } catch (err: any) {
-    console.error(`[chatService] Failed to call Gemini: ${err.message}`);
-    return null;
   }
+
+  console.warn('[chatService] All Gemini keys exhausted');
+  return null;
 }
 
-// ── Call OpenRouter (Fallback) Chat API ────────────────────────────────
+// ── Call OpenRouter (Fallback) Chat API — via openRouterService ────────
 
 async function callOpenRouter(
   messages: { role: string; content: string }[],
   systemPrompt: string
 ): Promise<string | null> {
-  if (!OPENROUTER_API_KEY) {
-    console.warn('[chatService] No OPENROUTER_API_KEY set — no fallback available');
+  if (!isOpenRouterConfigured()) {
+    console.warn('[chatService] OPENROUTER_API_KEY not set — no fallback available');
     return null;
   }
 
   try {
-    const body = {
-      model: OPENROUTER_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages.map(m => ({
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content,
-        })),
-      ],
+    const orMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...messages.map(m => ({
+        role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ];
+    return await openRouterChat(orMessages, undefined, {
       temperature: CHAT_TEMPERATURE,
       max_tokens: CHAT_MAX_TOKENS,
-    };
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
-
-    try {
-      const res = await fetch(OPENROUTER_API_BASE, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'unknown error');
-        console.error(`[chatService] OpenRouter API error ${res.status}: ${errText}`);
-        return null;
-      }
-
-      const data = await res.json() as any;
-      const text = data.choices?.[0]?.message?.content;
-      if (!text) {
-        console.warn('[chatService] OpenRouter returned empty response');
-        return null;
-      }
-      return text;
-    } finally {
-      clearTimeout(timeout);
-    }
+      timeoutMs: CHAT_TIMEOUT_MS,
+    });
   } catch (err: any) {
-    console.error(`[chatService] Failed to call OpenRouter: ${err.message}`);
+    console.error(`[chatService] OpenRouter (Kimi) fallback failed: ${err.message}`);
     return null;
   }
 }
