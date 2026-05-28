@@ -195,11 +195,11 @@ export async function createOrder(data: {
 
 export async function markStockReady(
   orderId: string,
-  opts: { deduct_inventory?: boolean; updated_by?: string } = {},
+  opts: { deduct_inventory?: boolean; updated_by?: string; action_token?: string } = {},
 ): Promise<{ ok: boolean; next_stage: string; deductions?: { item_name: string; quantity: number }[] }> {
   return fetchJson<{ ok: boolean; next_stage: string; deductions?: { item_name: string; quantity: number }[] }>(`/orders/${orderId}/stock-ready`, {
     method: 'POST',
-    body: JSON.stringify({ deduct_inventory: opts.deduct_inventory ?? true, updated_by: opts.updated_by }),
+    body: JSON.stringify({ deduct_inventory: opts.deduct_inventory ?? true, updated_by: opts.updated_by, action_token: opts.action_token }),
   });
 }
 

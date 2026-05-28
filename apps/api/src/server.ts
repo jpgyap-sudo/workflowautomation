@@ -8319,7 +8319,13 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
     return reply.code(400).send({ error: 'Deposit is already verified.' });
   }
 
-  if (!['deposit_pending', 'deposit_verification'].includes(order.current_stage)) {
+  // Stage check: normally only allowed from deposit_pending/deposit_verification.
+  // Exception: production_exception orders may have advanced past these stages while deposit
+  // was still unverified (e.g. delivery_pending). Allow verification in that case — we will
+  // keep the current_stage unchanged instead of regressing it.
+  const isEarlyVerificationStage = ['deposit_pending', 'deposit_verification'].includes(order.current_stage);
+  const alreadyAdvanced = !isEarlyVerificationStage;
+  if (alreadyAdvanced && !order.production_exception) {
     return reply.code(400).send({
       error: `Deposit can only be verified from deposit_pending or deposit_verification. Current stage: ${order.current_stage}.`,
       current_stage: order.current_stage,
@@ -8327,19 +8333,16 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
   }
 
   // Determine next stage:
-  // - From-stock orders skip purchasing/production/en_route/inventory — go straight to stock_preparation.
-  // - If balance is also paid (full payment) AND the order is from_stock, advance to balance_verification
-  //   since there's no production to go through.
-  // - If balance is also paid but the order is NOT from_stock, advance to purchasing_pending (normal
-  //   production flow). Also auto-verify the balance so that when inventory arrives later,
-  //   confirm-inventory-arrived sees balance_verified=TRUE and skips to delivery_pending
-  //   instead of getting stuck at balance_due.
-  // - Otherwise, standard advance to purchasing_pending.
+  // - From-stock orders → stock_preparation (or balance_verification if full payment).
+  // - Production exception orders already past verification stages → keep current_stage (no regression).
+  // - Otherwise → purchasing_pending.
   const isFromStock = order.order_type === 'from_stock';
   const balanceAlsoPaid = !!order.balance_paid;
   const nextStage = isFromStock
     ? (balanceAlsoPaid ? 'balance_verification' : 'stock_preparation')
-    : 'purchasing_pending';
+    : alreadyAdvanced
+      ? order.current_stage
+      : 'purchasing_pending';
 
   // Mark all deposit payment records as verified
   await query(
@@ -8479,63 +8482,71 @@ app.post('/orders/:id/verify-deposit', async (request, reply) => {
       );
     });
   } else {
-    // Standard order: notify production group
+    // Standard order (or production exception already past verification): notify collection group
     setImmediate(() => {
       const paymentLabel = balanceAlsoPaid ? 'Full Payment' : 'Downpayment';
+      const stageNote = alreadyAdvanced
+        ? `Current stage kept: <b>${order.current_stage.replace(/_/g, ' ')}</b> (order was already past deposit verification).`
+        : `Next stage: <b>Purchasing Pending</b>`;
       notifyGroupChat(
         COLLECTION_CHAT_ID,
-        `✅ <b>Deposit Verified${balanceAlsoPaid ? ' (Full Payment)' : ''}</b>\n\n` +
+        `✅ <b>Deposit Verified${balanceAlsoPaid ? ' (Full Payment)' : ''}${alreadyAdvanced ? ' (Production Exception)' : ''}</b>\n\n` +
         `Quotation: <b>${order.quotation_number}</b>\n` +
         `Client: ${order.client_name ?? 'N/A'}\n` +
         `Verified by: ${body.verified_by ?? 'team'}\n` +
-        `Next stage: <b>Purchasing Pending</b>\n\n` +
-        `${paymentLabel} has been verified on the dashboard.${balanceAlsoPaid ? '\nBalance auto-verified — order will skip to delivery_pending after inventory arrival.' : ''}`
+        `${stageNote}\n\n` +
+        `${paymentLabel} has been verified on the dashboard.${balanceAlsoPaid && !alreadyAdvanced ? '\nBalance auto-verified — order will skip to delivery_pending after inventory arrival.' : ''}`
       );
     });
 
-    setImmediate(() => {
-      const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
-      if (prodGroupChatId && _TELEGRAM_BOT_TOKEN) {
-        const paymentLabel = balanceAlsoPaid ? 'Full Payment' : 'Downpayment';
-        notifyGroupChatWithButtons(
-          prodGroupChatId,
-          `💰 <b>${paymentLabel} Verified</b>\n\n` +
-          `Quotation: <b>${order.quotation_number}</b>\n` +
-          `Client: ${order.client_name ?? 'N/A'}\n\n` +
-          `The client has made the ${paymentLabel.toLowerCase()} and the deposit is now verified.\n\n` +
-          `❓ <b>Do we proceed to start the production workflow?</b>`,
-          [
-            [
-              { text: '✅ Yes, proceed', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
-              { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${id}:${order.quotation_number}` },
-            ],
-          ]
-        );
-      }
-    });
-
-    setImmediate(async () => {
-      try {
+    // Only ask production group to start workflow if the order is not already past purchasing
+    if (!alreadyAdvanced) {
+      setImmediate(() => {
         const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
-        if (prodGroupChatId) {
-          await upsertStageReminder(
-            id,
-            'purchasing_pending',
+        if (prodGroupChatId && _TELEGRAM_BOT_TOKEN) {
+          const paymentLabel = balanceAlsoPaid ? 'Full Payment' : 'Downpayment';
+          notifyGroupChatWithButtons(
             prodGroupChatId,
-            `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Do we proceed to start the production workflow?`,
+            `💰 <b>${paymentLabel} Verified</b>\n\n` +
+            `Quotation: <b>${order.quotation_number}</b>\n` +
+            `Client: ${order.client_name ?? 'N/A'}\n\n` +
+            `The client has made the ${paymentLabel.toLowerCase()} and the deposit is now verified.\n\n` +
+            `❓ <b>Do we proceed to start the production workflow?</b>`,
+            [
+              [
+                { text: '✅ Yes, proceed', callback_data: `deposit:start_production:yes:${id}:${order.quotation_number}` },
+                { text: '⏳ Not yet', callback_data: `deposit:start_production:no:${id}:${order.quotation_number}` },
+              ],
+            ]
           );
         }
-      } catch (err) {
-        console.warn('[verify-deposit] Failed to upsert purchasing_pending reminder:', err);
-      }
-    });
+      });
+
+      setImmediate(async () => {
+        try {
+          const prodGroupChatId = process.env.PRODUCTION_GROUP_CHAT_ID;
+          if (prodGroupChatId) {
+            await upsertStageReminder(
+              id,
+              'purchasing_pending',
+              prodGroupChatId,
+              `💰 Deposit verified for #${order.quotation_number} (${order.client_name ?? 'Unknown'}). Do we proceed to start the production workflow?`,
+            );
+          }
+        } catch (err) {
+          console.warn('[verify-deposit] Failed to upsert purchasing_pending reminder:', err);
+        }
+      });
+    }
   }
 
   // Notify escalation group (dashboard only)
   if (isDashboardOrigin(body.verified_by)) {
-    const escalationStageLabel = isFromStock
-      ? (balanceAlsoPaid ? 'Balance Verification (full payment)' : 'Stock Preparation')
-      : (balanceAlsoPaid ? 'Purchasing Pending (full payment, balance auto-verified)' : 'Purchasing Pending');
+    const escalationStageLabel = alreadyAdvanced
+      ? `${order.current_stage.replace(/_/g, ' ')} (production exception — stage unchanged)`
+      : isFromStock
+        ? (balanceAlsoPaid ? 'Balance Verification (full payment)' : 'Stock Preparation')
+        : (balanceAlsoPaid ? 'Purchasing Pending (full payment, balance auto-verified)' : 'Purchasing Pending');
     await notifyManualChange(
       'Deposit verified',
       `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${escalationStageLabel}`,
@@ -8560,7 +8571,29 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
   const body = z.object({
     deduct_inventory: z.boolean().default(true),
     updated_by: z.string().optional(),
+    action_token: z.string().optional(),
   }).parse(request.body);
+
+  // Verify action token for dashboard-originated requests
+  let userEmail: string | null = null;
+  if (isDashboardOrigin(body.updated_by)) {
+    if (!body.action_token) {
+      return reply.status(401).send({ error: 'Action token required for dashboard actions' });
+    }
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
+  }
 
   const rows = await query(
     `SELECT id, quotation_number, client_name, current_stage, order_type FROM orders WHERE id = $1 AND status = 'active'`,
@@ -8570,6 +8603,18 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
   const order = rows[0];
   if (order.current_stage !== 'stock_preparation') {
     return reply.code(400).send({ error: `Order is not in stock_preparation stage (current: ${order.current_stage})` });
+  }
+
+  // Enforce all items are matched before advancing
+  const unmatchedItems = await query(
+    `SELECT id, name FROM order_items WHERE order_id = $1 AND (matched_inventory_item_id IS NULL OR inventory_match_verified = FALSE)`,
+    [id],
+  );
+  if (unmatchedItems.length > 0) {
+    return reply.code(400).send({
+      error: `Cannot mark stock ready: ${unmatchedItems.length} item(s) are not matched to inventory.`,
+      unmatched_items: unmatchedItems.map((i) => i.name),
+    });
   }
 
   // Advance to balance_due
@@ -8586,18 +8631,6 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
     `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='stock_preparation' AND status='active'`,
     [id],
   );
-
-  // Enforce all items are matched before deducting
-  const unmatchedItems = await query(
-    `SELECT id, name FROM order_items WHERE order_id = $1 AND (matched_inventory_item_id IS NULL OR inventory_match_verified = FALSE)`,
-    [id],
-  );
-  if (unmatchedItems.length > 0) {
-    return reply.code(400).send({
-      error: `Cannot mark stock ready: ${unmatchedItems.length} item(s) are not matched to inventory.`,
-      unmatched_items: unmatchedItems.map((i) => i.name),
-    });
-  }
 
   // Deduct inventory quantities — use adjustInventoryForOrderItem for audit trail
   const deductions: { item_name: string; quantity: number }[] = [];

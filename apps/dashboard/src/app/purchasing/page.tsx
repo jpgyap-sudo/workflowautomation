@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useOrdersByStage, useAwaitingDownpayment, useProductionExceptionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDeposit, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, verifyBalance, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDeposit, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -30,6 +30,7 @@ interface OrderRowProps {
   onStartProductionWorkflow?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
   onVerifyDeposit?: (order: Order) => void;
+  onVerifyBalance?: (order: Order) => void;
   onMarkDepositPaid?: (order: Order) => void;
   onGrantSpecialCase?: (order: Order) => void;
   onRevokeException?: (order: Order) => void;
@@ -46,7 +47,7 @@ interface OrderRowProps {
   onSetBalanceSlipField?: (field: string, value: string) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onMarkDepositPaid, onGrantSpecialCase, onRevokeException, depositSlipUpload, onDepositSlipFileSelect, onUploadDepositSlip, onClearDepositSlip, onSetDepositSlipField, balanceSlipUpload, onBalanceSlipFileSelect, onMarkBalancePaid, onClearBalanceSlip, onSetBalanceSlipField }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onVerifyBalance, onMarkDepositPaid, onGrantSpecialCase, onRevokeException, depositSlipUpload, onDepositSlipFileSelect, onUploadDepositSlip, onClearDepositSlip, onSetDepositSlipField, balanceSlipUpload, onBalanceSlipFileSelect, onMarkBalancePaid, onClearBalanceSlip, onSetBalanceSlipField }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -288,6 +289,15 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
               >
                 <Shield className="mr-1 inline-block h-3.5 w-3.5" />
                 Verify Deposit
+              </button>
+            )}
+            {onVerifyBalance && order.balance_paid && !order.balance_verified && (
+              <button
+                onClick={() => onVerifyBalance(order)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+              >
+                <Shield className="mr-1 inline-block h-3.5 w-3.5" />
+                Verify Balance
               </button>
             )}
             {/* Workflow acknowledgement only: actual production start is handled later in the Production tab. */}
@@ -680,9 +690,11 @@ export default function PurchasingPage() {
   const [deleting, setDeleting] = useState(false);
   const [verifyingDepositOrder, setVerifyingDepositOrder] = useState<Order | null>(null);
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
+  const [verifyingBalanceOrder, setVerifyingBalanceOrder] = useState<Order | null>(null);
+  const [verifyingBalance, setVerifyingBalance] = useState(false);
   const [otpModal, setOtpModal] = useState<{
     open: boolean; title: string; description: string;
-    pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'markDepositPaid' | 'grantProductionException' | 'revokeProductionException' | 'markBalancePaid';
+    pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'verifyBalance' | 'markDepositPaid' | 'grantProductionException' | 'revokeProductionException' | 'markBalancePaid';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // ── Deposit slip upload (production exception section) ──────────────
@@ -803,6 +815,7 @@ export default function PurchasingPage() {
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
     else if (otpModal.pendingAction === 'startProductionWorkflow') handleStartProductionWorkflowVerified(actionToken);
     else if (otpModal.pendingAction === 'verifyDeposit') handleVerifyDepositVerified(actionToken);
+    else if (otpModal.pendingAction === 'verifyBalance') handleVerifyBalanceVerified(actionToken);
     else if (otpModal.pendingAction === 'markDepositPaid') handleMarkDepositPaidVerified(actionToken);
     else if (otpModal.pendingAction === 'grantProductionException') handleGrantProductionExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeProductionExceptionVerified(actionToken);
@@ -900,6 +913,35 @@ export default function PurchasingPage() {
     setOtpModal({ open: true, title: 'Verify Deposit',
       description: `You are about to verify the downpayment for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
       pendingAction: 'verifyDeposit' });
+  }
+
+  function handleVerifyBalance(order: Order) {
+    setVerifyingBalanceOrder(order);
+    setOtpModal({ open: true, title: 'Verify Balance Payment',
+      description: `You are about to verify the balance payment for order "${order.quotation_number ?? '—'}". This will advance the order to the next stage and send Telegram notifications.`,
+      pendingAction: 'verifyBalance' });
+  }
+
+  async function handleVerifyBalanceVerified(actionToken: string) {
+    if (!verifyingBalanceOrder) return;
+    setVerifyingBalance(true);
+    try {
+      const res = await verifyBalance(verifyingBalanceOrder.id, {
+        verified_by: 'dashboard',
+        action_token: actionToken,
+      });
+      if (res.ok) {
+        alert(`✅ Balance verified! Advancing to ${res.next_stage?.replace(/_/g, ' ') ?? 'next stage'}.`);
+        setVerifyingBalanceOrder(null);
+        refresh();
+      } else {
+        alert('Failed to verify balance.');
+      }
+    } catch (err: any) {
+      alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setVerifyingBalance(false);
+    }
   }
 
   function handleMarkDepositPaid(order: Order) {
@@ -1244,6 +1286,7 @@ export default function PurchasingPage() {
               order={order} onEdit={handleEdit} onDelete={handleDeleteClick}
               onStartProductionWorkflow={!order.production_started ? handleStartProductionWorkflow : undefined}
               onVerifyDeposit={order.deposit_paid && !order.deposit_verified ? handleVerifyDeposit : undefined}
+              onVerifyBalance={order.balance_paid && !order.balance_verified ? handleVerifyBalance : undefined}
               onMarkDepositPaid={!order.deposit_paid ? handleMarkDepositPaid : undefined}
               onRevokeException={handleRevokeException}
               onViewFiles={handleViewFiles}

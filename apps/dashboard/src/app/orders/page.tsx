@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useOrders } from '@/lib/useApi';
 import type { Order, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, recordFullPaymentWithFile, uploadOrderFile, visionExtract, searchClients } from '@/lib/api';
+import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, recordFullPaymentWithFile, uploadOrderFile, visionExtract, searchClients, verifyDeposit, verifyBalance } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -716,7 +716,7 @@ export default function OrdersPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'amount-edit' | 'delete' | 'bulk-delete';
+    pendingAction: 'edit' | 'amount-edit' | 'delete' | 'bulk-delete' | 'verify-deposit' | 'verify-balance';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const filtered =
@@ -864,6 +864,52 @@ export default function OrdersPage() {
     }
   }
 
+  function handleVerifyDepositClick(order: Order) {
+    (window as any).__pendingVerifyDepositOrderId = order.id;
+    setOtpModal({
+      open: true,
+      title: 'Verify Downpayment',
+      description: `Verify the downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.deposit_amount ?? 0).toLocaleString()}). This will advance the order to production and send a Telegram notification.`,
+      pendingAction: 'verify-deposit',
+    });
+  }
+
+  async function handleVerifyDepositVerified(actionToken: string) {
+    const orderId = (window as any).__pendingVerifyDepositOrderId as string | undefined;
+    if (!orderId) return;
+    try {
+      await verifyDeposit(orderId, { verified_by: 'dashboard', action_token: actionToken });
+      mutate();
+    } catch (err: any) {
+      alert('Failed to verify deposit: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingVerifyDepositOrderId = null;
+    }
+  }
+
+  function handleVerifyBalanceClick(order: Order) {
+    (window as any).__pendingVerifyBalanceOrderId = order.id;
+    setOtpModal({
+      open: true,
+      title: 'Verify Balance Payment',
+      description: `Verify the balance payment for "${order.quotation_number ?? '—'}". This will advance the order to Payment Received and send a Telegram notification.`,
+      pendingAction: 'verify-balance',
+    });
+  }
+
+  async function handleVerifyBalanceVerified(actionToken: string) {
+    const orderId = (window as any).__pendingVerifyBalanceOrderId as string | undefined;
+    if (!orderId) return;
+    try {
+      await verifyBalance(orderId, { verified_by: 'dashboard', action_token: actionToken });
+      mutate();
+    } catch (err: any) {
+      alert('Failed to verify balance: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingVerifyBalanceOrderId = null;
+    }
+  }
+
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') {
       handleEditVerified(actionToken);
@@ -873,6 +919,10 @@ export default function OrdersPage() {
       handleDeleteVerified(actionToken);
     } else if (otpModal.pendingAction === 'bulk-delete') {
       handleBulkDeleteVerified(actionToken);
+    } else if (otpModal.pendingAction === 'verify-deposit') {
+      handleVerifyDepositVerified(actionToken);
+    } else if (otpModal.pendingAction === 'verify-balance') {
+      handleVerifyBalanceVerified(actionToken);
     }
   }
 
@@ -953,6 +1003,8 @@ export default function OrdersPage() {
           onRecordDeposit={handleRecordDepositClick}
           onUpdateAmount={handleAmountUpdate}
           savingAmountOrderId={savingAmountOrderId}
+          onVerifyDeposit={handleVerifyDepositClick}
+          onVerifyBalance={handleVerifyBalanceClick}
           selectable
           selectedIds={selectedIds}
           onSelect={handleSelect}
@@ -978,6 +1030,8 @@ export default function OrdersPage() {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingEditData = null;
           (window as any).__pendingAmountEditData = null;
+          (window as any).__pendingVerifyDepositOrderId = null;
+          (window as any).__pendingVerifyBalanceOrderId = null;
         }}
       />
 

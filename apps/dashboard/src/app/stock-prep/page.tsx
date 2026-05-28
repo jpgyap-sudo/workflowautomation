@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
-import type { Order, OrderItem, InventoryItem } from '@/lib/api';
-import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit } from '@/lib/api';
+import type { Order, OrderItem, InventoryItem, Client } from '@/lib/api';
+import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit, updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, searchClients } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
-import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter, DollarSign } from 'lucide-react';
+import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
+import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter, DollarSign, Pencil, Trash2, ShieldAlert, Shield, ShieldCheck, XCircle } from 'lucide-react';
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return null;
@@ -44,9 +45,17 @@ function ReadyBadge({ readyAt }: { readyAt: string | null | undefined }) {
   );
 }
 
-function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => void }) {
+function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGrantException, onRevokeException }: {
+  order: Order;
+  onUpdated: () => void;
+  onViewFiles?: (order: Order) => void;
+  onEdit?: (order: Order) => void;
+  onDelete?: (order: Order) => void;
+  onGrantException?: (order: Order) => void;
+  onRevokeException?: (order: Order) => void;
+}) {
   const [showOtp, setShowOtp] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'ready' | 'set-prep-days' | 'recordDeposit' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'ready' | 'set-prep-days' | 'recordDeposit' | 'edit' | 'delete' | 'grantException' | 'revokeException' | null>(null);
   const [deductInventory, setDeductInventory] = useState(true);
   const [marking, setMarking] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -71,7 +80,7 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
       setMarking(true);
       setMsg(null);
       try {
-        const result = await markStockReady(order.id, { deduct_inventory: deductInventory, updated_by: 'dashboard' });
+        const result = await markStockReady(order.id, { deduct_inventory: deductInventory, updated_by: 'dashboard', action_token: actionToken });
         let text = '✅ Stock marked ready — order advanced to Balance Due';
         if (result.deductions && result.deductions.length > 0) {
           text += '\n\n📦 Deductions:';
@@ -116,6 +125,22 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
       } finally {
         setMarking(false);
       }
+    } else if (pendingAction === 'edit') {
+      if (onEdit) onEdit(order);
+      setShowOtp(false);
+      setPendingAction(null);
+    } else if (pendingAction === 'delete') {
+      if (onDelete) onDelete(order);
+      setShowOtp(false);
+      setPendingAction(null);
+    } else if (pendingAction === 'grantException') {
+      if (onGrantException) onGrantException(order);
+      setShowOtp(false);
+      setPendingAction(null);
+    } else if (pendingAction === 'revokeException') {
+      if (onRevokeException) onRevokeException(order);
+      setShowOtp(false);
+      setPendingAction(null);
     }
   }
 
@@ -128,17 +153,66 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
 
   const readyDate = order.stock_prep_ready_at;
   const isImmediate = (order.stock_prep_days ?? 0) === 0;
+  const hasException = order.delivery_exception === true;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">{order.quotation_number ?? `#${order.id.slice(0, 8)}`}</p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
+            {hasException && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                <ShieldAlert className="h-3 w-3" />Special Case
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500">{order.client_name ?? 'No client'}</p>
           {order.sales_agent && <p className="text-[10px] text-gray-400">Agent: {order.sales_agent}</p>}
         </div>
-        <ReadyBadge readyAt={readyDate} />
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Exception handling */}
+          {!hasException && onGrantException && (
+            <button
+              onClick={() => { setPendingAction('grantException'); setShowOtp(true); }}
+              className="rounded-lg p-1.5 text-amber-400 hover:bg-amber-50 hover:text-amber-600"
+              title="Grant delivery exception (special case)"
+            >
+              <ShieldAlert className="h-4 w-4" />
+            </button>
+          )}
+          {hasException && onRevokeException && (
+            <button
+              onClick={() => { setPendingAction('revokeException'); setShowOtp(true); }}
+              className="rounded-lg p-1.5 text-green-500 hover:bg-green-50 hover:text-green-700"
+              title="Revoke delivery exception"
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </button>
+          )}
+          {/* Edit */}
+          {onEdit && (
+            <button
+              onClick={() => { setPendingAction('edit'); setShowOtp(true); }}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+              title="Edit order"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
+          {/* Delete */}
+          {onDelete && (
+            <button
+              onClick={() => { setPendingAction('delete'); setShowOtp(true); }}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+              title="Delete order"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+          <ReadyBadge readyAt={readyDate} />
+        </div>
       </div>
 
       {/* Preparation timeline */}
@@ -230,13 +304,29 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
 
       <OtpModal
         open={showOtp}
-        title={pendingAction === 'set-prep-days' ? 'Confirm: Update Prep Days' : pendingAction === 'recordDeposit' ? 'Confirm: Record Downpayment' : 'Confirm: Mark Stock Ready'}
+        title={
+          pendingAction === 'set-prep-days' ? 'Confirm: Update Prep Days' :
+          pendingAction === 'recordDeposit' ? 'Confirm: Record Downpayment' :
+          pendingAction === 'edit' ? 'Confirm: Edit Order' :
+          pendingAction === 'delete' ? 'Confirm: Delete Order' :
+          pendingAction === 'grantException' ? 'Confirm: Grant Delivery Exception' :
+          pendingAction === 'revokeException' ? 'Confirm: Revoke Delivery Exception' :
+          'Confirm: Mark Stock Ready'
+        }
         description={
           pendingAction === 'set-prep-days'
             ? `Updating stock prep days to ${daysInput} day(s) for ${order.quotation_number ?? 'this order'}.`
             : pendingAction === 'recordDeposit'
               ? `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`
-              : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
+              : pendingAction === 'edit'
+                ? `Opening edit form for ${order.quotation_number ?? 'this order'}.`
+                : pendingAction === 'delete'
+                  ? `Are you sure you want to delete ${order.quotation_number ?? 'this order'}? This action cannot be undone.`
+                  : pendingAction === 'grantException'
+                    ? `Grant delivery exception (special case) for ${order.quotation_number ?? 'this order'}. This will allow the order to proceed without delivery verification.`
+                    : pendingAction === 'revokeException'
+                      ? `Revoke delivery exception for ${order.quotation_number ?? 'this order'}. Normal delivery verification will be required.`
+                      : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
         }
         onVerified={handleVerified}
         onClose={() => { setShowOtp(false); setPendingAction(null); }}
@@ -712,6 +802,115 @@ function MatchingVerificationSection({ onUpdated }: { onUpdated: () => void }) {
 export default function StockPrepPage() {
   const { data: orders, isLoading, mutate } = useOrdersByStage('stock_preparation');
 
+  // ── File viewer ──
+  const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
+
+  // ── Client filter ──
+  const [clientFilter, setClientFilter] = useState<string | null>(null);
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientFilterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (clientFilterRef.current && !clientFilterRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleClientFilterSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setClientSuggestions([]);
+      setShowClientDropdown(false);
+      return;
+    }
+    setSearchingClient(true);
+    try {
+      const results = await searchClients(q);
+      setClientSuggestions(results);
+      setShowClientDropdown(true);
+    } catch {
+      setClientSuggestions([]);
+    } finally {
+      setSearchingClient(false);
+    }
+  }, []);
+
+  function selectClientFilter(name: string) {
+    setClientFilter(name);
+    setShowClientDropdown(false);
+  }
+
+  function clearClientFilter() {
+    setClientFilter(null);
+    setClientSuggestions([]);
+  }
+
+  function filterByClient(orders: Order[]): Order[] {
+    if (!clientFilter) return orders;
+    return orders.filter(o =>
+      o.client_name?.toLowerCase().includes(clientFilter.toLowerCase())
+    );
+  }
+
+  // ── Edit / Delete / Exception handlers ──
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editForm, setEditForm] = useState<{ client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }>({});
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function handleEdit(order: Order) {
+    setEditingOrder(order);
+    setEditForm({
+      client_name: order.client_name ?? '',
+      sales_agent: order.sales_agent ?? '',
+      total_amount: order.total_amount ?? 0,
+      quotation_number: order.quotation_number ?? '',
+    });
+  }
+
+  async function handleEditSave(data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }) {
+    if (!editingOrder) return;
+    setSavingEdit(true);
+    try {
+      await updateOrder(editingOrder.id, data);
+      setEditingOrder(null);
+      mutate();
+    } catch (err: any) {
+      console.error('Failed to update order:', err);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function handleDeleteClick(order: Order) {
+    if (!window.confirm(`Delete ${order.quotation_number ?? 'this order'}? This cannot be undone.`)) return;
+    // OTP flow will handle the actual deletion
+  }
+
+  async function handleGrantException(order: Order) {
+    try {
+      await grantDeliveryException(order.id, '');
+      mutate();
+    } catch (err: any) {
+      console.error('Failed to grant exception:', err);
+    }
+  }
+
+  async function handleRevokeException(order: Order) {
+    try {
+      await revokeDeliveryException(order.id, '');
+      mutate();
+    } catch (err: any) {
+      console.error('Failed to revoke exception:', err);
+    }
+  }
+
+  const filteredOrders = filterByClient(orders ?? []);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -725,11 +924,48 @@ export default function StockPrepPage() {
             <p className="text-sm text-gray-500">Orders fulfilled from existing inventory — no production needed</p>
           </div>
         </div>
-        {orders && orders.length > 0 && (
-          <span className="rounded-full bg-lime-100 px-3 py-1 text-sm font-medium text-lime-800">
-            {orders.length} order{orders.length !== 1 ? 's' : ''} pending
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Client filter */}
+          <div ref={clientFilterRef} className="relative">
+            <div className="flex items-center gap-1">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Filter by client..."
+                  value={clientFilter ?? ''}
+                  onChange={e => { setClientFilter(e.target.value || null); handleClientFilterSearch(e.target.value); }}
+                  className="w-44 rounded-lg border border-gray-200 pl-8 pr-3 py-1.5 text-xs focus:border-lime-400 focus:ring-1 focus:ring-lime-400 outline-none"
+                />
+                {searchingClient && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-gray-400" />}
+              </div>
+              {clientFilter && (
+                <button onClick={clearClientFilter} className="rounded p-1 text-gray-400 hover:text-red-500 hover:bg-red-50" title="Clear filter">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {showClientDropdown && clientSuggestions.length > 0 && (
+              <div className="absolute right-0 mt-1 w-56 rounded-lg border border-gray-200 bg-white shadow-lg z-20 max-h-48 overflow-y-auto">
+                {clientSuggestions.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => selectClientFilter(c.name)}
+                    className="w-full px-3 py-2 text-left text-xs hover:bg-lime-50 hover:text-lime-700 transition-colors border-b border-gray-50 last:border-0"
+                  >
+                    <span className="font-medium text-gray-800">{c.name}</span>
+                    {c.contact && <span className="ml-2 text-gray-400">{c.contact}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {orders && orders.length > 0 && (
+            <span className="rounded-full bg-lime-100 px-3 py-1 text-sm font-medium text-lime-800">
+              {orders.length} order{orders.length !== 1 ? 's' : ''} pending
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Stage explanation */}
@@ -753,6 +989,11 @@ export default function StockPrepPage() {
         <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
           <PackageCheck className="h-5 w-5 text-lime-600" />
           Stock Preparation Cards
+          {clientFilter && (
+            <span className="rounded-full bg-lime-100 px-2.5 py-0.5 text-[11px] font-medium text-lime-700">
+              Filtered: {clientFilter}
+            </span>
+          )}
         </h2>
 
         {isLoading ? (
@@ -766,10 +1007,25 @@ export default function StockPrepPage() {
             <p className="text-sm font-medium text-gray-500">No orders in Stock Preparation</p>
             <p className="text-xs text-gray-400 mt-1">From-stock orders will appear here after deposit is verified</p>
           </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-16 text-center">
+            <Search className="h-10 w-10 text-gray-300 mb-3" />
+            <p className="text-sm font-medium text-gray-500">No orders match filter</p>
+            <p className="text-xs text-gray-400 mt-1">Try a different client name or clear the filter</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {orders.map(order => (
-              <StockPrepCard key={order.id} order={order} onUpdated={() => mutate()} />
+            {filteredOrders.map(order => (
+              <StockPrepCard
+                key={order.id}
+                order={order}
+                onUpdated={() => mutate()}
+                onViewFiles={handleViewFiles}
+                onEdit={handleEdit}
+                onDelete={handleDeleteClick}
+                onGrantException={handleGrantException}
+                onRevokeException={handleRevokeException}
+              />
             ))}
           </div>
         )}
@@ -786,6 +1042,16 @@ export default function StockPrepPage() {
           After the deposit is verified, the order will automatically appear here.
         </p>
       </div>
+
+      {/* File viewer modal */}
+      {viewingFilesOrder && (
+        <FileViewerModal
+          order={viewingFilesOrder}
+          files={orderFiles}
+          onClose={closeViewer}
+          onRefresh={refreshFiles}
+        />
+      )}
     </div>
   );
 }

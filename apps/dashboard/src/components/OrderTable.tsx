@@ -26,6 +26,9 @@ interface OrderTableProps {
   selectedIds?: Set<string>;
   onSelect?: (id: string, selected: boolean) => void;
   onSelectAll?: (selected: boolean) => void;
+  /** Quick-verify shortcut: only shown when payment recorded but not yet verified */
+  onVerifyDeposit?: (order: Order) => void;
+  onVerifyBalance?: (order: Order) => void;
 }
 
 function money(value: unknown) {
@@ -45,7 +48,25 @@ function StatusPill({ children, className }: { children: ReactNode; className: s
   );
 }
 
-function VerificationPill({ verified }: { verified: boolean | null | undefined }) {
+function VerificationPill({
+  verified,
+  onClick,
+}: {
+  verified: boolean | null | undefined;
+  onClick?: () => void;
+}) {
+  if (!verified && onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Click to verify payment"
+        className="inline-flex cursor-pointer items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 ring-1 ring-yellow-300 hover:bg-yellow-200 hover:ring-yellow-400 transition-colors"
+      >
+        Pending ✓
+      </button>
+    );
+  }
   return (
     <StatusPill className={verified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
       {verified ? 'Verified' : 'Pending'}
@@ -91,6 +112,8 @@ export default function OrderTable({
   selectedIds = new Set(),
   onSelect,
   onSelectAll,
+  onVerifyDeposit,
+  onVerifyBalance,
 }: OrderTableProps) {
   const allSelected = orders.length > 0 && orders.every((o) => selectedIds.has(o.id));
   const someSelected = orders.some((o) => selectedIds.has(o.id)) && !allSelected;
@@ -324,7 +347,14 @@ export default function OrderTable({
                 {showDeposit && (
                   <div>
                     <dt className="text-gray-400">Downpayment Verified</dt>
-                    <dd className="mt-1"><VerificationPill verified={order.deposit_verified} /></dd>
+                    <dd className="mt-1">
+                      <VerificationPill
+                        verified={order.deposit_verified}
+                        onClick={onVerifyDeposit && order.deposit_paid && !order.deposit_verified
+                          ? () => onVerifyDeposit(order)
+                          : undefined}
+                      />
+                    </dd>
                     {order.deposit_verified_at && <dd className="mt-1 text-[11px] text-gray-400">{formatDate(order.deposit_verified_at)}</dd>}
                   </div>
                 )}
@@ -337,7 +367,14 @@ export default function OrderTable({
                 {showBalance && (
                   <div>
                     <dt className="text-gray-400">Balance Verified</dt>
-                    <dd className="mt-1"><VerificationPill verified={effectiveBalanceVerified(order)} /></dd>
+                    <dd className="mt-1">
+                      <VerificationPill
+                        verified={effectiveBalanceVerified(order)}
+                        onClick={onVerifyBalance && order.balance_paid && !effectiveBalanceVerified(order)
+                          ? () => onVerifyBalance(order)
+                          : undefined}
+                      />
+                    </dd>
                     {order.balance_verified_at && <dd className="mt-1 text-[11px] text-gray-400">{formatDate(order.balance_verified_at)}</dd>}
                   </div>
                 )}
@@ -501,7 +538,12 @@ export default function OrderTable({
                   )}
                   {showDeposit && (
                     <td className="px-4 py-3">
-                      <VerificationPill verified={order.deposit_verified} />
+                      <VerificationPill
+                        verified={order.deposit_verified}
+                        onClick={onVerifyDeposit && order.deposit_paid && !order.deposit_verified
+                          ? () => onVerifyDeposit(order)
+                          : undefined}
+                      />
                       {order.deposit_verified_at && <div className="mt-1 text-[11px] text-gray-400">{formatDate(order.deposit_verified_at)}</div>}
                     </td>
                   )}
@@ -510,7 +552,12 @@ export default function OrderTable({
                   )}
                   {showBalance && (
                     <td className="px-4 py-3">
-                      <VerificationPill verified={effectiveBalanceVerified(order)} />
+                      <VerificationPill
+                        verified={effectiveBalanceVerified(order)}
+                        onClick={onVerifyBalance && order.balance_paid && !effectiveBalanceVerified(order)
+                          ? () => onVerifyBalance(order)
+                          : undefined}
+                      />
                       {order.balance_verified_at && <div className="mt-1 text-[11px] text-gray-400">{formatDate(order.balance_verified_at)}</div>}
                     </td>
                   )}
