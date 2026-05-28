@@ -5525,8 +5525,9 @@ bot.action(/^en_route_verif:yes:(.+)$/, async (ctx) => {
       updated_by: ctx.from?.username ?? `user_${userId}`,
     });
     await logAction({ chatId, userId, username, label: 'All Items Arrived (En Route Verification)', quotationNumber });
+    const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.abcx124.xyz'}/inventory/verification/${encodeURIComponent(quotationNumber)}`;
     await ctx.editMessageText(
-      `✅ *All Items Arrived!* — ${quotationNumber}\n\nOrder advanced to Inventory Verification stage.\n\nInventory team will now verify the items.`,
+      `✅ *All Items Arrived!* — ${quotationNumber}\n\nOrder advanced to Inventory Verification stage.\n\nInventory team will now verify the items.\n\n🔍 [Open Inventory Verification](${inventoryVerifLink})`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {
@@ -5575,8 +5576,9 @@ bot.action(/^en_route_verif:check:(.+)$/, async (ctx) => {
         return `${icon} ${i.name} ×${i.quantity} — ${i.en_route_status ?? 'not_yet'}`;
       })
       .join('\n');
+    const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.abcx124.xyz'}/inventory/verification/${encodeURIComponent(quotationNumber)}`;
     await ctx.editMessageText(
-      `📋 *Item Arrival Status* — ${quotationNumber}\n\n${itemsList}\n\nUse the dashboard to update individual item statuses.`,
+      `📋 *Item Arrival Status* — ${quotationNumber}\n\n${itemsList}\n\n💡 Items marked ✅ arrived can be verified early:\n[🔍 Open Inventory Verification](${inventoryVerifLink})\n\nUse the dashboard to update individual item statuses.`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } catch (err: any) {

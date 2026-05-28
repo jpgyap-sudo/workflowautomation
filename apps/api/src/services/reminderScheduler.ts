@@ -736,12 +736,15 @@ export async function processDueReminders(): Promise<number> {
         ? new Date(new Date(enRouteAt).getTime() + totalDays * 86_400_000)
             .toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
         : 'today';
+      const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.abcx124.xyz'}/inventory/verification/${encodeURIComponent(reminder.quotation_number ?? reminder.order_id)}`;
       const arrivalText =
         `📦 <b>En Route Arrival Check</b>\n\n` +
         `Quotation: <b>${quotationNumber}</b>\n` +
         `Client: ${reminder.client_name ?? 'Unknown'}\n\n` +
         `Estimated arrival date: <b>${estimatedArrival}</b>\n\n` +
-        `Has the inventory arrived?`;
+        `Has the inventory arrived?\n\n` +
+        `💡 <i>Items that have arrived can be verified early:</i>\n` +
+        `<a href="${inventoryVerifLink}">🔍 Open Inventory Verification</a>`;
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, arrivalText, [
         [
           { text: '✅ Yes, arrived!', callback_data: `en_route_arr:yes:${quotationNumber}` },
@@ -760,12 +763,15 @@ export async function processDueReminders(): Promise<number> {
         ? new Date(new Date(enRouteAt).getTime() + totalDays * 86_400_000)
             .toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
         : 'Unknown';
+      const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.abcx124.xyz'}/inventory/verification/${encodeURIComponent(reminder.quotation_number ?? reminder.order_id)}`;
       const verifText =
         `🔎 <b>En Route Verification</b>\n\n` +
         `Order: <b>${quotationNumber}</b>\n` +
         `Client: ${reminder.client_name ?? 'Unknown'}\n\n` +
         `Estimated arrival: <b>${estimatedArrival}</b>\n\n` +
-        `Have all items arrived at the inventory?`;
+        `Have all items arrived at the inventory?\n\n` +
+        `💡 <i>Items that have arrived can be verified early:</i>\n` +
+        `<a href="${inventoryVerifLink}">🔍 Open Inventory Verification</a>`;
       ok = await sendTelegramInlineKeyboard(reminder.group_chat_id, verifText, [
         [
           { text: '✅ Yes, all arrived', callback_data: `en_route_verif:yes:${quotationNumber}` },

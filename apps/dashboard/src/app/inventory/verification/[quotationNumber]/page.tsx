@@ -58,7 +58,7 @@ export default function InventoryVerificationDetailPage() {
   const [arrivedQtyInputs, setArrivedQtyInputs] = useState<Record<string, string>>({});
   const [bulkArrivedQty, setBulkArrivedQty] = useState<string>('');
 
-  const canVerify = order?.current_stage === 'inventory_verification';
+  const canVerify = order?.current_stage === 'inventory_verification' || order?.current_stage === 'en_route_verification';
   const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
   const verifiedQty = items.reduce((sum, item) => sum + (item.verified_qty ?? 0), 0);
   const fullyVerified = items.filter((item) => (item.verified_qty ?? 0) >= item.quantity).length;

@@ -12875,3 +12875,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: fix downpayment pending gap + production exception overhaul
+
+Date: 2026-05-27
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a4db26feeb8f5cdc3bbbc7ab4cd3064baafe96c7
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** a4db26feeb8f5cdc3bbbc7ab4cd3064baafe96c7
+**Files:** 
+
+**Summary:**
+**What was fixed:**  
+A gap in downpayment pending status handling and an overhaul of production exception logic.
+
+**Why it broke:**  
+The downpayment pending state was not properly accounted for in the workflow transition logic, causing a gap where payments could be stuck or misrouted. The production exception handling lacked robustness, leading to unhandled edge cases in the automation pipeline.
+
+**Reusable takeaway:**  
+When designing state machines or workflow automation, explicitly define and test all possible states—including transient or pending states—to avoid silent gaps. For production exception handling, implement a comprehensive overhaul that catches and logs all failure modes, rather than patching individual exceptions. This prevents cascading failures and ensures predictable system behavior under edge cases.
+
+---
+*Original commit message: feat: fix downpayment pending gap + production exception overhaul*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A gap in downpayment pending status handling and an overhaul of production exception logic.
+
+**Why it broke:**  
+The downpayment pending state was not properly accounted for in the workflow transition logic, causing a gap where payments could be stuck or misrouted. The production exception handling lacked robustness, leading to unhandled edge cases in the automation pipeline.
+
+**Reusable takeaway:**  
+When designing state machines or workflow automation, explicitly define and test all possible states—including transient or pending states—to avoid silent gaps. For production exception handling, implement a comprehensive overhaul that catches and logs all failure modes, rather than patching individual exceptions. This prevents cascading failures and ensures predictable system behavior under edge cases.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

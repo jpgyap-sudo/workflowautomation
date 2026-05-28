@@ -3889,11 +3889,11 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
 
   console.log(`[inventory-verify-item] order=${id} item=${body.item_id} action=${body.action} verified_qty=${body.verified_qty} arrived_qty=${body.arrived_qty}`);
 
-  // Verify the order is in inventory_verification stage
+  // Verify the order is in inventory_verification or en_route_verification stage
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (orderRows[0].current_stage !== 'inventory_verification') {
-    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+    return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
   // Get the item
@@ -4086,13 +4086,13 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
   }
   const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
-  // Verify the order is in inventory_verification stage
+  // Verify the order is in inventory_verification or en_route_verification stage
   const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null }>(
     `SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (orderRows[0].current_stage !== 'inventory_verification') {
-    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+    return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
   // Fetch selected items (also fetch arrived_qty if it exists)
@@ -4316,13 +4316,13 @@ app.post('/orders/:id/bulk-inventory-unverify', async (request, reply) => {
   }
   const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
-  // Verify the order is in inventory_verification stage
+  // Verify the order is in inventory_verification or en_route_verification stage
   const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null }>(
     `SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (orderRows[0].current_stage !== 'inventory_verification') {
-    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+    return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
   // Fetch selected items that have verified_qty > 0
@@ -4467,8 +4467,8 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (orderRows[0].current_stage !== 'inventory_verification') {
-    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+    return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
   // Safety check: verify all items are verified before advancing
@@ -4610,8 +4610,8 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (orderRows[0].current_stage !== 'inventory_verification') {
-    return reply.code(400).send({ error: 'Order is not in inventory verification stage' });
+  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+    return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
   // Check that at least SOME items have been verified (not all zero)

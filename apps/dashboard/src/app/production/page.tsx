@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
@@ -26,6 +27,7 @@ import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   RefreshCw, Package, Loader2, MessageSquare, Search, XCircle,
+  ExternalLink,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -483,9 +485,19 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                     </td>
                     <td className="px-3 py-2">
                       {item.en_route_status === 'arrived' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                          ✓ In Stock
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            ✓ In Stock
+                          </span>
+                          {['en_route_verification', 'inventory_verification'].includes(order.current_stage) && (
+                            <Link
+                              href={`/inventory/verification/${encodeURIComponent(order.quotation_number ?? order.id)}`}
+                              className="inline-flex items-center gap-0.5 rounded bg-teal-50 px-1.5 py-0.5 text-[9px] font-medium text-teal-700 hover:bg-teal-100"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" /> Verify in Inventory
+                            </Link>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
@@ -782,12 +794,9 @@ interface OrderRowProps {
   onBulkEnRouteSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
   onBulkArriveAll?: (order: Order, refresh?: () => void) => void;
   onBulkArriveSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
-  onCompleteProductionPartial?: (order: Order) => void;
-  onCompleteDispatchPartial?: (order: Order) => void;
-  onCompleteArrivalPartial?: (order: Order) => void;
-}
+ }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected, onCompleteProductionPartial, onCompleteDispatchPartial, onCompleteArrivalPartial }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -956,13 +965,6 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
                     Finish Production
                   </button>
                 )}
-                {/* Complete Production (Partial) — shown when order is in production stages and some items may not be finished */}
-                {onCompleteProductionPartial && (
-                  <button onClick={() => onCompleteProductionPartial(order)}
-                    className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">
-                    Complete (Partial)
-                  </button>
-                )}
               </>
             )}
             {/* En Route action */}
@@ -972,25 +974,11 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
                 Confirm En Route
               </button>
             )}
-            {/* Complete Dispatch (Partial) — shown when order is in en_route stage and some items may not be dispatched */}
-            {order.current_stage === 'en_route' && onCompleteDispatchPartial && (
-              <button onClick={() => onCompleteDispatchPartial(order)}
-                className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">
-                Complete (Partial)
-              </button>
-            )}
             {/* Early arrival action */}
             {order.current_stage === 'en_route_verification' && onProceedInventoryVerification && (
               <button onClick={() => onProceedInventoryVerification(order)}
                 className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700">
                 Proceed to Inventory Verification
-              </button>
-            )}
-            {/* Complete Arrival (Partial) — shown when order is in en_route_verification stage and some items may not have arrived */}
-            {order.current_stage === 'en_route_verification' && onCompleteArrivalPartial && (
-              <button onClick={() => onCompleteArrivalPartial(order)}
-                className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">
-                Complete (Partial)
               </button>
             )}
             {/* Production Exception actions */}
@@ -1197,9 +1185,7 @@ interface ProductionItemSectionProps {
   updatingItemId?: string | null;
   /** Callback when Finish Production is clicked for an order (order-level) */
   onFinishProduction?: (order: Order) => void;
-  /** Callback when Complete (Partial) is clicked for production finish */
-  onCompleteProductionPartial?: (order: Order) => void;
-}
+ }
 
 function ProductionItemSection({
   icon, title, count, countBg, countText,
@@ -1210,8 +1196,7 @@ function ProductionItemSection({
   onViewFiles, onEdit, onDelete,
   updatingItemId,
   onFinishProduction,
-  onCompleteProductionPartial,
-}: ProductionItemSectionProps) {
+ }: ProductionItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
   const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
@@ -1379,14 +1364,6 @@ function ProductionItemSection({
                         className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 transition-colors"
                       >
                         Finish Production
-                      </button>
-                    )}
-                    {onCompleteProductionPartial && order.production_started && !order.production_finished && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onCompleteProductionPartial(order); }}
-                        className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors"
-                      >
-                        Complete (Partial)
                       </button>
                     )}
                     {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
@@ -2204,7 +2181,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected' | 'bulkArriveAll' | 'bulkArriveSelected' | 'completeProductionPartial' | 'completeDispatchPartial' | 'completeArrivalPartial';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected' | 'bulkArriveAll' | 'bulkArriveSelected';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -2273,9 +2250,6 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
-    else if (otpModal.pendingAction === 'completeProductionPartial') handleCompleteProductionPartialVerified(actionToken);
-    else if (otpModal.pendingAction === 'completeDispatchPartial') handleCompleteDispatchPartialVerified(actionToken);
-    else if (otpModal.pendingAction === 'completeArrivalPartial') handleCompleteArrivalPartialVerified(actionToken);
   }
 
   async function handleGrantExceptionVerified(actionToken: string) {
@@ -2910,101 +2884,6 @@ export default function ProductionPage() {
     }
   }
 
-  // ── Complete Production (Partial) ─────────────────────────────────────
-  // Allows advancing from production stages to 'en_route' even when some
-  // items are not yet finished.
-
-  function handleCompleteProductionPartial(order: Order) {
-    const input = window.prompt(
-      'Days until available for delivery? (applied to finished items)',
-      order.delivery_estimated_days?.toString() ?? '28'
-    );
-    if (!input) return;
-    const days = Number(input.replace(/[^0-9]/g, ''));
-    if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    setOtpModal({
-      open: true,
-      title: 'Complete Production (Partial)',
-      description: `You are about to mark order "${order.quotation_number ?? '—'}" as production finished (partial) and advance to En Route. Some unfinished items will be tracked as pending. Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'completeProductionPartial',
-    });
-    (window as any).__pendingCompleteProductionPartialData = { orderId: order.id, days };
-  }
-
-  async function handleCompleteProductionPartialVerified(actionToken: string) {
-    const pending = (window as any).__pendingCompleteProductionPartialData;
-    if (!pending) return;
-    try {
-      await completeProductionPartial(pending.orderId, actionToken, pending.days);
-      refresh();
-    } catch (err: any) {
-      alert('Failed to complete production partial: ' + (err.message ?? 'Unknown error'));
-    } finally {
-      (window as any).__pendingCompleteProductionPartialData = null;
-    }
-  }
-
-  // ── Complete Dispatch (Partial) ───────────────────────────────────────
-  // Allows advancing from 'en_route' to 'en_route_verification' even when
-  // some items are not yet dispatched.
-
-  function handleCompleteDispatchPartial(order: Order) {
-    const input = window.prompt(
-      'Days estimated for inventory to arrive?',
-      order.estimated_arrival_days?.toString() ?? '28'
-    );
-    if (!input) return;
-    const days = Number(input.replace(/[^0-9]/g, ''));
-    if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    setOtpModal({
-      open: true,
-      title: 'Complete Dispatch (Partial)',
-      description: `You are about to advance order "${order.quotation_number ?? '—'}" from En Route to En Route Verification (partial). Some undelivered items will be tracked as pending. Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'completeDispatchPartial',
-    });
-    (window as any).__pendingCompleteDispatchPartialData = { orderId: order.id, days };
-  }
-
-  async function handleCompleteDispatchPartialVerified(actionToken: string) {
-    const pending = (window as any).__pendingCompleteDispatchPartialData;
-    if (!pending) return;
-    try {
-      await completeDispatchPartial(pending.orderId, actionToken, pending.days);
-      refresh();
-    } catch (err: any) {
-      alert('Failed to complete dispatch partial: ' + (err.message ?? 'Unknown error'));
-    } finally {
-      (window as any).__pendingCompleteDispatchPartialData = null;
-    }
-  }
-
-  // ── Complete Arrival (Partial) ────────────────────────────────────────
-  // Allows advancing from 'en_route_verification' to 'inventory_verification'
-  // even when some items have not yet arrived.
-
-  function handleCompleteArrivalPartial(order: Order) {
-    setOtpModal({
-      open: true,
-      title: 'Complete Arrival (Partial)',
-      description: `You are about to advance order "${order.quotation_number ?? '—'}" from En Route Verification to Inventory Verification (partial). Some items that haven't arrived yet will be tracked as pending. Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'completeArrivalPartial',
-    });
-    (window as any).__pendingCompleteArrivalPartialData = { orderId: order.id };
-  }
-
-  async function handleCompleteArrivalPartialVerified(actionToken: string) {
-    const pending = (window as any).__pendingCompleteArrivalPartialData;
-    if (!pending) return;
-    try {
-      await completeArrivalPartial(pending.orderId, actionToken);
-      refresh();
-    } catch (err: any) {
-      alert('Failed to complete arrival partial: ' + (err.message ?? 'Unknown error'));
-    } finally {
-      (window as any).__pendingCompleteArrivalPartialData = null;
-    }
-  }
-
   // ── Wrapper callbacks for OrderRow → ProductionInfoCards ──────────────
   // These capture the order ID so ProductionInfoCards can trigger OTP-based item actions
   function makeItemProductionStatusHandler(order: Order) {
@@ -3178,7 +3057,6 @@ export default function ProductionPage() {
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
         updatingItemId={updatingItemId}
-        onCompleteProductionPartial={handleCompleteProductionPartial}
       />
 
       {/* Production Finished */}
@@ -3215,7 +3093,6 @@ export default function ProductionPage() {
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
               onBulkEnRoute={handleBulkEnRoute}
               onBulkEnRouteSelected={handleBulkEnRouteSelected}
-              onCompleteDispatchPartial={handleCompleteDispatchPartial}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
@@ -3245,7 +3122,6 @@ export default function ProductionPage() {
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
               onBulkArriveAll={handleBulkArriveAll}
               onBulkArriveSelected={handleBulkArriveSelected}
-              onCompleteArrivalPartial={handleCompleteArrivalPartial}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
@@ -3275,7 +3151,6 @@ export default function ProductionPage() {
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
               onBulkArriveAll={handleBulkArriveAll}
               onBulkArriveSelected={handleBulkArriveSelected}
-              onCompleteArrivalPartial={handleCompleteArrivalPartial}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />

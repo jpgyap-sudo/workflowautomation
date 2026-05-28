@@ -27,6 +27,7 @@ import {
   updateOrderItem,
   getInventoryMovements,
   type OrderItem,
+  type Order,
 } from '@/lib/api';
 import {
   Package,
@@ -1354,14 +1355,22 @@ export default function InventoryPage() {
 // ── Orders Awaiting Inventory Arrival Section ─────────────────────────────
 
 function InventoryVerificationSection() {
-  const { data: orders = [], isLoading, mutate } = useOrdersByStage('inventory_verification');
+  const { data: invVerifOrders = [], isLoading: invLoading, mutate: invMutate } = useOrdersByStage('inventory_verification');
+  const { data: enRouteVerifOrders = [], isLoading: enRouteLoading, mutate: enRouteMutate } = useOrdersByStage('en_route_verification');
   const [itemSummaryMap, setItemSummaryMap] = useState<Record<string, { verified: number; total: number; totalQty: number; verifiedQty: number }>>({});
+  const [enRouteOrdersWithArrived, setEnRouteOrdersWithArrived] = useState<Order[]>([]);
+  const [loadingEnRouteItems, setLoadingEnRouteItems] = useState(false);
+
+  // Merge all orders: inventory_verification + en_route_verification orders that have arrived items
+  const orders = [...invVerifOrders, ...enRouteOrdersWithArrived];
+  const isLoading = invLoading || enRouteLoading || loadingEnRouteItems;
 
   // Listen for SSE events to revalidate data
   useEffect(() => {
     const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/events`);
     const handleUpdate = () => {
-      mutate();
+      invMutate();
+      enRouteMutate();
     };
     eventSource.addEventListener('order_updated', handleUpdate);
     eventSource.addEventListener('invalidate', handleUpdate);
@@ -1370,7 +1379,38 @@ function InventoryVerificationSection() {
       eventSource.removeEventListener('invalidate', handleUpdate);
       eventSource.close();
     };
-  }, [mutate]);
+  }, [invMutate, enRouteMutate]);
+
+  // Filter en_route_verification orders to only those with arrived items
+  useEffect(() => {
+    if (enRouteVerifOrders.length === 0) {
+      setEnRouteOrdersWithArrived([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingEnRouteItems(true);
+    async function fetchEnRouteItems() {
+      const result: Order[] = [];
+      await Promise.all(enRouteVerifOrders.map(async (order) => {
+        try {
+          const res = await getOrderItems(order.id);
+          const items = res.items ?? [];
+          const hasArrivedItems = items.some((item) => item.en_route_status === 'arrived');
+          if (hasArrivedItems) {
+            result.push(order);
+          }
+        } catch {
+          // Silently skip orders we can't fetch items for
+        }
+      }));
+      if (!cancelled) {
+        setEnRouteOrdersWithArrived(result);
+        setLoadingEnRouteItems(false);
+      }
+    }
+    fetchEnRouteItems();
+    return () => { cancelled = true; };
+  }, [enRouteVerifOrders]);
 
   useEffect(() => {
     if (orders.length === 0) {
@@ -1436,6 +1476,7 @@ function InventoryVerificationSection() {
         {orders.map((order) => {
           const summary = itemSummaryMap[order.id] ?? { verified: 0, total: 0, totalQty: 0, verifiedQty: 0 };
           const verificationUrl = `/inventory/verification/${encodeURIComponent(order.quotation_number ?? order.id)}`;
+          const isEarlyVerification = order.current_stage === 'en_route_verification';
           return (
             <div key={order.id} className="flex items-center justify-between py-4">
               <div className="flex items-center gap-3">
@@ -1453,6 +1494,11 @@ function InventoryVerificationSection() {
                       {order.inventory_verification_pct ?? 0}% verified ? {summary.verified}/{summary.total} item(s) ? {summary.verifiedQty}/{summary.totalQty} units
                     </span>
                   </div>
+                  {isEarlyVerification && (
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                      <Clock className="h-3 w-3" /> Early verification — some items still in transit
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
