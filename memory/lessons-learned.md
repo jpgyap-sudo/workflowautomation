@@ -13341,3 +13341,141 @@ When fixing UI interaction bugs like drag-and-drop, always verify that event lis
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: React Rules of Hooks violation — early return moved after all hooks in ChatFloatingIcon
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f246a59c57ff59b2b2d431bcdc478e7a4bf20e48
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f246a59c57ff59b2b2d431bcdc478e7a4bf20e48
+**Files:** apps/dashboard/src/components/ChatFloatingIcon.tsx
+
+**Summary:**
+**What was fixed:** A React Rules of Hooks violation where an early return (`if (!enabled) return null;`) was placed before some `useState` and `useEffect` hooks, causing conditional hook calls.
+
+**Why it broke:** React hooks must be called in the same order on every render. The early return caused hooks after it to be skipped when `enabled` was `false`, violating this rule and leading to unpredictable state or crashes.
+
+**Reusable takeaway:** Always place all React hooks (useState, useEffect, etc.) before any early return or conditional logic. If a component should render nothing based on a condition, move the early return to *after* all hooks have been called. This ensures hooks are always invoked in the same order, preserving React’s internal state consistency.
+
+---
+*Original commit message: fix: React Rules of Hooks violation — early return moved after all hooks in ChatFloatingIcon*
+
+#### Lesson Learned
+
+**What was fixed:** A React Rules of Hooks violation where an early return (`if (!enabled) return null;`) was placed before some `useState` and `useEffect` hooks, causing conditional hook calls.
+
+**Why it broke:** React hooks must be called in the same order on every render. The early return caused hooks after it to be skipped when `enabled` was `false`, violating this rule and leading to unpredictable state or crashes.
+
+**Reusable takeaway:** Always place all React hooks (useState, useEffect, etc.) before any early return or conditional logic. If a component should render nothing based on a condition, move the early return to *after* all hooks have been called. This ensures hooks are always invoked in the same order, preserving React’s internal state consistency.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: make chat widget floating button draggable by adding drag handlers to outer container
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 568439b1f5d85fc9282649f185325e7b6620c8ff
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 568439b1f5d85fc9282649f185325e7b6620c8ff
+**Files:** apps/dashboard/src/components/ChatFloatingIcon.tsx
+
+**Summary:**
+**What was fixed:**  
+The chat widget’s floating button was not draggable. Drag handlers were added to the outer container to enable dragging.
+
+**Why it broke:**  
+The drag event listeners were attached to an inner element (e.g., the icon itself) instead of the outer container. Since the outer container defined the draggable boundary, the drag logic never triggered when the user clicked and moved the icon.
+
+**Reusable takeaway:**  
+When implementing drag behavior on a floating UI element, attach drag handlers (e.g., `onMouseDown`, `onMouseMove`, `onMouseUp`) to the outermost container that defines the draggable area. This ensures the entire widget surface is responsive to drag gestures, not just a nested child element. Always verify that the event target matches the intended draggable boundary.
+
+---
+*Original commit message: fix: make chat widget floating button draggable by adding drag handlers to outer container*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The chat widget’s floating button was not draggable. Drag handlers were added to the outer container to enable dragging.
+
+**Why it broke:**  
+The drag event listeners were attached to an inner element (e.g., the icon itself) instead of the outer container. Since the outer container defined the draggable boundary, the drag logic never triggered when the user clicked and moved the icon.
+
+**Reusable takeaway:**  
+When implementing drag behavior on a floating UI element, attach drag handlers (e.g., `onMouseDown`, `onMouseMove`, `onMouseUp`) to the outermost container that defines the draggable area. This ensures the entire widget surface is responsive to drag gestures, not just a nested child element. Always verify that the event target matches the intended draggable boundary.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: update CHANGELOG and UPDATE_LOG for chat widget drag fix deployment
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 34fa91bb4da5b8c6e9f68b27a2d028fc927535e8
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 34fa91bb4da5b8c6e9f68b27a2d028fc927535e8
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where the chat widget could not be dragged properly after deployment.
+
+**Why it broke:**  
+The drag functionality likely relied on an event handler or CSS property that was overwritten or not initialized correctly during widget rendering, causing the drag interaction to fail.
+
+**Reusable takeaway:**  
+When deploying UI components with interactive behaviors (e.g., drag, resize), ensure that event listeners and CSS properties (like `user-select`, `pointer-events`, or `touch-action`) are explicitly set and not overridden by parent styles or re-renders. Always test interactive features in the deployment environment, as bundling or minification can alter behavior.
+
+---
+*Original commit message: chore: update CHANGELOG and UPDATE_LOG for chat widget drag fix deployment*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the chat widget could not be dragged properly after deployment.
+
+**Why it broke:**  
+The drag functionality likely relied on an event handler or CSS property that was overwritten or not initialized correctly during widget rendering, causing the drag interaction to fail.
+
+**Reusable takeaway:**  
+When deploying UI components with interactive behaviors (e.g., drag, resize), ensure that event listeners and CSS properties (like `user-select`, `pointer-events`, or `touch-action`) are explicitly set and not overridden by parent styles or re-renders. Always test interactive features in the deployment environment, as bundling or minification can alter behavior.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

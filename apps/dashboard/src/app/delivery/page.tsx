@@ -7,7 +7,7 @@ import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExt
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -1188,6 +1188,49 @@ export default function DeliveryPage() {
     }
   }
 
+  // ── Delivery Item Section handlers (itemized progression) ────────────────
+
+  /** Deliver a single item — opens the partial delivery modal with just that item selected */
+  function handleDeliverItem(order: Order, item: DeliveryProgressItem) {
+    handleOpenPartialDelivery(order);
+    // After the modal loads, we need to override the selectedItemIds to just this item
+    // We do this by fetching and then setting only this item
+    getDeliveryProgress(order.id).then((data) => {
+      setPartialDeliveryModal((prev) => ({
+        ...prev,
+        items: data.items,
+        summary: data.summary,
+        selectedItemIds: new Set([item.id]),
+        loading: false,
+      }));
+    }).catch((err: any) => {
+      alert('Failed to load delivery progress: ' + (err.message ?? 'Unknown error'));
+      setPartialDeliveryModal((prev) => ({ ...prev, open: false, loading: false }));
+    });
+  }
+
+  /** Deliver selected items — opens the partial delivery modal with those items pre-selected */
+  function handleDeliverSelected(order: Order, itemIds: string[]) {
+    handleOpenPartialDelivery(order);
+    getDeliveryProgress(order.id).then((data) => {
+      setPartialDeliveryModal((prev) => ({
+        ...prev,
+        items: data.items,
+        summary: data.summary,
+        selectedItemIds: new Set(itemIds),
+        loading: false,
+      }));
+    }).catch((err: any) => {
+      alert('Failed to load delivery progress: ' + (err.message ?? 'Unknown error'));
+      setPartialDeliveryModal((prev) => ({ ...prev, open: false, loading: false }));
+    });
+  }
+
+  /** Deliver all items — opens the partial delivery modal with all deliverable items pre-selected */
+  function handleDeliverAll(order: Order) {
+    handleOpenPartialDelivery(order);
+  }
+
   // ── Shared row actions (edit + delete buttons) ─────────────────────────
 
   function RowActions({ order }: { order: Order }) {
@@ -1201,6 +1244,284 @@ export default function DeliveryPage() {
           className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
           <Trash2 className="h-4 w-4" />
         </button>
+      </div>
+    );
+  }
+
+  // ── Delivery Item Section (itemized progression like ProductionItemSection) ──
+
+  interface DeliveryItemSectionProps {
+    icon: React.ReactNode;
+    title: string;
+    count: number;
+    countBg: string;
+    countText: string;
+    orders: Order[];
+    isLoading: boolean;
+    emptyText: string;
+    /** Callback when Deliver is clicked for an item */
+    onDeliverItem?: (order: Order, item: DeliveryProgressItem) => void;
+    /** Callback when bulk Deliver Selected is clicked */
+    onDeliverSelected?: (order: Order, itemIds: string[]) => void;
+    /** Callback when bulk Deliver All is clicked */
+    onDeliverAll?: (order: Order) => void;
+    onViewFiles?: (o: Order) => void;
+    onEdit?: (o: Order) => void;
+    onDelete?: (o: Order) => void;
+    actionLoading?: string | null;
+  }
+
+  function DeliveryItemSection({
+    icon, title, count, countBg, countText,
+    orders, isLoading, emptyText,
+    onDeliverItem, onDeliverSelected, onDeliverAll,
+    onViewFiles, onEdit, onDelete,
+    actionLoading,
+  }: DeliveryItemSectionProps) {
+    const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+    const [itemsByOrder, setItemsByOrder] = useState<Record<string, DeliveryProgressItem[]>>({});
+    const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
+    const [selectedItemIds, setSelectedItemIds] = useState<Record<string, Set<string>>>({});
+
+    async function toggleOrder(order: Order) {
+      if (expandedOrderId === order.id) {
+        setExpandedOrderId(null);
+        setSelectedItemIds((prev) => { const next = { ...prev }; delete next[order.id]; return next; });
+        return;
+      }
+      setExpandedOrderId(order.id);
+      if (!itemsByOrder[order.id]) {
+        setLoadingItemsForOrder(order.id);
+        try {
+          const data = await getDeliveryProgress(order.id);
+          setItemsByOrder((prev) => ({ ...prev, [order.id]: data.items ?? [] }));
+        } catch {
+          setItemsByOrder((prev) => ({ ...prev, [order.id]: [] }));
+        } finally {
+          setLoadingItemsForOrder(null);
+        }
+      }
+    }
+
+    function toggleSelectItem(orderId: string, itemId: string) {
+      setSelectedItemIds((prev) => {
+        const current = new Set(prev[orderId] ?? []);
+        if (current.has(itemId)) current.delete(itemId); else current.add(itemId);
+        return { ...prev, [orderId]: current };
+      });
+    }
+
+    function toggleSelectAll(orderId: string, selectableItems: DeliveryProgressItem[]) {
+      setSelectedItemIds((prev) => {
+        const current = prev[orderId] ?? new Set<string>();
+        const allSelected = selectableItems.every((i) => current.has(i.id));
+        return { ...prev, [orderId]: allSelected ? new Set() : new Set(selectableItems.map((i) => i.id)) };
+      });
+    }
+
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          {icon}
+          <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+          <span className={`ml-auto rounded-full ${countBg} px-2 py-0.5 text-xs font-medium ${countText}`}>{count}</span>
+        </div>
+        {isLoading && orders.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">{emptyText}</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {orders.map((order) => {
+              const isExpanded = expandedOrderId === order.id;
+              const orderItems = itemsByOrder[order.id] ?? [];
+              const deliverableItems = orderItems.filter((i) => !i.fully_delivered && i.verified_qty > 0);
+              const hasDeliverableItems = deliverableItems.length > 0;
+              const orderSelected = selectedItemIds[order.id] ?? new Set<string>();
+              const allSelected = deliverableItems.length > 0 && deliverableItems.every((i) => orderSelected.has(i.id));
+              const someSelected = orderSelected.size > 0 && !allSelected;
+
+              return (
+                <div key={order.id}>
+                  {/* Order header row */}
+                  <button
+                    onClick={() => toggleOrder(order)}
+                    className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50/50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
+                        {order.client_name && (
+                          <span className="text-xs text-gray-500">— {order.client_name}</span>
+                        )}
+                      </div>
+                      {order.sales_agent && (
+                        <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
+                      )}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{Number(order.total_amount).toLocaleString()}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <div className="flex items-center gap-1">
+                        {onEdit && (
+                          <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button onClick={(e) => { e.stopPropagation(); onDelete(order); }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                      {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                    </div>
+                  </button>
+
+                  {/* Expanded items table */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
+                      {loadingItemsForOrder === order.id ? (
+                        <div className="flex items-center justify-center py-4">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                        </div>
+                      ) : orderItems.length === 0 ? (
+                        <p className="py-2 text-center text-xs text-gray-400">No items found for this order.</p>
+                      ) : (
+                        <div>
+                          {/* Toolbar: Deliver Selected + Deliver All */}
+                          {(onDeliverSelected || onDeliverAll) && (
+                            <div className="mb-2 flex items-center justify-end gap-2">
+                              {onDeliverSelected && orderSelected.size > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onDeliverSelected(order, Array.from(orderSelected)); }}
+                                  className="rounded-md border border-amber-300 bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 transition-colors"
+                                >
+                                  🚚 Deliver Selected ({orderSelected.size})
+                                </button>
+                              )}
+                              {onDeliverAll && hasDeliverableItems && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onDeliverAll(order); }}
+                                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                                >
+                                  🚚 Deliver All ({deliverableItems.length})
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          <div className="overflow-x-auto rounded-lg border border-gray-200">
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                  {(onDeliverSelected || onDeliverAll) && (
+                                    <th className="w-8 px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        title="Select all"
+                                        checked={allSelected}
+                                        ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                                        onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, deliverableItems); }}
+                                        disabled={deliverableItems.length === 0}
+                                        className="rounded border-gray-300 accent-amber-600 disabled:opacity-30"
+                                      />
+                                    </th>
+                                  )}
+                                  <th className="px-3 py-2">Item</th>
+                                  <th className="px-3 py-2">Ordered</th>
+                                  <th className="px-3 py-2">Verified</th>
+                                  <th className="px-3 py-2">Delivered</th>
+                                  <th className="px-3 py-2">Remaining</th>
+                                  <th className="px-3 py-2">Status</th>
+                                  <th className="px-3 py-2">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {orderItems.map((item) => {
+                                  const canDeliver = !item.fully_delivered && item.verified_qty > 0;
+                                  const isChecked = orderSelected.has(item.id);
+                                  return (
+                                    <tr
+                                      key={item.id}
+                                      className={`hover:bg-gray-50 ${isChecked ? 'bg-amber-50/40' : ''} ${item.fully_delivered ? 'opacity-60' : ''}`}
+                                    >
+                                      {(onDeliverSelected || onDeliverAll) && (
+                                        <td className="px-3 py-2">
+                                          {canDeliver && (
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={(e) => { e.stopPropagation(); toggleSelectItem(order.id, item.id); }}
+                                              className="rounded border-gray-300 accent-amber-600"
+                                            />
+                                          )}
+                                        </td>
+                                      )}
+                                      <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                      <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                      <td className="px-3 py-2 text-gray-600">{item.verified_qty}</td>
+                                      <td className="px-3 py-2 text-gray-600">{item.delivered_qty}</td>
+                                      <td className="px-3 py-2">
+                                        {item.remaining_qty > 0 ? (
+                                          <span className="font-medium text-amber-600">{item.remaining_qty}</span>
+                                        ) : (
+                                          <span className="text-gray-400">0</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        {item.fully_delivered ? (
+                                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">✅ Done</span>
+                                        ) : item.delivered_qty > 0 ? (
+                                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">Partial</span>
+                                        ) : (
+                                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">Pending</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {onDeliverItem && canDeliver && (
+                                            <button
+                                              type="button"
+                                              disabled={actionLoading === order.id}
+                                              onClick={(e) => { e.stopPropagation(); onDeliverItem(order, item); }}
+                                              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                            >
+                                              {actionLoading === order.id ? '...' : '🚚 Deliver'}
+                                            </button>
+                                          )}
+                                          {item.fully_delivered && (
+                                            <span className="rounded-md border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700">
+                                              ✓ Delivered
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -1598,213 +1919,43 @@ export default function DeliveryPage() {
         )}
       </div>
 
-      {/* ── Delivery Pending ──────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <Clock className="h-4 w-4 text-amber-500" />
-          <h2 className="text-base font-semibold text-gray-800">Delivery Pending</h2>
-          <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-            {filteredPendingOrders.length}
-          </span>
-        </div>
-        {filteredPendingOrders.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">No orders pending delivery scheduling</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filteredPendingOrders.map((order) => {
-              const totalAmount = Number(order.total_amount ?? 0);
-              const depositAmount = Number(order.deposit_amount ?? 0);
-              const balance = totalAmount - depositAmount;
-              const hasException = order.delivery_exception === true;
-              const isSpecialCase = order.special_case === true;
-              return (
-                <div key={order.id}>
-                  <div className="flex items-center justify-between px-6 py-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                        {isSpecialCase && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            <ShieldAlert className="h-3 w-3" />Special Case
-                          </span>
-                        )}
-                        {hasException && !isSpecialCase && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            <ShieldAlert className="h-3 w-3" />Exception
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
-                      {order.total_amount != null && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
-                        </p>
-                      )}
-                      {isSpecialCase && order.special_case_notes && (
-                        <p className="mt-0.5 text-[11px] italic text-amber-600">Special Case: {order.special_case_notes}</p>
-                      )}
-                      {hasException && !isSpecialCase && order.delivery_exception_notes && (
-                        <p className="mt-0.5 text-[11px] italic text-amber-600">Exception: {order.delivery_exception_notes}</p>
-                      )}
-                      <DeliveryInfo order={order} />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={order.current_stage} />
-                      <button
-                        onClick={() => handleOpenSchedule(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
-                        title="Schedule delivery"
-                      >
-                        {actionLoading === order.id ? '…' : 'Schedule Delivery'}
-                      </button>
-                      {isSpecialCase && (
-                        <>
-                          <button
-                            onClick={() => handleMarkDelivered(order)}
-                            disabled={actionLoading === order.id}
-                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
-                            title="Skip schedule — mark as delivered directly"
-                          >
-                            <PackageCheck className="h-3.5 w-3.5 inline mr-0.5" />Deliver
-                          </button>
-                          <button
-                            onClick={() => handleMarkCountered(order)}
-                            disabled={actionLoading === order.id}
-                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
-                            title="Skip schedule — mark as countered directly"
-                          >
-                            <DollarSign className="h-3.5 w-3.5 inline mr-0.5" />Counter
-                          </button>
-                        </>
-                      )}
-                      <RowActions order={order} />
-                    </div>
-                  </div>
-                  {editingOrder?.id === order.id && (
-                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
-                  )}
-                  {schedulingOrder?.id === order.id && (
-                    <ScheduleForm
-                      order={order}
-                      value={scheduleDate}
-                      remarks={scheduleRemarks}
-                      onValueChange={setScheduleDate}
-                      onRemarksChange={setScheduleRemarks}
-                      onSave={() => handleScheduleSubmit(order)}
-                      onCancel={() => setSchedulingOrder(null)}
-                      saving={actionLoading === order.id}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* ── Delivery Pending (itemized progression) ──────────────────────── */}
+      <DeliveryItemSection
+        icon={<Clock className="h-4 w-4 text-amber-500" />}
+        title="Delivery Pending"
+        count={filteredPendingOrders.length}
+        countBg="bg-amber-100"
+        countText="text-amber-700"
+        orders={filteredPendingOrders}
+        isLoading={loading}
+        emptyText="No orders pending delivery scheduling"
+        onDeliverItem={handleDeliverItem}
+        onDeliverSelected={handleDeliverSelected}
+        onDeliverAll={handleDeliverAll}
+        onViewFiles={handleViewFiles}
+        onEdit={setEditingOrder}
+        onDelete={handleDeleteClick}
+        actionLoading={actionLoading}
+      />
 
-      {/* ── Scheduled Deliveries ──────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <Calendar className="h-4 w-4 text-purple-500" />
-          <h2 className="text-base font-semibold text-gray-800">Scheduled Deliveries</h2>
-          <span className="ml-auto rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-            {filteredScheduledOrders.length}
-          </span>
-        </div>
-        {filteredScheduledOrders.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">No scheduled deliveries</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filteredScheduledOrders.map((order) => {
-              const totalAmount = Number(order.total_amount ?? 0);
-              const depositAmount = Number(order.deposit_amount ?? 0);
-              const balance = totalAmount - depositAmount;
-              const hasException = order.delivery_exception === true;
-              return (
-                <div key={order.id}>
-                  <div className="flex items-center justify-between px-6 py-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                        {hasException && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            <ShieldAlert className="h-3 w-3" />Special Case
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
-                      {order.total_amount != null && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
-                        </p>
-                      )}
-                      {order.delivery_date ? (
-                        <p className="mt-0.5 text-xs font-medium text-purple-700">
-                          Scheduled for: {formatDeliveryDate(order.delivery_date) ?? order.delivery_date}
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-xs font-medium text-amber-600">
-                          Schedule missing - set the delivery date/time before dispatch.
-                        </p>
-                      )}
-                      {hasException && order.delivery_exception_notes && (
-                        <p className="mt-0.5 text-[11px] italic text-amber-600">Exception: {order.delivery_exception_notes}</p>
-                      )}
-                      <DeliveryInfo order={order} />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={order.current_stage} />
-                      <button
-                        onClick={() => handleOpenSchedule(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
-                        title='Schedule delivery'
-                      >
-                        Schedule
-                      </button>
-                      <button
-                        onClick={() => handleCancelSchedule(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40"
-                        title="Cancel schedule"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => handleMarkDelivered(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
-                        title="Mark as delivered"
-                      >
-                        <PackageCheck className="h-4 w-4" />
-                      </button>
-                      <RowActions order={order} />
-                    </div>
-                  </div>
-                  {editingOrder?.id === order.id && (
-                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
-                  )}
-                  {schedulingOrder?.id === order.id && (
-                    <ScheduleForm
-                      order={order}
-                      value={scheduleDate}
-                      remarks={scheduleRemarks}
-                      onValueChange={setScheduleDate}
-                      onRemarksChange={setScheduleRemarks}
-                      onSave={() => handleScheduleSubmit(order)}
-                      onCancel={() => setSchedulingOrder(null)}
-                      saving={actionLoading === order.id}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* ── Scheduled Deliveries (itemized progression) ──────────────────── */}
+      <DeliveryItemSection
+        icon={<Calendar className="h-4 w-4 text-purple-500" />}
+        title="Scheduled Deliveries"
+        count={filteredScheduledOrders.length}
+        countBg="bg-purple-100"
+        countText="text-purple-700"
+        orders={filteredScheduledOrders}
+        isLoading={loading}
+        emptyText="No scheduled deliveries"
+        onDeliverItem={handleDeliverItem}
+        onDeliverSelected={handleDeliverSelected}
+        onDeliverAll={handleDeliverAll}
+        onViewFiles={handleViewFiles}
+        onEdit={setEditingOrder}
+        onDelete={handleDeleteClick}
+        actionLoading={actionLoading}
+      />
 
       {/* ── Delivered ─────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
