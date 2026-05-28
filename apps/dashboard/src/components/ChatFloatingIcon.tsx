@@ -484,9 +484,6 @@ export default function ChatFloatingIcon() {
     };
   }, []);
 
-  // Don't render on chat page itself
-  if (pathname === '/chat') return null;
-
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -672,6 +669,9 @@ export default function ChatFloatingIcon() {
   );
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
+
+  // Don't render on chat page itself (must be after all hooks per React Rules of Hooks)
+  if (pathname === '/chat') return null;
 
   return (
     <div
