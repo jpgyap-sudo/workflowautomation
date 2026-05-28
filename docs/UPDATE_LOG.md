@@ -47,6 +47,7 @@ When you **finish**:
 | 2026-05-28 14:29 | Roo (Code) | Feat: purchasing tab production exception — deposit slip upload + AI extraction + mark balance paid with upload. Delivery tab redesign — simplified delivery section (only "Mark as Countered"), restructured countered section ("Mark Payment Received" + upload delivery receipt/sales invoice), "Order Complete" button in payment confirmed. Gap 3: migration 044 rename delivery_invoice → delivery_receipt. Gap 4: hide "Verify Countered" when counter exists. Gap analysis: all features + Telegram reminders confirmed compatible. | ✅ Done |
 | 2026-05-28 17:06 | Roo (Code) | Investigating: website slowness — checked VPS resources (1.9GB RAM, 615MB swap used, 44% disk), Docker stats, API response times (fast), found separate PM2 process (trading-signal-bot at /root/xsjprd55/) consuming 161MB RAM with 263 restarts in 2 days | ✅ Done |
 | 2026-05-28 17:14 | Roo (Code) | Feat: itemized progression across production tab — converted Dispatch Pending, En Route — In Transit, Arrival Verification from OrderSection (order-level) to ProductionItemSection (item-level). Added EnRouteStatusBadge component, en route status column in table, filtered variables for enRouteVerificationOrders and enRouteTrackingOrders. Inventory and delivery tabs already had itemized progression. | ✅ Done |
+| 2026-05-28 17:26 | Roo (Code) | Feat: add --local-build flag to deploy-agent.mjs — builds Docker images locally, saves as tar, SCPs to VPS, loads images, restarts containers. One-command local build + deploy workflow. | ✅ Done |
 
 ---
 

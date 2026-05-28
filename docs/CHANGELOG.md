@@ -42,6 +42,7 @@
 | `0fce038` | Roo (Code) | feat: purchasing tab production exception — deposit slip upload + AI extraction + mark balance paid with upload. Delivery tab redesign — simplified delivery section (only "Mark as Countered"), restructured countered section ("Mark Payment Received" + upload delivery receipt/sales invoice), "Order Complete" button in payment confirmed. Gap 3: migration 044 rename delivery_invoice → delivery_receipt. Gap 4: hide "Verify Countered" when counter exists. Gap analysis: all features + Telegram reminders confirmed compatible. | ✅ VPS `0fce038` |
 | `af500b5` | Roo (Code) | fix: add 'countered' to delivered VALID_TRANSITIONS — allows Mark as Countered from delivered stage | ✅ VPS `af500b5` |
 | `d06914c` | Roo (Code) | feat: itemized progression across production tab — converted Dispatch Pending, En Route — In Transit, Arrival Verification from OrderSection (order-level) to ProductionItemSection (item-level). Added EnRouteStatusBadge component, en route status column in table, filtered variables for enRouteVerificationOrders and enRouteTrackingOrders. | ✅ VPS `d06914c` |
+| | Roo (Code) | feat: add --local-build flag to deploy-agent.mjs — builds Docker images locally, saves as tar, SCPs to VPS, loads images, restarts containers. One-command local build + deploy workflow. | ❌ |
 
 ## 2026-05-26
 

@@ -6,13 +6,14 @@
  * Configure via env vars: QAS_VPS_HOST, QAS_SSH_USER, QAS_DEPLOY_KEY
  *
  * Usage:
- *   node deploy-agent.mjs              # Full deploy (sync + build + up)
- *   node deploy-agent.mjs --sync-only  # Only sync files
- *   node deploy-agent.mjs --build-only # Only rebuild and restart
+ *   node deploy-agent.mjs                # Full deploy (sync + remote build + up)
+ *   node deploy-agent.mjs --sync-only    # Only sync files
+ *   node deploy-agent.mjs --build-only   # Only rebuild and restart (remote)
+ *   node deploy-agent.mjs --local-build  # Build locally, SCP images, deploy
  */
 
 import { execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, rmSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -27,6 +28,14 @@ const CONFIG = {
   vpsPath: '/opt/quotation-automation',
   // Project root (this file's directory)
   projectRoot: __dirname,
+  // Images to build locally and transfer (from docker-compose.yml)
+  localImages: [
+    'ghcr.io/jpgyap-sudo/workflowautomation/api:latest',
+    'ghcr.io/jpgyap-sudo/workflowautomation/dashboard:latest',
+    'ghcr.io/jpgyap-sudo/workflowautomation/telegram-bot:latest',
+    'ghcr.io/jpgyap-sudo/workflowautomation/backup-agent:latest',
+    'ghcr.io/jpgyap-sudo/workflowautomation/file-store:latest',
+  ],
 };
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -168,12 +177,94 @@ function deployContainers() {
   console.log('✓ deploy.sh completed');
 }
 
+// ── Local Build + SCP Steps ───────────────────────────────────
+
+function buildLocally() {
+  console.log('\n═══════════════════════════════════════════');
+  console.log('  Step 3a: Build Docker images locally');
+  console.log('═══════════════════════════════════════════');
+
+  run('Building all images via docker compose build',
+    'docker compose build',
+    { timeout: 600_000, cwd: CONFIG.projectRoot });
+
+  console.log('✓ Local build completed');
+}
+
+function saveAndScpImages() {
+  console.log('\n═══════════════════════════════════════════');
+  console.log('  Step 3b: Save images → SCP → Load on VPS');
+  console.log('═══════════════════════════════════════════');
+
+  const tarDir = resolve(CONFIG.projectRoot, '.deploy-tars');
+  const tarFiles = [];
+
+  // Clean up any previous tar files
+  if (existsSync(tarDir)) {
+    rmSync(tarDir, { recursive: true, force: true });
+  }
+
+  try {
+    // Create temp directory for tar files
+    run('Creating temp directory for image tars',
+      `mkdir "${tarDir}"`);
+
+    // Save each image to a tar file
+    for (const image of CONFIG.localImages) {
+      const safeName = image.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const tarPath = resolve(tarDir, `${safeName}.tar`);
+      tarFiles.push({ image, tarPath, safeName });
+      run(`Saving ${image}`,
+        `docker save "${image}" -o "${tarPath}"`,
+        { timeout: 300_000 });
+    }
+
+    // SCP each tar file to VPS
+    for (const { tarPath } of tarFiles) {
+      const scpCmd =
+        `scp -i "${CONFIG.sshIdentityFile}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${tarPath}" "${CONFIG.sshUser}@${CONFIG.sshHost}:${CONFIG.vpsPath}/"`;
+      run(`SCP ${tarPath} to VPS`, scpCmd, { timeout: 300_000 });
+    }
+
+    // Load all images on VPS
+    const loadCommands = tarFiles
+      .map(({ safeName }) => `docker load -i ${CONFIG.vpsPath}/${safeName}.tar`)
+      .join(' && ');
+
+    run('Loading images on VPS',
+      sshCmd(loadCommands),
+      { timeout: 120_000 });
+
+    // Restart containers with new images
+    run('Restarting containers on VPS',
+      sshCmd(`cd ${CONFIG.vpsPath} && docker compose up -d`),
+      { timeout: 120_000 });
+
+    // Clean up tar files on VPS
+    const rmRemoteCmds = tarFiles
+      .map(({ safeName }) => `rm -f ${CONFIG.vpsPath}/${safeName}.tar`)
+      .join(' && ');
+    run('Cleaning up tar files on VPS',
+      sshCmd(rmRemoteCmds),
+      { ignoreError: true, timeout: 10_000 });
+
+    console.log('✓ Images deployed from local build');
+  } finally {
+    // Always clean up local tar files
+    if (existsSync(tarDir)) {
+      rmSync(tarDir, { recursive: true, force: true });
+      console.log('✓ Local tar files cleaned up');
+    }
+  }
+}
+
 // ── Main ───────────────────────────────────────────────────────
 
 function main() {
   const args = process.argv.slice(2);
   const syncOnly = args.includes('--sync-only');
   const buildOnly = args.includes('--build-only');
+  const localBuild = args.includes('--local-build');
 
   console.log('╔══════════════════════════════════════════════╗');
   console.log('║   Quotation Automation System — Deploy Agent ║');
@@ -183,7 +274,13 @@ function main() {
   const startTime = Date.now();
 
   try {
-    if (buildOnly) {
+    if (localBuild) {
+      // Local build workflow: sync → build locally → SCP → load → restart
+      syncFiles();
+      syncCredentials();
+      buildLocally();
+      saveAndScpImages();
+    } else if (buildOnly) {
       deployContainers();
     } else if (syncOnly) {
       syncFiles();
