@@ -677,22 +677,22 @@ export default function ChatFloatingIcon() {
     <div
       ref={widgetRef}
       className="fixed bottom-6 right-6 z-50"
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        transition: dragRef.current.isDragging ? 'none' : 'transform 0.15s ease-out',
+      }}
+      onMouseDown={onDragStart}
+      onTouchStart={onDragStart}
     >
-      {/* Chat Widget Panel — only this gets the drag transform */}
+      {/* Chat Widget Panel */}
       {isOpen && (
         <div
           className="absolute bottom-16 right-0 mb-2 flex h-[520px] w-[380px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
-          style={{
-            transform: `translate(${position.x}px, ${position.y}px)`,
-            transition: dragRef.current.isDragging ? 'none' : 'transform 0.15s ease-out',
-          }}
         >
-          {/* Header — drag handle */}
+          {/* Header */}
           <div
             ref={headerRef}
-            onMouseDown={onDragStart}
-            onTouchStart={onDragStart}
-            className="flex cursor-grab items-center justify-between border-b border-gray-200 bg-gradient-to-r from-[#2490ef] to-[#6366f1] px-4 py-3 active:cursor-grabbing select-none"
+            className="flex cursor-default items-center justify-between border-b border-gray-200 bg-gradient-to-r from-[#2490ef] to-[#6366f1] px-4 py-3 select-none"
           >
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-white" />
@@ -787,7 +787,10 @@ export default function ChatFloatingIcon() {
 
       {/* Floating Button — always stays at bottom-6 right-6 */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (dragRef.current.isDragging) return;
+          setIsOpen(!isOpen);
+        }}
         className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#2490ef] to-[#6366f1] text-white shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
       >
         {isOpen ? (
