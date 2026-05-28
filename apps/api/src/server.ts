@@ -6588,7 +6588,7 @@ app.post('/stage-updates', async (request, reply) => {
     en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
     inventory_verification:    ['inventory_arrived'],
     inventory_arrived:         ['balance_due', 'delivered'],
-    balance_due:               ['balance_verification', 'delivery_scheduled', 'delivered', 'countered'],
+    balance_due:               ['balance_verification', 'delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],
     balance_verification:      ['delivery_pending', 'delivery_scheduled', 'delivered', 'countered'],
     delivery_pending:          ['delivery_scheduled', 'delivered', 'countered'],
     delivery_scheduled:        ['delivery_pending', 'delivered', 'countered'],
@@ -8997,33 +8997,25 @@ app.post('/orders/special-case', async (request, reply) => {
     });
   }
 
-  // Update order: set special_case flags and advance to countered
+  // Update order: set special_case flags and advance to delivery_pending
   const updatedRows = await query(
     `UPDATE orders SET
       special_case = TRUE,
       special_case_notes = $2,
       special_case_granted_at = NOW(),
       special_case_granted_by = $3,
-      current_stage = 'countered',
+      current_stage = 'delivery_pending',
       updated_at = NOW()
      WHERE id = $1 RETURNING *`,
     [body.order_id, body.notes ?? null, body.granted_by ?? null]
-  );
-
-  // Create payment_counter record for this order
-  await query(
-    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_invoice_status)
-     VALUES ($1, 'pending', 'pending')
-     ON CONFLICT (order_id) DO NOTHING`,
-    [body.order_id]
   );
 
   // Record stage update
   await query(
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [body.order_id, 'countered', 'special_case',
-     `Special case granted — skipped balance payment. Notes: ${body.notes ?? 'None provided'}`,
+    [body.order_id, 'delivery_pending', 'special_case',
+     `Special case granted — skipped balance payment. Proceeding to delivery. Notes: ${body.notes ?? 'None provided'}`,
      body.granted_by ?? null, order.client_name ?? null, userEmail]
   );
 
@@ -9036,7 +9028,7 @@ app.post('/orders/special-case', async (request, reply) => {
   // Notify about special case
   await notifyManualChange(
     'Special case granted — balance payment skipped',
-    `Order: *${order.quotation_number ?? order.client_name ?? body.order_id.slice(0, 8)}*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}\nAdvanced to: countered`,
+    `Order: *${order.quotation_number ?? order.client_name ?? body.order_id.slice(0, 8)}*\nNotes: ${body.notes ?? 'None'}\nGranted by: ${body.granted_by ?? 'dashboard'}\nAdvanced to: delivery_pending`,
     userEmail,
   );
 
@@ -9050,21 +9042,108 @@ app.post('/orders/special-case', async (request, reply) => {
         `Client: ${order.client_name ?? 'Unknown'}\n` +
         `Notes: ${body.notes ?? 'None provided'}\n` +
         `Granted by: ${body.granted_by ?? 'dashboard'}\n\n` +
-        `A special case has been granted — balance payment was skipped. The order is now at <b>Countered</b> stage and awaits payment collection with invoice tracking.`
+        `A special case has been granted — balance payment was skipped. The order is now at <b>Delivery Pending</b> stage. Please proceed with delivery, then verify countered status with invoice tracking.`
       );
     });
   }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
+  broadcastSSE('order_updated', { id: body.order_id });
+  return reply.send({ ok: true, order: updatedRows[0] });
+});
+
+// ── Verify Countered ─────────────────────────────────────────────────
+// Creates the payment_counter record for a special case order that has
+// arrived at the countered stage. This enables invoice tracking.
+
+const verifyCounteredSchema = z.object({
+  order_id: z.string(),
+  action_token: z.string(),
+  notes: z.string().optional(),
+});
+
+app.post('/orders/verify-countered', async (request, reply) => {
+  const body = verifyCounteredSchema.parse(request.body);
+
+  // Verify action token
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  const tokenPayload = JSON.parse(tokenData);
+  const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
+
+  // Fetch the order
+  const orderRows = await query(
+    `SELECT id, quotation_number, client_name, current_stage, special_case FROM orders WHERE id=$1`,
+    [body.order_id]
+  );
+  if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0];
+
+  // Only allow from countered stage and must be special_case
+  if (order.current_stage !== 'countered') {
+    return reply.code(400).send({
+      error: `Can only verify countered from 'countered' stage. Current stage: '${order.current_stage}'`,
+    });
+  }
+  if (!order.special_case) {
+    return reply.code(400).send({
+      error: 'Only special case orders can be verified as countered.',
+    });
+  }
+
+  // Advance to countered and create payment_counter record
+  const updatedRows = await query(
+    `UPDATE orders SET current_stage='countered', updated_at=NOW() WHERE id=$1 RETURNING *`,
+    [body.order_id]
+  );
+
+  // Create payment_counter record
+  await query(
+    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_invoice_status)
+     VALUES ($1, 'pending', 'pending')
+     ON CONFLICT (order_id) DO NOTHING`,
+    [body.order_id]
+  );
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [body.order_id, 'countered', 'verified_countered',
+     `Delivery verified — order moved to countered for payment collection. Notes: ${body.notes ?? 'None provided'}`,
+     'dashboard', order.client_name ?? null, userEmail]
+  );
+
+  // Auto-complete delivery_pending reminders
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage='delivery_pending' AND status='active'`,
+    [body.order_id]
+  );
+
+  // Notify
+  await notifyManualChange(
+    'Order verified as countered',
+    `Order: *${order.quotation_number ?? body.order_id.slice(0, 8)}*\nVerified by: ${userEmail ?? 'dashboard'}\nAdvanced to: countered`,
+    userEmail,
+  );
 
   // Notify collection group
   if (COLLECTION_CHAT_ID) {
     setImmediate(() => {
       notifyGroupChat(
         COLLECTION_CHAT_ID,
-        `🔄 <b>Special Case — Awaiting Payment (Dashboard)</b>\n\n` +
+        `🔄 <b>Order Countered (Dashboard)</b>\n\n` +
         `Order: <b>${order.quotation_number ?? body.order_id.slice(0, 8)}</b>\n` +
         `Client: ${order.client_name ?? 'Unknown'}\n` +
         `Notes: ${body.notes ?? 'None provided'}\n\n` +
-        `A special case was granted and the order is now at <b>Countered</b> stage. Please collect payment and update invoice status.`
+        `The order has been verified as countered. Please collect payment and update invoice status.`
       );
     });
   }
@@ -9160,7 +9239,7 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
   if (body.sales_invoice_status === 'received' || body.delivery_invoice_status === 'received') {
     const remarks = [
       body.sales_invoice_status === 'received' ? 'Sales invoice marked as received' : null,
-      body.delivery_invoice_status === 'received' ? 'Delivery invoice marked as received' : null,
+      body.delivery_invoice_status === 'received' ? 'Delivery receipt marked as received' : null,
     ].filter(Boolean).join('; ');
 
     await query(
@@ -9172,7 +9251,7 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
 
   await notifyManualChange(
     'Payment counter updated',
-    `Order ID: *${id.slice(0, 8)}...*\nSales Invoice: ${body.sales_invoice_status ?? 'unchanged'}\nDelivery Invoice: ${body.delivery_invoice_status ?? 'unchanged'}`,
+    `Order ID: *${id.slice(0, 8)}...*\nSales Invoice: ${body.sales_invoice_status ?? 'unchanged'}\nDelivery Receipt: ${body.delivery_invoice_status ?? 'unchanged'}`,
     userEmail,
   );
 

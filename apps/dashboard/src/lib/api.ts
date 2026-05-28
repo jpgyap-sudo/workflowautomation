@@ -1104,6 +1104,16 @@ export async function grantSpecialCase(
   });
 }
 
+export async function verifyCountered(
+  orderId: string,
+  data: { notes?: string; action_token: string },
+): Promise<{ ok: boolean; order: Order }> {
+  return fetchJson<{ ok: boolean; order: Order }>('/orders/verify-countered', {
+    method: 'POST',
+    body: JSON.stringify({ order_id: orderId, ...data }),
+  });
+}
+
 export async function updatePaymentCounter(
   orderId: string,
   data: {

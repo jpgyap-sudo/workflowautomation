@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, updatePaymentCounter, getPaymentCounter, uploadOrderFile, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -195,8 +195,16 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  
+  // ── Verify Countered Modal ─────────────────────────────────────────
+  const [verifyCounteredModal, setVerifyCounteredModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    notes: string;
+    submitting: boolean;
+  }>({ open: false, order: null, notes: '', submitting: false });
 
   // ── Special Case Modal ──────────────────────────────────────────────
   const [specialCaseModal, setSpecialCaseModal] = useState<{
@@ -689,6 +697,32 @@ export default function DeliveryPage() {
     }
   }
 
+  // ── Verify Countered ──────────────────────────────────────────────────
+
+  function handleVerifyCountered(order: Order) {
+    setVerifyCounteredModal({
+      open: true,
+      order,
+      notes: '',
+      submitting: false,
+    });
+  }
+
+  async function executeVerifyCountered(order: Order, actionToken: string) {
+    setVerifyCounteredModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      await verifyCountered(order.id, {
+        notes: verifyCounteredModal.notes,
+        action_token: actionToken,
+      });
+      setVerifyCounteredModal((prev) => ({ ...prev, open: false, submitting: false }));
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to verify countered: ' + (err.message ?? 'Unknown error'));
+      setVerifyCounteredModal((prev) => ({ ...prev, submitting: false }));
+    }
+  }
+
   // ── Payment Counter ───────────────────────────────────────────────────
 
   async function handleOpenPaymentCounter(order: Order) {
@@ -1078,6 +1112,12 @@ export default function DeliveryPage() {
     if (otpModal.pendingAction === 'payment_counter') {
       const pending = (window as any).__pendingActionOrder as Order | undefined;
       if (pending) executePaymentCounter(pending, actionToken);
+      (window as any).__pendingActionOrder = null;
+      return;
+    }
+    if (otpModal.pendingAction === 'verify_countered') {
+      const pending = (window as any).__pendingActionOrder as Order | undefined;
+      if (pending) executeVerifyCountered(pending, actionToken);
       (window as any).__pendingActionOrder = null;
       return;
     }
@@ -1572,15 +1612,21 @@ export default function DeliveryPage() {
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;
               const hasException = order.delivery_exception === true;
+              const isSpecialCase = order.special_case === true;
               return (
                 <div key={order.id}>
                   <div className="flex items-center justify-between px-6 py-4">
                     <div>
                       <div className="flex items-center gap-2">
                         <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                        {hasException && (
+                        {isSpecialCase && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                             <ShieldAlert className="h-3 w-3" />Special Case
+                          </span>
+                        )}
+                        {hasException && !isSpecialCase && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                            <ShieldAlert className="h-3 w-3" />Exception
                           </span>
                         )}
                       </div>
@@ -1591,7 +1637,10 @@ export default function DeliveryPage() {
                           Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()}`}
                         </p>
                       )}
-                      {hasException && order.delivery_exception_notes && (
+                      {isSpecialCase && order.special_case_notes && (
+                        <p className="mt-0.5 text-[11px] italic text-amber-600">Special Case: {order.special_case_notes}</p>
+                      )}
+                      {hasException && !isSpecialCase && order.delivery_exception_notes && (
                         <p className="mt-0.5 text-[11px] italic text-amber-600">Exception: {order.delivery_exception_notes}</p>
                       )}
                       <DeliveryInfo order={order} />
@@ -1890,6 +1939,16 @@ export default function DeliveryPage() {
                       >
                         <ThumbsUp className="h-4 w-4" />
                       </button>
+                      {isSpecialCase && (
+                        <button
+                          onClick={() => handleVerifyCountered(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg px-2 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
+                          title="Verify countered status and create payment counter record for invoice tracking"
+                        >
+                          <FileText className="h-3.5 w-3.5 inline mr-0.5" />Verify Countered
+                        </button>
+                      )}
                       <button
                         onClick={() => handleOpenPaymentCounter(order)}
                         disabled={actionLoading === order.id}
@@ -2360,7 +2419,7 @@ export default function DeliveryPage() {
             <div className="border-b border-gray-200 px-6 py-4">
               <h3 className="text-base font-semibold text-gray-800">Grant Special Case</h3>
               <p className="mt-1 text-xs text-gray-500">
-                Skip balance payment for "{specialCaseModal.order.quotation_number ?? '—'}" and advance to Countered section.
+                Skip balance payment for "{specialCaseModal.order.quotation_number ?? '—'}" and advance to Delivery Pending. After delivery, verify countered status with invoice tracking.
               </p>
             </div>
             <div className="px-6 py-4">
@@ -2401,6 +2460,60 @@ export default function DeliveryPage() {
                   <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
                 ) : (
                   <><ShieldAlert className="h-3.5 w-3.5" /> Confirm Special Case</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Verify Countered Modal ──────────────────────────────────────── */}
+      {verifyCounteredModal.open && verifyCounteredModal.order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-auto w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="border-b border-gray-200 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-purple-600" />
+                <h3 className="text-base font-semibold text-gray-800">Verify Countered</h3>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Create payment counter record for "{verifyCounteredModal.order.quotation_number ?? '—'}" to enable invoice tracking.
+              </p>
+            </div>
+            <div className="px-6 py-4">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Notes (optional)</label>
+              <textarea
+                value={verifyCounteredModal.notes}
+                onChange={(e) => setVerifyCounteredModal((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="e.g., Delivery completed, verified by staff"
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+              <button
+                onClick={() => setVerifyCounteredModal((prev) => ({ ...prev, open: false }))}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  (window as any).__pendingActionOrder = verifyCounteredModal.order;
+                  setOtpModal({
+                    open: true,
+                    title: 'Verify Countered',
+                    description: `Create payment counter record for "${verifyCounteredModal.order!.quotation_number ?? '—'}" with notes: ${verifyCounteredModal.notes || '(none)'}`,
+                    pendingAction: 'verify_countered',
+                  });
+                }}
+                disabled={verifyCounteredModal.submitting}
+                className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                {verifyCounteredModal.submitting ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing…</>
+                ) : (
+                  <><FileText className="h-3.5 w-3.5" /> Confirm Verify Countered</>
                 )}
               </button>
             </div>
@@ -2452,9 +2565,9 @@ export default function DeliveryPage() {
                     </div>
                   </div>
 
-                  {/* Delivery Invoice Status */}
+                  {/* Delivery Receipt Status */}
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Invoice Status</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Receipt Status</label>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceStatus: 'pending' }))}
@@ -2518,9 +2631,9 @@ export default function DeliveryPage() {
                     )}
                   </div>
 
-                  {/* Delivery Invoice File Upload */}
+                  {/* Delivery Receipt File Upload */}
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Upload Delivery Invoice</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Upload Delivery Receipt</label>
                     <input
                       type="file"
                       accept="image/*,.pdf"
