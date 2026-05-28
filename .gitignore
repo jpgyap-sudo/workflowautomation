@@ -1,18 +1,50 @@
+# ── Credentials / Secrets ──────────────────────────────────────────────
 .env
+.env.*
+!.env.example
+apps/**/.env
+apps/**/.env.*
+!apps/**/.env.example
+credentials/
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*service-account*.json
+*oauth-token*.json
+*-credentials.json
+
+# ── Build output ────────────────────────────────────────────────────────
 node_modules/
 dist/
+.next/
+apps/**/.next/
+apps/**/dist/
+apps/**/node_modules/
+
+# ── Logs ────────────────────────────────────────────────────────────────
 *.log
-.DS_Store
-credentials/
-apps/**/.env
-backups/
 logs/
+console.log*
+test-*.txt
+
+# ── OS / Editor ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Data ────────────────────────────────────────────────────────────────
+backups/
 *.json
 !apps/file-store/package.json
 *.jsonl
-test-*.txt
-console.log*
+
+# ── Docs (sensitive) ────────────────────────────────────────────────────
 docs/production-server.md
+
+# ── Images ──────────────────────────────────────────────────────────────
 *.png
 !apps/dashboard/public/screenshots/*.png
+
+# ── Test scripts ────────────────────────────────────────────────────────
 test-*.mjs
