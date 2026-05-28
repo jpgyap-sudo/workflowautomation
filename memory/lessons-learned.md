@@ -13479,3 +13479,99 @@ When deploying UI components with interactive behaviors (e.g., drag, resize), en
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: record deposit gap fix across all tabs
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1b92684b4d1492ab743651c7c96b4da54a5bff28
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1b92684b4d1492ab743651c7c96b4da54a5bff28
+**Files:** apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/app/stock-prep/page.tsx,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A missing "record deposit gap" feature was added across all dashboard tabs (collection, delivery, production, purchasing, stock-prep). Previously, this functionality existed only in one tab, causing inconsistent user experience and potential data loss.
+
+**Why it broke:**  
+The original implementation was scoped to a single tab, likely due to incomplete feature rollout or oversight during initial development. The gap was not propagated to other tabs, leading to fragmented behavior.
+
+**Reusable takeaway:**  
+When adding a cross-cutting feature (e.g., data recording, validation, or UI pattern), always audit all relevant modules for consistency. Use a centralized component or hook to avoid duplication and ensure uniform behavior across the application. Document the change in a changelog (e.g., `UPDATE_LOG.md`) to track scope and prevent future gaps.
+
+---
+*Original commit message: feat: record deposit gap fix across all tabs*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing "record deposit gap" feature was added across all dashboard tabs (collection, delivery, production, purchasing, stock-prep). Previously, this functionality existed only in one tab, causing inconsistent user experience and potential data loss.
+
+**Why it broke:**  
+The original implementation was scoped to a single tab, likely due to incomplete feature rollout or oversight during initial development. The gap was not propagated to other tabs, leading to fragmented behavior.
+
+**Reusable takeaway:**  
+When adding a cross-cutting feature (e.g., data recording, validation, or UI pattern), always audit all relevant modules for consistency. Use a centralized component or hook to avoid duplication and ensure uniform behavior across the application. Document the change in a changelog (e.g., `UPDATE_LOG.md`) to track scope and prevent future gaps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: update CHANGELOG and UPDATE_LOG for record deposit gap fix deployment (commit 1b92684)
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8848018a610b16e3f9ca9e2126d9579f732fed62
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8848018a610b16e3f9ca9e2126d9579f732fed62
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A record deposit gap — a missing or incomplete record deposit in a workflow automation system.
+
+**Why it broke:**  
+The gap likely occurred due to a race condition or improper sequencing in the deposit logic, where a record was expected to be deposited but wasn't, or the deposit was not fully committed before subsequent operations.
+
+**Reusable takeaway:**  
+Always ensure that record deposits are atomic and that their completion is verified before proceeding with dependent operations. Use transactional boundaries or idempotency checks to prevent gaps. Additionally, maintain clear changelogs and update logs to track such fixes for operational transparency and future debugging.
+
+---
+*Original commit message: chore: update CHANGELOG and UPDATE_LOG for record deposit gap fix deployment (commit 1b92684)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A record deposit gap — a missing or incomplete record deposit in a workflow automation system.
+
+**Why it broke:**  
+The gap likely occurred due to a race condition or improper sequencing in the deposit logic, where a record was expected to be deposited but wasn't, or the deposit was not fully committed before subsequent operations.
+
+**Reusable takeaway:**  
+Always ensure that record deposits are atomic and that their completion is verified before proceeding with dependent operations. Use transactional boundaries or idempotency checks to prevent gaps. Additionally, maintain clear changelogs and update logs to track such fixes for operational transparency and future debugging.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

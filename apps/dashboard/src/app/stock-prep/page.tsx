@@ -840,8 +840,8 @@ export default function StockPrepPage() {
     }
   }, []);
 
-  function selectClientFilter(name: string) {
-    setClientFilter(name);
+  function selectClientFilter(clientName: string) {
+    setClientFilter(clientName);
     setShowClientDropdown(false);
   }
 
@@ -876,7 +876,7 @@ export default function StockPrepPage() {
     if (!editingOrder) return;
     setSavingEdit(true);
     try {
-      await updateOrder(editingOrder.id, data);
+      await updateOrder(editingOrder.id, { ...data, action_token: '' });
       setEditingOrder(null);
       mutate();
     } catch (err: any) {
@@ -893,7 +893,7 @@ export default function StockPrepPage() {
 
   async function handleGrantException(order: Order) {
     try {
-      await grantDeliveryException(order.id, '');
+      await grantDeliveryException(order.id, { action_token: '' });
       mutate();
     } catch (err: any) {
       console.error('Failed to grant exception:', err);
@@ -950,11 +950,11 @@ export default function StockPrepPage() {
                 {clientSuggestions.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => selectClientFilter(c.name)}
+                    onClick={() => selectClientFilter(c.client_name)}
                     className="w-full px-3 py-2 text-left text-xs hover:bg-lime-50 hover:text-lime-700 transition-colors border-b border-gray-50 last:border-0"
                   >
-                    <span className="font-medium text-gray-800">{c.name}</span>
-                    {c.contact && <span className="ml-2 text-gray-400">{c.contact}</span>}
+                    <span className="font-medium text-gray-800">{c.client_name}</span>
+                    {c.contact_number && <span className="ml-2 text-gray-400">{c.contact_number}</span>}
                   </button>
                 ))}
               </div>
@@ -1049,7 +1049,7 @@ export default function StockPrepPage() {
           order={viewingFilesOrder}
           files={orderFiles}
           onClose={closeViewer}
-          onRefresh={refreshFiles}
+          onUploadComplete={refreshFiles}
         />
       )}
     </div>
