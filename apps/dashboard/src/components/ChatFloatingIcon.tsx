@@ -421,25 +421,35 @@ export default function ChatFloatingIcon() {
 
   // ── Drag state ────────────────────────────────────────────────────────
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const positionRef = useRef({ x: 0, y: 0 });
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
 
-  function onDragStart(e: React.MouseEvent | React.TouchEvent) {
+  // Keep positionRef in sync with position state
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  const onDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Prevent browser default drag behavior (text selection, image drag, etc.)
+    e.preventDefault();
+
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const curPos = positionRef.current;
     dragRef.current = {
       isDragging: true,
       startX: clientX,
       startY: clientY,
-      origX: position.x,
-      origY: position.y,
+      origX: curPos.x,
+      origY: curPos.y,
     };
-    document.addEventListener('mousemove', onDragMove);
-    document.addEventListener('mouseup', onDragEnd);
-    document.addEventListener('touchmove', onDragMove, { passive: false });
-    document.addEventListener('touchend', onDragEnd);
-  }
+    document.addEventListener('mousemove', onDragMoveRef.current);
+    document.addEventListener('mouseup', onDragEndRef.current);
+    document.addEventListener('touchmove', onDragMoveRef.current, { passive: false });
+    document.addEventListener('touchend', onDragEndRef.current);
+  }, []);
 
-  function onDragMove(e: MouseEvent | TouchEvent) {
+  const onDragMove = useCallback((e: MouseEvent | TouchEvent) => {
     const d = dragRef.current;
     if (!d.isDragging) return;
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -448,15 +458,31 @@ export default function ChatFloatingIcon() {
       x: d.origX + (clientX - d.startX),
       y: d.origY + (clientY - d.startY),
     });
-  }
+  }, []);
 
-  function onDragEnd() {
+  const onDragEnd = useCallback(() => {
     dragRef.current.isDragging = false;
-    document.removeEventListener('mousemove', onDragMove);
-    document.removeEventListener('mouseup', onDragEnd);
-    document.removeEventListener('touchmove', onDragMove);
-    document.removeEventListener('touchend', onDragEnd);
-  }
+    document.removeEventListener('mousemove', onDragMoveRef.current);
+    document.removeEventListener('mouseup', onDragEndRef.current);
+    document.removeEventListener('touchmove', onDragMoveRef.current);
+    document.removeEventListener('touchend', onDragEndRef.current);
+  }, []);
+
+  // Stable refs so document event listeners always call the latest callbacks
+  const onDragMoveRef = useRef(onDragMove);
+  const onDragEndRef = useRef(onDragEnd);
+  onDragMoveRef.current = onDragMove;
+  onDragEndRef.current = onDragEnd;
+
+  // Cleanup document listeners on unmount (safety net)
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', onDragMoveRef.current);
+      document.removeEventListener('mouseup', onDragEndRef.current);
+      document.removeEventListener('touchmove', onDragMoveRef.current);
+      document.removeEventListener('touchend', onDragEndRef.current);
+    };
+  }, []);
 
   // Don't render on chat page itself
   if (pathname === '/chat') return null;
