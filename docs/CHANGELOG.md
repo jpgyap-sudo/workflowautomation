@@ -39,6 +39,7 @@
 | `b888d8b` | Roo (Code) | feat: production tab gap fix — removed "Complete (Partial)" buttons, let items progress individually. Orders stay visible until ALL items advance. | ❌ |
 | `b888d8b` | Roo (Code) | feat: early inventory verification for arrived items at en_route_verification stage — server endpoints relaxed (5 endpoints), inventory verification page allows en_route_verification, InventoryVerificationSection shows en_route_verification orders with arrived items + "Early verification" badge, production page adds "Verify in Inventory" link on arrived items, telegram notifications and reminders updated with inventory verification links | ❌ |
 | `f75b128` | Roo (Code) | feat: MN Design Studio gap fix — special case now advances to delivery_pending instead of directly to countered. New "Verify Countered" button in countered section creates payment_counter record. Renamed "Delivery Invoice" to "Delivery Receipt" in payment counter modal. | ✅ VPS `f75b128` |
+| `0fce038` | Roo (Code) | feat: purchasing tab production exception — deposit slip upload + AI extraction + mark balance paid with upload. Delivery tab redesign — simplified delivery section (only "Mark as Countered"), restructured countered section ("Mark Payment Received" + upload delivery receipt/sales invoice), "Order Complete" button in payment confirmed. Gap 3: migration 044 rename delivery_invoice → delivery_receipt. Gap 4: hide "Verify Countered" when counter exists. Gap analysis: all features + Telegram reminders confirmed compatible. | ✅ VPS `0fce038` |
 
 ## 2026-05-26
 
