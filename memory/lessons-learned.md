@@ -13671,3 +13671,45 @@ When adding multiple forms or UI components in a grid, always verify layout cons
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: Telegram OTP not working — updated TELEGRAM_BOT_TOKEN from @atelier88_bot to @homeatelier88_bot
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 69c8e526eec730b49cc81c2fb27720835ca3b2c3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 69c8e526eec730b49cc81c2fb27720835ca3b2c3
+**Files:** docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Telegram OTP (one-time password) delivery was broken because the bot token referenced the wrong bot (`@atelier88_bot` instead of `@homeatelier88_bot`).
+
+**Why it broke:** A stale or incorrect bot token was used in the configuration, likely from a previous deployment or environment setup. The token did not match the actual active Telegram bot for the project.
+
+**Reusable takeaway:** Always verify that third-party service tokens (e.g., Telegram bot tokens) match the exact bot name and environment in use. Store tokens in environment variables or a secrets manager, and validate them with a test call (e.g., `getMe` API) during deployment or startup to catch mismatches early.
+
+---
+*Original commit message: fix: Telegram OTP not working — updated TELEGRAM_BOT_TOKEN from @atelier88_bot to @homeatelier88_bot*
+
+#### Lesson Learned
+
+**What was fixed:** Telegram OTP (one-time password) delivery was broken because the bot token referenced the wrong bot (`@atelier88_bot` instead of `@homeatelier88_bot`).
+
+**Why it broke:** A stale or incorrect bot token was used in the configuration, likely from a previous deployment or environment setup. The token did not match the actual active Telegram bot for the project.
+
+**Reusable takeaway:** Always verify that third-party service tokens (e.g., Telegram bot tokens) match the exact bot name and environment in use. Store tokens in environment variables or a secrets manager, and validate them with a test call (e.g., `getMe` API) during deployment or startup to catch mismatches early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

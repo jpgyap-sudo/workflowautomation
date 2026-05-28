@@ -4583,13 +4583,20 @@ bot.action(/^payment:(confirmed|pending):(.+)$/, async (ctx) => {
       return;
     }
 
-    await postJson('/stage-updates', {
-      quotation_number: quotationNumber,
-      stage: targetStage,
-      status,
-      remarks: status === 'confirmed' ? 'Payment confirmed' : 'Payment received, pending confirmation',
-      updated_by: ctx.from?.username ?? String(ctx.from?.id),
-    });
+    if (status === 'confirmed') {
+      // Use confirmPayment API which mirrors verify-balance behavior
+      await postJson(`/orders/${encodeURIComponent(orderId)}/confirm-payment`, {
+        confirmed_by: ctx.from?.username ?? String(ctx.from?.id),
+      });
+    } else {
+      await postJson('/stage-updates', {
+        quotation_number: quotationNumber,
+        stage: targetStage,
+        status,
+        remarks: 'Payment received, pending confirmation',
+        updated_by: ctx.from?.username ?? String(ctx.from?.id),
+      });
+    }
     await logAction({ chatId, userId, username, label: status === 'confirmed' ? 'Payment Confirmed' : 'Payment Received', quotationNumber });
     resetStep(chatId);
     const msg = status === 'confirmed'

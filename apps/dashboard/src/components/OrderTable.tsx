@@ -335,7 +335,7 @@ export default function OrderTable({
                 {showOrderDate && (
                   <div>
                     <dt className="text-gray-400">Order Date</dt>
-                    <dd className="font-medium text-gray-700">{formatDate(order.order_confirmed_at)}</dd>
+                    <dd className="font-medium text-gray-700">{formatDate(order.order_confirmed_at || order.created_at)}</dd>
                   </div>
                 )}
                 {showDepositDate && (
@@ -531,7 +531,7 @@ export default function OrderTable({
                     </td>
                   )}
                   {showOrderDate && (
-                    <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.order_confirmed_at)}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.order_confirmed_at || order.created_at)}</td>
                   )}
                   {showDepositDate && (
                     <td className="px-4 py-3 text-xs text-gray-500">{formatDate(order.deposit_paid_at)}</td>

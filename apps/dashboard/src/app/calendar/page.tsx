@@ -41,6 +41,8 @@ import {
   deleteCalendarSchedule,
   recordStageUpdate,
   sendTelegramNotification,
+  confirmPayment,
+  getOrder,
 } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
 
@@ -322,13 +324,26 @@ export default function CalendarPage() {
   async function executeStageAdvance(actionToken: string) {
     if (!pendingStageAdvance) return;
     try {
-      await recordStageUpdate({
-        quotation_number: pendingStageAdvance.quotationNumber,
-        stage: pendingStageAdvance.targetStage,
-        status: 'completed',
-        remarks: `Advanced from calendar — ${pendingStageAdvance.label}`,
-        action_token: actionToken,
-      });
+      if (pendingStageAdvance.targetStage === 'payment_confirmed') {
+        // Use confirmPayment API which mirrors verify-balance behavior
+        const order = await getOrder(pendingStageAdvance.quotationNumber);
+        if (order?.id) {
+          await confirmPayment(order.id, {
+            confirmed_by: 'dashboard_calendar_action',
+            action_token: actionToken,
+          });
+        } else {
+          throw new Error('Order not found');
+        }
+      } else {
+        await recordStageUpdate({
+          quotation_number: pendingStageAdvance.quotationNumber,
+          stage: pendingStageAdvance.targetStage,
+          status: 'completed',
+          remarks: `Advanced from calendar — ${pendingStageAdvance.label}`,
+          action_token: actionToken,
+        });
+      }
       await mutate('/calendar/events');
       await mutate('/orders');
     } catch (e) {

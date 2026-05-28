@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, type AcknowledgementReceipt, type Client } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, confirmPayment, type AcknowledgementReceipt, type Client } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -757,11 +757,8 @@ export default function CollectionPage() {
   // ── Payment Received → Payment Confirmed ────────────────────────────
   async function executeAdvancePaymentReceived(order: Order, actionToken: string) {
     try {
-      await recordStageUpdate({
-        quotation_number: order.quotation_number ?? '',
-        stage: 'payment_confirmed',
-        status: 'payment_confirmed',
-        remarks: 'Advanced from Payment Received to Payment Confirmed (manual dashboard action)',
+      await confirmPayment(order.id, {
+        confirmed_by: 'dashboard_quick_action',
         action_token: actionToken,
       });
       mutateReceived();

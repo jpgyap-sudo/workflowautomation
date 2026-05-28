@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -351,6 +351,17 @@ export default function DeliveryPage() {
 
   const [balanceSlips, setBalanceSlips] = useState<BalanceSlip[]>([emptySlip()]);
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // ── Payment Received Upload Modal State ────────────────────────────────
+  const [paymentReceivedModal, setPaymentReceivedModal] = useState<{
+    open: boolean;
+    order: Order | null;
+    uploading: boolean;
+    error: string | null;
+  }>({ open: false, order: null, uploading: false, error: null });
+
+  const [paymentReceivedSlips, setPaymentReceivedSlips] = useState<BalanceSlip[]>([emptySlip()]);
+  const paymentReceivedFileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   function updateSlip(index: number, patch: Partial<BalanceSlip>) {
     setBalanceSlips(prev => prev.map((s, i) => i === index ? { ...s, ...patch } : s));
@@ -1036,6 +1047,21 @@ export default function DeliveryPage() {
   // ── Advance payment_received → payment_confirmed ────────────────────────
 
   function handleAdvancePaymentReceived(order: Order) {
+    // Show optional upload modal first
+    const firstSlip = emptySlip();
+    setPaymentReceivedSlips([firstSlip]);
+    setPaymentReceivedModal({ open: true, order, uploading: false, error: null });
+  }
+
+  function closePaymentReceivedModal() {
+    setPaymentReceivedModal({ open: false, order: null, uploading: false, error: null });
+    setPaymentReceivedSlips([emptySlip()]);
+  }
+
+  function handlePaymentReceivedConfirm() {
+    const order = paymentReceivedModal.order;
+    if (!order) return;
+    closePaymentReceivedModal();
     (window as any).__pendingActionOrder = order;
     setOtpModal({
       open: true,
@@ -1048,11 +1074,28 @@ export default function DeliveryPage() {
   async function executeAdvancePaymentReceived(order: Order, actionToken: string) {
     setActionLoading(order.id);
     try {
-      await recordStageUpdate({
-        quotation_number: order.quotation_number ?? '',
-        stage: 'payment_confirmed',
-        status: 'auto_advanced',
-        remarks: 'Payment confirmed — advancing from payment received',
+      // Upload any payment proof files first
+      const validSlips = paymentReceivedSlips.filter(s => {
+        const amt = Number(s.amount.replace(/,/g, ''));
+        return Number.isFinite(amt) && amt > 0 && s.file?.data;
+      });
+      if (validSlips.length > 0) {
+        await Promise.all(
+          validSlips.map(s =>
+            uploadOrderFile({
+              quotation_number: order.quotation_number ?? '',
+              file_type: 'balance_proof',
+              original_filename: s.file?.name ?? 'payment_receipt',
+              mime_type: s.file?.mime ?? 'image/jpeg',
+              file_data: s.file?.data ?? '',
+            }).catch(err => console.warn('[executeAdvancePaymentReceived] File upload failed:', err))
+          )
+        );
+      }
+
+      // Call the confirm-payment endpoint (mirrors verify-balance behavior)
+      await confirmPayment(order.id, {
+        confirmed_by: 'dashboard_quick_action',
         action_token: actionToken,
       });
       mutatePaymentReceived();
@@ -2329,6 +2372,205 @@ export default function DeliveryPage() {
           </div>
         )}
       </div>
+
+      {/* ── Payment Received Upload Modal (Optional Deposit Slip) ──────────── */}
+      {paymentReceivedModal.open && paymentReceivedModal.order && (() => {
+        const order = paymentReceivedModal.order;
+        const hasValidSlip = paymentReceivedSlips.some(s => {
+          const amt = Number(s.amount.replace(/,/g, ''));
+          return Number.isFinite(amt) && amt > 0;
+        });
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 py-10">
+            <div className="mx-auto w-full max-w-xl rounded-xl bg-white shadow-2xl">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">Confirm Payment Received</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {order.quotation_number ?? '—'} — {order.client_name ?? 'Unknown'}
+                  </p>
+                </div>
+                <button onClick={closePaymentReceivedModal} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="space-y-4 px-6 py-4">
+                {paymentReceivedModal.error && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                    {paymentReceivedModal.error}
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-600">
+                  Optionally upload a deposit slip or proof of payment before confirming. You can skip this and just confirm.
+                </p>
+
+                {/* Slip list */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-700">Payment Proof (Optional)</span>
+                    <button
+                      onClick={() => setPaymentReceivedSlips(prev => [...prev, emptySlip()])}
+                      className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+                    >
+                      + Add Slip
+                    </button>
+                  </div>
+
+                  {paymentReceivedSlips.map((slip, idx) => (
+                    <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-gray-500">Slip #{idx + 1}</span>
+                        {paymentReceivedSlips.length > 1 && (
+                          <button
+                            onClick={() => setPaymentReceivedSlips(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-[11px] text-red-500 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      {/* File upload */}
+                      <div className="mb-3">
+                        <input
+                          ref={(el) => { paymentReceivedFileInputRefs.current[idx] = el; }}
+                          type="file"
+                          accept="image/*,.pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const result = ev.target?.result as string;
+                              const commaIndex = result.indexOf(',');
+                              const base64 = commaIndex !== -1 ? result.substring(commaIndex + 1) : result;
+                              const mime = file.type || 'image/jpeg';
+                              setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? {
+                                ...s,
+                                file: { name: file.name, data: base64, mime, preview: result },
+                                extracting: true,
+                                extractedNote: null,
+                              } : s));
+                              // AI extract
+                              visionExtract({ image_base64: base64, mime_type: mime, mode: 'payment' }).then(result => {
+                                const payment = result.payment;
+                                const updates: string[] = [];
+                                const patch: Partial<BalanceSlip> = { extracting: false };
+                                if (payment?.amount && Number(payment.amount) > 0) {
+                                  patch.amount = String(payment.amount);
+                                  updates.push(`amount ₱${Number(payment.amount).toLocaleString()}`);
+                                }
+                                if (payment?.payment_date) {
+                                  patch.date = payment.payment_date.slice(0, 10);
+                                  updates.push(`date ${payment.payment_date.slice(0, 10)}`);
+                                }
+                                if (payment?.reference_number) {
+                                  patch.reference = payment.reference_number;
+                                  updates.push(`ref ${payment.reference_number}`);
+                                }
+                                patch.extractedNote = updates.length
+                                  ? `AI extracted ${updates.join(', ')}.`
+                                  : 'AI could not find fields. Enter manually.';
+                                setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
+                              }).catch(() => {
+                                setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? { ...s, extracting: false, extractedNote: 'AI extraction failed. Enter manually.' } : s));
+                              });
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                        {slip.file ? (
+                          <div className="relative">
+                            <img src={slip.file.preview} alt="Slip preview" className="h-24 w-full rounded-lg border border-gray-200 object-cover" />
+                            <button
+                              onClick={() => setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? { ...s, file: null, extractedNote: null } : s))}
+                              className="absolute right-1 top-1 rounded-full bg-white/80 p-0.5 text-gray-500 hover:text-red-500"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => paymentReceivedFileInputRefs.current[idx]?.click()}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 text-xs text-gray-500 hover:border-emerald-400 hover:text-emerald-600"
+                          >
+                            <Upload className="h-5 w-5" />
+                            Upload deposit slip (image or PDF)
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Extracting indicator */}
+                      {slip.extracting && (
+                        <div className="mb-2 flex items-center gap-2 text-xs text-blue-600">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          AI extracting payment details…
+                        </div>
+                      )}
+
+                      {/* Extracted note */}
+                      {slip.extractedNote && (
+                        <div className="mb-2 rounded bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
+                          {slip.extractedNote}
+                        </div>
+                      )}
+
+                      {/* Amount + Date + Reference */}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="block text-xs font-medium text-gray-600">
+                          Amount (₱)
+                          <input
+                            value={slip.amount}
+                            onChange={(e) => setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? { ...s, amount: e.target.value.replace(/[^0-9.,]/g, '') } : s))}
+                            placeholder="0.00"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                          />
+                        </label>
+                        <label className="block text-xs font-medium text-gray-600">
+                          Payment Date
+                          <input
+                            type="date"
+                            value={slip.date}
+                            onChange={(e) => setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? { ...s, date: e.target.value } : s))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                          />
+                        </label>
+                      </div>
+                      <label className="mt-2 block text-xs font-medium text-gray-600">
+                        Reference Number
+                        <input
+                          value={slip.reference}
+                          onChange={(e) => setPaymentReceivedSlips(prev => prev.map((s, i) => i === idx ? { ...s, reference: e.target.value } : s))}
+                          placeholder="Optional"
+                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+                <button onClick={closePaymentReceivedModal} className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-200">
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePaymentReceivedConfirm}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Payment Modal (Deposit Slip Upload + AI Extract) ──────────────── */}
       {paymentModal.open && paymentModal.order && (() => {

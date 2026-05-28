@@ -449,6 +449,16 @@ export async function verifyBalance(
   );
 }
 
+export async function confirmPayment(
+  id: string,
+  data: { confirmed_by?: string; action_token: string },
+): Promise<{ ok: boolean; quotation_number: string; next_stage: string }> {
+  return fetchJson<{ ok: boolean; quotation_number: string; next_stage: string }>(
+    `/orders/${encodeURIComponent(id)}/confirm-payment`,
+    { method: 'POST', body: JSON.stringify(data) },
+  );
+}
+
 export async function recordStageUpdate(data: {
   quotation_number: string;
   stage: string;

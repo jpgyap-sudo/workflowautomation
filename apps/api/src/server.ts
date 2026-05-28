@@ -961,7 +961,7 @@ app.post('/orders', async (request, reply) => {
       body.client_name ?? null,
       body.sales_agent ?? null,
       body.total_amount ?? null,
-      body.order_confirmed_at ?? null,
+      body.order_confirmed_at ?? new Date().toISOString().slice(0, 10),
       body.order_type ?? null,
       stockPrepDays,
       stockPrepReadyAt?.toISOString() ?? null,
@@ -8906,6 +8906,120 @@ app.post('/orders/:id/verify-balance', async (request, reply) => {
     await notifyManualChange(
       'Balance verified',
       `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nVerified by: ${body.verified_by ?? 'team'}\nNext stage: ${stageLabel}`,
+      userEmail,
+    );
+  }
+
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  return reply.send({ ok: true, quotation_number: order.quotation_number, next_stage: nextStage });
+});
+
+// ── Confirm Payment (Payment Received → Payment Confirmed) ──────────────
+/**
+ * Mirrors verify-balance behavior for the Payment Confirmed stage.
+ * Called when an order at payment_received stage is advanced to payment_confirmed.
+ * Sets balance_verified=TRUE, creates stage_updates, completes reminders,
+ * triggers agents, and notifies Telegram groups.
+ */
+const confirmPaymentSchema = z.object({
+  confirmed_by: z.string().optional(),
+  action_token: z.string().optional(),
+});
+
+app.post('/orders/:id/confirm-payment', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = confirmPaymentSchema.parse(request.body);
+
+  // Verify action token and extract email (dashboard only)
+  let userEmail: string | null = null;
+  if (isDashboardOrigin(body.confirmed_by)) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  }
+
+  const orders = await query(
+    `SELECT id, quotation_number, client_name, current_stage, balance_paid, balance_verified
+     FROM orders WHERE id = $1 AND status = 'active'`,
+    [id],
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+
+  // Must be at payment_received stage
+  if (order.current_stage !== 'payment_received') {
+    return reply.code(400).send({
+      error: `Order is at '${order.current_stage}' stage. Payment Confirmed can only be applied to orders at 'payment_received' stage.`,
+    });
+  }
+
+  // Advance to payment_confirmed
+  const nextStage = 'payment_confirmed';
+  const stageLabel = 'Payment Confirmed';
+
+  // Mark all balance payment records as verified (if not already)
+  await query(
+    `UPDATE payments SET verified=TRUE, verified_at=NOW(), verified_by=$2, updated_at=NOW()
+     WHERE order_id=$1 AND type='balance' AND verified=FALSE`,
+    [id, body.confirmed_by ?? null]
+  );
+
+  await query(
+    `UPDATE orders SET
+       balance_verified = TRUE,
+       balance_verified_at = NOW(),
+       balance_verified_by = $2,
+       current_stage = $3,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [id, body.confirmed_by ?? null, nextStage],
+  );
+
+  // Record stage update
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+     VALUES ($1, $2, 'payment_confirmed', $3, $4)`,
+    [id, nextStage, `Payment confirmed by ${body.confirmed_by ?? 'team'}. Order advanced to ${stageLabel}.`, body.confirmed_by ?? null],
+  );
+
+  // Complete payment_received reminders
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW()
+     WHERE order_id = $1 AND stage = 'payment_received' AND status = 'active'`,
+    [id],
+  );
+
+  // Trigger agents for payment_confirmed stage
+  triggerAgentsForStage('payment_confirmed', order.quotation_number, order.client_name, body.confirmed_by ?? undefined);
+
+  // Notify collection group immediately — payment confirmed
+  setImmediate(() => {
+    notifyGroupChat(
+      COLLECTION_CHAT_ID,
+      `✅ <b>Payment Confirmed</b>\n\n` +
+      `Quotation: <b>${order.quotation_number}</b>\n` +
+      `Client: ${order.client_name ?? 'N/A'}\n` +
+      `Confirmed by: ${body.confirmed_by ?? 'team'}\n` +
+      `Next stage: <b>${stageLabel}</b>\n\n` +
+      `Payment has been confirmed on the dashboard.`
+    );
+  });
+
+  // Notify escalation group about payment confirmation (dashboard only)
+  if (isDashboardOrigin(body.confirmed_by)) {
+    await notifyManualChange(
+      'Payment confirmed',
+      `Quotation: *${order.quotation_number ?? 'N/A'}*\nClient: *${order.client_name ?? 'Unknown'}*\nConfirmed by: ${body.confirmed_by ?? 'team'}\nNext stage: ${stageLabel}`,
       userEmail,
     );
   }

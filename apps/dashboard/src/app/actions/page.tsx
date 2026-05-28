@@ -15,6 +15,7 @@ import {
   grantDeliveryException,
   revokeDeliveryException,
   verifyCountered,
+  confirmPayment,
 } from '@/lib/api';
 import type { OrderDetail } from '@/lib/api';
 import {
@@ -1123,16 +1124,27 @@ function MarkPaymentConfirmedForm({ onResult }: { onResult: (r: ActionResult) =>
   const [qn, setQn] = useState('');
   const [loading, setLoading] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
-  const [pending, setPending] = useState<{ quotation_number: string } | null>(null);
+  const [pending, setPending] = useState<{ orderId: string; quotation_number: string } | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+
+  async function lookupOrderId(quotationNumber: string) {
+    if (!quotationNumber.trim()) { setOrderId(null); return; }
+    try {
+      const order = await getOrder(quotationNumber);
+      setOrderId(order?.id ?? null);
+    } catch {
+      setOrderId(null);
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const quotationNumber = qn.trim();
-    if (!quotationNumber) {
-      onResult({ ok: false, message: 'Enter a quotation number.' });
+    if (!quotationNumber || !orderId) {
+      onResult({ ok: false, message: 'Enter a valid quotation number.' });
       return;
     }
-    setPending({ quotation_number: quotationNumber });
+    setPending({ orderId, quotation_number: quotationNumber });
     setOtpOpen(true);
   }
 
@@ -1140,15 +1152,12 @@ function MarkPaymentConfirmedForm({ onResult }: { onResult: (r: ActionResult) =>
     if (!pending) return;
     setLoading(true);
     try {
-      await recordStageUpdate({
-        quotation_number: pending.quotation_number,
-        stage: 'payment_confirmed',
-        status: 'payment_confirmed',
-        updated_by: QUICK_ACTION_UPDATED_BY,
+      await confirmPayment(pending.orderId, {
+        confirmed_by: QUICK_ACTION_UPDATED_BY,
         action_token: actionToken,
       });
       onResult({ ok: true, message: `${pending.quotation_number} marked as payment confirmed.` });
-      setQn(''); setPending(null);
+      setQn(''); setOrderId(null); setPending(null);
     } catch (err: unknown) {
       onResult({ ok: false, message: getErrorMessage(err, 'Failed to mark payment confirmed.') });
     } finally {
@@ -1159,9 +1168,9 @@ function MarkPaymentConfirmedForm({ onResult }: { onResult: (r: ActionResult) =>
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Quotation Number"><input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => setQn(e.target.value)} /></Field>
+        <Field label="Quotation Number"><input className={inputCls} placeholder="QTN-2026-001" value={qn} onChange={e => { setQn(e.target.value); lookupOrderId(e.target.value); }} /></Field>
         <OrderInfoPreview quotationNumber={qn} />
-        <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-lime-600 px-4 py-2 text-sm font-medium text-white hover:bg-lime-700 disabled:opacity-50">
+        <button type="submit" disabled={loading || !orderId} className="flex w-full items-center justify-center gap-2 rounded-lg bg-lime-600 px-4 py-2 text-sm font-medium text-white hover:bg-lime-700 disabled:opacity-50">
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Mark Payment Confirmed
         </button>
       </form>
