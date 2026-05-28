@@ -13155,3 +13155,189 @@ When introducing a new file extension or naming convention (e.g., `.mjs`, `.tsx`
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: en_route filtering gap — orders with partial en_route progress now show 'en_route' items in En Route — In Transit s
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 0faf8a8c2e861693865f30ac4b265ed985f04636
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 0faf8a8c2e861693865f30ac4b265ed985f04636
+**Files:** apps/dashboard/src/app/production/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Orders with partial `en_route` progress were not showing their `en_route` items in the "En Route — In Transit" section of the production dashboard.
+
+**Why it broke:**  
+The filtering logic likely used an exact or incomplete match (e.g., checking if *all* items were `en_route`), missing orders where only *some* items had reached that status.
+
+**Reusable takeaway:**  
+When filtering by status across multiple items, use inclusive logic: show an order if *any* item matches the target status, not only if *all* items do. This prevents gaps in partial-progress workflows.
+
+---
+*Original commit message: fix: en_route filtering gap — orders with partial en_route progress now show 'en_route' items in En Route — In Transit section*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Orders with partial `en_route` progress were not showing their `en_route` items in the "En Route — In Transit" section of the production dashboard.
+
+**Why it broke:**  
+The filtering logic likely used an exact or incomplete match (e.g., checking if *all* items were `en_route`), missing orders where only *some* items had reached that status.
+
+**Reusable takeaway:**  
+When filtering by status across multiple items, use inclusive logic: show an order if *any* item matches the target status, not only if *all* items do. This prevents gaps in partial-progress workflows.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: update CHANGELOG and UPDATE_LOG for en_route filtering gap fix deployment (commit 0faf8a8)
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit cf97ff78ca5b9b39a65e097ce0174d969771d70d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** cf97ff78ca5b9b39a65e097ce0174d969771d70d
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** A gap in en_route filtering logic that caused certain workflow routes to bypass intended filters, leading to inconsistent routing behavior.
+
+**Why it broke:** The filtering logic did not account for edge cases where route metadata overlapped or was missing, allowing unintended routes to pass through without proper validation.
+
+**Reusable takeaway:** When implementing filtering or routing logic, explicitly define and test edge cases for overlapping or missing metadata. Use defensive checks (e.g., null/empty validation) and ensure filter conditions are exhaustive to prevent silent bypasses. Always update documentation (CHANGELOG, UPDATE_LOG) to track such fixes for operational awareness.
+
+---
+*Original commit message: chore: update CHANGELOG and UPDATE_LOG for en_route filtering gap fix deployment (commit 0faf8a8)*
+
+#### Lesson Learned
+
+**What was fixed:** A gap in en_route filtering logic that caused certain workflow routes to bypass intended filters, leading to inconsistent routing behavior.
+
+**Why it broke:** The filtering logic did not account for edge cases where route metadata overlapped or was missing, allowing unintended routes to pass through without proper validation.
+
+**Reusable takeaway:** When implementing filtering or routing logic, explicitly define and test edge cases for overlapping or missing metadata. Use defensive checks (e.g., null/empty validation) and ensure filter conditions are exhaustive to prevent silent bypasses. Always update documentation (CHANGELOG, UPDATE_LOG) to track such fixes for operational awareness.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: chat widget drag — useCallback + preventDefault + positionRef to fix stale closure
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d7adc1efa00df77c14bd009132c26b25e7cc8608
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d7adc1efa00df77c14bd009132c26b25e7cc8608
+**Files:** apps/dashboard/src/components/ChatFloatingIcon.tsx
+
+**Summary:**
+**What was fixed:** A stale closure bug in the chat widget drag-and-drop handler caused erratic positioning or failure to respond to mouse events after the first drag.
+
+**Why it broke:** The drag event handler captured the initial `position` state in a closure. When React re-rendered (e.g., due to other state changes), the closure still referenced the old position, leading to incorrect offset calculations. The handler also lacked `preventDefault()` to stop browser default drag behavior (e.g., text selection), which interfered with smooth dragging.
+
+**Reusable takeaway:**  
+- Use `useCallback` with a ref (e.g., `positionRef`) to avoid stale closures in event handlers that depend on mutable state.  
+- Always call `preventDefault()` on drag-related events (`mousedown`, `mousemove`) to prevent browser interference.  
+- For drag-and-drop UI, store mutable position in a ref (not state) to ensure the handler always reads the latest value without causing re-renders.
+
+---
+*Original commit message: fix: chat widget drag — useCallback + preventDefault + positionRef to fix stale closure*
+
+#### Lesson Learned
+
+**What was fixed:** A stale closure bug in the chat widget drag-and-drop handler caused erratic positioning or failure to respond to mouse events after the first drag.
+
+**Why it broke:** The drag event handler captured the initial `position` state in a closure. When React re-rendered (e.g., due to other state changes), the closure still referenced the old position, leading to incorrect offset calculations. The handler also lacked `preventDefault()` to stop browser default drag behavior (e.g., text selection), which interfered with smooth dragging.
+
+**Reusable takeaway:**  
+- Use `useCallback` with a ref (e.g., `positionRef`) to avoid stale closures in event handlers that depend on mutable state.  
+- Always call `preventDefault()` on drag-related events (`mousedown`, `mousemove`) to prevent browser interference.  
+- For drag-and-drop UI, store mutable position in a ref (not state) to ensure the handler always reads the latest value without causing re-renders.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: update CHANGELOG and UPDATE_LOG for chat widget drag fix (d7adc1e)
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e0af364a241c969787b13888eb5cb463a8ab01fb
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e0af364a241c969787b13888eb5cb463a8ab01fb
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where the chat widget could not be dragged properly (likely stuck or unresponsive).
+
+**Why it broke:**  
+The commit only updates documentation (CHANGELOG and UPDATE_LOG) to record the fix; the actual root cause is not visible in this commit. Based on common patterns, drag issues in chat widgets often stem from event propagation conflicts (e.g., mousedown/mousemove handlers not being properly attached or interfering with other UI interactions).
+
+**Reusable takeaway:**  
+When fixing UI interaction bugs like drag-and-drop, always verify that event listeners are correctly scoped, not blocked by higher-priority handlers, and that CSS `touch-action` or `pointer-events` properties aren’t inadvertently preventing movement. Document the fix clearly in changelogs to help future debugging.
+
+---
+*Original commit message: chore: update CHANGELOG and UPDATE_LOG for chat widget drag fix (d7adc1e)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where the chat widget could not be dragged properly (likely stuck or unresponsive).
+
+**Why it broke:**  
+The commit only updates documentation (CHANGELOG and UPDATE_LOG) to record the fix; the actual root cause is not visible in this commit. Based on common patterns, drag issues in chat widgets often stem from event propagation conflicts (e.g., mousedown/mousemove handlers not being properly attached or interfering with other UI interactions).
+
+**Reusable takeaway:**  
+When fixing UI interaction bugs like drag-and-drop, always verify that event listeners are correctly scoped, not blocked by higher-priority handlers, and that CSS `touch-action` or `pointer-events` properties aren’t inadvertently preventing movement. Document the fix clearly in changelogs to help future debugging.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

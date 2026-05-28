@@ -1436,7 +1436,13 @@ function ProductionItemSection({
                     ) : (
                       (() => {
                         const orderSelected = selectedItemIds[order.id] ?? new Set<string>();
-                        const selectableItems = filteredItems.filter((i) => i.production_status === 'in_progress');
+                        const isEnRouteContext = showEnRouteButton || showBulkEnRouteButton;
+                        const isArrivedContext = showArrivedButton || showBulkArriveButton;
+                        const selectableItems = isEnRouteContext
+                          ? filteredItems.filter((i) => i.production_status === 'finished' && i.en_route_status !== 'en_route' && i.en_route_status !== 'arrived')
+                          : isArrivedContext
+                            ? filteredItems.filter((i) => i.en_route_status === 'en_route')
+                            : filteredItems.filter((i) => i.production_status === 'in_progress');
                         const allSelected = selectableItems.length > 0 && selectableItems.every((i) => orderSelected.has(i.id));
                         const someSelected = orderSelected.size > 0 && !allSelected;
                         return (
@@ -1468,11 +1474,65 @@ function ProductionItemSection({
                                 })()}
                               </div>
                             )}
+                            {/* Toolbar: En Route Selected + En Route All */}
+                            {(showBulkEnRouteButton || (showEnRouteButton && onBulkEnRouteSelected)) && (
+                              <div className="mb-2 flex items-center justify-end gap-2">
+                                {showEnRouteButton && onBulkEnRouteSelected && orderSelected.size > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onBulkEnRouteSelected(order, Array.from(orderSelected)); }}
+                                    className="rounded-md border border-amber-300 bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 transition-colors"
+                                  >
+                                    🚚 En Route Selected ({orderSelected.size})
+                                  </button>
+                                )}
+                                {showBulkEnRouteButton && (() => {
+                                  const notYetEnRoute = filteredItems.filter((i) => i.production_status === 'finished' && i.en_route_status !== 'en_route' && i.en_route_status !== 'arrived');
+                                  if (notYetEnRoute.length === 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); onBulkEnRoute?.(order, notYetEnRoute); }}
+                                      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                                    >
+                                      🚚 En Route All ({notYetEnRoute.length})
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                            {/* Toolbar: Arrived Selected + Arrive All */}
+                            {(showBulkArriveButton || (showArrivedButton && onBulkArriveSelected)) && (
+                              <div className="mb-2 flex items-center justify-end gap-2">
+                                {showArrivedButton && onBulkArriveSelected && orderSelected.size > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onBulkArriveSelected(order, Array.from(orderSelected)); }}
+                                    className="rounded-md border border-sky-300 bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-sky-700 transition-colors"
+                                  >
+                                    📦 Arrived Selected ({orderSelected.size})
+                                  </button>
+                                )}
+                                {showBulkArriveButton && (() => {
+                                  const notYetArrived = filteredItems.filter((i) => i.en_route_status === 'en_route');
+                                  if (notYetArrived.length === 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); onBulkArriveAll?.(order); }}
+                                      className="rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+                                    >
+                                      📦 Arrive All ({notYetArrived.length})
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                            )}
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
                               <table className="w-full text-left text-xs">
                                 <thead>
                                   <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                                    {showFinishedButton && (
+                                    {(showFinishedButton || showEnRouteButton || showArrivedButton) && (
                                       <th className="w-8 px-3 py-2">
                                         <input
                                           type="checkbox"
@@ -1481,7 +1541,7 @@ function ProductionItemSection({
                                           ref={(el) => { if (el) el.indeterminate = someSelected; }}
                                           onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, selectableItems); }}
                                           disabled={selectableItems.length === 0}
-                                          className="rounded border-gray-300 accent-green-600 disabled:opacity-30"
+                                          className={`rounded border-gray-300 disabled:opacity-30 ${isEnRouteContext ? 'accent-amber-600' : isArrivedContext ? 'accent-sky-600' : 'accent-green-600'}`}
                                         />
                                       </th>
                                     )}
@@ -1498,21 +1558,32 @@ function ProductionItemSection({
                                 <tbody className="divide-y divide-gray-100">
                                   {filteredItems.map((item) => {
                                     const estFinishDate = getItemEstimatedFinishDate(item);
-                                    const isSelectable = item.production_status === 'in_progress';
+                                    const isSelectable = isEnRouteContext
+                                      ? item.production_status === 'finished' && item.en_route_status !== 'en_route' && item.en_route_status !== 'arrived'
+                                      : isArrivedContext
+                                        ? item.en_route_status === 'en_route'
+                                        : item.production_status === 'in_progress';
                                     const isChecked = orderSelected.has(item.id);
+                                    const highlightClass = isChecked
+                                      ? isEnRouteContext
+                                        ? 'bg-amber-50/40'
+                                        : isArrivedContext
+                                          ? 'bg-sky-50/40'
+                                          : 'bg-green-50/40'
+                                      : '';
                                     return (
                                       <tr
                                         key={item.id}
-                                        className={`hover:bg-gray-50 ${isChecked ? 'bg-green-50/40' : ''}`}
+                                        className={`hover:bg-gray-50 ${highlightClass}`}
                                       >
-                                        {showFinishedButton && (
+                                        {(showFinishedButton || showEnRouteButton || showArrivedButton) && (
                                           <td className="px-3 py-2">
                                             {isSelectable && (
                                               <input
                                                 type="checkbox"
                                                 checked={isChecked}
                                                 onChange={(e) => { e.stopPropagation(); toggleSelectItem(order.id, item.id); }}
-                                                className="rounded border-gray-300 accent-green-600"
+                                                className={`rounded border-gray-300 ${isEnRouteContext ? 'accent-amber-600' : isArrivedContext ? 'accent-sky-600' : 'accent-green-600'}`}
                                               />
                                             )}
                                           </td>
@@ -1670,6 +1741,7 @@ function ProductionItemSection({
 
 interface ProductionFinishedSummary {
   hasFinishedProduction: boolean;
+  hasEnRouteItems: boolean;
   finishedCount: number;
   totalCount: number;
 }
@@ -2220,9 +2292,11 @@ export default function ProductionPage() {
             const res = await getOrderItems(order.id);
             const items = res.items ?? [];
             const finishedCount = items.filter((item) => item.production_status === 'finished').length;
+            const hasEnRouteItems = items.some((item) => item.en_route_status === 'en_route');
             if (!cancelled) {
               map[order.id] = {
                 hasFinishedProduction: finishedCount > 0,
+                hasEnRouteItems,
                 finishedCount,
                 totalCount: items.length,
               };
@@ -2238,7 +2312,7 @@ export default function ProductionPage() {
 
   const finishedOrders = productionFinishedCandidateOrders.filter((order) => {
     const summary = productionFinishedSummaries[order.id];
-    return summary?.hasFinishedProduction && !['balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
+    return summary?.hasFinishedProduction && !['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
   });
   const loadingFinished = loadingPartial || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
   const errorFinished = errorPartial || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
@@ -2993,10 +3067,15 @@ export default function ProductionPage() {
   const filteredEnRouteVerificationStageOrders = filterByClient(enRouteVerificationStageOrders);
   const filteredEnRouteVerificationOrders = filterByClient(enRouteVerificationOrders);
   const filteredEnRouteTrackingOrders = filterByClient(enRouteTrackingOrders);
-  // En Route — In Transit must include orders with partial en_route progress too,
-  // so that items already marked 'en_route' appear even when other items are still 'not_yet'.
+  // En Route — In Transit must include:
+  // 1. en_route stage orders with partial/full en_route progress
+  // 2. orders in other stages (e.g. production_in_progress) that have at least one item marked en_route
+  const nonEnRouteStageOrdersWithEnRouteItems = productionFinishedCandidateOrders.filter((o) => {
+    if (o.current_stage === 'en_route') return false;
+    return productionFinishedSummaries[o.id]?.hasEnRouteItems === true;
+  });
   const filteredEnRouteInTransitOrders = filterByClient(
-    [...new Map([...enRouteVerificationOrders, ...enRouteTrackingOrders].map((o) => [o.id, o])).values()]
+    [...new Map([...enRouteVerificationOrders, ...enRouteTrackingOrders, ...nonEnRouteStageOrdersWithEnRouteItems].map((o) => [o.id, o])).values()]
   );
   const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
