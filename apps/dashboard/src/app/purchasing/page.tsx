@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useOrdersByStage, useAwaitingDownpayment, useProductionExceptionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDeposit, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -813,16 +813,16 @@ export default function PurchasingPage() {
     const pending = (window as any).__pendingMarkDepositPaidData as { order: Order } | undefined;
     if (!pending) return;
     try {
-      await recordStageUpdate({
+      // Use recordDeposit instead of recordStageUpdate so the deposit amount
+      // is recorded in the payments table and Telegram notifications are sent
+      await recordDeposit({
         quotation_number: pending.order.quotation_number ?? '',
-        stage: 'deposit_verification',
-        status: 'deposit_paid',
-        remarks: 'Deposit marked as paid from dashboard (manual action)',
+        amount: Number(pending.order.total_amount ?? 0),
         action_token: actionToken,
       });
       refresh();
     } catch (err: any) {
-      alert('Failed to mark deposit as paid: ' + (err.message ?? 'Unknown error'));
+      alert('Failed to record deposit: ' + (err.message ?? 'Unknown error'));
     } finally {
       (window as any).__pendingMarkDepositPaidData = null;
     }
@@ -1073,31 +1073,23 @@ export default function PurchasingPage() {
     const order = pending.order;
     setBalanceSlipUpload((prev) => ({ ...prev, submitting: true }));
     try {
-      // Upload balance slip file if provided
-      if (balanceSlipUpload.file) {
-        await uploadOrderFile({
-          quotation_number: order.quotation_number ?? '',
-          file_type: 'payment',
-          original_filename: balanceSlipUpload.file.name,
-          mime_type: balanceSlipUpload.file.mime,
-          file_data: balanceSlipUpload.file.data,
-        }).catch((err) => {
-          console.warn('[handleMarkBalancePaid] File upload failed (non-fatal):', err);
-        });
-      }
-
-      // Record balance payment via stage update
-      await recordStageUpdate({
+      // Use payBalanceWithFile instead of recordStageUpdate so the balance amount
+      // is recorded in the payments table and Telegram notifications are sent
+      const amount = Number(balanceSlipUpload.extractedAmount) || Number(order.total_amount ?? 0);
+      await payBalanceWithFile({
         quotation_number: order.quotation_number ?? '',
-        stage: 'balance_verification',
-        status: 'balance_paid',
-        remarks: `Balance marked as paid from production exception section.${balanceSlipUpload.extractedAmount ? ` Amount: ₱${Number(balanceSlipUpload.extractedAmount).toLocaleString()}` : ''}${balanceSlipUpload.extractedRef ? ` Ref: ${balanceSlipUpload.extractedRef}` : ''}`,
+        amount,
+        payment_date: balanceSlipUpload.extractedDate || undefined,
+        reference_number: balanceSlipUpload.extractedRef || undefined,
+        image_base64: balanceSlipUpload.file?.data,
+        mime_type: balanceSlipUpload.file?.mime,
+        original_filename: balanceSlipUpload.file?.name,
         action_token: actionToken,
       });
       setBalanceSlipUpload({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null, submitting: false });
       refresh();
     } catch (err: any) {
-      alert('Failed to mark balance paid: ' + (err.message ?? 'Unknown error'));
+      alert('Failed to record balance payment: ' + (err.message ?? 'Unknown error'));
       setBalanceSlipUpload((prev) => ({ ...prev, submitting: false }));
     } finally {
       (window as any).__pendingMarkBalancePaidData = null;

@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, OrderItem, InventoryItem } from '@/lib/api';
-import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch } from '@/lib/api';
+import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
-import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter } from 'lucide-react';
+import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter, DollarSign } from 'lucide-react';
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return null;
@@ -46,7 +46,7 @@ function ReadyBadge({ readyAt }: { readyAt: string | null | undefined }) {
 
 function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => void }) {
   const [showOtp, setShowOtp] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'ready' | 'set-prep-days' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'ready' | 'set-prep-days' | 'recordDeposit' | null>(null);
   const [deductInventory, setDeductInventory] = useState(true);
   const [marking, setMarking] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -58,6 +58,11 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
 
   function handleMarkReady() {
     setPendingAction('ready');
+    setShowOtp(true);
+  }
+
+  function handleRecordDeposit() {
+    setPendingAction('recordDeposit');
     setShowOtp(true);
   }
 
@@ -94,6 +99,22 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
         setMsg({ ok: false, text: err.message ?? 'Failed to update prep days' });
       } finally {
         setSavingDays(false);
+      }
+    } else if (pendingAction === 'recordDeposit') {
+      setMarking(true);
+      setMsg(null);
+      try {
+        await recordDeposit({
+          quotation_number: order.quotation_number ?? '',
+          amount: Number(order.total_amount ?? 0),
+          action_token: actionToken,
+        });
+        setMsg({ ok: true, text: '✅ Deposit recorded successfully. The collection group has been notified.' });
+        setTimeout(() => onUpdated(), 800);
+      } catch (err: any) {
+        setMsg({ ok: false, text: err.message ?? 'Failed to record deposit' });
+      } finally {
+        setMarking(false);
       }
     }
   }
@@ -185,6 +206,18 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
         </p>
       )}
 
+      {/* Record Deposit button — shown when deposit not yet paid */}
+      {!order.deposit_paid && (
+        <button
+          onClick={handleRecordDeposit}
+          disabled={marking}
+          className="w-full rounded-lg bg-pink-50 px-4 py-2.5 text-sm font-medium text-pink-700 hover:bg-pink-100 disabled:opacity-50 flex items-center justify-center gap-2 border border-pink-200"
+        >
+          <DollarSign className="h-4 w-4" />
+          Record Deposit
+        </button>
+      )}
+
       {/* Mark Ready button */}
       <button
         onClick={handleMarkReady}
@@ -197,11 +230,13 @@ function StockPrepCard({ order, onUpdated }: { order: Order; onUpdated: () => vo
 
       <OtpModal
         open={showOtp}
-        title={pendingAction === 'set-prep-days' ? 'Confirm: Update Prep Days' : 'Confirm: Mark Stock Ready'}
+        title={pendingAction === 'set-prep-days' ? 'Confirm: Update Prep Days' : pendingAction === 'recordDeposit' ? 'Confirm: Record Downpayment' : 'Confirm: Mark Stock Ready'}
         description={
           pendingAction === 'set-prep-days'
             ? `Updating stock prep days to ${daysInput} day(s) for ${order.quotation_number ?? 'this order'}.`
-            : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
+            : pendingAction === 'recordDeposit'
+              ? `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`
+              : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
         }
         onVerified={handleVerified}
         onClose={() => { setShowOtp(false); setPendingAction(null); }}

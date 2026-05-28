@@ -10,6 +10,7 @@ import {
   updateOrder, deleteOrder,
   reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, bulkFinishSelected, bulkArriveAll, bulkArriveSelected, confirmEnRoute, setProduction,
   recordStageUpdate,
+  recordDeposit,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
   createStockReplenishmentOrder,
@@ -27,7 +28,7 @@ import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   RefreshCw, Package, Loader2, MessageSquare, Search, XCircle,
-  ExternalLink,
+  ExternalLink, DollarSign,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -788,6 +789,7 @@ interface OrderRowProps {
   onProceedInventoryVerification?: (o: Order) => void;
   onGrantException?: (o: Order) => void;
   onRevokeException?: (o: Order) => void;
+  onRecordDeposit?: (o: Order) => void;
   onItemProductionStatus?: (item: OrderItem, status: 'pending' | 'in_progress' | 'finished', refresh?: () => void) => void;
   onItemEnRouteStatus?: (item: OrderItem, status: 'not_yet' | 'en_route' | 'arrived', refresh?: () => void) => void;
   onBulkEnRoute?: (order: Order, items: OrderItem[], refresh?: () => void) => void;
@@ -796,7 +798,7 @@ interface OrderRowProps {
   onBulkArriveSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
  }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onRecordDeposit, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -992,6 +994,12 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
               <button onClick={() => onRevokeException(order)}
                 className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
                 Revoke Exception
+              </button>
+            )}
+            {onRecordDeposit && !order.deposit_paid && (
+              <button onClick={() => onRecordDeposit(order)}
+                className="inline-flex items-center gap-1 rounded-lg bg-pink-50 px-3 py-1.5 text-xs font-medium text-pink-700 hover:bg-pink-100">
+                <DollarSign className="h-3.5 w-3.5" /> Record Deposit
               </button>
             )}
             <span className="self-center text-xs text-gray-500">
@@ -2335,7 +2343,7 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected' | 'bulkArriveAll' | 'bulkArriveSelected';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected' | 'bulkArriveAll' | 'bulkArriveSelected' | 'recordDeposit';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   // Stock replenishment modal state
@@ -2404,6 +2412,7 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
     else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
+    else if (otpModal.pendingAction === 'recordDeposit') handleRecordDepositVerified(actionToken);
   }
 
   async function handleGrantExceptionVerified(actionToken: string) {
@@ -2492,6 +2501,34 @@ export default function ProductionPage() {
       refresh();
     } catch (err: any) { alert('Failed to proceed to inventory verification: ' + (err.message ?? 'Unknown error')); }
     finally { (window as any).__pendingProceedInventoryVerificationData = null; }
+  }
+
+  // ── Record Deposit handlers ──────────────────────────────────────────
+  function handleRecordDeposit(order: Order) {
+    (window as any).__pendingRecordDepositData = { order };
+    setOtpModal({
+      open: true,
+      title: 'Record Downpayment',
+      description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`,
+      pendingAction: 'recordDeposit',
+    });
+  }
+
+  async function handleRecordDepositVerified(actionToken: string) {
+    const pending = (window as any).__pendingRecordDepositData as { order: Order } | undefined;
+    if (!pending) return;
+    try {
+      await recordDeposit({
+        quotation_number: pending.order.quotation_number ?? '',
+        amount: Number(pending.order.total_amount ?? 0),
+        action_token: actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to record deposit: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingRecordDepositData = null;
+    }
   }
 
   function handleEdit(order: Order) { setEditingOrder(order); }
@@ -3166,6 +3203,7 @@ export default function ProductionPage() {
         {(order) => (
           <>
             <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onStartProduction={handleStartProduction}
+              onRecordDeposit={handleRecordDeposit}
               onItemProductionStatus={makeItemProductionStatusHandler(order)}
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
             />
@@ -3409,7 +3447,7 @@ export default function ProductionPage() {
       <OtpModal
         open={otpModal.open} title={otpModal.title} description={otpModal.description}
         onVerified={handleOtpVerified}
-        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; }}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingRecordDepositData = null; }}
       />
 
       {deleting && (

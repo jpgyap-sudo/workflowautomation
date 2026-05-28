@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, type AcknowledgementReceipt, type Client } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, type AcknowledgementReceipt, type Client } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -408,7 +408,7 @@ export default function CollectionPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate' | 'advancePaymentReceived' | 'advancePaymentConfirmed' | 'markPaymentReceived';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate' | 'advancePaymentReceived' | 'advancePaymentConfirmed' | 'markPaymentReceived' | 'recordDeposit' | 'recordBalance';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
   const [paymentDateSavingKey, setPaymentDateSavingKey] = useState<string | null>(null);
 
@@ -615,6 +615,10 @@ export default function CollectionPage() {
     } else if (otpModal.pendingAction === 'advancePaymentConfirmed') {
       const pending = (window as any).__pendingAdvancePaymentConfirmedData as { order: Order } | undefined;
       if (pending) executeAdvancePaymentConfirmed(pending.order, actionToken);
+    } else if (otpModal.pendingAction === 'recordDeposit') {
+      handleRecordDepositVerified(actionToken);
+    } else if (otpModal.pendingAction === 'recordBalance') {
+      handleRecordBalanceVerified(actionToken);
     }
   }
 
@@ -872,6 +876,71 @@ export default function CollectionPage() {
       description: `You are about to revoke the delivery exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
       pendingAction: 'revokeDeliveryException' });
     (window as any).__pendingRevokeExceptionData = { orderId: order.id };
+  }
+
+  // ── Record Deposit (quick action for inventory_arrived / balance_due) ──
+  function handleRecordDeposit(order: Order) {
+    (window as any).__pendingRecordDepositData = { order };
+    setOtpModal({
+      open: true,
+      title: 'Record Downpayment',
+      description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`,
+      pendingAction: 'recordDeposit',
+    });
+  }
+
+  async function handleRecordDepositVerified(actionToken: string) {
+    const pending = (window as any).__pendingRecordDepositData as { order: Order } | undefined;
+    if (!pending) return;
+    try {
+      await recordDeposit({
+        quotation_number: pending.order.quotation_number ?? '',
+        amount: Number(pending.order.total_amount ?? 0),
+        action_token: actionToken,
+      });
+      mutateArrived();
+      mutateBalanceDue();
+      mutateDepositVerification();
+      refreshAcknowledgementReceipts();
+    } catch (err: any) {
+      alert('Failed to record deposit: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingRecordDepositData = null;
+    }
+  }
+
+  // ── Record Balance (quick action without file upload) ─────────────────
+  function handleRecordBalance(order: Order) {
+    const totalAmount = Number(order.total_amount ?? 0);
+    const depositAmount = Number(order.deposit_amount ?? 0);
+    const computedBalance = Math.max(0, totalAmount - depositAmount);
+    (window as any).__pendingRecordBalanceData = { order, amount: computedBalance };
+    setOtpModal({
+      open: true,
+      title: 'Record Balance Payment',
+      description: `Record balance payment for "${order.quotation_number ?? '—'}" (₱${computedBalance.toLocaleString()}). This will notify the collection group via Telegram.`,
+      pendingAction: 'recordBalance',
+    });
+  }
+
+  async function handleRecordBalanceVerified(actionToken: string) {
+    const pending = (window as any).__pendingRecordBalanceData as { order: Order; amount: number } | undefined;
+    if (!pending) return;
+    try {
+      await payBalance({
+        quotation_number: pending.order.quotation_number ?? '',
+        amount: pending.amount,
+        action_token: actionToken,
+      });
+      mutateArrived();
+      mutateBalanceDue();
+      mutateBalanceVerification();
+      refreshAcknowledgementReceipts();
+    } catch (err: any) {
+      alert('Failed to record balance payment: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      (window as any).__pendingRecordBalanceData = null;
+    }
   }
 
   // ── Payment Confirmation with Deposit Slip Upload ──────────────────────
@@ -1179,7 +1248,27 @@ export default function CollectionPage() {
                   <CheckCircle2 className="h-4 w-4" />
                 </button>
               )}
-              {/* Payment Confirmed button — only for inventory_arrived / balance_due */}
+              {/* Record Deposit — for inventory_arrived / balance_due where deposit not yet paid */}
+              {(order.current_stage === 'inventory_arrived' || order.current_stage === 'balance_due') && !order.deposit_paid && (
+                <button
+                  onClick={() => handleRecordDeposit(order)}
+                  className="rounded-lg p-1.5 text-pink-500 hover:bg-pink-50 hover:text-pink-700"
+                  title="Record downpayment"
+                >
+                  <DollarSign className="h-4 w-4" />
+                </button>
+              )}
+              {/* Record Balance (quick) — for inventory_arrived / balance_due where deposit is paid */}
+              {(order.current_stage === 'inventory_arrived' || order.current_stage === 'balance_due') && order.deposit_paid && (
+                <button
+                  onClick={() => handleRecordBalance(order)}
+                  className="rounded-lg p-1.5 text-violet-500 hover:bg-violet-50 hover:text-violet-700"
+                  title="Record balance payment (quick)"
+                >
+                  <CreditCard className="h-4 w-4" />
+                </button>
+              )}
+              {/* Confirm Payment (with file upload) — only for inventory_arrived / balance_due */}
               {(order.current_stage === 'inventory_arrived' || order.current_stage === 'balance_due') && (
                 <button
                   onClick={() => handlePaymentConfirmClick(order)}
@@ -1940,6 +2029,8 @@ export default function CollectionPage() {
           (window as any).__pendingMarkPaymentReceivedData = null;
           (window as any).__pendingAdvancePaymentReceivedData = null;
           (window as any).__pendingAdvancePaymentConfirmedData = null;
+          (window as any).__pendingRecordDepositData = null;
+          (window as any).__pendingRecordBalanceData = null;
         }}
       />
 

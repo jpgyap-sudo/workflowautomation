@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -195,7 +195,7 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered' | 'recordDeposit';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
   
   // Track which orders have been verified as countered (to hide "Verify Countered" button)
@@ -1094,6 +1094,36 @@ export default function DeliveryPage() {
     }
   }
 
+  // ── Record Deposit (quick action) ──────────────────────────────────────
+  function handleRecordDeposit(order: Order) {
+    (window as any).__pendingRecordDepositData = { order };
+    setOtpModal({
+      open: true,
+      title: 'Record Downpayment',
+      description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`,
+      pendingAction: 'recordDeposit',
+    });
+  }
+
+  async function handleRecordDepositVerified(actionToken: string) {
+    const pending = (window as any).__pendingRecordDepositData as { order: Order } | undefined;
+    if (!pending) return;
+    setActionLoading(pending.order.id);
+    try {
+      await recordDeposit({
+        quotation_number: pending.order.quotation_number ?? '',
+        amount: Number(pending.order.total_amount ?? 0),
+        action_token: actionToken,
+      });
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to record deposit: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
+      (window as any).__pendingRecordDepositData = null;
+    }
+  }
+
   function handleOtpVerified(actionToken: string) {
     const order = (window as any).__pendingActionOrder as Order | undefined;
     if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
@@ -1101,6 +1131,7 @@ export default function DeliveryPage() {
     if (otpModal.pendingAction === 'schedule_delivery') { handleScheduleVerified(actionToken); return; }
     if (otpModal.pendingAction === 'record_payment') { executeConfirmPayment(actionToken); return; }
     if (otpModal.pendingAction === 'confirmPayment') { executeConfirmPayment(actionToken); return; }
+    if (otpModal.pendingAction === 'recordDeposit') { handleRecordDepositVerified(actionToken); return; }
     if (otpModal.pendingAction === 'complete_directly') {
       const pending = (window as any).__pendingCompleteData as { order: Order } | undefined;
       if (pending) executeCompleteDirectly(pending.order, actionToken);
@@ -1259,12 +1290,20 @@ export default function DeliveryPage() {
     orders: Order[];
     isLoading: boolean;
     emptyText: string;
-    /** Callback when Deliver is clicked for an item */
+    /** Deliver mode — show deliver buttons on items */
     onDeliverItem?: (order: Order, item: DeliveryProgressItem) => void;
-    /** Callback when bulk Deliver Selected is clicked */
     onDeliverSelected?: (order: Order, itemIds: string[]) => void;
-    /** Callback when bulk Deliver All is clicked */
     onDeliverAll?: (order: Order) => void;
+    /** Schedule mode — show Schedule Delivery form instead of deliver buttons */
+    onScheduleDelivery?: (order: Order) => void;
+    schedulingOrderId?: string | null;
+    scheduleDate?: string;
+    scheduleRemarks?: string;
+    onScheduleDateChange?: (v: string) => void;
+    onScheduleRemarksChange?: (v: string) => void;
+    onScheduleSubmit?: (order: Order) => void;
+    onScheduleCancel?: () => void;
+    scheduleSaving?: boolean;
     onViewFiles?: (o: Order) => void;
     onEdit?: (o: Order) => void;
     onDelete?: (o: Order) => void;
@@ -1275,6 +1314,8 @@ export default function DeliveryPage() {
     icon, title, count, countBg, countText,
     orders, isLoading, emptyText,
     onDeliverItem, onDeliverSelected, onDeliverAll,
+    onScheduleDelivery, schedulingOrderId, scheduleDate, scheduleRemarks,
+    onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
     onViewFiles, onEdit, onDelete,
     actionLoading,
   }: DeliveryItemSectionProps) {
@@ -1398,8 +1439,19 @@ export default function DeliveryPage() {
                         <p className="py-2 text-center text-xs text-gray-400">No items found for this order.</p>
                       ) : (
                         <div>
-                          {/* Toolbar: Deliver Selected + Deliver All */}
-                          {(onDeliverSelected || onDeliverAll) && (
+                          {/* Toolbar: Schedule Delivery (pending section) OR Deliver Selected + Deliver All (scheduled section) */}
+                          {onScheduleDelivery ? (
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-[11px] text-gray-400">Schedule this order before delivering items.</span>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onScheduleDelivery(order); }}
+                                className="rounded-md border border-purple-300 bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 transition-colors"
+                              >
+                                📅 Schedule Delivery
+                              </button>
+                            </div>
+                          ) : (onDeliverSelected || onDeliverAll) && (
                             <div className="mb-2 flex items-center justify-end gap-2">
                               {onDeliverSelected && orderSelected.size > 0 && (
                                 <button
@@ -1490,7 +1542,7 @@ export default function DeliveryPage() {
                                       </td>
                                       <td className="px-3 py-2">
                                         <div className="flex flex-wrap gap-1.5">
-                                          {onDeliverItem && canDeliver && (
+                                          {!onScheduleDelivery && onDeliverItem && canDeliver && (
                                             <button
                                               type="button"
                                               disabled={actionLoading === order.id}
@@ -1513,6 +1565,21 @@ export default function DeliveryPage() {
                               </tbody>
                             </table>
                           </div>
+                          {/* Inline schedule form — only in schedule mode */}
+                          {onScheduleDelivery && schedulingOrderId === order.id && (
+                            <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                              <ScheduleForm
+                                order={order}
+                                value={scheduleDate ?? ''}
+                                remarks={scheduleRemarks ?? ''}
+                                onValueChange={onScheduleDateChange ?? (() => {})}
+                                onRemarksChange={onScheduleRemarksChange ?? (() => {})}
+                                onSave={() => onScheduleSubmit?.(order)}
+                                onCancel={() => onScheduleCancel?.()}
+                                saving={scheduleSaving ?? false}
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1669,6 +1736,16 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
+                      {!order.deposit_paid && (
+                        <button
+                          onClick={() => handleRecordDeposit(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg bg-pink-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-pink-600 disabled:opacity-40"
+                          title="Record downpayment"
+                        >
+                          {actionLoading === order.id ? '…' : 'Record Deposit'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleAdvanceBalanceDue(order)}
                         disabled={actionLoading === order.id}
@@ -1731,6 +1808,16 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
+                      {!order.deposit_paid && (
+                        <button
+                          onClick={() => handleRecordDeposit(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg bg-pink-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-pink-600 disabled:opacity-40"
+                          title="Record downpayment"
+                        >
+                          {actionLoading === order.id ? '…' : 'Record Deposit'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleAdvanceBalanceDue(order)}
                         disabled={actionLoading === order.id}
@@ -1790,6 +1877,16 @@ export default function DeliveryPage() {
                       <DeliveryInfo order={order} />
                     </div>
                     <div className="flex items-center gap-3">
+                      {!order.deposit_paid && (
+                        <button
+                          onClick={() => handleRecordDeposit(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg bg-pink-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-pink-600 disabled:opacity-40"
+                          title="Record downpayment"
+                        >
+                          {actionLoading === order.id ? '…' : 'Record Deposit'}
+                        </button>
+                      )}
                       {hasException ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                           Exception Granted
@@ -1929,9 +2026,15 @@ export default function DeliveryPage() {
         orders={filteredPendingOrders}
         isLoading={loading}
         emptyText="No orders pending delivery scheduling"
-        onDeliverItem={handleDeliverItem}
-        onDeliverSelected={handleDeliverSelected}
-        onDeliverAll={handleDeliverAll}
+        onScheduleDelivery={handleOpenSchedule}
+        schedulingOrderId={schedulingOrder?.id ?? null}
+        scheduleDate={scheduleDate}
+        scheduleRemarks={scheduleRemarks}
+        onScheduleDateChange={setScheduleDate}
+        onScheduleRemarksChange={setScheduleRemarks}
+        onScheduleSubmit={handleScheduleSubmit}
+        onScheduleCancel={() => { setSchedulingOrder(null); setScheduleDate(''); setScheduleRemarks(''); }}
+        scheduleSaving={actionLoading !== null}
         onViewFiles={handleViewFiles}
         onEdit={setEditingOrder}
         onDelete={handleDeleteClick}
@@ -2837,6 +2940,7 @@ export default function DeliveryPage() {
           (window as any).__pendingPaymentData = null;
           (window as any).__pendingCompleteData = null;
           (window as any).__pendingConfirmPaymentData = null;
+          (window as any).__pendingRecordDepositData = null;
         }}
       />
 
