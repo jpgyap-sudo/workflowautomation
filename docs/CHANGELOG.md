@@ -45,6 +45,7 @@
 | `3812f7d` | Roo (Code) | feat: add --local-build flag to deploy-agent.mjs — builds Docker images locally, saves as tar, SCPs to VPS, loads images, restarts containers. One-command local build + deploy workflow. | ✅ VPS `3812f7d` |
 | `0faf8a8` | Roo (Code) | fix: en_route filtering gap — orders with partial en_route progress now show their 'en_route' items in "En Route — In Transit" section. Created filteredEnRouteInTransitOrders combining enRouteVerificationOrders + enRouteTrackingOrders. | ✅ VPS `0faf8a8` |
 | `d7adc1e` | Roo (Code) | fix: chat widget drag — useCallback + preventDefault + positionRef to fix stale closure in drag handlers. Wrapped onDragStart/onDragMove/onDragEnd in useCallback with stable refs for document event listeners. Added e.preventDefault() to prevent browser default drag behavior. Added positionRef to avoid stale closure on position state. Added cleanup useEffect for document listeners on unmount. | ✅ VPS `d7adc1e` |
+| `4c965fb` | Roo (Code) | feat: Dispatch Pending + En Route — In Transit selectable items — added "En Route Selected" / "En Route All" buttons to Dispatch Pending (amber theme), "Arrived Selected" / "Arrive All" buttons to En Route — In Transit (sky theme). Context-aware accent colors and highlight colors for all three contexts (finish/green, en-route/amber, arrived/sky). Fix: QTN-MN bug — excluded en_route_verification, inventory_verification, inventory_arrived from Production Finished section so orders already past dispatch don't appear there. | ✅ VPS `4c965fb` |
 
 ## 2026-05-26
 
