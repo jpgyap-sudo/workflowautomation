@@ -13065,3 +13065,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add 'countered' to delivered VALID_TRANSITIONS — allows Mark as Countered from delivered stage
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit af500b5e98c82b15abcd1c774e0ec9aa5979a2e4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** af500b5e98c82b15abcd1c774e0ec9aa5979a2e4
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** Added `'countered'` to the `VALID_TRANSITIONS` array for the `delivered` stage, enabling the "Mark as Countered" action from that stage.
+
+**Why it broke:** The transition from `delivered` to `countered` was missing from the allowed state transitions list. The system enforced valid transitions, so the action was silently blocked or caused an error.
+
+**Reusable takeaway:** When implementing state machines or workflow engines, always audit all valid transitions between every pair of states—especially for "reverse" or "correction" flows (e.g., delivered → countered). Missing transitions in validation logic can silently block legitimate user actions.
+
+---
+*Original commit message: fix: add 'countered' to delivered VALID_TRANSITIONS — allows Mark as Countered from delivered stage*
+
+#### Lesson Learned
+
+**What was fixed:** Added `'countered'` to the `VALID_TRANSITIONS` array for the `delivered` stage, enabling the "Mark as Countered" action from that stage.
+
+**Why it broke:** The transition from `delivered` to `countered` was missing from the allowed state transitions list. The system enforced valid transitions, so the action was silently blocked or caused an error.
+
+**Reusable takeaway:** When implementing state machines or workflow engines, always audit all valid transitions between every pair of states—especially for "reverse" or "correction" flows (e.g., delivered → countered). Missing transitions in validation logic can silently block legitimate user actions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

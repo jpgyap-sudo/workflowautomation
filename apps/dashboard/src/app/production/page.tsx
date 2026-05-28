@@ -1127,6 +1127,36 @@ function ItemStatusBadge({ status }: { status: string | null | undefined }) {
   );
 }
 
+/** Badge for en_route_status */
+function EnRouteStatusBadge({ status }: { status: string | null | undefined }) {
+  if (status === 'not_yet' || !status) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500">
+        <Clock className="h-3 w-3" /> Pending Dispatch
+      </span>
+    );
+  }
+  if (status === 'en_route') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700">
+        <Truck className="h-3 w-3" /> En Route
+      </span>
+    );
+  }
+  if (status === 'arrived') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+        <CheckCircle className="h-3 w-3" /> Arrived
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500">
+      {status ?? 'Unknown'}
+    </span>
+  );
+}
+
 /** Compute estimated finish date for an item based on its production days */
 function getItemEstimatedFinishDate(item: OrderItem): Date | null {
   if (!item.estimated_production_days || item.production_status === 'pending') return null;
@@ -1163,6 +1193,14 @@ interface ProductionItemSectionProps {
   showDelayedButton?: boolean;
   /** Show bulk "Finish All" button for an order */
   showBulkFinishButton?: boolean;
+  /** Show En Route button for items (dispatch pending) */
+  showEnRouteButton?: boolean;
+  /** Show Arrived button for items (in transit) */
+  showArrivedButton?: boolean;
+  /** Show bulk En Route All button */
+  showBulkEnRouteButton?: boolean;
+  /** Show bulk Arrive All button */
+  showBulkArriveButton?: boolean;
   /** Callback when Start is clicked for an item */
   onItemStart?: (order: Order, item: OrderItem) => void;
   /** Callback when Start is confirmed with production days */
@@ -1175,6 +1213,18 @@ interface ProductionItemSectionProps {
   onBulkFinish?: (order: Order) => void;
   /** Callback when Finish Selected is clicked with specific item IDs */
   onBulkFinishSelected?: (order: Order, itemIds: string[]) => void;
+  /** Callback when En Route is clicked for an item */
+  onItemEnRoute?: (order: Order, item: OrderItem) => void;
+  /** Callback when Arrived is clicked for an item */
+  onItemArrived?: (order: Order, item: OrderItem) => void;
+  /** Callback when bulk En Route All is clicked for an order */
+  onBulkEnRoute?: (order: Order, items: OrderItem[], refreshCallback?: () => void) => void;
+  /** Callback when bulk En Route Selected is clicked */
+  onBulkEnRouteSelected?: (order: Order, itemIds: string[], refreshCallback?: () => void) => void;
+  /** Callback when bulk Arrive All is clicked for an order */
+  onBulkArriveAll?: (order: Order, refreshCallback?: () => void) => void;
+  /** Callback when bulk Arrive Selected is clicked */
+  onBulkArriveSelected?: (order: Order, itemIds: string[], refreshCallback?: () => void) => void;
   /** Callback to view files */
   onViewFiles?: (o: Order) => void;
   /** Callback to edit */
@@ -1192,7 +1242,9 @@ function ProductionItemSection({
   orders, isLoading, error, onRetry, emptyText,
   itemFilter,
   showStartButton, showFinishedButton, showDelayedButton, showBulkFinishButton,
+  showEnRouteButton, showArrivedButton, showBulkEnRouteButton, showBulkArriveButton,
   onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish, onBulkFinishSelected,
+  onItemEnRoute, onItemArrived, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
   onFinishProduction,
@@ -1436,6 +1488,9 @@ function ProductionItemSection({
                                     <th className="px-3 py-2">Item</th>
                                     <th className="px-3 py-2">Qty</th>
                                     <th className="px-3 py-2">Status</th>
+                                    {(showEnRouteButton || showArrivedButton || showBulkEnRouteButton || showBulkArriveButton) && (
+                                      <th className="px-3 py-2">En Route Status</th>
+                                    )}
                                     <th className="px-3 py-2">Est. Finish Date</th>
                                     <th className="px-3 py-2">Actions</th>
                                   </tr>
@@ -1467,6 +1522,11 @@ function ProductionItemSection({
                                         <td className="px-3 py-2">
                                           <ItemStatusBadge status={item.production_status} />
                                         </td>
+                                        {(showEnRouteButton || showArrivedButton || showBulkEnRouteButton || showBulkArriveButton) && (
+                                          <td className="px-3 py-2">
+                                            <EnRouteStatusBadge status={item.en_route_status} />
+                                          </td>
+                                        )}
                                         <td className="px-3 py-2 text-gray-600">
                                           {estFinishDate ? (
                                             <span className="text-[11px]">{formatDate(estFinishDate)}</span>
@@ -1504,6 +1564,26 @@ function ProductionItemSection({
                                                 className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
                                               >
                                                 {updatingItemId === item.id ? 'Saving...' : '⚠ Delayed'}
+                                              </button>
+                                            )}
+                                            {showEnRouteButton && item.production_status === 'finished' && item.en_route_status !== 'en_route' && item.en_route_status !== 'arrived' && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={(e) => { e.stopPropagation(); onItemEnRoute?.(order, item); }}
+                                                className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Saving...' : '🚚 En Route'}
+                                              </button>
+                                            )}
+                                            {showArrivedButton && item.en_route_status === 'en_route' && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={(e) => { e.stopPropagation(); onItemArrived?.(order, item); }}
+                                                className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Saving...' : '📦 Arrived'}
                                               </button>
                                             )}
                                           </div>
@@ -2911,6 +2991,8 @@ export default function ProductionPage() {
   const filteredFinishedOrders = filterByClient(finishedOrders);
   const filteredEnRouteOrders = filterByClient(enRouteOrders);
   const filteredEnRouteVerificationStageOrders = filterByClient(enRouteVerificationStageOrders);
+  const filteredEnRouteVerificationOrders = filterByClient(enRouteVerificationOrders);
+  const filteredEnRouteTrackingOrders = filterByClient(enRouteTrackingOrders);
   const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
   const filteredInProgressMergedOrders = dedupeOrders([...filteredInProgressStageOrders, ...filteredPartialOrders]);
@@ -3072,92 +3154,69 @@ export default function ProductionPage() {
         onBulkEnRouteSelected={handleBulkEnRouteSelected}
       />
 
-      {/* Dispatch Pending — some items still not confirmed en route */}
-      <OrderSection
+      {/* Dispatch Pending — items not yet en route (from en_route stage orders) */}
+      <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-amber-500" />}
         title="Dispatch Pending"
-        count={filteredEnRouteOrders.length}
+        count={filteredEnRouteVerificationOrders.length}
         countBg="bg-amber-100" countText="text-amber-700"
-        orders={filteredEnRouteOrders} isLoading={loadingEnRoute} error={errorEnRoute}
+        orders={filteredEnRouteVerificationOrders}
+        isLoading={loadingEnRoute}
+        error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
         emptyText="No orders pending dispatch confirmation"
-      >
-        {(order) => (
-          <>
-            <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
-              onConfirmEnRoute={handleConfirmEnRoute}
-              onGrantException={handleGrantException}
-              onRevokeException={handleRevokeException}
-              onItemProductionStatus={makeItemProductionStatusHandler(order)}
-              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
-              onBulkEnRoute={handleBulkEnRoute}
-              onBulkEnRouteSelected={handleBulkEnRouteSelected}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
+        itemFilter={(item) => item.en_route_status === 'not_yet' || !item.en_route_status}
+        showEnRouteButton={true}
+        showBulkEnRouteButton={true}
+        onItemEnRoute={(order, item) => handleItemEnRouteStatusAction(order.id, item, 'en_route')}
+        onBulkEnRoute={handleBulkEnRoute}
+        onBulkEnRouteSelected={handleBulkEnRouteSelected}
+        onViewFiles={handleViewFiles}
+        onEdit={handleEdit}
+        onDelete={handleDeleteClick}
+        updatingItemId={updatingItemId}
+      />
 
-      {/* En Route — In Transit — all items confirmed en route, awaiting arrival */}
-      <OrderSection
+      {/* En Route — In Transit — items en route, awaiting arrival */}
+      <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-sky-500" />}
         title="En Route — In Transit"
-        count={filteredEnRouteVerificationStageOrders.length}
+        count={filteredEnRouteTrackingOrders.length}
         countBg="bg-sky-100" countText="text-sky-700"
-        orders={filteredEnRouteVerificationStageOrders} isLoading={loadingEnRoute} error={errorEnRoute}
+        orders={filteredEnRouteTrackingOrders}
+        isLoading={loadingEnRoute}
+        error={errorEnRoute}
         onRetry={() => mutateEnRoute()}
         emptyText="No orders in transit"
-      >
-        {(order) => (
-          <>
-            <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
-              onConfirmEnRoute={handleConfirmEnRoute}
-              onGrantException={handleGrantException}
-              onRevokeException={handleRevokeException}
-              onItemProductionStatus={makeItemProductionStatusHandler(order)}
-              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
-              onBulkArriveAll={handleBulkArriveAll}
-              onBulkArriveSelected={handleBulkArriveSelected}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
+        itemFilter={(item) => item.en_route_status === 'en_route'}
+        showArrivedButton={true}
+        showBulkArriveButton={true}
+        onItemArrived={(order, item) => handleItemEnRouteStatusAction(order.id, item, 'arrived')}
+        onBulkArriveAll={handleBulkArriveAll}
+        onBulkArriveSelected={handleBulkArriveSelected}
+        onViewFiles={handleViewFiles}
+        onEdit={handleEdit}
+        onDelete={handleDeleteClick}
+        updatingItemId={updatingItemId}
+      />
 
-      {/* Arrival Verification — all items dispatched, waiting for inventory arrival */}
-      <OrderSection
+      {/* Arrival Verification — items arrived, awaiting inventory verification */}
+      <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-blue-500" />}
         title="Arrival Verification"
         count={filteredEnRouteVerificationStageOrders.length}
         countBg="bg-blue-100" countText="text-blue-700"
-        orders={filteredEnRouteVerificationStageOrders} isLoading={loadingEnRouteStage} error={errorEnRouteStage}
+        orders={filteredEnRouteVerificationStageOrders}
+        isLoading={loadingEnRouteStage}
+        error={errorEnRouteStage}
         onRetry={() => mutateEnRouteStage()}
         emptyText="No orders awaiting arrival verification"
-      >
-        {(order) => (
-          <>
-            <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles}
-              onProceedInventoryVerification={handleProceedInventoryVerification}
-              onGrantException={handleGrantException}
-              onRevokeException={handleRevokeException}
-              onItemProductionStatus={makeItemProductionStatusHandler(order)}
-              onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
-              onBulkArriveAll={handleBulkArriveAll}
-              onBulkArriveSelected={handleBulkArriveSelected}
-            />
-            {editingOrder?.id === order.id && (
-              <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
-            )}
-          </>
-        )}
-      </OrderSection>
+        itemFilter={(item) => item.en_route_status === 'arrived'}
+        onViewFiles={handleViewFiles}
+        onEdit={handleEdit}
+        onDelete={handleDeleteClick}
+        updatingItemId={updatingItemId}
+      />
 
       {/* Production Days Modal */}
       {prodDaysModal.open && prodDaysModal.order && (
