@@ -41,6 +41,7 @@
 | `f75b128` | Roo (Code) | feat: MN Design Studio gap fix — special case now advances to delivery_pending instead of directly to countered. New "Verify Countered" button in countered section creates payment_counter record. Renamed "Delivery Invoice" to "Delivery Receipt" in payment counter modal. | ✅ VPS `f75b128` |
 | `0fce038` | Roo (Code) | feat: purchasing tab production exception — deposit slip upload + AI extraction + mark balance paid with upload. Delivery tab redesign — simplified delivery section (only "Mark as Countered"), restructured countered section ("Mark Payment Received" + upload delivery receipt/sales invoice), "Order Complete" button in payment confirmed. Gap 3: migration 044 rename delivery_invoice → delivery_receipt. Gap 4: hide "Verify Countered" when counter exists. Gap analysis: all features + Telegram reminders confirmed compatible. | ✅ VPS `0fce038` |
 | `af500b5` | Roo (Code) | fix: add 'countered' to delivered VALID_TRANSITIONS — allows Mark as Countered from delivered stage | ✅ VPS `af500b5` |
+| `d06914c` | Roo (Code) | feat: itemized progression across production tab — converted Dispatch Pending, En Route — In Transit, Arrival Verification from OrderSection (order-level) to ProductionItemSection (item-level). Added EnRouteStatusBadge component, en route status column in table, filtered variables for enRouteVerificationOrders and enRouteTrackingOrders. | ✅ VPS `d06914c` |
 
 ## 2026-05-26
 
