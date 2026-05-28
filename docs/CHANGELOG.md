@@ -56,6 +56,7 @@
 | | Roo (Code) | feat: Payment Received optional upload + extract — delivery tab "Confirm Payment →" shows optional deposit slip upload + AI extraction modal before confirming | ❌ |
 | | Roo (Code) | feat: Payment Confirmed sync with Balance Verified — new API endpoint `POST /orders/:id/confirm-payment` that sets `balance_verified=TRUE`, marks payments verified, creates stage_updates, completes reminders, triggers agents, notifies Telegram groups | ❌ |
 | | Roo (Code) | feat: wire Payment Confirmed across all tabs — collection tab uses `confirmPayment` API; actions tab `MarkPaymentConfirmedForm` uses `confirmPayment`; calendar tab uses `confirmPayment` for `payment_confirmed` target; telegram bot `payment:confirmed` callback uses `confirmPayment` API endpoint | ❌ |
+| | Roo (Code) | fix: schedule Telegram group no messages — 3 gaps fixed: (1) POST/PATCH/DELETE /calendar/schedules now notify SCHEDULE_GROUP_CHAT_ID (was only notifying escalation group); (2) added broadcastTodaySchedules() to reminder scheduler — sends "Today's Schedule" message once per day to schedule group; (3) wired broadcast into startup + tick loop | ❌ |
 
 ## 2026-05-26
 

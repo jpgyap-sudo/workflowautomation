@@ -88,6 +88,7 @@ const _TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ESCALATION_CHAT_ID = process.env.ESCALATION_GROUP_CHAT_ID ?? null;
 const COLLECTION_CHAT_ID = process.env.COLLECTION_GROUP_CHAT_ID ?? null;
 const DELIVERY_CHAT_ID = process.env.DELIVERY_GROUP_CHAT_ID ?? null;
+const SCHEDULE_GROUP_CHAT_ID = process.env.SCHEDULE_GROUP_CHAT_ID ?? null;
 
 /**
  * Detect if an order is progressing earlier than its estimated schedule
@@ -11310,6 +11311,15 @@ app.post('/calendar/schedules', async (request, reply) => {
     `Date: *${body.schedule_date}*\nTitle: ${body.title}${body.schedule_time ? `\nTime: ${body.schedule_time}` : ''}`,
     userEmail ?? body.created_by ?? null,
   );
+  // Also notify the schedule group chat so members see new schedules in real-time
+  if (SCHEDULE_GROUP_CHAT_ID) {
+    const timeStr = body.schedule_time ? ` at ${body.schedule_time}` : '';
+    const byStr = userEmail ?? body.created_by ?? 'Telegram bot';
+    const msg = `📅 <b>New Schedule</b>\n\n<b>${body.title}</b>\n📆 ${body.schedule_date}${timeStr}${body.description ? `\n\n${body.description}` : ''}\n\n👤 By: ${byStr}`;
+    setImmediate(() => {
+      notifyGroupChat(SCHEDULE_GROUP_CHAT_ID, msg);
+    });
+  }
   return reply.send(rows[0]);
 });
 
@@ -11387,6 +11397,17 @@ app.patch('/calendar/schedules/:id', async (request, reply) => {
     `Schedule ID: *${params.id.slice(0, 8)}...*${body.title ? `\nTitle: ${body.title}` : ''}`,
     userEmail,
   );
+  // Notify schedule group about the update
+  if (SCHEDULE_GROUP_CHAT_ID && userEmail) {
+    const updated = rows[0] as any;
+    const title = body.title ?? updated.title ?? 'Unknown';
+    const dateStr = body.schedule_date ?? updated.schedule_date ?? '';
+    const timeStr = body.schedule_time ?? updated.schedule_time ?? '';
+    const msg = `✏️ <b>Schedule Updated</b>\n\n<b>${title}</b>\n📆 ${dateStr}${timeStr ? ` at ${timeStr}` : ''}\n\n👤 By: ${userEmail}`;
+    setImmediate(() => {
+      notifyGroupChat(SCHEDULE_GROUP_CHAT_ID, msg);
+    });
+  }
   return reply.send(rows[0]);
 });
 
@@ -11423,6 +11444,14 @@ app.delete('/calendar/schedules/:id', async (request, reply) => {
     `Schedule ID: *${params.id.slice(0, 8)}...*\nTitle: ${rows[0].title ?? 'N/A'}`,
     userEmail,
   );
+  // Notify schedule group about the cancellation
+  if (SCHEDULE_GROUP_CHAT_ID && userEmail) {
+    const title = rows[0]?.title ?? 'Unknown';
+    const msg = `🗑️ <b>Schedule Cancelled</b>\n\n<b>${title}</b>\n\n👤 By: ${userEmail}`;
+    setImmediate(() => {
+      notifyGroupChat(SCHEDULE_GROUP_CHAT_ID, msg);
+    });
+  }
   return reply.send({ ok: true });
 });
 

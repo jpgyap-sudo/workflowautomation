@@ -202,6 +202,63 @@ async function processDueScheduleReminders(): Promise<number> {
   return sent;
 }
 
+/**
+ * Track the last date we broadcast "today's schedules" to avoid spamming.
+ * Resets each calendar day.
+ */
+let lastScheduleBroadcastDate = '';
+
+/**
+ * Broadcast today's active schedules to the schedule group chat.
+ * Runs once per day on the first reminder tick after midnight PHT.
+ */
+async function broadcastTodaySchedules(): Promise<void> {
+  const scheduleGroupChatId = process.env.SCHEDULE_GROUP_CHAT_ID;
+  if (!scheduleGroupChatId) return;
+
+  const now = new Date();
+  // Use Asia/Manila timezone for the date check
+  const phtOffset = 8 * 60; // UTC+8 in minutes
+  const phtDate = new Date(now.getTime() + phtOffset * 60 * 1000);
+  const todayStr = phtDate.toISOString().slice(0, 10);
+
+  // Only broadcast once per calendar day (PHT)
+  if (lastScheduleBroadcastDate === todayStr) return;
+  lastScheduleBroadcastDate = todayStr;
+
+  try {
+    const rows = await query(
+      `SELECT title, description, schedule_date, schedule_time, end_time,
+              is_all_day, color, category, created_by
+       FROM calendar_schedules
+       WHERE status = 'active'
+         AND schedule_date = $1::date
+       ORDER BY schedule_time ASC NULLS LAST, created_at ASC`,
+      [todayStr]
+    );
+
+    if (!rows || rows.length === 0) {
+      // Still send a "no schedules" message so the group knows the bot is alive
+      await sendTelegramMessage(
+        scheduleGroupChatId,
+        `📅 <b>Today's Schedule — ${todayStr}</b>\n\nNo schedules for today. ✅`
+      );
+      return;
+    }
+
+    const lines = rows.map((s: any, i: number) => {
+      const timeStr = s.schedule_time ? `🕐 ${s.schedule_time.slice(0, 5)}` : '📅';
+      const descStr = s.description ? `\n   ${s.description.substring(0, 100)}` : '';
+      return `${i + 1}. ${timeStr} <b>${s.title}</b>${descStr}`;
+    });
+
+    const msg = `📅 <b>Today's Schedule — ${todayStr}</b>\n\n${lines.join('\n')}\n\n${rows.length} schedule(s) for today.`;
+    await sendTelegramMessage(scheduleGroupChatId, msg);
+  } catch (err) {
+    console.error('[broadcastTodaySchedules] Error:', err);
+  }
+}
+
 export async function processDueReminders(): Promise<number> {
   const now = new Date().toISOString();
 
@@ -940,6 +997,8 @@ async function runReminderTick(intervalMs: number): Promise<void> {
     if (count > 0) {
       console.log(`[ReminderScheduler] Sent ${count} reminder(s)`);
     }
+    // Broadcast today's schedules once per day
+    await broadcastTodaySchedules();
   } catch (err) {
     console.error('[ReminderScheduler] Error:', err);
   } finally {
@@ -958,9 +1017,16 @@ export function startReminderScheduler(intervalMs: number = 60_000): void {
   reminderShuttingDown = false;
 
   // Run immediately on start
-  processDueReminders().then((count) => {
-    if (count > 0) console.log(`[ReminderScheduler] Sent ${count} reminder(s) on startup`);
-  }).finally(() => {
+  (async () => {
+    try {
+      const count = await processDueReminders();
+      if (count > 0) console.log(`[ReminderScheduler] Sent ${count} reminder(s) on startup`);
+      // Broadcast today's schedules on startup too
+      await broadcastTodaySchedules();
+    } catch (err) {
+      console.error('[ReminderScheduler] Startup error:', err);
+    }
+  })().finally(() => {
     scheduleNext(intervalMs);
   });
 }
