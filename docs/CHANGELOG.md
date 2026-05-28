@@ -38,7 +38,7 @@
 | `6908a3f` | Roo (Code) | fix: E2E gap analysis — 4 gaps fixed: (1) confirm-inventory-arrived preserves inventory_verification_pct for partial delivery orders; (2) removed stale Partial Delivery button from Stock Prep section; (3) added en_route_verification to allowed stages for partial delivery; (4) remaining_qty set for ALL items in partial completion. | ❌ |
 | `b888d8b` | Roo (Code) | feat: production tab gap fix — removed "Complete (Partial)" buttons, let items progress individually. Orders stay visible until ALL items advance. | ❌ |
 | `b888d8b` | Roo (Code) | feat: early inventory verification for arrived items at en_route_verification stage — server endpoints relaxed (5 endpoints), inventory verification page allows en_route_verification, InventoryVerificationSection shows en_route_verification orders with arrived items + "Early verification" badge, production page adds "Verify in Inventory" link on arrived items, telegram notifications and reminders updated with inventory verification links | ❌ |
-| | Roo (Code) | feat: MN Design Studio gap fix — special case now advances to delivery_pending instead of directly to countered. New "Verify Countered" button in countered section creates payment_counter record. Renamed "Delivery Invoice" to "Delivery Receipt" in payment counter modal. | ❌ |
+| `f75b128` | Roo (Code) | feat: MN Design Studio gap fix — special case now advances to delivery_pending instead of directly to countered. New "Verify Countered" button in countered section creates payment_counter record. Renamed "Delivery Invoice" to "Delivery Receipt" in payment counter modal. | ✅ VPS `f75b128` |
 
 ## 2026-05-26
 
