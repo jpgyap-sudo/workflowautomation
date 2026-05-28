@@ -44,6 +44,7 @@
 | `d06914c` | Roo (Code) | feat: itemized progression across production tab — converted Dispatch Pending, En Route — In Transit, Arrival Verification from OrderSection (order-level) to ProductionItemSection (item-level). Added EnRouteStatusBadge component, en route status column in table, filtered variables for enRouteVerificationOrders and enRouteTrackingOrders. | ✅ VPS `d06914c` |
 | `3812f7d` | Roo (Code) | feat: add --local-build flag to deploy-agent.mjs — builds Docker images locally, saves as tar, SCPs to VPS, loads images, restarts containers. One-command local build + deploy workflow. | ✅ VPS `3812f7d` |
 | `0faf8a8` | Roo (Code) | fix: en_route filtering gap — orders with partial en_route progress now show their 'en_route' items in "En Route — In Transit" section. Created filteredEnRouteInTransitOrders combining enRouteVerificationOrders + enRouteTrackingOrders. | ✅ VPS `0faf8a8` |
+| `d7adc1e` | Roo (Code) | fix: chat widget drag — useCallback + preventDefault + positionRef to fix stale closure in drag handlers. Wrapped onDragStart/onDragMove/onDragEnd in useCallback with stable refs for document event listeners. Added e.preventDefault() to prevent browser default drag behavior. Added positionRef to avoid stale closure on position state. Added cleanup useEffect for document listeners on unmount. | ✅ VPS `d7adc1e` |
 
 ## 2026-05-26
 
