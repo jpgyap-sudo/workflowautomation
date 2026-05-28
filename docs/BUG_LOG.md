@@ -63,3 +63,12 @@
 - **Symptoms:** Dashboard build failed because `orders/page.tsx` used `recordDepositWithFile` without importing it and createOrder typing omitted `items`; Telegram bot build failed because `awaiting_bug_order_pick` was used but missing from the `UserStep` union.
 - **Fix:** Added the missing dashboard import, typed `createOrder.items`, and added `awaiting_bug_order_pick` to the Telegram bot state union.
 - **Status:** Fixed locally; builds pass.
+
+## 2026-05-28 — Telegram OTP not working ("chat not found")
+
+- **Found by:** User report
+- **Symptom:** Dashboard OTP modal showed "Telegram unavailable" and fell back to email OTP. API logs showed `[action-code] Telegram send failed: {"ok":false,"error_code":400,"description":"Bad Request: chat not found"}` for escalation group chat `-5110641004`. Also affected agent notifications for delivery group (`-1003851332810`) and collection group (`-5206645324`).
+- **Root cause:** The configured bot (@atelier88_bot, token `8972611688:AAEP...`) was **not a member** of the escalation, delivery, or collection group chats. The `ACTION_VERIFY_CHAT_ID` fallback chain resolved to `ESCALATION_CHAT_ID` = `-5110641004`, and Telegram returned 400 when the bot tried to send the OTP code to a chat it wasn't in.
+- **Fix:** Updated `TELEGRAM_BOT_TOKEN` from `8972611688:AAEP...` (@atelier88_bot) to `8632443344:AAH8...` (@homeatelier88_bot — the correct bot that IS a member of all group chats) in both local `.env` and VPS `.env`. Restarted `api` and `telegram-bot` containers on VPS.
+- **Extension:** Roo (Code)
+- **Status:** ✅ Verified — no "chat not found" errors in API logs after restart. Bot launched successfully with webhook set.

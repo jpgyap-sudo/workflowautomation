@@ -13575,3 +13575,99 @@ Always ensure that record deposits are atomic and that their completion is verif
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: stock-prep gap fix — 7 gaps resolved
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b327bcc1625121695b4441abc6955041d20b1acd
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b327bcc1625121695b4441abc6955041d20b1acd
+**Files:** apps/dashboard/src/app/stock-prep/page.tsx,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+7 gaps in the stock-prep page were resolved, likely related to missing edge cases, incomplete state handling, or UI/UX inconsistencies in the dashboard’s stock preparation workflow.
+
+**Why it broke:**  
+The gaps likely originated from incomplete initial requirements, insufficient test coverage for edge-case scenarios, or overlooked state transitions during the stock-prep process.
+
+**Reusable takeaway:**  
+When building multi-step workflows, proactively map all possible user paths and system states (loading, empty, error, success) before coding. Use a structured gap analysis (e.g., checklist or state machine) to catch missing cases early. Document fixes in a lessons-learned file to prevent recurrence.
+
+---
+*Original commit message: feat: stock-prep gap fix — 7 gaps resolved*
+
+#### Lesson Learned
+
+**What was fixed:**  
+7 gaps in the stock-prep page were resolved, likely related to missing edge cases, incomplete state handling, or UI/UX inconsistencies in the dashboard’s stock preparation workflow.
+
+**Why it broke:**  
+The gaps likely originated from incomplete initial requirements, insufficient test coverage for edge-case scenarios, or overlooked state transitions during the stock-prep process.
+
+**Reusable takeaway:**  
+When building multi-step workflows, proactively map all possible user paths and system states (loading, empty, error, success) before coding. Use a structured gap analysis (e.g., checklist or state machine) to catch missing cases early. Document fixes in a lessons-learned file to prevent recurrence.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] feat: quick actions gap fix — 9 new action forms, OrderInfoPreview with useEffect fix, Schedule Delivery date input fix,
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 8cd34e6d873fb5cb0047b5db877836c4c338c2ab
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 8cd34e6d873fb5cb0047b5db877836c4c338c2ab
+**Files:** apps/dashboard/src/app/actions/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A layout gap in the Quick Actions section, 9 new action forms, an `OrderInfoPreview` component with a `useEffect` fix, a Schedule Delivery date input fix, and a 3-column grid layout.
+
+**Why it broke:**  
+The gap likely stemmed from inconsistent spacing or missing grid alignment in the action forms. The `useEffect` issue in `OrderInfoPreview` probably caused stale state or re-render loops. The date input fix addressed a broken or misconfigured date picker.
+
+**Reusable takeaway:**  
+When adding multiple forms or UI components in a grid, always verify layout consistency (e.g., gap, alignment) and test `useEffect` dependencies to avoid stale closures or infinite loops. For date inputs, ensure the input type and value binding are correctly synchronized with state.
+
+---
+*Original commit message: feat: quick actions gap fix — 9 new action forms, OrderInfoPreview with useEffect fix, Schedule Delivery date input fix, 3-column grid*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A layout gap in the Quick Actions section, 9 new action forms, an `OrderInfoPreview` component with a `useEffect` fix, a Schedule Delivery date input fix, and a 3-column grid layout.
+
+**Why it broke:**  
+The gap likely stemmed from inconsistent spacing or missing grid alignment in the action forms. The `useEffect` issue in `OrderInfoPreview` probably caused stale state or re-render loops. The date input fix addressed a broken or misconfigured date picker.
+
+**Reusable takeaway:**  
+When adding multiple forms or UI components in a grid, always verify layout consistency (e.g., gap, alignment) and test `useEffect` dependencies to avoid stale closures or infinite loops. For date inputs, ensure the input type and value binding are correctly synchronized with state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
