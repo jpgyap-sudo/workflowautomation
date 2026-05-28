@@ -198,6 +198,9 @@ export default function DeliveryPage() {
     pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
   
+  // Track which orders have been verified as countered (to hide "Verify Countered" button)
+  const [verifiedCounterIds, setVerifiedCounterIds] = useState<Set<string>>(new Set());
+  
   // ── Verify Countered Modal ─────────────────────────────────────────
   const [verifyCounteredModal, setVerifyCounteredModal] = useState<{
     open: boolean;
@@ -220,11 +223,11 @@ export default function DeliveryPage() {
     order: Order | null;
     counter: PaymentCounter | null;
     salesInvoiceStatus: 'pending' | 'received';
-    deliveryInvoiceStatus: 'pending' | 'received';
+    deliveryReceiptStatus: 'pending' | 'received';
     receivedDate: string;
     deliveryDate: string;
     salesInvoiceFile: File | null;
-    deliveryInvoiceFile: File | null;
+    deliveryReceiptFile: File | null;
     loading: boolean;
     submitting: boolean;
   }>({
@@ -232,11 +235,11 @@ export default function DeliveryPage() {
     order: null,
     counter: null,
     salesInvoiceStatus: 'pending',
-    deliveryInvoiceStatus: 'pending',
+    deliveryReceiptStatus: 'pending',
     receivedDate: '',
     deliveryDate: '',
     salesInvoiceFile: null,
-    deliveryInvoiceFile: null,
+    deliveryReceiptFile: null,
     loading: false,
     submitting: false,
   });
@@ -715,6 +718,7 @@ export default function DeliveryPage() {
         notes: verifyCounteredModal.notes,
         action_token: actionToken,
       });
+      setVerifiedCounterIds((prev) => new Set(prev).add(order.id));
       setVerifyCounteredModal((prev) => ({ ...prev, open: false, submitting: false }));
       mutateAll();
     } catch (err: any) {
@@ -735,7 +739,7 @@ export default function DeliveryPage() {
           ...prev,
           counter,
           salesInvoiceStatus: counter.sales_invoice_status,
-          deliveryInvoiceStatus: counter.delivery_invoice_status,
+          deliveryReceiptStatus: counter.delivery_receipt_status,
           receivedDate: counter.received_date ?? '',
           deliveryDate: counter.delivery_date ?? '',
           loading: false,
@@ -778,24 +782,24 @@ export default function DeliveryPage() {
       }
 
       let salesInvoiceFileId: string | null = paymentCounterModal.counter?.sales_invoice_file_id ?? null;
-      let deliveryInvoiceFileId: string | null = paymentCounterModal.counter?.delivery_invoice_file_id ?? null;
+      let deliveryReceiptFileId: string | null = paymentCounterModal.counter?.delivery_receipt_file_id ?? null;
 
       if (paymentCounterModal.salesInvoiceFile) {
         salesInvoiceFileId = await uploadFileAsOrderFile(paymentCounterModal.salesInvoiceFile);
       }
-      if (paymentCounterModal.deliveryInvoiceFile) {
-        deliveryInvoiceFileId = await uploadFileAsOrderFile(paymentCounterModal.deliveryInvoiceFile);
+      if (paymentCounterModal.deliveryReceiptFile) {
+        deliveryReceiptFileId = await uploadFileAsOrderFile(paymentCounterModal.deliveryReceiptFile);
       }
 
       // Trigger OTP for payment counter update
       (window as any).__pendingActionOrder = order;
       (window as any).__pendingPaymentCounterData = {
         salesInvoiceStatus: paymentCounterModal.salesInvoiceStatus,
-        deliveryInvoiceStatus: paymentCounterModal.deliveryInvoiceStatus,
+        deliveryReceiptStatus: paymentCounterModal.deliveryReceiptStatus,
         receivedDate: paymentCounterModal.receivedDate || null,
         deliveryDate: paymentCounterModal.deliveryDate || null,
         salesInvoiceFileId,
-        deliveryInvoiceFileId,
+        deliveryReceiptFileId,
       };
       setOtpModal({
         open: true,
@@ -817,11 +821,11 @@ export default function DeliveryPage() {
     try {
       await updatePaymentCounter(order.id, {
         sales_invoice_status: data.salesInvoiceStatus,
-        delivery_invoice_status: data.deliveryInvoiceStatus,
+        delivery_receipt_status: data.deliveryReceiptStatus,
         received_date: data.receivedDate,
         delivery_date: data.deliveryDate,
         sales_invoice_file_id: data.salesInvoiceFileId,
-        delivery_invoice_file_id: data.deliveryInvoiceFileId,
+        delivery_receipt_file_id: data.deliveryReceiptFileId,
         action_token: actionToken,
       });
       setPaymentCounterModal((prev) => ({ ...prev, open: false }));
@@ -1655,6 +1659,26 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Schedule Delivery'}
                       </button>
+                      {isSpecialCase && (
+                        <>
+                          <button
+                            onClick={() => handleMarkDelivered(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                            title="Skip schedule — mark as delivered directly"
+                          >
+                            <PackageCheck className="h-3.5 w-3.5 inline mr-0.5" />Deliver
+                          </button>
+                          <button
+                            onClick={() => handleMarkCountered(order)}
+                            disabled={actionLoading === order.id}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
+                            title="Skip schedule — mark as countered directly"
+                          >
+                            <DollarSign className="h-3.5 w-3.5 inline mr-0.5" />Counter
+                          </button>
+                        </>
+                      )}
                       <RowActions order={order} />
                     </div>
                   </div>
@@ -1839,32 +1863,14 @@ export default function DeliveryPage() {
                           <CheckCircle2 className="h-4 w-4" />
                         </button>
                       ) : (
-                        <>
-                          <button
-                            onClick={() => handleMarkPaymentReceived(order)}
-                            disabled={actionLoading === order.id}
-                            className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
-                            title="Mark payment received"
-                          >
-                            <CreditCard className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleMarkPaymentConfirmed(order)}
-                            disabled={actionLoading === order.id}
-                            className="rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40"
-                            title="Mark payment confirmed"
-                          >
-                            <ThumbsUp className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleMarkCountered(order)}
-                            disabled={actionLoading === order.id}
-                            className="rounded-lg p-1.5 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
-                            title="Mark as countered (awaiting payment)"
-                          >
-                            <DollarSign className="h-4 w-4" />
-                          </button>
-                        </>
+                        <button
+                          onClick={() => handleMarkCountered(order)}
+                          disabled={actionLoading === order.id}
+                          className="rounded-lg px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
+                          title="Mark as countered (awaiting payment)"
+                        >
+                          <DollarSign className="h-3.5 w-3.5 inline mr-1" />Mark as Countered
+                        </button>
                       )}
                       <RowActions order={order} />
                     </div>
@@ -1926,20 +1932,12 @@ export default function DeliveryPage() {
                       <button
                         onClick={() => handleMarkPaymentReceived(order)}
                         disabled={actionLoading === order.id}
-                        className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
-                        title="Mark payment received"
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                        title="Mark payment received and advance to Payment Received stage"
                       >
-                        <CreditCard className="h-4 w-4" />
+                        <CreditCard className="h-3.5 w-3.5 inline mr-1" />Mark Payment Received
                       </button>
-                      <button
-                        onClick={() => handleMarkPaymentConfirmed(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40"
-                        title="Mark payment confirmed"
-                      >
-                        <ThumbsUp className="h-4 w-4" />
-                      </button>
-                      {isSpecialCase && (
+                      {isSpecialCase && !verifiedCounterIds.has(order.id) && (
                         <button
                           onClick={() => handleVerifyCountered(order)}
                           disabled={actionLoading === order.id}
@@ -1953,9 +1951,9 @@ export default function DeliveryPage() {
                         onClick={() => handleOpenPaymentCounter(order)}
                         disabled={actionLoading === order.id}
                         className="rounded-lg px-2 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40"
-                        title="Update payment counter (invoices, dates)"
+                        title="Upload delivery receipt and sales invoice as records for the order"
                       >
-                        <FileText className="h-3.5 w-3.5 inline mr-0.5" />Payment Counter
+                        <Upload className="h-3.5 w-3.5 inline mr-0.5" />Upload Invoice / Receipt
                       </button>
                       <RowActions order={order} />
                     </div>
@@ -2060,10 +2058,10 @@ export default function DeliveryPage() {
                       <button
                         onClick={() => handleAdvancePaymentConfirmed(order)}
                         disabled={actionLoading === order.id}
-                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
-                        title="Complete order"
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+                        title="Mark order as complete"
                       >
-                        {actionLoading === order.id ? '…' : 'Complete →'}
+                        <CheckCircle2 className="h-3.5 w-3.5 inline mr-1" />Order Complete
                       </button>
                       <RowActions order={order} />
                     </div>
@@ -2570,9 +2568,9 @@ export default function DeliveryPage() {
                     <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Receipt Status</label>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceStatus: 'pending' }))}
+                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryReceiptStatus: 'pending' }))}
                         className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                          paymentCounterModal.deliveryInvoiceStatus === 'pending'
+                          paymentCounterModal.deliveryReceiptStatus === 'pending'
                             ? 'bg-gray-200 text-gray-800'
                             : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
                         }`}
@@ -2580,9 +2578,9 @@ export default function DeliveryPage() {
                         Pending
                       </button>
                       <button
-                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceStatus: 'received' }))}
+                        onClick={() => setPaymentCounterModal((prev) => ({ ...prev, deliveryReceiptStatus: 'received' }))}
                         className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                          paymentCounterModal.deliveryInvoiceStatus === 'received'
+                          paymentCounterModal.deliveryReceiptStatus === 'received'
                             ? 'bg-emerald-200 text-emerald-800'
                             : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
                         }`}
@@ -2639,11 +2637,11 @@ export default function DeliveryPage() {
                       accept="image/*,.pdf"
                       onChange={(e) => {
                         const file = e.target.files?.[0] ?? null;
-                        setPaymentCounterModal((prev) => ({ ...prev, deliveryInvoiceFile: file }));
+                        setPaymentCounterModal((prev) => ({ ...prev, deliveryReceiptFile: file }));
                       }}
                       className="w-full text-xs text-gray-500 file:mr-2 file:rounded-lg file:border-0 file:bg-amber-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-amber-700 hover:file:bg-amber-100"
                     />
-                    {paymentCounterModal.counter?.delivery_invoice_file_id && (
+                    {paymentCounterModal.counter?.delivery_receipt_file_id && (
                       <p className="mt-1 text-[10px] text-gray-400">Existing file attached (re-upload to replace)</p>
                     )}
                   </div>

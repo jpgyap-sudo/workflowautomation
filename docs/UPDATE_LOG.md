@@ -1,4 +1,4 @@
-ma# Update Log
+# Update Log
 
 > Real-time log of what each coding extension is currently working on.
 > All extensions (Roo, Claude, Codex, Kimi) should update this file when starting and completing work.
@@ -44,6 +44,7 @@ When you **finish**:
 | 2026-05-27 23:52 | Roo (Code) | Fix: acknowledgement receipt shows wrong amount (₱750 instead of ₱1,500) when full payment recorded via dashboard — getReceiptAmount now returns total_amount when balance_paid or deposit_is_full_payment is TRUE. Same fix applied to receipts list endpoint. | ✅ Done |
 | 2026-05-28 01:13 | Roo (Code) | Feat: partial inventory verification + partial delivery — migration 041_partial_delivery.sql adds partial_delivery_count, remaining_qty, last_partial_delivery_at to order_items; partial_delivery, partial_delivery_notes to orders; partial_delivery_logs table; get_delivery_completion_pct function. Server: complete-inventory-verification-partial, partial-delivery, delivery-progress endpoints. Dashboard: inventory verification page shows "Complete (Partial)" button; delivery page shows "Partial Delivery" button + modal with item selection, summary stats, delivery note, OTP confirmation; production page shows "Partial Delivery" badge on orders with partial delivery enabled. Telegram notifications sent for partial verification and partial delivery events. | ✅ Done |
 | 2026-05-28 01:44 | Roo (Code) | Fix: E2E gap analysis — 4 gaps fixed: (1) confirm-inventory-arrived now preserves inventory_verification_pct for partial delivery orders instead of overwriting to 100; (2) removed stale Partial Delivery button from Stock Prep section (dead code, stock_preparation not in allowed stages); (3) added en_route_verification to allowed stages for partial delivery; (4) remaining_qty now set for ALL items in partial completion (including fully-verified items get 0). Commit `6908a3f`. | ✅ Done |
+| | 2026-05-28 14:29 | Roo (Code) | Feat: purchasing tab production exception — deposit slip upload + AI extraction + mark balance paid with upload. Delivery tab redesign — simplified delivery section (only "Mark as Countered"), restructured countered section ("Mark Payment Received" + upload delivery receipt/sales invoice), "Order Complete" button in payment confirmed. Gap 3: migration 044 rename delivery_invoice → delivery_receipt. Gap 4: hide "Verify Countered" when counter exists. Gap analysis: all features + Telegram reminders confirmed compatible. | 🔴 Active |
 
 ---
 

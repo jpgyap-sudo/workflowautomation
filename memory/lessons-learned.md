@@ -12923,3 +12923,145 @@ When designing state machines or workflow automation, explicitly define and test
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: production tab gap fix — remove partial buttons, allow early inventory verification for arrived items at en_route_
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b888d8bc5d2422a19b907aa01ce72289aab71ed3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b888d8bc5d2422a19b907aa01ce72289aab71ed3
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/inventory/verification/[quotationNumber]/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/telegram-bot/src/bot.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+A production tab gap where partial buttons were removed, early inventory verification was enabled for arrived items at the `en_route_verification` stage, and Telegram notifications/reminders were synced.
+
+**Why it broke:**  
+The system previously blocked inventory verification until items fully arrived, causing a gap in the production tab when items were partially received. This prevented early processing and created inconsistent notification states.
+
+**Reusable takeaway:**  
+Allow partial state transitions (e.g., early verification) when downstream processes can proceed without full completion. Always sync notification triggers with state changes to avoid stale reminders or missed alerts.
+
+---
+*Original commit message: feat: production tab gap fix — remove partial buttons, allow early inventory verification for arrived items at en_route_verification stage, sync telegram notifications and reminders*
+
+#### Lesson Learned
+
+**Summary of Engineering Commit**
+
+**What was fixed:**  
+A production tab gap where partial buttons were removed, early inventory verification was enabled for arrived items at the `en_route_verification` stage, and Telegram notifications/reminders were synced.
+
+**Why it broke:**  
+The system previously blocked inventory verification until items fully arrived, causing a gap in the production tab when items were partially received. This prevented early processing and created inconsistent notification states.
+
+**Reusable takeaway:**  
+Allow partial state transitions (e.g., early verification) when downstream processes can proceed without full completion. Always sync notification triggers with state changes to avoid stale reminders or missed alerts.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] feat: MN Design Studio gap fix — special case advances to delivery_pending, Verify Countered button in countered section
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f75b128b57b8a8700dbe92577375f246e1a565a8
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f75b128b57b8a8700dbe92577375f246e1a565a8
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/lib/api.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A gap in the MN Design Studio workflow where special-case advances (e.g., manual overrides) were not transitioning to `delivery_pending` status. Also fixed UI inconsistencies: renamed "Delivery Invoice" to "Delivery Receipt" and added a "Verify Countered" button in the countered section.
+
+**Why it broke:**  
+The original logic did not handle special-case advances as a distinct path to `delivery_pending`, causing them to stall or skip the required state. The UI labels were also misaligned with domain terminology.
+
+**Reusable takeaway:**  
+When modeling state machines, explicitly enumerate all valid transitions—including edge cases like manual overrides—to prevent silent state gaps. Keep UI labels consistent with business domain language to avoid confusion.
+
+---
+*Original commit message: feat: MN Design Studio gap fix — special case advances to delivery_pending, Verify Countered button in countered section, rename Delivery Invoice to Delivery Receipt*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A gap in the MN Design Studio workflow where special-case advances (e.g., manual overrides) were not transitioning to `delivery_pending` status. Also fixed UI inconsistencies: renamed "Delivery Invoice" to "Delivery Receipt" and added a "Verify Countered" button in the countered section.
+
+**Why it broke:**  
+The original logic did not handle special-case advances as a distinct path to `delivery_pending`, causing them to stall or skip the required state. The UI labels were also misaligned with domain terminology.
+
+**Reusable takeaway:**  
+When modeling state machines, explicitly enumerate all valid transitions—including edge cases like manual overrides—to prevent silent state gaps. Keep UI labels consistent with business domain language to avoid confusion.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: mark MN Design Studio gap fix as deployed in docs
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d27ab32592de0c977cfd1f41406adfcf12169267
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d27ab32592de0c977cfd1f41406adfcf12169267
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**Fix:** Documented that the MN Design Studio gap fix has been deployed.
+
+**Root Cause:** The gap was a missing or incomplete integration step in the workflow automation pipeline for MN Design Studio, causing a break in the process flow.
+
+**Reusable Takeaway:** When deploying fixes for integration gaps in workflow automation, always update both the changelog and update log to maintain a clear, auditable deployment history. This ensures team visibility and prevents rework or confusion about which fixes are live.
+
+---
+*Original commit message: chore: mark MN Design Studio gap fix as deployed in docs*
+
+#### Lesson Learned
+
+**Fix:** Documented that the MN Design Studio gap fix has been deployed.
+
+**Root Cause:** The gap was a missing or incomplete integration step in the workflow automation pipeline for MN Design Studio, causing a break in the process flow.
+
+**Reusable Takeaway:** When deploying fixes for integration gaps in workflow automation, always update both the changelog and update log to maintain a clear, auditable deployment history. This ensures team visibility and prevents rework or confusion about which fixes are live.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

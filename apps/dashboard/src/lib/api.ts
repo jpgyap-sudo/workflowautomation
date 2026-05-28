@@ -1085,11 +1085,11 @@ export interface PaymentCounter {
   id: string;
   order_id: string;
   sales_invoice_status: 'pending' | 'received';
-  delivery_invoice_status: 'pending' | 'received';
+  delivery_receipt_status: 'pending' | 'received';
   received_date: string | null;
   delivery_date: string | null;
   sales_invoice_file_id: string | null;
-  delivery_invoice_file_id: string | null;
+  delivery_receipt_file_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1118,11 +1118,11 @@ export async function updatePaymentCounter(
   orderId: string,
   data: {
     sales_invoice_status?: 'pending' | 'received';
-    delivery_invoice_status?: 'pending' | 'received';
+    delivery_receipt_status?: 'pending' | 'received';
     received_date?: string | null;
     delivery_date?: string | null;
     sales_invoice_file_id?: string | null;
-    delivery_invoice_file_id?: string | null;
+    delivery_receipt_file_id?: string | null;
     action_token: string;
   },
 ): Promise<{ ok: boolean; payment_counter: PaymentCounter }> {

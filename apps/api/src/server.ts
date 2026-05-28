@@ -9098,15 +9098,15 @@ app.post('/orders/verify-countered', async (request, reply) => {
     });
   }
 
-  // Advance to countered and create payment_counter record
-  const updatedRows = await query(
-    `UPDATE orders SET current_stage='countered', updated_at=NOW() WHERE id=$1 RETURNING *`,
+  // Update order's updated_at to reflect the verification timestamp
+  await query(
+    `UPDATE orders SET updated_at=NOW() WHERE id=$1`,
     [body.order_id]
   );
 
-  // Create payment_counter record
+  // Create payment_counter record (order is already at countered stage)
   await query(
-    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_invoice_status)
+    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_receipt_status)
      VALUES ($1, 'pending', 'pending')
      ON CONFLICT (order_id) DO NOTHING`,
     [body.order_id]
@@ -9150,7 +9150,7 @@ app.post('/orders/verify-countered', async (request, reply) => {
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:*`, 'calendar:*', 'sales:*']);
   broadcastSSE('order_updated', { id: body.order_id });
-  return reply.send({ ok: true, order: updatedRows[0] });
+  return reply.send({ ok: true, order });
 });
 
 // ── Payment Counter ──────────────────────────────────────────────────
@@ -9159,11 +9159,11 @@ app.post('/orders/verify-countered', async (request, reply) => {
 
 const updatePaymentCounterSchema = z.object({
   sales_invoice_status: z.enum(['pending', 'received']).optional(),
-  delivery_invoice_status: z.enum(['pending', 'received']).optional(),
+  delivery_receipt_status: z.enum(['pending', 'received']).optional(),
   received_date: z.string().nullable().optional(),
   delivery_date: z.string().nullable().optional(),
   sales_invoice_file_id: z.string().nullable().optional(),
-  delivery_invoice_file_id: z.string().nullable().optional(),
+  delivery_receipt_file_id: z.string().nullable().optional(),
   action_token: z.string(),
 });
 
@@ -9193,9 +9193,9 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
     setClauses.push(`sales_invoice_status = $${paramIdx++}`);
     values.push(body.sales_invoice_status);
   }
-  if (body.delivery_invoice_status !== undefined) {
-    setClauses.push(`delivery_invoice_status = $${paramIdx++}`);
-    values.push(body.delivery_invoice_status);
+  if (body.delivery_receipt_status !== undefined) {
+    setClauses.push(`delivery_receipt_status = $${paramIdx++}`);
+    values.push(body.delivery_receipt_status);
   }
   if (body.received_date !== undefined) {
     setClauses.push(`received_date = $${paramIdx++}`);
@@ -9209,9 +9209,9 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
     setClauses.push(`sales_invoice_file_id = $${paramIdx++}`);
     values.push(body.sales_invoice_file_id);
   }
-  if (body.delivery_invoice_file_id !== undefined) {
-    setClauses.push(`delivery_invoice_file_id = $${paramIdx++}`);
-    values.push(body.delivery_invoice_file_id);
+  if (body.delivery_receipt_file_id !== undefined) {
+    setClauses.push(`delivery_receipt_file_id = $${paramIdx++}`);
+    values.push(body.delivery_receipt_file_id);
   }
 
   if (setClauses.length === 0) {
@@ -9222,7 +9222,7 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
   values.push(id);
 
   await query(
-    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_invoice_status)
+    `INSERT INTO payment_counter (order_id, sales_invoice_status, delivery_receipt_status)
      VALUES ($1, 'pending', 'pending')
      ON CONFLICT (order_id) DO NOTHING`,
     [id]
@@ -9236,10 +9236,10 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
   if (!result[0]) return reply.code(404).send({ error: 'Payment counter not found for this order' });
 
   // Record stage update for invoice tracking
-  if (body.sales_invoice_status === 'received' || body.delivery_invoice_status === 'received') {
+  if (body.sales_invoice_status === 'received' || body.delivery_receipt_status === 'received') {
     const remarks = [
       body.sales_invoice_status === 'received' ? 'Sales invoice marked as received' : null,
-      body.delivery_invoice_status === 'received' ? 'Delivery receipt marked as received' : null,
+      body.delivery_receipt_status === 'received' ? 'Delivery receipt marked as received' : null,
     ].filter(Boolean).join('; ');
 
     await query(
@@ -9251,7 +9251,7 @@ app.post('/orders/:id/payment-counter', async (request, reply) => {
 
   await notifyManualChange(
     'Payment counter updated',
-    `Order ID: *${id.slice(0, 8)}...*\nSales Invoice: ${body.sales_invoice_status ?? 'unchanged'}\nDelivery Receipt: ${body.delivery_invoice_status ?? 'unchanged'}`,
+    `Order ID: *${id.slice(0, 8)}...*\nSales Invoice: ${body.sales_invoice_status ?? 'unchanged'}\nDelivery Receipt: ${body.delivery_receipt_status ?? 'unchanged'}`,
     userEmail,
   );
 

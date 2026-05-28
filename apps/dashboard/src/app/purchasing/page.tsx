@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useOrdersByStage, useAwaitingDownpayment, useProductionExceptionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients, grantProductionException, revokeProductionException } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -15,6 +15,7 @@ import {
   AlertTriangle, RefreshCw, CheckCircle,
   Shield, DollarSign, ShieldAlert, Loader2,
   Search, XCircle, Zap, RotateCcw, Calendar, BadgeCheck, BadgeX,
+  Upload, FileText, Image,
 } from 'lucide-react';
 
 function fmtDate(d: string | null | undefined) {
@@ -32,9 +33,20 @@ interface OrderRowProps {
   onMarkDepositPaid?: (order: Order) => void;
   onGrantSpecialCase?: (order: Order) => void;
   onRevokeException?: (order: Order) => void;
+  // Production exception slip uploads
+  depositSlipUpload?: { orderId: string | null; file: { name: string; data: string; mime: string; preview: string } | null; extracting: boolean; extractedAmount: string; extractedDate: string; extractedRef: string; extractedNote: string | null };
+  onDepositSlipFileSelect?: (e: React.ChangeEvent<HTMLInputElement>, order: Order) => void;
+  onUploadDepositSlip?: (order: Order) => void;
+  onClearDepositSlip?: () => void;
+  onSetDepositSlipField?: (field: string, value: string) => void;
+  balanceSlipUpload?: { orderId: string | null; file: { name: string; data: string; mime: string; preview: string } | null; extracting: boolean; extractedAmount: string; extractedDate: string; extractedRef: string; extractedNote: string | null; submitting: boolean };
+  onBalanceSlipFileSelect?: (e: React.ChangeEvent<HTMLInputElement>, order: Order) => void;
+  onMarkBalancePaid?: (order: Order) => void;
+  onClearBalanceSlip?: () => void;
+  onSetBalanceSlipField?: (field: string, value: string) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onMarkDepositPaid, onGrantSpecialCase, onRevokeException }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onMarkDepositPaid, onGrantSpecialCase, onRevokeException, depositSlipUpload, onDepositSlipFileSelect, onUploadDepositSlip, onClearDepositSlip, onSetDepositSlipField, balanceSlipUpload, onBalanceSlipFileSelect, onMarkBalancePaid, onClearBalanceSlip, onSetBalanceSlipField }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -392,6 +404,154 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
                   </div>
                 )}
               </div>
+
+              {/* Deposit slip upload */}
+              {!order.deposit_paid && onDepositSlipFileSelect && (
+                <div className="mt-3 rounded-lg border border-dashed border-pink-200 bg-pink-50/50 p-3">
+                  <p className="mb-2 text-[11px] font-medium text-pink-700">Upload Deposit Slip (optional)</p>
+                  {depositSlipUpload?.orderId === order.id && depositSlipUpload?.file ? (
+                    <div className="space-y-2">
+                      {depositSlipUpload.extracting ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          AI extracting payment details...
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {depositSlipUpload.extractedNote && (
+                            <p className="text-[11px] italic text-gray-500">{depositSlipUpload.extractedNote}</p>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            <input
+                              type="text" placeholder="Amount"
+                              value={depositSlipUpload.extractedAmount}
+                              onChange={(e) => onSetDepositSlipField?.('extractedAmount', e.target.value)}
+                              className="w-24 rounded border border-gray-300 px-2 py-1 text-xs outline-none"
+                            />
+                            <input
+                              type="date" placeholder="Date"
+                              value={depositSlipUpload.extractedDate}
+                              onChange={(e) => onSetDepositSlipField?.('extractedDate', e.target.value)}
+                              className="w-36 rounded border border-gray-300 px-2 py-1 text-xs outline-none"
+                            />
+                            <input
+                              type="text" placeholder="Reference"
+                              value={depositSlipUpload.extractedRef}
+                              onChange={(e) => onSetDepositSlipField?.('extractedRef', e.target.value)}
+                              className="w-28 rounded border border-gray-300 px-2 py-1 text-xs outline-none"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => onUploadDepositSlip?.(order)}
+                              className="rounded bg-pink-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-pink-700"
+                            >
+                              <Upload className="mr-1 inline-block h-3 w-3" />Upload & Record
+                            </button>
+                            <button
+                              onClick={() => onClearDepositSlip?.()}
+                              className="rounded bg-gray-200 px-3 py-1 text-[11px] text-gray-600 hover:bg-gray-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-white px-3 py-1.5 text-[11px] font-medium text-pink-700 shadow-sm hover:bg-pink-50">
+                      <Upload className="h-3.5 w-3.5" />
+                      Choose file
+                      <input
+                        type="file" accept="image/*"
+                        onChange={(e) => onDepositSlipFileSelect(e, order)}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Balance slip upload + Mark Balance Paid */}
+              {!order.balance_paid && onBalanceSlipFileSelect && (
+                <div className="mt-3 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-3">
+                  <p className="mb-2 text-[11px] font-medium text-indigo-700">Mark Balance Paid (optional upload)</p>
+                  {balanceSlipUpload?.orderId === order.id && balanceSlipUpload?.file ? (
+                    <div className="space-y-2">
+                      {balanceSlipUpload.extracting ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          AI extracting payment details...
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {balanceSlipUpload.extractedNote && (
+                            <p className="text-[11px] italic text-gray-500">{balanceSlipUpload.extractedNote}</p>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            <input
+                              type="text" placeholder="Amount"
+                              value={balanceSlipUpload.extractedAmount}
+                              onChange={(e) => onSetBalanceSlipField?.('extractedAmount', e.target.value)}
+                              className="w-24 rounded border border-gray-300 px-2 py-1 text-xs outline-none"
+                            />
+                            <input
+                              type="date" placeholder="Date"
+                              value={balanceSlipUpload.extractedDate}
+                              onChange={(e) => onSetBalanceSlipField?.('extractedDate', e.target.value)}
+                              className="w-36 rounded border border-gray-300 px-2 py-1 text-xs outline-none"
+                            />
+                            <input
+                              type="text" placeholder="Reference"
+                              value={balanceSlipUpload.extractedRef}
+                              onChange={(e) => onSetBalanceSlipField?.('extractedRef', e.target.value)}
+                              className="w-28 rounded border border-gray-300 px-2 py-1 text-xs outline-none"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => onMarkBalancePaid?.(order)}
+                              disabled={balanceSlipUpload.submitting}
+                              className="rounded bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {balanceSlipUpload.submitting ? (
+                                <><Loader2 className="mr-1 inline-block h-3 w-3 animate-spin" />Submitting...</>
+                              ) : (
+                                <><DollarSign className="mr-1 inline-block h-3 w-3" />Mark Balance Paid</>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => onClearBalanceSlip?.()}
+                              className="rounded bg-gray-200 px-3 py-1 text-[11px] text-gray-600 hover:bg-gray-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-white px-3 py-1.5 text-[11px] font-medium text-indigo-700 shadow-sm hover:bg-indigo-50">
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload slip
+                        <input
+                          type="file" accept="image/*"
+                          onChange={(e) => onBalanceSlipFileSelect(e, order)}
+                          className="hidden"
+                        />
+                      </label>
+                      <span className="text-[11px] text-gray-400">or</span>
+                      <button
+                        onClick={() => onMarkBalancePaid?.(order)}
+                        className="rounded bg-indigo-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-indigo-700"
+                      >
+                        <DollarSign className="mr-1 inline-block h-3 w-3" />Mark Balance Paid (no slip)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -522,8 +682,31 @@ export default function PurchasingPage() {
   const [verifyingDeposit, setVerifyingDeposit] = useState(false);
   const [otpModal, setOtpModal] = useState<{
     open: boolean; title: string; description: string;
-    pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'markDepositPaid' | 'grantProductionException' | 'revokeProductionException';
+    pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'markDepositPaid' | 'grantProductionException' | 'revokeProductionException' | 'markBalancePaid';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  // ── Deposit slip upload (production exception section) ──────────────
+  const [depositSlipUpload, setDepositSlipUpload] = useState<{
+    orderId: string | null;
+    file: { name: string; data: string; mime: string; preview: string } | null;
+    extracting: boolean;
+    extractedAmount: string;
+    extractedDate: string;
+    extractedRef: string;
+    extractedNote: string | null;
+  }>({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null });
+
+  // ── Balance slip upload (production exception section) ──────────────
+  const [balanceSlipUpload, setBalanceSlipUpload] = useState<{
+    orderId: string | null;
+    file: { name: string; data: string; mime: string; preview: string } | null;
+    extracting: boolean;
+    extractedAmount: string;
+    extractedDate: string;
+    extractedRef: string;
+    extractedNote: string | null;
+    submitting: boolean;
+  }>({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null, submitting: false });
 
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
 
@@ -623,6 +806,7 @@ export default function PurchasingPage() {
     else if (otpModal.pendingAction === 'markDepositPaid') handleMarkDepositPaidVerified(actionToken);
     else if (otpModal.pendingAction === 'grantProductionException') handleGrantProductionExceptionVerified(actionToken);
     else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeProductionExceptionVerified(actionToken);
+    else if (otpModal.pendingAction === 'markBalancePaid') handleMarkBalancePaidVerified(actionToken);
   }
 
   async function handleMarkDepositPaidVerified(actionToken: string) {
@@ -755,6 +939,168 @@ export default function PurchasingPage() {
       alert('Failed to grant exception: ' + (err.message ?? 'Unknown error'));
     } finally {
       (window as any).__pendingGrantExceptionData = null;
+    }
+  }
+
+  // ── Deposit slip upload (production exception) ──────────────────────
+  function handleDepositSlipFileSelect(e: React.ChangeEvent<HTMLInputElement>, order: Order) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      const commaIndex = result.indexOf(',');
+      const base64 = commaIndex !== -1 ? result.substring(commaIndex + 1) : result;
+      const mime = file.type || 'image/jpeg';
+      setDepositSlipUpload({
+        orderId: order.id,
+        file: { name: file.name, data: base64, mime, preview: result },
+        extracting: true,
+        extractedAmount: '',
+        extractedDate: '',
+        extractedRef: '',
+        extractedNote: null,
+      });
+      // AI extract
+      visionExtract({ image_base64: base64, mime_type: mime, mode: 'payment' }).then((res) => {
+        const payment = res.payment;
+        const updates: string[] = [];
+        const patch: any = { extracting: false };
+        if (payment?.amount && Number(payment.amount) > 0) {
+          patch.extractedAmount = String(payment.amount);
+          updates.push(`amount ₱${Number(payment.amount).toLocaleString()}`);
+        }
+        if (payment?.payment_date) {
+          patch.extractedDate = payment.payment_date.slice(0, 10);
+          updates.push(`date ${payment.payment_date.slice(0, 10)}`);
+        }
+        if (payment?.reference_number) {
+          patch.extractedRef = payment.reference_number;
+          updates.push(`ref ${payment.reference_number}`);
+        }
+        patch.extractedNote = updates.length
+          ? `AI extracted ${updates.join(', ')}.`
+          : 'AI could not find fields. Enter manually.';
+        setDepositSlipUpload((prev) => ({ ...prev, ...patch }));
+      }).catch(() => {
+        setDepositSlipUpload((prev) => ({ ...prev, extracting: false, extractedNote: 'AI extraction failed. Enter manually.' }));
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleUploadDepositSlip(order: Order) {
+    if (!depositSlipUpload.file) return;
+    try {
+      const amount = Number(depositSlipUpload.extractedAmount) || 0;
+      await recordDepositWithFile({
+        quotation_number: order.quotation_number ?? '',
+        amount,
+        deposit_paid_at: depositSlipUpload.extractedDate || undefined,
+        image_base64: depositSlipUpload.file.data,
+        mime_type: depositSlipUpload.file.mime,
+        original_filename: depositSlipUpload.file.name,
+      });
+      alert('✅ Deposit slip uploaded and recorded.');
+      setDepositSlipUpload({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to upload deposit slip: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  // ── Balance slip upload (production exception) ──────────────────────
+  function handleBalanceSlipFileSelect(e: React.ChangeEvent<HTMLInputElement>, order: Order) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      const commaIndex = result.indexOf(',');
+      const base64 = commaIndex !== -1 ? result.substring(commaIndex + 1) : result;
+      const mime = file.type || 'image/jpeg';
+      setBalanceSlipUpload({
+        orderId: order.id,
+        file: { name: file.name, data: base64, mime, preview: result },
+        extracting: true,
+        extractedAmount: '',
+        extractedDate: '',
+        extractedRef: '',
+        extractedNote: null,
+        submitting: false,
+      });
+      // AI extract
+      visionExtract({ image_base64: base64, mime_type: mime, mode: 'payment' }).then((res) => {
+        const payment = res.payment;
+        const updates: string[] = [];
+        const patch: any = { extracting: false };
+        if (payment?.amount && Number(payment.amount) > 0) {
+          patch.extractedAmount = String(payment.amount);
+          updates.push(`amount ₱${Number(payment.amount).toLocaleString()}`);
+        }
+        if (payment?.payment_date) {
+          patch.extractedDate = payment.payment_date.slice(0, 10);
+          updates.push(`date ${payment.payment_date.slice(0, 10)}`);
+        }
+        if (payment?.reference_number) {
+          patch.extractedRef = payment.reference_number;
+          updates.push(`ref ${payment.reference_number}`);
+        }
+        patch.extractedNote = updates.length
+          ? `AI extracted ${updates.join(', ')}.`
+          : 'AI could not find fields. Enter manually.';
+        setBalanceSlipUpload((prev) => ({ ...prev, ...patch }));
+      }).catch(() => {
+        setBalanceSlipUpload((prev) => ({ ...prev, extracting: false, extractedNote: 'AI extraction failed. Enter manually.' }));
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleMarkBalancePaid(order: Order) {
+    setOtpModal({
+      open: true,
+      title: 'Mark Balance Paid',
+      description: `You are about to mark balance as paid for "${order.quotation_number ?? '—'}". This will record the balance payment. Enter the OTP sent to your email to confirm.`,
+      pendingAction: 'markBalancePaid',
+    });
+    (window as any).__pendingMarkBalancePaidData = { order };
+  }
+
+  async function handleMarkBalancePaidVerified(actionToken: string) {
+    const pending = (window as any).__pendingMarkBalancePaidData as { order: Order } | null;
+    if (!pending) return;
+    const order = pending.order;
+    setBalanceSlipUpload((prev) => ({ ...prev, submitting: true }));
+    try {
+      // Upload balance slip file if provided
+      if (balanceSlipUpload.file) {
+        await uploadOrderFile({
+          quotation_number: order.quotation_number ?? '',
+          file_type: 'payment',
+          original_filename: balanceSlipUpload.file.name,
+          mime_type: balanceSlipUpload.file.mime,
+          file_data: balanceSlipUpload.file.data,
+        }).catch((err) => {
+          console.warn('[handleMarkBalancePaid] File upload failed (non-fatal):', err);
+        });
+      }
+
+      // Record balance payment via stage update
+      await recordStageUpdate({
+        quotation_number: order.quotation_number ?? '',
+        stage: 'balance_verification',
+        status: 'balance_paid',
+        remarks: `Balance marked as paid from production exception section.${balanceSlipUpload.extractedAmount ? ` Amount: ₱${Number(balanceSlipUpload.extractedAmount).toLocaleString()}` : ''}${balanceSlipUpload.extractedRef ? ` Ref: ${balanceSlipUpload.extractedRef}` : ''}`,
+        action_token: actionToken,
+      });
+      setBalanceSlipUpload({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null, submitting: false });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to mark balance paid: ' + (err.message ?? 'Unknown error'));
+      setBalanceSlipUpload((prev) => ({ ...prev, submitting: false }));
+    } finally {
+      (window as any).__pendingMarkBalancePaidData = null;
     }
   }
 
@@ -909,6 +1255,16 @@ export default function PurchasingPage() {
               onMarkDepositPaid={!order.deposit_paid ? handleMarkDepositPaid : undefined}
               onRevokeException={handleRevokeException}
               onViewFiles={handleViewFiles}
+              depositSlipUpload={depositSlipUpload}
+              onDepositSlipFileSelect={handleDepositSlipFileSelect}
+              onUploadDepositSlip={handleUploadDepositSlip}
+              onClearDepositSlip={() => setDepositSlipUpload({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null })}
+              onSetDepositSlipField={(field, value) => setDepositSlipUpload((prev) => ({ ...prev, [field]: value }))}
+              balanceSlipUpload={balanceSlipUpload}
+              onBalanceSlipFileSelect={handleBalanceSlipFileSelect}
+              onMarkBalancePaid={handleMarkBalancePaid}
+              onClearBalanceSlip={() => setBalanceSlipUpload({ orderId: null, file: null, extracting: false, extractedAmount: '', extractedDate: '', extractedRef: '', extractedNote: null, submitting: false })}
+              onSetBalanceSlipField={(field, value) => setBalanceSlipUpload((prev) => ({ ...prev, [field]: value }))}
             />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
