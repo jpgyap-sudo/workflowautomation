@@ -2550,16 +2550,18 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   );
   const hasItems = itemRows[0]?.cnt > 0;
 
-  // For item-level orders, mark production finished but keep stage (en_route
-  // advancement happens via advanceToEnRouteIfAllDispatched when all items
-  // are dispatched). For legacy orders, advance to en_route immediately.
+  // For item-level orders, advance to en_route so the en-route dispatch flow
+  // (process of elimination) can begin. The stage will advance further to
+  // en_route_verification via advanceFromEnRouteToVerificationIfAllDispatched
+  // (called from start-en-route-tracking) once all items are confirmed dispatched.
+  // For legacy orders (no items), advance to en_route immediately as well.
   const rows = await query(
     `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
      delivery_estimated_days = $1,
-     current_stage = CASE WHEN $2 = TRUE THEN current_stage ELSE 'en_route' END,
+     current_stage = 'en_route',
      updated_at = NOW()
-     WHERE id = $3 RETURNING *`,
-    [body.delivery_estimated_days, hasItems, id]
+     WHERE id = $2 RETURNING *`,
+    [body.delivery_estimated_days, id]
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -3713,6 +3715,16 @@ app.post('/orders/:id/start-en-route-tracking', async (request, reply) => {
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
      VALUES ($1, 'en_route', 'tracking_started', $2, 'system')`,
     [id, `En route tracking started — midpoint in ${midpointDays} day(s), arrival check in ${days} day(s)`]
+  );
+
+  // ── Auto-advance to en_route_verification if all items are dispatched ──
+  // This ensures the order stage progresses from en_route → en_route_verification
+  // so that the production agent and inventory agent can pick it up for
+  // arrival monitoring and inventory verification.
+  await advanceFromEnRouteToVerificationIfAllDispatched(
+    id,
+    'system',
+    days,
   );
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${order.quotation_number}`]);

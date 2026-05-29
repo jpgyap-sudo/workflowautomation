@@ -57,8 +57,14 @@
 | | Roo (Code) | feat: Payment Confirmed sync with Balance Verified — new API endpoint `POST /orders/:id/confirm-payment` that sets `balance_verified=TRUE`, marks payments verified, creates stage_updates, completes reminders, triggers agents, notifies Telegram groups | ❌ |
 | | Roo (Code) | feat: wire Payment Confirmed across all tabs — collection tab uses `confirmPayment` API; actions tab `MarkPaymentConfirmedForm` uses `confirmPayment`; calendar tab uses `confirmPayment` for `payment_confirmed` target; telegram bot `payment:confirmed` callback uses `confirmPayment` API endpoint | ❌ |
 | `23a642a` | Roo (Code) | fix: schedule Telegram group no messages — 3 gaps fixed: (1) POST/PATCH/DELETE /calendar/schedules now notify SCHEDULE_GROUP_CHAT_ID (was only notifying escalation group); (2) added broadcastTodaySchedules() to reminder scheduler — sends "Today's Schedule" message once per day to schedule group; (3) wired broadcast into startup + tick loop | ✅ VPS `23a642a` |
-
-## 2026-05-26
+ 
+ ## 2026-05-29
+ 
+Commit | Extension | Description | Deployed |
+ |--------|-----------|-------------|----------|
+| Roo (Code) | fix: item-level production → en_route → en_route_verification stage transition gap — two fixes: (1) finish-production now always advances to `en_route` (was keeping current_stage for item-level orders, blocking the en-route dispatch flow); (2) start-en-route-tracking now calls advanceFromEnRouteToVerificationIfAllDispatched after setting tracking metadata, so the stage auto-advances to `en_route_verification` when all items are confirmed dispatched, triggering the production agent for arrival monitoring and inventory agent for verification | ❌ |
+ 
+ ## 2026-05-26
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
