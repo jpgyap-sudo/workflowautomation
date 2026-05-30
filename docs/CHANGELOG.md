@@ -62,7 +62,8 @@
  
 Commit | Extension | Description | Deployed |
  |--------|-----------|-------------|----------|
-| Roo (Code) | fix: item-level production → en_route → en_route_verification stage transition gap — two fixes: (1) finish-production now always advances to `en_route` (was keeping current_stage for item-level orders, blocking the en-route dispatch flow); (2) start-en-route-tracking now calls advanceFromEnRouteToVerificationIfAllDispatched after setting tracking metadata, so the stage auto-advances to `en_route_verification` when all items are confirmed dispatched, triggering the production agent for arrival monitoring and inventory agent for verification | ❌ |
+| `cf90974` | Roo (Code) | fix: item-level production → en_route → en_route_verification stage transition gap — two fixes: (1) finish-production now always advances to `en_route` (was keeping current_stage for item-level orders, blocking the en-route dispatch flow); (2) start-en-route-tracking now calls advanceFromEnRouteToVerificationIfAllDispatched after setting tracking metadata, so the stage auto-advances to `en_route_verification` when all items are confirmed dispatched, triggering the production agent for arrival monitoring and inventory agent for verification | ✅ VPS `cf90974` |
+| `71b6104` | Roo (Code) | fix: Gemini key rotation + OpenRouter vision fallback in hermesClaw.ts — replaced single GEMINI_API_KEY with GEMINI_KEYS array (3 keys); callGeminiVisionForItems() iterates through all keys before falling back to centralized openRouterVision() with dedicated Kimi VL model; Strategy 3 in extractItemsFromQuotation() now uses openRouterVision() instead of raw fetch with wrong model; added GEMINI_API_KEY_2 and GEMINI_API_KEY_3 to docker-compose.yml | ✅ VPS `71b6104` |
  
  ## 2026-05-26
 
