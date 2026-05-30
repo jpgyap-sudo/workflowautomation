@@ -377,9 +377,11 @@ async function advanceToEnRouteIfAllDispatched(
     `SELECT en_route_status, production_status FROM order_items WHERE order_id = $1`,
     [orderId],
   );
-  const allFinished = items.length > 0 && items.every((item) => item.production_status === 'finished');
+  // Only check that all items are dispatched (en_route or arrived).
+  // Production completion is a separate concern — items can be en route
+  // even if some are still in production (partial dispatch workflow).
   const allDispatched = items.length > 0 && items.every((item) => item.en_route_status === 'en_route' || item.en_route_status === 'arrived');
-  if (!allFinished || !allDispatched) return { advanced: false, order: null };
+  if (!allDispatched) return { advanced: false, order: null };
 
   const beforeRows = await query<{ current_stage: string }>(
     `SELECT current_stage FROM orders WHERE id = $1`,
