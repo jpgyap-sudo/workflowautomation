@@ -5,11 +5,12 @@ import { Fragment, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment, type OrderDetail } from '@/lib/api';
+import GanttChart from '@/components/GanttChart';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
-import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2, Shield, Plus, Pencil, X } from 'lucide-react';
+import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2, Shield, Plus, Pencil, X, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 
@@ -218,6 +219,49 @@ export default function OrderDetailPage() {
             {order.total_amount != null ? `₱${Number(order.total_amount).toLocaleString()}` : '—'}
           </p>
         </div>
+        {order.projected_lead_time ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+              <Calendar className="h-4 w-4" />
+              Projected Lead Time
+            </div>
+            <p className="mt-1 text-base text-gray-900">
+              {order.projected_lead_time} days
+            </p>
+            <p className={`mt-0.5 text-xs ${
+              (() => {
+                const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+                const deadlineMs = order.projected_lead_time * 86_400_000;
+                const elapsedMs = Date.now() - new Date(startedAt).getTime();
+                const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+                const remainingDays = Math.ceil(remainingMs / 86_400_000);
+                const isDelayed = elapsedMs > deadlineMs;
+                if (isDelayed) return 'text-red-600 font-semibold';
+                if (remainingDays <= Math.ceil(order.projected_lead_time * 0.15)) return 'text-amber-600 font-semibold';
+                return 'text-green-600';
+              })()
+            }`}>
+              {(() => {
+                const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+                const deadlineMs = order.projected_lead_time * 86_400_000;
+                const elapsedMs = Date.now() - new Date(startedAt).getTime();
+                const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+                const remainingDays = Math.ceil(remainingMs / 86_400_000);
+                const isDelayed = elapsedMs > deadlineMs;
+                if (isDelayed) return `🔴 Overdue by ${Math.ceil((elapsedMs - deadlineMs) / 86_400_000)} day(s)`;
+                return `${remainingDays} day(s) remaining`;
+              })()}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-gray-200 bg-white p-5">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
+              <Calendar className="h-4 w-4" />
+              Projected Lead Time
+            </div>
+            <p className="mt-1 text-sm text-gray-400">Not set</p>
+          </div>
+        )}
       </div>
 
       {/* Timestamp audit trail */}
@@ -237,6 +281,9 @@ export default function OrderDetailPage() {
           ))}
         </dl>
       </div>
+
+      {/* Gantt Chart / Timeline */}
+      <GanttChart order={order} />
 
       {/* Delivery Info */}
       {(order.delivery_address || order.contact_number || order.authorized_receiver_name || order.authorized_receiver_contact) && (
@@ -658,7 +705,7 @@ export default function OrderDetailPage() {
       )}
 
       {/* Agent Notes */}
-      <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} />
+      <AgentNotesSection orderId={order.id} quotationNumber={order.quotation_number ?? ''} order={order} />
 
       {/* Files */}
       <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -1959,7 +2006,7 @@ interface AgentNote {
   created_at: string;
 }
 
-function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quotationNumber: string }) {
+function AgentNotesSection({ orderId, quotationNumber, order }: { orderId: string; quotationNumber: string; order?: OrderDetail }) {
   const [notes, setNotes] = useState<AgentNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState('');
@@ -2014,6 +2061,33 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
     return AGENT_COLORS[name] ?? 'border-gray-200 bg-gray-50';
   }
 
+  // ── AI Delay Warning ──────────────────────────────────────────────
+  let delayWarning: { level: 'delayed' | 'warning'; message: string } | null = null;
+  if (order?.projected_lead_time && order.projected_lead_time > 0) {
+    const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+    const startDate = new Date(startedAt);
+    const now = new Date();
+    const deadlineMs = order.projected_lead_time * 86_400_000;
+    const deadlineDate = new Date(startDate.getTime() + deadlineMs);
+    const elapsedMs = now.getTime() - startDate.getTime();
+    const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+    const remainingDays = Math.ceil(remainingMs / 86_400_000);
+    const isDelayed = elapsedMs > deadlineMs;
+    const delayDays = isDelayed ? Math.ceil((elapsedMs - deadlineMs) / 86_400_000) : 0;
+
+    if (isDelayed) {
+      delayWarning = {
+        level: 'delayed',
+        message: `⚠️ AI Delay Alert: This order is behind schedule by ${delayDays} day${delayDays !== 1 ? 's' : ''}. Expected delivery was ${deadlineDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}. Current stage: ${order.current_stage.replace(/_/g, ' ')}. Recommended action: Expedite remaining stages to minimize further delay.`,
+      };
+    } else if (remainingDays <= Math.ceil(order.projected_lead_time * 0.15)) {
+      delayWarning = {
+        level: 'warning',
+        message: `⚠️ AI Delay Warning: Only ${remainingDays} day${remainingDays !== 1 ? 's' : ''} remaining before the projected deadline of ${deadlineDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}. Current stage: ${order.current_stage.replace(/_/g, ' ')}. Consider prioritizing this order to avoid delay.`,
+      };
+    }
+  }
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6">
       <div className="mb-4 flex items-center gap-2">
@@ -2023,6 +2097,20 @@ function AgentNotesSection({ orderId, quotationNumber }: { orderId: string; quot
           {notes.length}
         </span>
       </div>
+
+      {/* AI Delay Warning Banner */}
+      {delayWarning && (
+        <div
+          className={`mb-4 flex items-start gap-2 rounded-lg p-3 text-xs ${
+            delayWarning.level === 'delayed'
+              ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
+              : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+          }`}
+        >
+          <AlertTriangle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${delayWarning.level === 'delayed' ? 'text-red-500' : 'text-amber-500'}`} />
+          <span>{delayWarning.message}</span>
+        </div>
+      )}
 
       {/* Post a new note */}
       <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">

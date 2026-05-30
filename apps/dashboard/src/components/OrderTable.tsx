@@ -16,6 +16,7 @@ interface OrderTableProps {
   showBalance?: boolean;
   showOrderDate?: boolean;
   showDepositDate?: boolean;
+  showProjectedLeadTime?: boolean;
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
@@ -102,6 +103,7 @@ export default function OrderTable({
   showBalance = true,
   showOrderDate = true,
   showDepositDate = true,
+  showProjectedLeadTime = false,
   onEdit,
   onDelete,
   onViewFiles,
@@ -386,6 +388,40 @@ export default function OrderTable({
                   <dt className="text-gray-400">Updated</dt>
                   <dd className="font-medium text-gray-700"><Timestamp value={order.updated_at} variant="relative" /></dd>
                 </div>
+                {showProjectedLeadTime && (
+                  <div>
+                    <dt className="text-gray-400">Lead Time</dt>
+                    <dd className="font-medium text-gray-700">
+                      {order.projected_lead_time ? (
+                        <span className={`text-xs ${(() => {
+                          const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+                          const deadlineMs = order.projected_lead_time * 86_400_000;
+                          const elapsedMs = Date.now() - new Date(startedAt).getTime();
+                          const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+                          const remainingDays = Math.ceil(remainingMs / 86_400_000);
+                          const isDelayed = elapsedMs > deadlineMs;
+                          if (isDelayed) return 'text-red-600 font-semibold';
+                          if (remainingDays <= Math.ceil(order.projected_lead_time * 0.15)) return 'text-amber-600 font-semibold';
+                          return 'text-green-600';
+                        })()}`}>
+                          {order.projected_lead_time}d
+                          {(() => {
+                            const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+                            const deadlineMs = order.projected_lead_time * 86_400_000;
+                            const elapsedMs = Date.now() - new Date(startedAt).getTime();
+                            const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+                            const remainingDays = Math.ceil(remainingMs / 86_400_000);
+                            const isDelayed = elapsedMs > deadlineMs;
+                            if (isDelayed) return ` (overdue)`;
+                            return ` (${remainingDays}d left)`;
+                          })()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               <div className="flex items-center gap-2">
@@ -470,6 +506,7 @@ export default function OrderTable({
               <th className="px-4 py-3">Math</th>
               <th className="px-4 py-3">Created</th>
               <th className="px-4 py-3">Updated</th>
+              {showProjectedLeadTime && <th className="px-4 py-3">Lead Time</th>}
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -580,6 +617,37 @@ export default function OrderTable({
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500"><Timestamp value={order.created_at} variant="compact" /></td>
                   <td className="px-4 py-3 text-xs text-gray-500"><Timestamp value={order.updated_at} variant="relative" /></td>
+                  {showProjectedLeadTime && (
+                    <td className="px-4 py-3 text-xs">
+                      {order.projected_lead_time ? (
+                        <span className={(() => {
+                          const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+                          const deadlineMs = order.projected_lead_time * 86_400_000;
+                          const elapsedMs = Date.now() - new Date(startedAt).getTime();
+                          const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+                          const remainingDays = Math.ceil(remainingMs / 86_400_000);
+                          const isDelayed = elapsedMs > deadlineMs;
+                          if (isDelayed) return 'text-red-600 font-semibold';
+                          if (remainingDays <= Math.ceil(order.projected_lead_time * 0.15)) return 'text-amber-600 font-semibold';
+                          return 'text-green-600';
+                        })()}>
+                          {order.projected_lead_time}d
+                          {(() => {
+                            const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+                            const deadlineMs = order.projected_lead_time * 86_400_000;
+                            const elapsedMs = Date.now() - new Date(startedAt).getTime();
+                            const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+                            const remainingDays = Math.ceil(remainingMs / 86_400_000);
+                            const isDelayed = elapsedMs > deadlineMs;
+                            if (isDelayed) return ` 🔴 overdue`;
+                            return ` (${remainingDays}d)`;
+                          })()}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       {onViewFiles && (

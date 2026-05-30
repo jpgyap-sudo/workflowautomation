@@ -70,6 +70,8 @@ export interface Order {
   created_at: string;
   updated_at: string;
   escalation_level: number;
+  projected_lead_time: number | null;
+  projected_lead_time_started_at: string | null;
 }
 
 export interface StageUpdate {
@@ -186,6 +188,7 @@ export async function createOrder(data: {
   action_token?: string;
   order_type?: 'from_stock';
   stock_prep_days?: number;
+  projected_lead_time?: number;
 }): Promise<Order> {
   return fetchJson<Order>('/orders', {
     method: 'POST',
@@ -507,6 +510,7 @@ export async function updateOrder(id: string, data: {
   deposit_paid_at?: string | null;
   balance_paid_at?: string | null;
   total_amount_change_reason?: string;
+  projected_lead_time?: number | null;
   action_token: string;
 }): Promise<Order> {
   return fetchJson<Order>(`/orders/${encodeURIComponent(id)}`, {

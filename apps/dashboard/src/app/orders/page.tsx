@@ -16,6 +16,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [clientName, setClientName] = useState('');
   const [salesAgent, setSalesAgent] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
+  const [projectedLeadTime, setProjectedLeadTime] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOtp, setShowOtp] = useState(false);
@@ -211,6 +212,10 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       if (totalAmount.trim()) data.total_amount = parseFloat(totalAmount.replace(/,/g, ''));
       if (extractedItems.length > 0) data.items = extractedItems;
       if (fromStock) { data.order_type = 'from_stock'; data.stock_prep_days = stockPrepDays; }
+      if (projectedLeadTime.trim()) {
+        const pl = parseInt(projectedLeadTime.replace(/\D/g, ''), 10);
+        if (!isNaN(pl) && pl > 0) data.projected_lead_time = pl;
+      }
       await createOrder(data);
       results.push('✅ Order created');
 
@@ -348,6 +353,26 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600">Total Amount (₱)</label>
             <input className={inputCls} placeholder="20000" value={totalAmount} onChange={e => setTotalAmount(e.target.value.replace(/[^0-9.,]/g, ''))} />
+          </div>
+
+          {/* Projected Lead Time */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">📅 Projected Lead Time <span className="text-gray-400 font-normal">(days)</span></label>
+            <div className="flex gap-2">
+              <input
+                className={inputCls}
+                type="number" min={1} max={365}
+                placeholder="e.g. 30"
+                value={projectedLeadTime}
+                onChange={e => setProjectedLeadTime(e.target.value.replace(/\D/g, ''))}
+              />
+              {projectedLeadTime && parseInt(projectedLeadTime) > 0 && (
+                <div className="flex items-center rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 whitespace-nowrap">
+                  Due: {new Date(Date.now() + parseInt(projectedLeadTime) * 86_400_000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              )}
+            </div>
+            <p className="text-[10px] text-gray-400">Estimated total days from order creation to expected delivery. Used for Gantt chart delay tracking.</p>
           </div>
 
           {/* From Existing Stock toggle */}
@@ -528,7 +553,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
 function EditForm({ order, onSave, onCancel, saving }: {
   order: Order;
-  onSave: (data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }) => void;
+  onSave: (data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string; projected_lead_time?: number | null }) => void;
   onCancel: () => void;
   saving: boolean;
 }) {
@@ -536,14 +561,21 @@ function EditForm({ order, onSave, onCancel, saving }: {
   const [salesAgent, setSalesAgent] = useState(order.sales_agent ?? '');
   const [totalAmount, setTotalAmount] = useState(order.total_amount?.toString() ?? '');
   const [quotationNumber, setQuotationNumber] = useState(order.quotation_number ?? '');
+  const [projectedLeadTime, setProjectedLeadTime] = useState(order.projected_lead_time?.toString() ?? '');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string } = {};
+    const data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string; projected_lead_time?: number | null } = {};
     if (clientName.trim()) data.client_name = clientName.trim();
     if (salesAgent.trim()) data.sales_agent = salesAgent.trim();
     if (totalAmount.trim()) data.total_amount = Number(totalAmount.replace(/,/g, ''));
     if (quotationNumber.trim()) data.quotation_number = quotationNumber.trim();
+    if (projectedLeadTime.trim()) {
+      const pl = parseInt(projectedLeadTime.replace(/\D/g, ''), 10);
+      if (!isNaN(pl) && pl > 0) data.projected_lead_time = pl;
+    } else {
+      data.projected_lead_time = null; // allow clearing
+    }
     onSave(data);
   }
 
@@ -572,6 +604,13 @@ function EditForm({ order, onSave, onCancel, saving }: {
         onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))}
         placeholder="Amount"
         className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+      />
+      <input
+        value={projectedLeadTime}
+        onChange={(e) => setProjectedLeadTime(e.target.value.replace(/\D/g, ''))}
+        placeholder="Lead time (days)"
+        title="Projected lead time in days"
+        className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
       />
       <button
         type="submit"
@@ -1009,6 +1048,7 @@ export default function OrdersPage() {
           selectedIds={selectedIds}
           onSelect={handleSelect}
           onSelectAll={handleSelectAll}
+          showProjectedLeadTime
         />
         {editingOrder && (
           <EditForm

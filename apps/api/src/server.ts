@@ -930,6 +930,8 @@ const createOrderSchema = z.object({
   // From-stock orders skip purchasing/production/en_route/inventory stages
   order_type: z.enum(['from_stock']).optional(),
   stock_prep_days: z.number().int().min(0).optional(), // 0 = immediate
+  // Projected lead time in days — used for Gantt chart delay tracking
+  projected_lead_time: z.number().int().positive().optional(),
 });
 
 app.post('/orders', async (request, reply) => {
@@ -956,9 +958,12 @@ app.post('/orders', async (request, reply) => {
     ? (stockPrepDays === 0 ? new Date() : new Date(Date.now() + stockPrepDays * 86_400_000))
     : null;
 
+  const projectedLeadTime = body.projected_lead_time ?? null;
+  const projectedLeadTimeStartedAt = projectedLeadTime !== null ? new Date().toISOString() : null;
+
   const rows = await query(
-    `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount, order_confirmed_at, order_type, stock_prep_days, stock_prep_ready_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO orders (quotation_number, client_name, sales_agent, total_amount, order_confirmed_at, order_type, stock_prep_days, stock_prep_ready_at, projected_lead_time, projected_lead_time_started_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (quotation_number) DO UPDATE SET updated_at = NOW()
      RETURNING *`,
     [
@@ -970,6 +975,8 @@ app.post('/orders', async (request, reply) => {
       body.order_type ?? null,
       stockPrepDays,
       stockPrepReadyAt?.toISOString() ?? null,
+      projectedLeadTime,
+      projectedLeadTimeStartedAt,
     ]
   );
   // Auto-link client by name
@@ -1015,6 +1022,9 @@ app.post('/orders', async (request, reply) => {
   if (PRODUCTION_CHAT_ID) {
     const itemCount = body.items?.length ?? 0;
     setImmediate(() => {
+      const leadTimeLine = newOrder.projected_lead_time
+        ? `\nLead Time: <b>${newOrder.projected_lead_time} day(s)</b> (Due: ${new Date(Date.now() + newOrder.projected_lead_time * 86_400_000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })})`
+        : '';
       notifyGroupChat(
         PRODUCTION_CHAT_ID,
         `📋 <b>New Order Created (Dashboard)</b>\n\n` +
@@ -1022,7 +1032,8 @@ app.post('/orders', async (request, reply) => {
         `Client: ${newOrder.client_name ?? 'Unknown'}\n` +
         `Sales Agent: ${newOrder.sales_agent ?? '—'}\n` +
         `Amount: ${newOrder.total_amount != null ? `PHP ${Number(newOrder.total_amount).toLocaleString()}` : '—'}\n` +
-        `Items: ${itemCount > 0 ? `${itemCount} item(s) extracted` : 'No items yet'}\n\n` +
+        `Items: ${itemCount > 0 ? `${itemCount} item(s) extracted` : 'No items yet'}` +
+        leadTimeLine + `\n\n` +
         `Status: <b>Order Confirmation Received</b>`
       );
     });
@@ -1040,6 +1051,7 @@ app.post('/orders/stock-replenishment', async (request, reply) => {
     mime_type: z.string(),
     original_filename: z.string(),
     label: z.string().optional(),
+    projected_lead_time: z.number().int().positive().optional(),
     action_token: z.string(),
   }).parse(request.body);
 
@@ -1111,10 +1123,10 @@ app.post('/orders/stock-replenishment', async (request, reply) => {
 
   // Create order directly at production_pending — no deposit, no purchasing needed
   const orderRows = await query(
-    `INSERT INTO orders (quotation_number, order_type, current_stage, status, production_started, order_confirmed_at)
-     VALUES ($1, 'stock_replenishment', 'production_pending', 'active', FALSE, NOW())
+    `INSERT INTO orders (quotation_number, order_type, current_stage, status, production_started, order_confirmed_at, projected_lead_time, projected_lead_time_started_at)
+     VALUES ($1, 'stock_replenishment', 'production_pending', 'active', FALSE, NOW(), $2, $3)
      RETURNING *`,
-    [replRef]
+    [replRef, body.projected_lead_time ?? null, body.projected_lead_time ? new Date().toISOString() : null]
   );
   const newOrder = orderRows[0];
 
@@ -1418,6 +1430,7 @@ const updateOrderSchema = z.object({
   deposit_paid_at: z.string().nullable().optional(),
   balance_paid_at: z.string().nullable().optional(),
   total_amount_change_reason: z.string().trim().min(3).optional(),
+  projected_lead_time: z.number().int().positive().nullable().optional(),
   action_token: z.string(),
 });
 
@@ -1494,6 +1507,12 @@ app.patch('/orders/:id', async (request, reply) => {
   if (body.authorized_receiver_contact !== undefined) { fields.push(`authorized_receiver_contact=$${idx++}`); values.push(nullableText(body.authorized_receiver_contact)); }
   if (body.deposit_paid_at !== undefined) { fields.push(`deposit_paid_at=$${idx++}`); values.push(body.deposit_paid_at); }
   if (body.balance_paid_at !== undefined) { fields.push(`balance_paid_at=$${idx++}`); values.push(body.balance_paid_at); }
+  if (body.projected_lead_time !== undefined) {
+    fields.push(`projected_lead_time=$${idx++}`);
+    values.push(body.projected_lead_time);
+    // Reset the started_at clock when lead time is changed
+    fields.push(`projected_lead_time_started_at=NOW()`);
+  }
 
   if (fields.length === 0) {
     return reply.status(400).send({ error: 'No fields to update' });
