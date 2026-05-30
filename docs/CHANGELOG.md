@@ -34,7 +34,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| | Roo (Code) | feat: item-level selection in Delivery Pending section for itemized delivery scheduling — added onScheduleSelected/onScheduleAll props to DeliveryItemSection, scheduleDeliveryItems API function, POST /orders/:id/schedule-items server endpoint, converted Delivered section to use DeliveryItemSection with item-level expansion for partial delivery | ❌ |
+| `476a167` | Roo (Code) | feat: item-level selection in Delivery Pending section for itemized delivery scheduling — added onScheduleSelected/onScheduleAll props to DeliveryItemSection, scheduleDeliveryItems API function, POST /orders/:id/schedule-items server endpoint, converted Delivered section to use DeliveryItemSection with item-level expansion for partial delivery | ✅ VPS `476a167` |
 
 ## 2026-05-28
 
