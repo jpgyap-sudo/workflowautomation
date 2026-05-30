@@ -7326,7 +7326,7 @@ bot.action('vision:extract_yes', async (ctx) => {
     const token = shareData.token;
 
     // Build dashboard URL
-    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'http://localhost:3000';
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
@@ -8716,7 +8716,7 @@ bot.action('vision:retry_extract', async (ctx) => {
     const token = shareData.token;
 
     // Build dashboard URL
-    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'http://localhost:3000';
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
