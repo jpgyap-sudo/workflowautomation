@@ -18,9 +18,6 @@ export interface ItemExtractionResult {
 // ── Configuration ──────────────────────────────────────────────────────
 
 const GEMINI_KEYS = [
-  process.env.GEMINI_API_KEY   ?? '',
-  process.env.GEMINI_API_KEY_2 ?? '',
-  process.env.GEMINI_API_KEY_3 ?? '',
   process.env.GEMINI_API_KEY_4 ?? '',
 ].filter(Boolean);
 const HERMES_MODEL = process.env.HERMES_MODEL ?? 'gemini-2.0-flash';
@@ -581,35 +578,28 @@ async function callGeminiVisionForItems(
     }
   }
 
-  // Phase 1: Try Gemini keys 1-3 (first 3 entries)
-  const primaryKeys = GEMINI_KEYS.slice(0, 3);
-  for (const [i, key] of primaryKeys.entries()) {
+  // Phase 1: Try OpenRouter (Gemini via OpenRouter) as primary provider
+  const { openRouterVision, isOpenRouterConfigured } = await import('./openRouterService.js');
+  if (isOpenRouterConfigured()) {
+    try {
+      return await openRouterVision(imageBase64, mimeType, ITEM_EXTRACTION_PROMPT);
+    } catch (orError) {
+      const orMsg = orError instanceof Error ? orError.message : String(orError);
+      errors.push(`OpenRouter: ${orMsg}`);
+      console.warn('[HermesClaw] OpenRouter failed:', orMsg);
+    }
+  } else {
+    errors.push('OpenRouter not configured');
+  }
+
+  // Phase 2: Try Gemini key4 as fallback
+  for (const [i, key] of GEMINI_KEYS.entries()) {
     const result = await tryGeminiKey(key, `key${i + 1}`);
     if (result !== null) return result;
   }
 
   if (GEMINI_KEYS.length === 0) {
     errors.push('No GEMINI_API_KEY configured');
-  }
-
-  // Phase 2: Try OpenRouter before key4
-  const { openRouterVision, isOpenRouterConfigured } = await import('./openRouterService.js');
-  if (isOpenRouterConfigured()) {
-    console.warn('[HermesClaw] Gemini keys 1-3 exhausted; trying OpenRouter (Kimi VL)');
-    try {
-      return await openRouterVision(imageBase64, mimeType, ITEM_EXTRACTION_PROMPT);
-    } catch (orError) {
-      const orMsg = orError instanceof Error ? orError.message : String(orError);
-      errors.push(`OpenRouter: ${orMsg}`);
-      console.warn('[HermesClaw] OpenRouter also failed:', orMsg);
-    }
-  }
-
-  // Phase 3: Try key4 as last resort before giving up
-  if (GEMINI_KEYS.length > 3) {
-    const key4 = GEMINI_KEYS[3];
-    const result = await tryGeminiKey(key4, 'key4');
-    if (result !== null) return result;
   }
 
   throw new Error(`No vision AI provider available. ${errors.join(' | ')}`);
