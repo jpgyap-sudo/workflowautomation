@@ -73,3 +73,12 @@
 - **Fix:** Updated `TELEGRAM_BOT_TOKEN` from `8972611688:AAEP...` (@atelier88_bot) to `8632443344:AAH8...` (@homeatelier88_bot — the correct bot that IS a member of all group chats) in both local `.env` and VPS `.env`. Restarted `api` and `telegram-bot` containers on VPS.
 - **Extension:** Roo (Code)
 - **Status:** ✅ Verified — no "chat not found" errors in API logs after restart. Bot launched successfully with webhook set.
+
+## 2026-05-30 — "Start Production Workflow" button does nothing on purchasing page
+
+- **Found by:** User report
+- **Symptom:** Clicking "Start Production Workflow" on a pending purchase order shows the ConfirmModal, user clicks "Confirm Action", modal closes, but nothing happens — the order stays in purchasing_pending.
+- **Root cause:** Race condition in `ConfirmModal` component. `handleConfirm` called `onVerified(result.actionToken)` then immediately called `onClose()`. The `onClose` handler in the purchasing page cleared `window.__pendingStartProductionWorkflowData = null` before `handleStartProductionWorkflowVerified` could read it. The function returned early at `if (!pending) return;` — silently doing nothing.
+- **Fix:** Removed `onClose()` from `ConfirmModal`'s `handleConfirm` function. All page-level `handleConfirmVerified` handlers already close the modal themselves after processing the action token.
+- **Extension:** Roo (Code)
+- **Status:** ✅ Fixed — pending deploy verification.

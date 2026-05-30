@@ -27,7 +27,6 @@ export default function ConfirmModal({ open, title, description, onVerified, onC
       const result = await generateActionToken(user?.email ?? '', user?.name ?? undefined);
       if (result.ok && result.actionToken) {
         onVerified(result.actionToken);
-        onClose();
       } else {
         setError('Failed to generate action token. Please try again.');
       }
