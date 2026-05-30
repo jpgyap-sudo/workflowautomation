@@ -60,11 +60,13 @@
  
  ## 2026-05-29
  
-Commit | Extension | Description | Deployed |
- |--------|-----------|-------------|----------|
-| `cf90974` | Roo (Code) | fix: item-level production → en_route → en_route_verification stage transition gap — two fixes: (1) finish-production now always advances to `en_route` (was keeping current_stage for item-level orders, blocking the en-route dispatch flow); (2) start-en-route-tracking now calls advanceFromEnRouteToVerificationIfAllDispatched after setting tracking metadata, so the stage auto-advances to `en_route_verification` when all items are confirmed dispatched, triggering the production agent for arrival monitoring and inventory agent for verification | ✅ VPS `cf90974` |
-| `71b6104` | Roo (Code) | fix: Gemini key rotation + OpenRouter vision fallback in hermesClaw.ts — replaced single GEMINI_API_KEY with GEMINI_KEYS array (3 keys); callGeminiVisionForItems() iterates through all keys before falling back to centralized openRouterVision() with dedicated Kimi VL model; Strategy 3 in extractItemsFromQuotation() now uses openRouterVision() instead of raw fetch with wrong model; added GEMINI_API_KEY_2 and GEMINI_API_KEY_3 to docker-compose.yml | ✅ VPS `71b6104` |
-| `957ac7e` | Roo (Code) | feat: add GEMINI_API_KEY_4 as 4th Gemini fallback key in hermesClaw.ts + docker-compose.yml + VPS .env | ✅ VPS `957ac7e` |
+ Commit | Extension | Description | Deployed |
+  |--------|-----------|-------------|----------|
+  | `cf90974` | Roo (Code) | fix: item-level production → en_route → en_route_verification stage transition gap — two fixes: (1) finish-production now always advances to `en_route` (was keeping current_stage for item-level orders, blocking the en-route dispatch flow); (2) start-en-route-tracking now calls advanceFromEnRouteToVerificationIfAllDispatched after setting tracking metadata, so the stage auto-advances to `en_route_verification` when all items are confirmed dispatched, triggering the production agent for arrival monitoring and inventory agent for verification | ✅ VPS `cf90974` |
+  | `71b6104` | Roo (Code) | fix: Gemini key rotation + OpenRouter vision fallback in hermesClaw.ts — replaced single GEMINI_API_KEY with GEMINI_KEYS array (3 keys); callGeminiVisionForItems() iterates through all keys before falling back to centralized openRouterVision() with dedicated Kimi VL model; Strategy 3 in extractItemsFromQuotation() now uses openRouterVision() instead of raw fetch with wrong model; added GEMINI_API_KEY_2 and GEMINI_API_KEY_3 to docker-compose.yml | ✅ VPS `71b6104` |
+  | `957ac7e` | Roo (Code) | feat: add GEMINI_API_KEY_4 as 4th Gemini fallback key in hermesClaw.ts + docker-compose.yml + VPS .env | ✅ VPS `957ac7e` |
+  | `56b12c3` | Roo (Code) | refactor: OpenRouter as primary vision provider, Gemini key4 as fallback — removed GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3 from hermesClaw.ts and docker-compose.yml; callGeminiVisionForItems() now tries OpenRouter first, then GEMINI_API_KEY_4; updated VPS .env to remove old keys | ✅ VPS `56b12c3` |
+  | | Roo (Code) | fix: switch OpenRouter models from Kimi (404/429) to google/gemini-2.0-flash-001 — tested and confirmed working (VISION_OK); updated VPS .env OPENROUTER_VISION_MODEL, OPENROUTER_CHAT_MODEL, OPENROUTER_MODEL | ✅ VPS (direct .env update) |
  
  ## 2026-05-26
 
