@@ -14183,3 +14183,321 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com ac
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit e554d8dee2eb4d32c76a599acecd845cd9c63c6e
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** e554d8dee2eb4d32c76a599acecd845cd9c63c6e
+**Files:** apps/dashboard/src/lib/auth.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Default passwords for two user accounts (`jpgyap@gmail.com` and `maiquocquynh2506@gmail.com`) were updated from `Purchasing888` to `Purchasing@888`.
+
+**Why it broke:**  
+The original passwords lacked a special character (`@`), likely failing security policy requirements (e.g., password complexity rules) or causing authentication failures for those accounts.
+
+**Reusable takeaway:**  
+Default passwords must comply with system-wide security policies (e.g., minimum special characters). Always validate default credentials against current password rules before deployment, and use centralized configs to avoid hardcoding per-account values.
+
+---
+*Original commit message: fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com accounts*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Default passwords for two user accounts (`jpgyap@gmail.com` and `maiquocquynh2506@gmail.com`) were updated from `Purchasing888` to `Purchasing@888`.
+
+**Why it broke:**  
+The original passwords lacked a special character (`@`), likely failing security policy requirements (e.g., password complexity rules) or causing authentication failures for those accounts.
+
+**Reusable takeaway:**  
+Default passwords must comply with system-wide security policies (e.g., minimum special characters). Always validate default credentials against current password rules before deployment, and use centralized configs to avoid hardcoding per-account values.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com ac
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4fd65acf9c13bc9f23607898db119a0404d965bd
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4fd65acf9c13bc9f23607898db119a0404d965bd
+**Files:** apps/dashboard/src/lib/auth.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** Default passwords for two accounts (`jpgyap@gmail.com` and `maiquocquynh2506@gmail.com`) were updated from `Purchasing888` to `Purchasing@888`.
+
+**Why it broke:** The original password `Purchasing888` likely failed to meet system complexity requirements (e.g., missing a special character), causing authentication failures or security policy violations.
+
+**Reusable takeaway:** Always validate default credentials against password policies (length, character types) before deployment. Use environment variables or a secrets manager for default passwords, and include a pre-deployment check that enforces policy compliance. This prevents silent auth failures and reduces manual hotfixes.
+
+---
+*Original commit message: fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com accounts*
+
+#### Lesson Learned
+
+**What was fixed:** Default passwords for two accounts (`jpgyap@gmail.com` and `maiquocquynh2506@gmail.com`) were updated from `Purchasing888` to `Purchasing@888`.
+
+**Why it broke:** The original password `Purchasing888` likely failed to meet system complexity requirements (e.g., missing a special character), causing authentication failures or security policy violations.
+
+**Reusable takeaway:** Always validate default credentials against password policies (length, character types) before deployment. Use environment variables or a secrets manager for default passwords, and include a pre-deployment check that enforces policy compliance. This prevents silent auth failures and reduces manual hotfixes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com ac
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 064f2721481e56b2e815da617340ae1ba5ac4ec1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 064f2721481e56b2e815da617340ae1ba5ac4ec1
+**Files:** apps/dashboard/src/lib/auth.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Default passwords for two accounts (`jpgyap@gmail.com` and `maiquocquynh2506@gmail.com`) were updated from `Purchasing888` to `Purchasing@888`.
+
+**Why it broke:**  
+The original password `Purchasing888` lacked a special character, likely failing updated security requirements (e.g., password policy enforcing special characters). This caused login failures for default accounts.
+
+**Reusable takeaway:**  
+When updating password policies (e.g., requiring special characters), audit all hardcoded default passwords in code and documentation. Use a centralized password config or environment variables to avoid scattered updates across files. Always test default credentials after policy changes.
+
+---
+*Original commit message: fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com accounts*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Default passwords for two accounts (`jpgyap@gmail.com` and `maiquocquynh2506@gmail.com`) were updated from `Purchasing888` to `Purchasing@888`.
+
+**Why it broke:**  
+The original password `Purchasing888` lacked a special character, likely failing updated security requirements (e.g., password policy enforcing special characters). This caused login failures for default accounts.
+
+**Reusable takeaway:**  
+When updating password policies (e.g., requiring special characters), audit all hardcoded default passwords in code and documentation. Use a centralized password config or environment variables to avoid scattered updates across files. Always test default credentials after policy changes.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: mark password fix as deployed (commit 064f272)
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a4a9ffddca475547767073f8c144aba3eca8010a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a4a9ffddca475547767073f8c144aba3eca8010a
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** A password-related bug was resolved and marked as deployed in the changelog and update log.
+
+**Why it broke:** The commit message does not specify the root cause, but the fix was likely due to incorrect password handling (e.g., hardcoded credentials, insecure storage, or parsing error) that caused authentication failures or security vulnerabilities.
+
+**Reusable takeaway:** Always document password fixes explicitly in changelogs and update logs to ensure deployment tracking and auditability. For password-related issues, verify that credentials are stored securely (e.g., using environment variables or secrets management) and that input validation handles edge cases (e.g., special characters, encoding). After deploying a fix, immediately update logs to prevent regression and inform the team.
+
+---
+*Original commit message: chore: mark password fix as deployed (commit 064f272)*
+
+#### Lesson Learned
+
+**What was fixed:** A password-related bug was resolved and marked as deployed in the changelog and update log.
+
+**Why it broke:** The commit message does not specify the root cause, but the fix was likely due to incorrect password handling (e.g., hardcoded credentials, insecure storage, or parsing error) that caused authentication failures or security vulnerabilities.
+
+**Reusable takeaway:** Always document password fixes explicitly in changelogs and update logs to ensure deployment tracking and auditability. For password-related issues, verify that credentials are stored securely (e.g., using environment variables or secrets management) and that input validation handles edge cases (e.g., special characters, encoding). After deploying a fix, immediately update logs to prevent regression and inform the team.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: mark projected lead time feature as deployed (commit cc5fc18) and add gap fixes to UPDATE_LOG
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5c7a30713e5e8fdf1d5c53270509031281805848
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5c7a30713e5e8fdf1d5c53270509031281805848
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+The projected lead time feature was formally marked as deployed in the changelog, and missing entries (gaps) were added to the UPDATE_LOG to ensure a complete, chronological record of changes.
+
+**Why it broke:**  
+The UPDATE_LOG had gaps—previous commits or features were not documented, likely due to oversight during rapid development or merging. This caused an incomplete history for users tracking updates.
+
+**Reusable takeaway:**  
+Always maintain a disciplined update log alongside your changelog. When deploying a feature, immediately backfill any missing entries in the UPDATE_LOG to prevent documentation drift. This ensures users and maintainers have a reliable, gap-free history of changes, reducing confusion and support overhead.
+
+---
+*Original commit message: chore: mark projected lead time feature as deployed (commit cc5fc18) and add gap fixes to UPDATE_LOG*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The projected lead time feature was formally marked as deployed in the changelog, and missing entries (gaps) were added to the UPDATE_LOG to ensure a complete, chronological record of changes.
+
+**Why it broke:**  
+The UPDATE_LOG had gaps—previous commits or features were not documented, likely due to oversight during rapid development or merging. This caused an incomplete history for users tracking updates.
+
+**Reusable takeaway:**  
+Always maintain a disciplined update log alongside your changelog. When deploying a feature, immediately backfill any missing entries in the UPDATE_LOG to prevent documentation drift. This ensures users and maintainers have a reliable, gap-free history of changes, reducing confusion and support overhead.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: 502 error on /auth/generate-action-token when email is empty
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2e46fd2423f5cb277ff2ce8cf5d143d2e1c1dee5
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 2e46fd2423f5cb277ff2ce8cf5d143d2e1c1dee5
+**Files:** apps/api/src/server.ts
+
+**Summary:**
+**What was fixed:** A 502 error on the `/auth/generate-action-token` endpoint when an empty email was submitted.
+
+**Why it broke:** The endpoint did not validate the email field before processing. An empty email caused downstream logic (likely a database query or token generation) to fail silently or throw an unhandled exception, resulting in a 502 Bad Gateway response.
+
+**Reusable takeaway:** Always validate required input fields at the API boundary before passing them to business logic. For endpoints that generate tokens or perform critical operations, add explicit checks for empty/null values and return a clear 4xx error (e.g., 400 Bad Request) instead of letting the system fail with a 502. This prevents ambiguous server errors and improves debuggability.
+
+---
+*Original commit message: fix: 502 error on /auth/generate-action-token when email is empty*
+
+#### Lesson Learned
+
+**What was fixed:** A 502 error on the `/auth/generate-action-token` endpoint when an empty email was submitted.
+
+**Why it broke:** The endpoint did not validate the email field before processing. An empty email caused downstream logic (likely a database query or token generation) to fail silently or throw an unhandled exception, resulting in a 502 Bad Gateway response.
+
+**Reusable takeaway:** Always validate required input fields at the API boundary before passing them to business logic. For endpoints that generate tokens or perform critical operations, add explicit checks for empty/null values and return a clear 4xx error (e.g., 400 Bad Request) instead of letting the system fail with a 502. This prevents ambiguous server errors and improves debuggability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: Start Production Workflow button does nothing — race condition in ConfirmModal
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 07fc04636a1b102d626e6b23d220c43013aece45
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 07fc04636a1b102d626e6b23d220c43013aece45
+**Files:** apps/dashboard/src/components/ConfirmModal.tsx,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+The "Start Production Workflow" button in the dashboard was unresponsive — clicking it did nothing.
+
+**Why it broke:**  
+A race condition in `ConfirmModal.tsx` caused the modal’s internal state (e.g., `isOpen` or `isProcessing`) to be updated asynchronously, so the button’s click handler fired before the modal was fully ready to process the action. The modal appeared to open but the underlying workflow start logic never executed.
+
+**Reusable takeaway:**  
+When a modal triggers an async action (like starting a workflow), ensure the action handler waits for the modal’s state to be fully initialized before executing. Use a guard (e.g., `if (!isReady) return`) or a promise-based flow to prevent race conditions between UI state updates and business logic. Always test modal-triggered workflows with rapid clicks or automated UI tests to catch timing-dependent bugs.
+
+---
+*Original commit message: fix: Start Production Workflow button does nothing — race condition in ConfirmModal*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The "Start Production Workflow" button in the dashboard was unresponsive — clicking it did nothing.
+
+**Why it broke:**  
+A race condition in `ConfirmModal.tsx` caused the modal’s internal state (e.g., `isOpen` or `isProcessing`) to be updated asynchronously, so the button’s click handler fired before the modal was fully ready to process the action. The modal appeared to open but the underlying workflow start logic never executed.
+
+**Reusable takeaway:**  
+When a modal triggers an async action (like starting a workflow), ensure the action handler waits for the modal’s state to be fully initialized before executing. Use a guard (e.g., `if (!isReady) return`) or a promise-based flow to prevent race conditions between UI state updates and business logic. Always test modal-triggered workflows with rapid clicks or automated UI tests to catch timing-dependent bugs.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

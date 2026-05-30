@@ -67,6 +67,7 @@ const ORDER_LIST_SELECT = `
   o.total_amount_changed, o.previous_total_amount, o.amount_change_reason,
   o.amount_changed_at, o.amount_changed_by,
   o.order_type, o.stock_prep_days, o.stock_prep_ready_at,
+  o.partial_delivery, o.partial_delivery_notes,
   o.created_at, o.updated_at
 `;
 

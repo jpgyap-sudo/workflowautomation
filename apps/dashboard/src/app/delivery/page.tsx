@@ -7,23 +7,13 @@ import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExt
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
+import DeliveryItemSection from '@/components/DeliveryItemSection';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
   onSave: (data: { client_name?: string; sales_agent?: string; total_amount?: number; quotation_number?: string }) => void;
-  onCancel: () => void;
-  saving: boolean;
-}
-
-interface ScheduleFormProps {
-  order: Order;
-  value: string;
-  remarks: string;
-  onValueChange: (value: string) => void;
-  onRemarksChange: (value: string) => void;
-  onSave: () => void;
   onCancel: () => void;
   saving: boolean;
 }
@@ -49,41 +39,45 @@ function toDateTimeLocalValue(value?: string | null) {
   return new Date(parsed.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function ScheduleForm({ order, value, remarks, onValueChange, onRemarksChange, onSave, onCancel, saving }: ScheduleFormProps) {
+function DeliveryInfo({ order }: { order: Order }) {
+  if (!order.delivery_address && !order.contact_number && !order.authorized_receiver_name && !order.authorized_receiver_contact) {
+    return null;
+  }
   return (
-    <div className="flex flex-wrap items-end gap-2 border-t border-gray-100 bg-purple-50/50 px-6 py-3">
-      <div>
-        <label className="mb-1 block text-[11px] font-medium text-purple-700">Delivery date & time</label>
-        <input
-          type="datetime-local"
-          value={value}
-          onChange={(e) => onValueChange(e.target.value)}
-          className="rounded-lg border border-purple-200 px-3 py-1.5 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
-        />
-      </div>
-      <div className="min-w-[220px] flex-1">
-        <label className="mb-1 block text-[11px] font-medium text-purple-700">Remarks</label>
-        <input
-          value={remarks}
-          onChange={(e) => onRemarksChange(e.target.value)}
-          placeholder="Optional remarks"
-          className="w-full rounded-lg border border-purple-200 px-3 py-1.5 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
-        />
-      </div>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={saving || !value.trim()}
-        className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-      >
-        {saving ? 'Saving…' : 'Save Schedule'}
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-purple-700">
+      {order.delivery_address && (
+        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{order.delivery_address}</span>
+      )}
+      {order.contact_number && (
+        <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.contact_number}</span>
+      )}
+      {order.authorized_receiver_name && (
+        <span className="flex items-center gap-1">
+          <UserCheck className="h-3 w-3" />
+          {order.authorized_receiver_name}
+          {order.authorized_receiver_contact && ` (${order.authorized_receiver_contact})`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+interface RowActionsProps {
+  order: Order;
+  onEdit: (order: Order) => void;
+  onDelete: (order: Order) => void;
+}
+
+function RowActions({ order, onEdit, onDelete }: RowActionsProps) {
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={() => onEdit(order)}
+        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+        <Pencil className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-300"
-      >
-        Cancel
+      <button onClick={() => onDelete(order)}
+        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
+        <Trash2 className="h-4 w-4" />
       </button>
     </div>
   );
@@ -140,29 +134,6 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
         <X className="h-4 w-4" />
       </button>
     </form>
-  );
-}
-
-function DeliveryInfo({ order }: { order: Order }) {
-  if (!order.delivery_address && !order.contact_number && !order.authorized_receiver_name && !order.authorized_receiver_contact) {
-    return null;
-  }
-  return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-purple-700">
-      {order.delivery_address && (
-        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{order.delivery_address}</span>
-      )}
-      {order.contact_number && (
-        <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.contact_number}</span>
-      )}
-      {order.authorized_receiver_name && (
-        <span className="flex items-center gap-1">
-          <UserCheck className="h-3 w-3" />
-          {order.authorized_receiver_name}
-          {order.authorized_receiver_contact && ` (${order.authorized_receiver_contact})`}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -1276,10 +1247,11 @@ export default function DeliveryPage() {
     });
   }
 
-  function handlePartialDeliveryOtp(actionToken: string) {
-    const modal = partialDeliveryModal;
-    if (!modal.order || modal.selectedItemIds.size === 0) return;
-    executePartialDelivery(modal.order, Array.from(modal.selectedItemIds), modal.deliveryNote, actionToken);
+  async function handlePartialDeliveryOtp(actionToken: string) {
+    const pending = (window as any).__pendingPartialDeliveryData as { order: Order; itemIds: string[]; deliveryNote: string } | undefined;
+    if (!pending) return;
+    (window as any).__pendingPartialDeliveryData = null;
+    await executePartialDelivery(pending.order, pending.itemIds, pending.deliveryNote, actionToken);
   }
 
   async function executePartialDelivery(order: Order, itemIds: string[], deliveryNote: string, actionToken: string) {
@@ -1364,362 +1336,6 @@ export default function DeliveryPage() {
   /** Deliver all items — opens the partial delivery modal with all deliverable items pre-selected */
   function handleDeliverAll(order: Order) {
     handleOpenPartialDelivery(order);
-  }
-
-  // ── Shared row actions (edit + delete buttons) ─────────────────────────
-
-  function RowActions({ order }: { order: Order }) {
-    return (
-      <div className="flex items-center gap-1">
-        <button onClick={() => setEditingOrder(order)}
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button onClick={() => handleDeleteClick(order)}
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-    );
-  }
-
-  // ── Delivery Item Section (itemized progression like ProductionItemSection) ──
-
-  interface DeliveryItemSectionProps {
-    icon: React.ReactNode;
-    title: string;
-    count: number;
-    countBg: string;
-    countText: string;
-    orders: Order[];
-    isLoading: boolean;
-    emptyText: string;
-    /** Deliver mode — show deliver buttons on items */
-    onDeliverItem?: (order: Order, item: DeliveryProgressItem) => void;
-    onDeliverSelected?: (order: Order, itemIds: string[]) => void;
-    onDeliverAll?: (order: Order) => void;
-    /** Schedule mode — show Schedule Delivery form instead of deliver buttons */
-    onScheduleDelivery?: (order: Order) => void;
-    /** Schedule selected mode — show checkboxes + "Schedule Selected" button */
-    onScheduleSelected?: (order: Order, itemIds: string[]) => void;
-    onScheduleAll?: (order: Order) => void;
-    schedulingOrderId?: string | null;
-    scheduleDate?: string;
-    scheduleRemarks?: string;
-    onScheduleDateChange?: (v: string) => void;
-    onScheduleRemarksChange?: (v: string) => void;
-    onScheduleSubmit?: (order: Order) => void;
-    onScheduleCancel?: () => void;
-    scheduleSaving?: boolean;
-    onViewFiles?: (o: Order) => void;
-    onEdit?: (o: Order) => void;
-    onDelete?: (o: Order) => void;
-    actionLoading?: string | null;
-  }
-
-  function DeliveryItemSection({
-    icon, title, count, countBg, countText,
-    orders, isLoading, emptyText,
-    onDeliverItem, onDeliverSelected, onDeliverAll,
-    onScheduleDelivery, onScheduleSelected, onScheduleAll,
-    schedulingOrderId, scheduleDate, scheduleRemarks,
-    onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
-    onViewFiles, onEdit, onDelete,
-    actionLoading,
-  }: DeliveryItemSectionProps) {
-    const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
-    const [itemsByOrder, setItemsByOrder] = useState<Record<string, DeliveryProgressItem[]>>({});
-    const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
-    const [selectedItemIds, setSelectedItemIds] = useState<Record<string, Set<string>>>({});
-
-    async function toggleOrder(order: Order) {
-      if (expandedOrderId === order.id) {
-        setExpandedOrderId(null);
-        setSelectedItemIds((prev) => { const next = { ...prev }; delete next[order.id]; return next; });
-        return;
-      }
-      setExpandedOrderId(order.id);
-      if (!itemsByOrder[order.id]) {
-        setLoadingItemsForOrder(order.id);
-        try {
-          const data = await getDeliveryProgress(order.id);
-          setItemsByOrder((prev) => ({ ...prev, [order.id]: data.items ?? [] }));
-        } catch {
-          setItemsByOrder((prev) => ({ ...prev, [order.id]: [] }));
-        } finally {
-          setLoadingItemsForOrder(null);
-        }
-      }
-    }
-
-    function toggleSelectItem(orderId: string, itemId: string) {
-      setSelectedItemIds((prev) => {
-        const current = new Set(prev[orderId] ?? []);
-        if (current.has(itemId)) current.delete(itemId); else current.add(itemId);
-        return { ...prev, [orderId]: current };
-      });
-    }
-
-    function toggleSelectAll(orderId: string, selectableItems: DeliveryProgressItem[]) {
-      setSelectedItemIds((prev) => {
-        const current = prev[orderId] ?? new Set<string>();
-        const allSelected = selectableItems.every((i) => current.has(i.id));
-        return { ...prev, [orderId]: allSelected ? new Set() : new Set(selectableItems.map((i) => i.id)) };
-      });
-    }
-
-    return (
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          {icon}
-          <h2 className="text-base font-semibold text-gray-800">{title}</h2>
-          <span className={`ml-auto rounded-full ${countBg} px-2 py-0.5 text-xs font-medium ${countText}`}>{count}</span>
-        </div>
-        {isLoading && orders.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">{emptyText}</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {orders.map((order) => {
-              const isExpanded = expandedOrderId === order.id;
-              const orderItems = itemsByOrder[order.id] ?? [];
-              const deliverableItems = orderItems.filter((i) => !i.fully_delivered && i.verified_qty > 0);
-              const hasDeliverableItems = deliverableItems.length > 0;
-              const orderSelected = selectedItemIds[order.id] ?? new Set<string>();
-              const allSelected = deliverableItems.length > 0 && deliverableItems.every((i) => orderSelected.has(i.id));
-              const someSelected = orderSelected.size > 0 && !allSelected;
-
-              return (
-                <div key={order.id}>
-                  {/* Order header row */}
-                  <button
-                    onClick={() => toggleOrder(order)}
-                    className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50/50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
-                        {order.client_name && (
-                          <span className="text-xs text-gray-500">— {order.client_name}</span>
-                        )}
-                      </div>
-                      {order.sales_agent && (
-                        <p className="text-[11px] text-gray-400">{order.sales_agent}</p>
-                      )}
-                      {order.total_amount != null && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Total: ₱{Number(order.total_amount).toLocaleString()}
-                        </p>
-                      )}
-                      <DeliveryInfo order={order} />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={order.current_stage} />
-                      <div className="flex items-center gap-1">
-                        {onEdit && (
-                          <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                        )}
-                        {onDelete && (
-                          <button onClick={(e) => { e.stopPropagation(); onDelete(order); }}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="Delete order">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                      {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                    </div>
-                  </button>
-
-                  {/* Expanded items table */}
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
-                      {loadingItemsForOrder === order.id ? (
-                        <div className="flex items-center justify-center py-4">
-                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
-                        </div>
-                      ) : orderItems.length === 0 ? (
-                        <p className="py-2 text-center text-xs text-gray-400">No items found for this order.</p>
-                      ) : (
-                        <div>
-                        {/* Toolbar: Schedule Delivery (pending section) OR Schedule Selected (pending with checkboxes) OR Deliver Selected + Deliver All (scheduled section) */}
-                        {onScheduleDelivery && !onScheduleSelected ? (
-                          <div className="mb-2 flex items-center justify-between">
-                            <span className="text-[11px] text-gray-400">Schedule this order before delivering items.</span>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onScheduleDelivery(order); }}
-                              className="rounded-md border border-purple-300 bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 transition-colors"
-                            >
-                              📅 Schedule Delivery
-                            </button>
-                          </div>
-                        ) : (onScheduleSelected || onScheduleAll) ? (
-                          <div className="mb-2 flex items-center justify-end gap-2">
-                            {onScheduleSelected && orderSelected.size > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onScheduleSelected(order, Array.from(orderSelected)); }}
-                                className="rounded-md border border-purple-300 bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 transition-colors"
-                              >
-                                📅 Schedule Selected ({orderSelected.size})
-                              </button>
-                            )}
-                            {onScheduleAll && hasDeliverableItems && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onScheduleAll(order); }}
-                                className="rounded-md border border-purple-200 bg-purple-50 px-3 py-1.5 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 transition-colors"
-                              >
-                                📅 Schedule All ({deliverableItems.length})
-                              </button>
-                            )}
-                          </div>
-                        ) : (onDeliverSelected || onDeliverAll) && (
-                          <div className="mb-2 flex items-center justify-end gap-2">
-                            {onDeliverSelected && orderSelected.size > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onDeliverSelected(order, Array.from(orderSelected)); }}
-                                className="rounded-md border border-amber-300 bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 transition-colors"
-                              >
-                                🚚 Deliver Selected ({orderSelected.size})
-                              </button>
-                            )}
-                            {onDeliverAll && hasDeliverableItems && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onDeliverAll(order); }}
-                                className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
-                              >
-                                🚚 Deliver All ({deliverableItems.length})
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        <div className="overflow-x-auto rounded-lg border border-gray-200">
-                          <table className="w-full text-left text-xs">
-                            <thead>
-                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                                {(onDeliverSelected || onDeliverAll || onScheduleSelected || onScheduleAll) && (
-                                  <th className="w-8 px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      title="Select all"
-                                      checked={allSelected}
-                                      ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                                      onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, deliverableItems); }}
-                                      disabled={deliverableItems.length === 0}
-                                      className="rounded border-gray-300 accent-purple-600 disabled:opacity-30"
-                                    />
-                                  </th>
-                                )}
-                                  <th className="px-3 py-2">Item</th>
-                                  <th className="px-3 py-2">Ordered</th>
-                                  <th className="px-3 py-2">Verified</th>
-                                  <th className="px-3 py-2">Delivered</th>
-                                  <th className="px-3 py-2">Remaining</th>
-                                  <th className="px-3 py-2">Status</th>
-                                  <th className="px-3 py-2">Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {orderItems.map((item) => {
-                                  const canDeliver = !item.fully_delivered && item.verified_qty > 0;
-                                  const isChecked = orderSelected.has(item.id);
-                                  return (
-                                    <tr
-                                      key={item.id}
-                                      className={`hover:bg-gray-50 ${isChecked ? (onScheduleSelected || onScheduleAll ? 'bg-purple-50/40' : 'bg-amber-50/40') : ''} ${item.fully_delivered ? 'opacity-60' : ''}`}
-                                    >
-                                      {(onDeliverSelected || onDeliverAll || onScheduleSelected || onScheduleAll) && (
-                                        <td className="px-3 py-2">
-                                          {canDeliver && (
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              onChange={(e) => { e.stopPropagation(); toggleSelectItem(order.id, item.id); }}
-                                              className={`rounded border-gray-300 ${onScheduleSelected || onScheduleAll ? 'accent-purple-600' : 'accent-amber-600'}`}
-                                            />
-                                          )}
-                                        </td>
-                                      )}
-                                      <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
-                                      <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
-                                      <td className="px-3 py-2 text-gray-600">{item.verified_qty}</td>
-                                      <td className="px-3 py-2 text-gray-600">{item.delivered_qty}</td>
-                                      <td className="px-3 py-2">
-                                        {item.remaining_qty > 0 ? (
-                                          <span className="font-medium text-amber-600">{item.remaining_qty}</span>
-                                        ) : (
-                                          <span className="text-gray-400">0</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        {item.fully_delivered ? (
-                                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">✅ Done</span>
-                                        ) : item.delivered_qty > 0 ? (
-                                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">Partial</span>
-                                        ) : (
-                                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">Pending</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <div className="flex flex-wrap gap-1.5">
-                                          {!onScheduleDelivery && onDeliverItem && canDeliver && (
-                                            <button
-                                              type="button"
-                                              disabled={actionLoading === order.id}
-                                              onClick={(e) => { e.stopPropagation(); onDeliverItem(order, item); }}
-                                              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
-                                            >
-                                              {actionLoading === order.id ? '...' : '🚚 Deliver'}
-                                            </button>
-                                          )}
-                                          {item.fully_delivered && (
-                                            <span className="rounded-md border border-green-200 bg-green-50 px-3 py-1 text-[11px] font-semibold text-green-700">
-                                              ✓ Delivered
-                                            </span>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                          {/* Inline schedule form — only in schedule mode */}
-                          {onScheduleDelivery && schedulingOrderId === order.id && (
-                            <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                              <ScheduleForm
-                                order={order}
-                                value={scheduleDate ?? ''}
-                                remarks={scheduleRemarks ?? ''}
-                                onValueChange={onScheduleDateChange ?? (() => {})}
-                                onRemarksChange={onScheduleRemarksChange ?? (() => {})}
-                                onSave={() => onScheduleSubmit?.(order)}
-                                onCancel={() => onScheduleCancel?.()}
-                                saving={scheduleSaving ?? false}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
   }
 
   // ── Apply client filter ──────────────────────────────────────────────
@@ -1884,7 +1500,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Balance Due →'}
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -1940,7 +1556,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2012,7 +1628,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Balance Due →'}
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2135,7 +1751,7 @@ export default function DeliveryPage() {
                           </button>
                         </>
                       )}
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2189,7 +1805,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Verify Balance →'}
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2335,7 +1951,7 @@ export default function DeliveryPage() {
                       >
                         <Upload className="h-3.5 w-3.5 inline mr-0.5" />Upload Invoice / Receipt
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2389,7 +2005,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Confirm Payment →'}
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2443,7 +2059,7 @@ export default function DeliveryPage() {
                       >
                         <CheckCircle2 className="h-3.5 w-3.5 inline mr-1" />Order Complete
                       </button>
-                      <RowActions order={order} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2966,10 +2582,17 @@ export default function DeliveryPage() {
                         alert('Please select at least one item to deliver.');
                         return;
                       }
+                      const order = partialDeliveryModal.order;
+                      if (!order) return;
+                      (window as any).__pendingPartialDeliveryData = {
+                        order,
+                        itemIds: Array.from(partialDeliveryModal.selectedItemIds),
+                        deliveryNote: partialDeliveryModal.deliveryNote,
+                      };
                       setConfirmModal({
                         open: true,
                         title: 'Record Partial Delivery',
-                        description: `Deliver ${partialDeliveryModal.selectedItemIds.size} selected item(s) for #${partialDeliveryModal.order?.quotation_number ?? '—'}.`,
+                        description: `Deliver ${partialDeliveryModal.selectedItemIds.size} selected item(s) for #${order.quotation_number ?? '—'}.`,
                         pendingAction: 'partial_delivery',
                       });
                     }}
