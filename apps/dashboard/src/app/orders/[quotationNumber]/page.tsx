@@ -820,11 +820,12 @@ function ItemTrackingSection({
 
   // Show item tracking for all stages — items can be extracted at any point in the workflow
   const stageShowsInventoryCols = currentStage === 'inventory_verification';
-  const stageShowsArrivalCols = ['en_route', 'en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(currentStage);
+  // Show arrival columns for all stages — itemized progression should not be blocked by order stage
+  const stageShowsArrivalCols = true;
   const selectableVerifyItems = stageShowsInventoryCols ? items.filter((i) => (i.verified_qty ?? 0) < i.quantity) : [];
   const stageAllowsProdEdit = ['production_in_progress', 'partial_production', 'en_route'].includes(currentStage);
-  // Allow en-route dispatch edits at en_route, and arrival edits at en_route_verification too
-  const stageAllowsEnRouteEdit = ['en_route', 'en_route_verification'].includes(currentStage);
+  // Allow en-route dispatch edits at any stage — itemized progression should not be blocked by order stage
+  const stageAllowsEnRouteEdit = true;
 
   async function refreshItemTracking() {
     const [itemsRes, compRes, logsRes] = await Promise.all([

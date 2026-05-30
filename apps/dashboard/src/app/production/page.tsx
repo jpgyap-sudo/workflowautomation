@@ -327,10 +327,11 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
       {items.length > 0 && (
         <div className="mb-3">
           {(() => {
-            const isEnRoute = order.current_stage === 'en_route';
-            const isArrivalTracking = ['en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(order.current_stage);
-            const selectableItems = isEnRoute ? items.filter((i) => i.en_route_status === 'not_yet') : [];
-            const arrivableItems = isArrivalTracking ? items.filter((i) => i.en_route_status !== 'arrived') : [];
+            // Allow en-route and arrival actions for any stage — itemized progression should not be blocked by order stage
+            const isEnRoute = true;
+            const isArrivalTracking = true;
+            const selectableItems = items.filter((i) => i.en_route_status === 'not_yet');
+            const arrivableItems = items.filter((i) => i.en_route_status !== 'arrived');
             const allSelected = selectableItems.length > 0 && selectableItems.every((i) => selectedItemIds.has(i.id));
             const someSelected = selectedItemIds.size > 0 && !allSelected;
             const allArrivalSelected = arrivableItems.length > 0 && arrivableItems.every((i) => selectedArrivalItemIds.has(i.id));
@@ -556,8 +557,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             {updatingItemId === item.id ? 'Saving...' : '▶ Start'}
                           </button>
                         )}
-                        {/* En route action buttons — only shown for en_route stage orders */}
-                        {order.current_stage === 'en_route' && (() => {
+                        {/* En route action buttons — shown for any stage (itemized progression should not be blocked by order stage) */}
+                        {(() => {
                           const isBusy = updatingEnRouteItemId === item.id;
                           if (item.en_route_status === 'arrived') {
                             return <span className="text-[10px] text-gray-400 italic">Arrived ✓</span>;
@@ -597,8 +598,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             </>
                           );
                         })()}
-                        {/* Arrival tracking buttons — for en_route_verification / inventory_arrived stages */}
-                        {['en_route_verification', 'inventory_arrived', 'inventory_verification'].includes(order.current_stage) && (() => {
+                        {/* Arrival tracking buttons — shown for any stage (itemized progression should not be blocked by order stage) */}
+                        {(() => {
                           const isBusy = updatingEnRouteItemId === item.id || markingDelayedId === item.id;
                           if (item.en_route_status === 'arrived') {
                             return <span className="text-[10px] font-medium text-green-600">✓ Arrived</span>;
