@@ -67,6 +67,7 @@
   | `957ac7e` | Roo (Code) | feat: add GEMINI_API_KEY_4 as 4th Gemini fallback key in hermesClaw.ts + docker-compose.yml + VPS .env | ✅ VPS `957ac7e` |
   | `56b12c3` | Roo (Code) | refactor: OpenRouter as primary vision provider, Gemini key4 as fallback — removed GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3 from hermesClaw.ts and docker-compose.yml; callGeminiVisionForItems() now tries OpenRouter first, then GEMINI_API_KEY_4; updated VPS .env to remove old keys | ✅ VPS `56b12c3` |
   | | Roo (Code) | fix: switch OpenRouter models from Kimi (404/429) to google/gemini-2.0-flash-001 — tested and confirmed working (VISION_OK); updated VPS .env OPENROUTER_VISION_MODEL, OPENROUTER_CHAT_MODEL, OPENROUTER_MODEL | ✅ VPS (direct .env update) |
+  | | Roo (Code) | fix: QTN-MNDesign itemized arrival → verification gap — advanceFromEnRouteToVerificationIfAllDispatched required allFinished (production_status === 'finished') in addition to allDispatched. In itemized progression, items can be dispatched before all are finished production, blocking the en_route → en_route_verification transition. Removed the allFinished check — only allDispatched is required. | ❌ |
  
  ## 2026-05-26
 

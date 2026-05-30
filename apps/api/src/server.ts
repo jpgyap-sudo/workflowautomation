@@ -424,9 +424,11 @@ async function advanceFromEnRouteToVerificationIfAllDispatched(
     [orderId],
   );
   if (items.length === 0) return { advanced: false, order: null };
-  const allFinished = items.every((i) => i.production_status === 'finished');
+  // Only check that all items are dispatched (en_route or arrived).
+  // Production completion is a separate concern — items can be en route
+  // even if some are still in production (partial dispatch workflow).
   const allDispatched = items.every((i) => i.en_route_status === 'en_route' || i.en_route_status === 'arrived');
-  if (!allFinished || !allDispatched) return { advanced: false, order: null };
+  if (!allDispatched) return { advanced: false, order: null };
 
   const orderRows = await query<{ current_stage: string; estimated_arrival_days: number | null }>(
     `SELECT current_stage, estimated_arrival_days FROM orders WHERE id = $1`,

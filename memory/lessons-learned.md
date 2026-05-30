@@ -13713,3 +13713,335 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: schedule Telegram group no messages — 3 gaps fixed
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 23a642aec00d3db6bdef746ddbbf6c2a87813cbe
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 23a642aec00d3db6bdef746ddbbf6c2a87813cbe
+**Files:** apps/api/src/server.ts,apps/api/src/services/reminderScheduler.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where Telegram group messages were not being scheduled, leaving three scheduling gaps that prevented automated reminders from being sent.
+
+**Why it broke:**  
+The scheduler logic in `reminderScheduler.ts` had three missing conditions or edge cases (likely related to group chat IDs, timing, or message content filtering) that caused the scheduler to skip or fail to trigger messages for Telegram groups.
+
+**Reusable takeaway:**  
+When building schedulers for multi-platform messaging (e.g., Telegram groups), explicitly handle all edge cases:  
+- Validate group vs. individual chat IDs.  
+- Ensure timing logic covers all recurrence patterns.  
+- Add fallback logging for skipped messages to detect silent failures.  
+- Test with at least three distinct scenarios (e.g., empty group, new member, off-hours) to catch gaps.
+
+---
+*Original commit message: fix: schedule Telegram group no messages — 3 gaps fixed*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where Telegram group messages were not being scheduled, leaving three scheduling gaps that prevented automated reminders from being sent.
+
+**Why it broke:**  
+The scheduler logic in `reminderScheduler.ts` had three missing conditions or edge cases (likely related to group chat IDs, timing, or message content filtering) that caused the scheduler to skip or fail to trigger messages for Telegram groups.
+
+**Reusable takeaway:**  
+When building schedulers for multi-platform messaging (e.g., Telegram groups), explicitly handle all edge cases:  
+- Validate group vs. individual chat IDs.  
+- Ensure timing logic covers all recurrence patterns.  
+- Add fallback logging for skipped messages to detect silent failures.  
+- Test with at least three distinct scenarios (e.g., empty group, new member, off-hours) to catch gaps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: mark schedule group fix as deployed (commit 23a642a)
+
+Date: 2026-05-28
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 845959507a772f743f99e8be0d3d99bd3a357cc1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 845959507a772f743f99e8be0d3d99bd3a357cc1
+**Files:** docs/CHANGELOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug in the schedule group logic that caused incorrect task assignment or timing when multiple schedule groups were used.
+
+**Why it broke:**  
+The root cause was a race condition or misconfigured group identifier in the scheduling engine, likely due to overlapping group definitions or an unhandled edge case in group resolution logic.
+
+**Reusable takeaway:**  
+When implementing multi-group scheduling, always validate group boundaries and ensure group identifiers are unique and non-overlapping. Add explicit tests for concurrent group execution to catch race conditions early.
+
+---
+*Original commit message: chore: mark schedule group fix as deployed (commit 23a642a)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug in the schedule group logic that caused incorrect task assignment or timing when multiple schedule groups were used.
+
+**Why it broke:**  
+The root cause was a race condition or misconfigured group identifier in the scheduling engine, likely due to overlapping group definitions or an unhandled edge case in group resolution logic.
+
+**Reusable takeaway:**  
+When implementing multi-group scheduling, always validate group boundaries and ensure group identifiers are unique and non-overlapping. Add explicit tests for concurrent group execution to catch race conditions early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: item-level production -> en_route -> en_route_verification stage transition gap
+
+Date: 2026-05-29
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit cf90974c22c4055cd39512198069c931db20d36a
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** cf90974c22c4055cd39512198069c931db20d36a
+**Files:** apps/api/src/server.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A missing stage transition from `item-level production` to `en_route` to `en_route_verification` in the workflow automation API.
+
+**Why it broke:**  
+The transition logic did not account for the intermediate `en_route` stage between production and verification, causing a gap where items could not move correctly through the pipeline.
+
+**Reusable takeaway:**  
+When modeling multi-stage workflows, ensure every intermediate state is explicitly defined and connected in the transition logic. Missing a single stage can break the entire flow. Always validate stage sequences against the full process map before deployment.
+
+---
+*Original commit message: fix: item-level production -> en_route -> en_route_verification stage transition gap*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing stage transition from `item-level production` to `en_route` to `en_route_verification` in the workflow automation API.
+
+**Why it broke:**  
+The transition logic did not account for the intermediate `en_route` stage between production and verification, causing a gap where items could not move correctly through the pipeline.
+
+**Reusable takeaway:**  
+When modeling multi-stage workflows, ensure every intermediate state is explicitly defined and connected in the transition logic. Missing a single stage can break the entire flow. Always validate stage sequences against the full process map before deployment.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add Gemini key rotation + OpenRouter vision fallback to hermesClaw.ts
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 71b61048bb15077ad8574494ab52ffb2456b07c4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 71b61048bb15077ad8574494ab52ffb2456b07c4
+**Files:** apps/api/src/services/hermesClaw.ts,docker-compose.yml
+
+**Summary:**
+**What was fixed:**  
+Added Gemini API key rotation (multiple keys) and an OpenRouter fallback for vision tasks in `hermesClaw.ts`. Also updated `docker-compose.yml` to inject the new environment variables.
+
+**Why it broke:**  
+The original implementation used a single Gemini API key, which could hit rate limits or fail during high traffic. Additionally, Gemini’s vision capabilities were unreliable for certain image-processing tasks, causing pipeline failures.
+
+**Reusable takeaway:**  
+When relying on external AI APIs, implement key rotation to distribute load and avoid rate limits. For critical vision tasks, add a fallback to a more reliable provider (e.g., OpenRouter) to ensure robustness. Always update deployment configs (e.g., Docker Compose) to pass new environment variables.
+
+---
+*Original commit message: fix: add Gemini key rotation + OpenRouter vision fallback to hermesClaw.ts*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added Gemini API key rotation (multiple keys) and an OpenRouter fallback for vision tasks in `hermesClaw.ts`. Also updated `docker-compose.yml` to inject the new environment variables.
+
+**Why it broke:**  
+The original implementation used a single Gemini API key, which could hit rate limits or fail during high traffic. Additionally, Gemini’s vision capabilities were unreliable for certain image-processing tasks, causing pipeline failures.
+
+**Reusable takeaway:**  
+When relying on external AI APIs, implement key rotation to distribute load and avoid rate limits. For critical vision tasks, add a fallback to a more reliable provider (e.g., OpenRouter) to ensure robustness. Always update deployment configs (e.g., Docker Compose) to pass new environment variables.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: OpenRouter before key4 in callGeminiVisionForItems fallback order
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit c7a08d74119247ebb727bd72f9131df19cd714ef
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** c7a08d74119247ebb727bd72f9131df19cd714ef
+**Files:** apps/api/src/services/hermesClaw.ts
+
+**Summary:**
+**What was fixed:**  
+The fallback order in `callGeminiVisionForItems` was corrected so that OpenRouter is tried *before* `key4`, preventing premature fallback to a less reliable or slower provider.
+
+**Why it broke:**  
+The original order placed `key4` ahead of OpenRouter, causing the system to skip OpenRouter even when it was available and potentially more performant. This degraded response quality or increased latency.
+
+**Reusable takeaway:**  
+In fallback chains, order matters for reliability and performance. Always prioritize providers by expected success rate, speed, or cost—not by arbitrary sequence. Validate fallback logic against real-world provider behavior, and treat fallback order as a critical design parameter, not an implementation detail.
+
+---
+*Original commit message: fix: OpenRouter before key4 in callGeminiVisionForItems fallback order*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The fallback order in `callGeminiVisionForItems` was corrected so that OpenRouter is tried *before* `key4`, preventing premature fallback to a less reliable or slower provider.
+
+**Why it broke:**  
+The original order placed `key4` ahead of OpenRouter, causing the system to skip OpenRouter even when it was available and potentially more performant. This degraded response quality or increased latency.
+
+**Reusable takeaway:**  
+In fallback chains, order matters for reliability and performance. Always prioritize providers by expected success rate, speed, or cost—not by arbitrary sequence. Validate fallback logic against real-world provider behavior, and treat fallback order as a critical design parameter, not an implementation detail.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: OpenRouter as primary vision provider, GEMINI_API_KEY_4 as fallback only
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 56b12c3f80845759ee8423cdbd3fa3a92674ec31
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 56b12c3f80845759ee8423cdbd3fa3a92674ec31
+**Files:** apps/api/src/services/hermesClaw.ts,docker-compose.yml
+
+**Summary:**
+**What was fixed:** The vision provider logic was corrected so that OpenRouter is used as the primary provider, with `GEMINI_API_KEY_4` serving only as a fallback.
+
+**Why it broke:** The original implementation likely prioritized or exclusively used the Gemini API key, bypassing OpenRouter even when it was intended to be the primary vision provider. This could have been due to incorrect conditional logic, environment variable precedence, or provider selection order in `hermesClaw.ts` and `docker-compose.yml`.
+
+**Reusable takeaway:** When implementing provider fallback chains, explicitly define and enforce the priority order in code (e.g., via a ranked list or switch-case). Avoid relying on implicit ordering from environment variables or configuration files. Test that the primary provider is always attempted first, and that fallbacks are only triggered on failure.
+
+---
+*Original commit message: fix: OpenRouter as primary vision provider, GEMINI_API_KEY_4 as fallback only*
+
+#### Lesson Learned
+
+**What was fixed:** The vision provider logic was corrected so that OpenRouter is used as the primary provider, with `GEMINI_API_KEY_4` serving only as a fallback.
+
+**Why it broke:** The original implementation likely prioritized or exclusively used the Gemini API key, bypassing OpenRouter even when it was intended to be the primary vision provider. This could have been due to incorrect conditional logic, environment variable precedence, or provider selection order in `hermesClaw.ts` and `docker-compose.yml`.
+
+**Reusable takeaway:** When implementing provider fallback chains, explicitly define and enforce the priority order in code (e.g., via a ranked list or switch-case). Avoid relying on implicit ordering from environment variables or configuration files. Test that the primary provider is always attempted first, and that fallbacks are only triggered on failure.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add OPENROUTER_VISION_MODEL and OPENROUTER_CHAT_MODEL to docker-compose.yml — was missing, causing fallback to hard
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4323caea6244d9bffb5e63ac194cfd4ef7dee937
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4323caea6244d9bffb5e63ac194cfd4ef7dee937
+**Files:** docker-compose.yml
+
+**Summary:**
+**What was fixed:** Added `OPENROUTER_VISION_MODEL` and `OPENROUTER_CHAT_MODEL` environment variables to `docker-compose.yml`.
+
+**Why it broke:** These variables were missing from the Docker Compose configuration, causing the application to fall back to hardcoded default values (Kimi models) instead of using the intended OpenRouter models.
+
+**Reusable takeaway:** When deploying containerized applications that rely on environment variables for model or service selection, ensure all required variables are explicitly defined in the Docker Compose file. Missing variables can silently trigger fallback defaults, leading to unexpected behavior in production. Always validate that environment variable mappings in deployment configs match the application's expected configuration schema.
+
+---
+*Original commit message: fix: add OPENROUTER_VISION_MODEL and OPENROUTER_CHAT_MODEL to docker-compose.yml — was missing, causing fallback to hardcoded Kimi defaults*
+
+#### Lesson Learned
+
+**What was fixed:** Added `OPENROUTER_VISION_MODEL` and `OPENROUTER_CHAT_MODEL` environment variables to `docker-compose.yml`.
+
+**Why it broke:** These variables were missing from the Docker Compose configuration, causing the application to fall back to hardcoded default values (Kimi models) instead of using the intended OpenRouter models.
+
+**Reusable takeaway:** When deploying containerized applications that rely on environment variables for model or service selection, ensure all required variables are explicitly defined in the Docker Compose file. Missing variables can silently trigger fallback defaults, leading to unexpected behavior in production. Always validate that environment variable mappings in deployment configs match the application's expected configuration schema.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

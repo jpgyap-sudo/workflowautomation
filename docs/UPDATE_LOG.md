@@ -68,7 +68,8 @@ When you **finish**:
 | 2026-05-30 11:22 | Roo (Code) | Feat: add GEMINI_API_KEY_4 as 4th Gemini fallback key — added to GEMINI_KEYS array in hermesClaw.ts, docker-compose.yml, VPS .env. Commit `957ac7e`. Deployed to VPS. | ✅ Done |
 | 2026-05-30 11:35 | Roo (Code) | Refactor: OpenRouter as primary vision provider, Gemini key4 as fallback — removed GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3 from hermesClaw.ts and docker-compose.yml; callGeminiVisionForItems() now tries OpenRouter first, then GEMINI_API_KEY_4. Commit `56b12c3`. | ✅ Done |
 | 2026-05-30 11:40 | Roo (Code) | Test: OpenRouter vision — tested kimi-k2.6:free (429 rate limited), kimi-vl-a3b-thinking:free (404 not found), google/gemini-2.0-flash-001 (✅ VISION_OK). Updated VPS .env OPENROUTER_VISION_MODEL, OPENROUTER_CHAT_MODEL, OPENROUTER_MODEL to google/gemini-2.0-flash-001. Re-tested: ✅ VISION_OK. | ✅ Done |
-| 2026-05-30 11:25 | Roo (Code) | Chore: update .env.example, CHANGELOG, UPDATE_LOG — reflect new config (OpenRouter primary, GEMINI_API_KEY_4 fallback, google/gemini-2.0-flash-001 models). Commit + push. | 🔴 Active |
+| 2026-05-30 11:25 | Roo (Code) | Chore: update .env.example, CHANGELOG, UPDATE_LOG — reflect new config (OpenRouter primary, GEMINI_API_KEY_4 fallback, google/gemini-2.0-flash-001 models). Commit `11c7e31`. Pushed to GitHub, pulled on VPS. | ✅ Done |
+| 2026-05-30 12:20 | Roo (Code) | Fix: QTN-MNDesign itemized arrival → verification gap — advanceFromEnRouteToVerificationIfAllDispatched required allFinished (production_status === 'finished') in addition to allDispatched. In itemized progression, items can be dispatched before all are finished production, blocking the en_route → en_route_verification transition. Removed the allFinished check — only allDispatched is required. | 🔴 Active |
 
 ---
 
