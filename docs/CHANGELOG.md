@@ -36,6 +36,7 @@
 |--------|-----------|-------------|----------|
 | `476a167` | Roo (Code) | feat: item-level selection in Delivery Pending section for itemized delivery scheduling — added onScheduleSelected/onScheduleAll props to DeliveryItemSection, scheduleDeliveryItems API function, POST /orders/:id/schedule-items server endpoint, converted Delivered section to use DeliveryItemSection with item-level expansion for partial delivery | ✅ VPS `476a167` |
 | `064f272` | Roo (Code) | fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com accounts | ✅ VPS `064f272` |
+| | Roo (Code) | feat: projected lead time field + Gantt chart + AI delay warning — migration 046 adds `projected_lead_time` (INTEGER) and `projected_lead_time_started_at` (TIMESTAMPTZ) to orders table; POST /orders endpoint accepts `projected_lead_time`; NewOrderModal shows projected lead time input with dynamic "Due:" date preview; new GanttChart component shows stage progress vs expected lead time with "Today" marker, delay warnings (red/amber banners), stage-by-stage bars, and legend; Agent Notes section shows AI delay warning (red banner when delayed, amber when ≤15% time remaining) | ❌ |
 
 ## 2026-05-28
 
@@ -83,6 +84,8 @@
   | Commit | Extension | Description | Deployed |
   |--------|-----------|-------------|----------|
   | | Roo (Code) | feat: add inventory_verification stage to delivery tab with "Complete Partial Verification" button — allows orders in inventory_verification stage to appear in delivery tab. Clicking the button calls completeInventoryVerificationPartial (existing endpoint) which advances to inventory_arrived with partial delivery enabled. The order then appears in the existing Inventory Arrived section for balance payment and delivery scheduling. | ✅ VPS (direct deploy) |
+  | `476a167` | Roo (Code) | feat: item-level selection in Delivery Pending section for itemized delivery scheduling — added onScheduleSelected/onScheduleAll props to DeliveryItemSection, scheduleDeliveryItems API function, POST /orders/:id/schedule-items server endpoint, converted Delivered section to use DeliveryItemSection with item-level expansion for partial delivery | ✅ VPS `476a167` |
+  | `064f272` | Roo (Code) | fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com accounts | ✅ VPS `064f272` |
   
   ## 2026-05-26
 
