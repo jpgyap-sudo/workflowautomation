@@ -709,6 +709,18 @@ app.post('/auth/verify-action-code', async (request, reply) => {
   return reply.send({ ok: true, actionToken });
 });
 
+// ── Quick action token (no OTP required, for non-critical actions) ──
+app.post('/auth/generate-action-token', async (request, reply) => {
+  const { email, name } = z.object({ email: z.string().email(), name: z.string().optional() }).parse(request.body);
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  // Generate a short-lived action token (valid for 2 minutes)
+  const actionToken = randomUUID();
+  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), name: name ?? null, verified: true }));
+  return reply.send({ ok: true, actionToken });
+});
+
 // ── Dashboard Accounts (server-side tab access + sub-users) ────────
 
 function parseDashboardJsonArray(value: unknown): unknown {

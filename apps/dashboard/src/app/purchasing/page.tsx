@@ -8,6 +8,8 @@ import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
 import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, verifyBalance, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDeposit, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
+import { generateActionToken } from '@/lib/api';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import {
   ShoppingCart, Clock, Package,
@@ -694,8 +696,11 @@ export default function PurchasingPage() {
   const [verifyingBalance, setVerifyingBalance] = useState(false);
   const [otpModal, setOtpModal] = useState<{
     open: boolean; title: string; description: string;
-    pendingAction: 'edit' | 'delete' | 'startProductionWorkflow' | 'verifyDeposit' | 'verifyBalance' | 'markDepositPaid' | 'grantProductionException' | 'revokeProductionException' | 'markBalancePaid';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: string;
+  }>({ open: false, title: '', description: '', pendingAction: '' });
 
   // ── Deposit slip upload (production exception section) ──────────────
   const [depositSlipUpload, setDepositSlipUpload] = useState<{
@@ -813,13 +818,29 @@ export default function PurchasingPage() {
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
-    else if (otpModal.pendingAction === 'startProductionWorkflow') handleStartProductionWorkflowVerified(actionToken);
     else if (otpModal.pendingAction === 'verifyDeposit') handleVerifyDepositVerified(actionToken);
     else if (otpModal.pendingAction === 'verifyBalance') handleVerifyBalanceVerified(actionToken);
-    else if (otpModal.pendingAction === 'markDepositPaid') handleMarkDepositPaidVerified(actionToken);
-    else if (otpModal.pendingAction === 'grantProductionException') handleGrantProductionExceptionVerified(actionToken);
-    else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeProductionExceptionVerified(actionToken);
-    else if (otpModal.pendingAction === 'markBalancePaid') handleMarkBalancePaidVerified(actionToken);
+  }
+
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      const actionToken = result.actionToken;
+
+      if (confirmModal.pendingAction === 'startProductionWorkflow') await handleStartProductionWorkflowVerified(actionToken);
+      else if (confirmModal.pendingAction === 'markDepositPaid') await handleMarkDepositPaidVerified(actionToken);
+      else if (confirmModal.pendingAction === 'grantProductionException') await handleGrantProductionExceptionVerified(actionToken);
+      else if (confirmModal.pendingAction === 'revokeProductionException') await handleRevokeProductionExceptionVerified(actionToken);
+      else if (confirmModal.pendingAction === 'markBalancePaid') await handleMarkBalancePaidVerified(actionToken);
+
+      setConfirmModal({ ...confirmModal, open: false });
+    } catch (err: any) {
+      alert('Failed to generate action token: ' + (err.message ?? 'Unknown error'));
+    }
   }
 
   async function handleMarkDepositPaidVerified(actionToken: string) {
@@ -902,8 +923,8 @@ export default function PurchasingPage() {
 
   async function handleStartProductionWorkflow(order: Order) {
     if (!order.quotation_number) { alert('Cannot start production workflow: quotation number is missing.'); return; }
-    setOtpModal({ open: true, title: 'Start Production Workflow',
-      description: `You are about to move order "${order.quotation_number}" to Production Pending. This only acknowledges the production team workflow; it does not mark actual production as started. Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Start Production Workflow',
+      description: `You are about to move order "${order.quotation_number}" to Production Pending. This only acknowledges the production team workflow; it does not mark actual production as started.`,
       pendingAction: 'startProductionWorkflow' });
     (window as any).__pendingStartProductionWorkflowData = { orderId: order.id, quotationNumber: order.quotation_number };
   }
@@ -945,8 +966,8 @@ export default function PurchasingPage() {
   }
 
   function handleMarkDepositPaid(order: Order) {
-    setOtpModal({ open: true, title: 'Mark Deposit Paid',
-      description: `You are about to mark deposit as paid for order "${order.quotation_number ?? '—'}". This will advance the order to Deposit Verification. Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Mark Deposit Paid',
+      description: `You are about to mark deposit as paid for order "${order.quotation_number ?? '—'}". This will advance the order to Deposit Verification.`,
       pendingAction: 'markDepositPaid' });
     (window as any).__pendingMarkDepositPaidData = { order };
   }
@@ -958,10 +979,10 @@ export default function PurchasingPage() {
       `Enter reason for Special Case — "${order.quotation_number ?? order.id}":\n(Production will be allowed to start before downpayment is received.)`
     );
     if (!reason || !reason.trim()) return;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Grant Special Case',
-      description: `You are granting a production exception for "${order.quotation_number ?? '—'}". Reason: "${reason.trim()}". Enter the OTP sent to your email to confirm.`,
+      description: `You are granting a production exception for "${order.quotation_number ?? '—'}". Reason: "${reason.trim()}".`,
       pendingAction: 'grantProductionException',
     });
     (window as any).__pendingGrantExceptionData = { order, reason: reason.trim() };
@@ -1100,10 +1121,10 @@ export default function PurchasingPage() {
   }
 
   function handleMarkBalancePaid(order: Order) {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark Balance Paid',
-      description: `You are about to mark balance as paid for "${order.quotation_number ?? '—'}". This will record the balance payment. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark balance as paid for "${order.quotation_number ?? '—'}". This will record the balance payment.`,
       pendingAction: 'markBalancePaid',
     });
     (window as any).__pendingMarkBalancePaidData = { order };
@@ -1139,10 +1160,10 @@ export default function PurchasingPage() {
   }
 
   function handleRevokeException(order: Order) {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Revoke Production Exception',
-      description: `You are about to revoke the production exception for "${order.quotation_number ?? '—'}". The order will return to the normal downpayment-required flow. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to revoke the production exception for "${order.quotation_number ?? '—'}". The order will return to the normal downpayment-required flow.`,
       pendingAction: 'revokeProductionException',
     });
     (window as any).__pendingRevokeExceptionData = { order };
@@ -1341,7 +1362,12 @@ export default function PurchasingPage() {
       <OtpModal
         open={otpModal.open} title={otpModal.title} description={otpModal.description}
         onVerified={handleOtpVerified}
-        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingStartProductionData = null; (window as any).__pendingMarkDepositPaidData = null; setVerifyingDepositOrder(null); }}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; setVerifyingDepositOrder(null); }}
+      />
+      <ConfirmModal
+        open={confirmModal.open} title={confirmModal.title} description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => { setConfirmModal({ ...confirmModal, open: false }); (window as any).__pendingStartProductionWorkflowData = null; (window as any).__pendingMarkDepositPaidData = null; (window as any).__pendingGrantExceptionData = null; (window as any).__pendingRevokeExceptionData = null; (window as any).__pendingMarkBalancePaidData = null; }}
       />
 
       {deleting && (

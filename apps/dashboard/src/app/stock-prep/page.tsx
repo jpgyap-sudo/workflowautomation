@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, OrderItem, InventoryItem, Client } from '@/lib/api';
-import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit, updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, searchClients } from '@/lib/api';
+import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit, updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, searchClients, generateActionToken } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter, DollarSign, Pencil, Trash2, ShieldAlert, Shield, ShieldCheck, XCircle } from 'lucide-react';
 
@@ -55,7 +56,9 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
   onRevokeException?: (order: Order) => void;
 }) {
   const [showOtp, setShowOtp] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'ready' | 'set-prep-days' | 'recordDeposit' | 'edit' | 'delete' | 'grantException' | 'revokeException' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'edit' | 'delete' | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'ready' | 'set-prep-days' | 'recordDeposit' | 'grantException' | 'revokeException' | null>(null);
   const [deductInventory, setDeductInventory] = useState(true);
   const [marking, setMarking] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -66,66 +69,17 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
   const [savingDays, setSavingDays] = useState(false);
 
   function handleMarkReady() {
-    setPendingAction('ready');
-    setShowOtp(true);
+    setConfirmAction('ready');
+    setShowConfirm(true);
   }
 
   function handleRecordDeposit() {
-    setPendingAction('recordDeposit');
-    setShowOtp(true);
+    setConfirmAction('recordDeposit');
+    setShowConfirm(true);
   }
 
   async function handleVerified(actionToken: string) {
-    if (pendingAction === 'ready') {
-      setMarking(true);
-      setMsg(null);
-      try {
-        const result = await markStockReady(order.id, { deduct_inventory: deductInventory, updated_by: 'dashboard', action_token: actionToken });
-        let text = '✅ Stock marked ready — order advanced to Balance Due';
-        if (result.deductions && result.deductions.length > 0) {
-          text += '\n\n📦 Deductions:';
-          for (const d of result.deductions) {
-            text += `\n• ${d.item_name}: −${d.quantity}`;
-          }
-        }
-        setMsg({ ok: true, text });
-        setTimeout(() => onUpdated(), 800);
-      } catch (err: any) {
-        setMsg({ ok: false, text: err.message ?? 'Failed to mark stock ready' });
-      } finally {
-        setMarking(false);
-      }
-    } else if (pendingAction === 'set-prep-days') {
-      const days = parseInt(daysInput, 10);
-      if (isNaN(days) || days < 0) return;
-      setSavingDays(true);
-      setMsg(null);
-      try {
-        await setStockPrep(order.id, days, actionToken);
-        setEditingDays(false);
-        onUpdated();
-      } catch (err: any) {
-        setMsg({ ok: false, text: err.message ?? 'Failed to update prep days' });
-      } finally {
-        setSavingDays(false);
-      }
-    } else if (pendingAction === 'recordDeposit') {
-      setMarking(true);
-      setMsg(null);
-      try {
-        await recordDeposit({
-          quotation_number: order.quotation_number ?? '',
-          amount: Number(order.total_amount ?? 0),
-          action_token: actionToken,
-        });
-        setMsg({ ok: true, text: '✅ Deposit recorded successfully. The collection group has been notified.' });
-        setTimeout(() => onUpdated(), 800);
-      } catch (err: any) {
-        setMsg({ ok: false, text: err.message ?? 'Failed to record deposit' });
-      } finally {
-        setMarking(false);
-      }
-    } else if (pendingAction === 'edit') {
+    if (pendingAction === 'edit') {
       if (onEdit) onEdit(order);
       setShowOtp(false);
       setPendingAction(null);
@@ -133,22 +87,90 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
       if (onDelete) onDelete(order);
       setShowOtp(false);
       setPendingAction(null);
-    } else if (pendingAction === 'grantException') {
-      if (onGrantException) onGrantException(order);
-      setShowOtp(false);
-      setPendingAction(null);
-    } else if (pendingAction === 'revokeException') {
-      if (onRevokeException) onRevokeException(order);
-      setShowOtp(false);
-      setPendingAction(null);
+    }
+  }
+
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      const actionToken = result.actionToken;
+
+      if (confirmAction === 'ready') {
+        setMarking(true);
+        setMsg(null);
+        try {
+          const result = await markStockReady(order.id, { deduct_inventory: deductInventory, updated_by: 'dashboard', action_token: actionToken });
+          let text = '✅ Stock marked ready — order advanced to Balance Due';
+          if (result.deductions && result.deductions.length > 0) {
+            text += '\n\n📦 Deductions:';
+            for (const d of result.deductions) {
+              text += `\n• ${d.item_name}: −${d.quantity}`;
+            }
+          }
+          setMsg({ ok: true, text });
+          setTimeout(() => onUpdated(), 800);
+        } catch (err: any) {
+          setMsg({ ok: false, text: err.message ?? 'Failed to mark stock ready' });
+        } finally {
+          setMarking(false);
+        }
+      } else if (confirmAction === 'set-prep-days') {
+        const days = parseInt(daysInput, 10);
+        if (isNaN(days) || days < 0) return;
+        setSavingDays(true);
+        setMsg(null);
+        try {
+          await setStockPrep(order.id, days, actionToken);
+          setEditingDays(false);
+          onUpdated();
+        } catch (err: any) {
+          setMsg({ ok: false, text: err.message ?? 'Failed to update prep days' });
+        } finally {
+          setSavingDays(false);
+        }
+      } else if (confirmAction === 'recordDeposit') {
+        setMarking(true);
+        setMsg(null);
+        try {
+          await recordDeposit({
+            quotation_number: order.quotation_number ?? '',
+            amount: Number(order.total_amount ?? 0),
+            action_token: actionToken,
+          });
+          setMsg({ ok: true, text: '✅ Deposit recorded successfully. The collection group has been notified.' });
+          setTimeout(() => onUpdated(), 800);
+        } catch (err: any) {
+          setMsg({ ok: false, text: err.message ?? 'Failed to record deposit' });
+        } finally {
+          setMarking(false);
+        }
+      } else if (confirmAction === 'grantException') {
+        if (onGrantException) onGrantException(order);
+        setShowConfirm(false);
+        setConfirmAction(null);
+      } else if (confirmAction === 'revokeException') {
+        if (onRevokeException) onRevokeException(order);
+        setShowConfirm(false);
+        setConfirmAction(null);
+      }
+    } catch (err: any) {
+      console.error('handleConfirmVerified error:', err);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setShowConfirm(false);
+      setConfirmAction(null);
     }
   }
 
   function handleSaveDays() {
     const days = parseInt(daysInput, 10);
     if (isNaN(days) || days < 0) return;
-    setPendingAction('set-prep-days');
-    setShowOtp(true);
+    setConfirmAction('set-prep-days');
+    setShowConfirm(true);
   }
 
   const readyDate = order.stock_prep_ready_at;
@@ -175,7 +197,7 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
           {/* Exception handling */}
           {!hasException && onGrantException && (
             <button
-              onClick={() => { setPendingAction('grantException'); setShowOtp(true); }}
+              onClick={() => { setConfirmAction('grantException'); setShowConfirm(true); }}
               className="rounded-lg p-1.5 text-amber-400 hover:bg-amber-50 hover:text-amber-600"
               title="Grant delivery exception (special case)"
             >
@@ -184,7 +206,7 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
           )}
           {hasException && onRevokeException && (
             <button
-              onClick={() => { setPendingAction('revokeException'); setShowOtp(true); }}
+              onClick={() => { setConfirmAction('revokeException'); setShowConfirm(true); }}
               className="rounded-lg p-1.5 text-green-500 hover:bg-green-50 hover:text-green-700"
               title="Revoke delivery exception"
             >
@@ -305,31 +327,40 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
       <OtpModal
         open={showOtp}
         title={
-          pendingAction === 'set-prep-days' ? 'Confirm: Update Prep Days' :
-          pendingAction === 'recordDeposit' ? 'Confirm: Record Downpayment' :
           pendingAction === 'edit' ? 'Confirm: Edit Order' :
-          pendingAction === 'delete' ? 'Confirm: Delete Order' :
-          pendingAction === 'grantException' ? 'Confirm: Grant Delivery Exception' :
-          pendingAction === 'revokeException' ? 'Confirm: Revoke Delivery Exception' :
-          'Confirm: Mark Stock Ready'
+          'Confirm: Delete Order'
         }
         description={
-          pendingAction === 'set-prep-days'
-            ? `Updating stock prep days to ${daysInput} day(s) for ${order.quotation_number ?? 'this order'}.`
-            : pendingAction === 'recordDeposit'
-              ? `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`
-              : pendingAction === 'edit'
-                ? `Opening edit form for ${order.quotation_number ?? 'this order'}.`
-                : pendingAction === 'delete'
-                  ? `Are you sure you want to delete ${order.quotation_number ?? 'this order'}? This action cannot be undone.`
-                  : pendingAction === 'grantException'
-                    ? `Grant delivery exception (special case) for ${order.quotation_number ?? 'this order'}. This will allow the order to proceed without delivery verification.`
-                    : pendingAction === 'revokeException'
-                      ? `Revoke delivery exception for ${order.quotation_number ?? 'this order'}. Normal delivery verification will be required.`
-                      : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
+          pendingAction === 'edit'
+            ? `Opening edit form for ${order.quotation_number ?? 'this order'}.`
+            : `Are you sure you want to delete ${order.quotation_number ?? 'this order'}? This action cannot be undone.`
         }
         onVerified={handleVerified}
         onClose={() => { setShowOtp(false); setPendingAction(null); }}
+      />
+
+      <ConfirmModal
+        open={showConfirm}
+        title={
+          confirmAction === 'set-prep-days' ? 'Confirm: Update Prep Days' :
+          confirmAction === 'recordDeposit' ? 'Confirm: Record Downpayment' :
+          confirmAction === 'grantException' ? 'Confirm: Grant Delivery Exception' :
+          confirmAction === 'revokeException' ? 'Confirm: Revoke Delivery Exception' :
+          'Confirm: Mark Stock Ready'
+        }
+        description={
+          confirmAction === 'set-prep-days'
+            ? `Updating stock prep days to ${daysInput} day(s) for ${order.quotation_number ?? 'this order'}.`
+            : confirmAction === 'recordDeposit'
+              ? `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`
+              : confirmAction === 'grantException'
+                ? `Grant delivery exception (special case) for ${order.quotation_number ?? 'this order'}. This will allow the order to proceed without delivery verification.`
+                : confirmAction === 'revokeException'
+                  ? `Revoke delivery exception for ${order.quotation_number ?? 'this order'}. Normal delivery verification will be required.`
+                  : `Marking stock ready for ${order.quotation_number ?? 'this order'}${deductInventory ? ' and deducting from inventory' : ''}. This will advance the order to Balance Due.`
+        }
+        onVerified={handleConfirmVerified}
+        onClose={() => { setShowConfirm(false); setConfirmAction(null); }}
       />
     </div>
   );

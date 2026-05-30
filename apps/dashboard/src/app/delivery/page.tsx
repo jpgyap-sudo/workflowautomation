@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, generateActionToken, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks, ChevronUp, ChevronDown } from 'lucide-react';
 
@@ -196,8 +197,15 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered' | 'recordDeposit' | 'complete_inventory_verification_partial';
+    pendingAction: 'edit' | 'delete' | 'verify_balance';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    pendingAction: string;
+  }>({ open: false, title: '', description: '', pendingAction: '' });
   
   // Track which orders have been verified as countered (to hide "Verify Countered" button)
   const [verifiedCounterIds, setVerifiedCounterIds] = useState<Set<string>>(new Set());
@@ -481,7 +489,7 @@ export default function DeliveryPage() {
       return;
     }
     (window as any).__pendingConfirmPaymentData = { order };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Record Balance Payment',
       description: `Record ${validSlips.length} balance payment slip(s) for "${order.quotation_number ?? '?'}". This will move the order to Balance Verification.`,
@@ -542,7 +550,7 @@ export default function DeliveryPage() {
 
   function handleAdvanceBalanceDue(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Advance to Balance Due',
       description: `Confirm that inventory for "${order.quotation_number ?? '—'}" is ready and advance to Balance Due stage.`,
@@ -601,10 +609,10 @@ export default function DeliveryPage() {
       delivery_date: scheduleDate.trim(),
       remarks: scheduleRemarks.trim(),
     };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Schedule Delivery',
-      description: `Confirm the delivery schedule for "${order.quotation_number ?? '-'}". Enter the OTP sent to your email to continue.`,
+      description: `Confirm the delivery schedule for "${order.quotation_number ?? '-'}".`,
       pendingAction: 'schedule_delivery',
     });
   }
@@ -648,7 +656,7 @@ export default function DeliveryPage() {
 
   function handleMarkDelivered(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark as Delivered',
       description: `Confirm that "${order.quotation_number ?? '—'}" has been delivered to the client.`,
@@ -679,7 +687,7 @@ export default function DeliveryPage() {
 
   function handleMarkCountered(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark as Countered',
       description: `Mark "${order.quotation_number ?? '—'}" as delivered and awaiting payment collection.`,
@@ -832,7 +840,7 @@ export default function DeliveryPage() {
         salesInvoiceFileId,
         deliveryReceiptFileId,
       };
-      setOtpModal({
+      setConfirmModal({
         open: true,
         title: 'Update Payment Counter',
         description: `Confirm payment counter update for "${order.quotation_number ?? '—'}".`,
@@ -975,7 +983,7 @@ export default function DeliveryPage() {
 
   function handleCancelSchedule(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Cancel Delivery Schedule',
       description: `Cancel the delivery schedule for "${order.quotation_number ?? '—'}" and move back to Delivery Pending.`,
@@ -1006,7 +1014,7 @@ export default function DeliveryPage() {
 
   function handleMarkPaymentReceived(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark Payment Received',
       description: `Confirm that payment has been received for "${order.quotation_number ?? '—'}" and advance to Payment Received stage.`,
@@ -1037,7 +1045,7 @@ export default function DeliveryPage() {
 
   function handleMarkPaymentConfirmed(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark Payment Confirmed',
       description: `Confirm that payment has been confirmed for "${order.quotation_number ?? '—'}" and advance to Payment Confirmed stage.`,
@@ -1083,7 +1091,7 @@ export default function DeliveryPage() {
     if (!order) return;
     closePaymentReceivedModal();
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Advance to Payment Confirmed',
       description: `Confirm payment for "${order.quotation_number ?? '—'}" and advance from Payment Received to Payment Confirmed.`,
@@ -1131,7 +1139,7 @@ export default function DeliveryPage() {
 
   function handleAdvancePaymentConfirmed(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Complete Order',
       description: `Confirm completion for "${order.quotation_number ?? '—'}" and advance from Payment Confirmed to Completed.`,
@@ -1160,7 +1168,7 @@ export default function DeliveryPage() {
   // ── Record Deposit (quick action) ──────────────────────────────────────
   function handleRecordDeposit(order: Order) {
     (window as any).__pendingRecordDepositData = { order };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Record Downpayment',
       description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`,
@@ -1188,49 +1196,53 @@ export default function DeliveryPage() {
   }
 
   function handleOtpVerified(actionToken: string) {
-    const order = (window as any).__pendingActionOrder as Order | undefined;
     if (otpModal.pendingAction === 'edit') { handleEditVerified(actionToken); return; }
     if (otpModal.pendingAction === 'delete') { handleDeleteVerified(actionToken); return; }
-    if (otpModal.pendingAction === 'schedule_delivery') { handleScheduleVerified(actionToken); return; }
-    if (otpModal.pendingAction === 'record_payment') { executeConfirmPayment(actionToken); return; }
-    if (otpModal.pendingAction === 'confirmPayment') { executeConfirmPayment(actionToken); return; }
-    if (otpModal.pendingAction === 'recordDeposit') { handleRecordDepositVerified(actionToken); return; }
-    if (otpModal.pendingAction === 'complete_directly') {
-      const pending = (window as any).__pendingCompleteData as { order: Order } | undefined;
-      if (pending) executeCompleteDirectly(pending.order, actionToken);
-      return;
-    }
-    if (otpModal.pendingAction === 'partial_delivery') { handlePartialDeliveryOtp(actionToken); return; }
-    if (otpModal.pendingAction === 'complete_inventory_verification_partial') { handleCompleteInventoryVerificationPartialOtp(actionToken); return; }
-    if (otpModal.pendingAction === 'special_case') {
-      const pending = (window as any).__pendingActionOrder as Order | undefined;
-      if (pending) executeSpecialCase(pending, actionToken);
+    if (otpModal.pendingAction === 'verify_balance') {
+      const order = (window as any).__pendingActionOrder as Order | undefined;
+      if (order) executeVerifyBalance(order, actionToken);
       (window as any).__pendingActionOrder = null;
       return;
     }
-    if (otpModal.pendingAction === 'payment_counter') {
-      const pending = (window as any).__pendingActionOrder as Order | undefined;
-      if (pending) executePaymentCounter(pending, actionToken);
+  }
+
+  /** ConfirmModal verified handler — generates action token without OTP and routes to the right executor */
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      const actionToken = result.actionToken;
+      const order = (window as any).__pendingActionOrder as Order | undefined;
+
+      if (confirmModal.pendingAction === 'advance_balance_due' && order) { executeAdvanceBalanceDue(order, actionToken); }
+      else if (confirmModal.pendingAction === 'schedule_delivery') { handleScheduleVerified(actionToken); }
+      else if (confirmModal.pendingAction === 'mark_delivered' && order) { executeMarkDelivered(order, actionToken); }
+      else if (confirmModal.pendingAction === 'mark_countered' && order) { executeMarkCountered(order, actionToken); }
+      else if (confirmModal.pendingAction === 'special_case' && order) { executeSpecialCase(order, actionToken); }
+      else if (confirmModal.pendingAction === 'verify_countered' && order) { executeVerifyCountered(order, actionToken); }
+      else if (confirmModal.pendingAction === 'complete_directly') {
+        const pending = (window as any).__pendingCompleteData as { order: Order } | undefined;
+        if (pending) executeCompleteDirectly(pending.order, actionToken);
+      }
+      else if (confirmModal.pendingAction === 'cancel_schedule' && order) { executeCancelSchedule(order, actionToken); }
+      else if (confirmModal.pendingAction === 'mark_payment_received' && order) { executeMarkPaymentReceived(order, actionToken); }
+      else if (confirmModal.pendingAction === 'mark_payment_confirmed' && order) { executeMarkPaymentConfirmed(order, actionToken); }
+      else if (confirmModal.pendingAction === 'advance_payment_received' && order) { executeAdvancePaymentReceived(order, actionToken); }
+      else if (confirmModal.pendingAction === 'advance_payment_confirmed' && order) { executeAdvancePaymentConfirmed(order, actionToken); }
+      else if (confirmModal.pendingAction === 'recordDeposit') { handleRecordDepositVerified(actionToken); }
+      else if (confirmModal.pendingAction === 'confirmPayment') { executeConfirmPayment(actionToken); }
+      else if (confirmModal.pendingAction === 'partial_delivery') { handlePartialDeliveryOtp(actionToken); }
+      else if (confirmModal.pendingAction === 'complete_inventory_verification_partial') { handleCompleteInventoryVerificationPartialOtp(actionToken); }
+      else if (confirmModal.pendingAction === 'payment_counter' && order) { executePaymentCounter(order, actionToken); }
+
+      setConfirmModal((prev) => ({ ...prev, open: false }));
       (window as any).__pendingActionOrder = null;
-      return;
+    } catch (err: any) {
+      alert('Action failed: ' + (err.message ?? 'Unknown error'));
     }
-    if (otpModal.pendingAction === 'verify_countered') {
-      const pending = (window as any).__pendingActionOrder as Order | undefined;
-      if (pending) executeVerifyCountered(pending, actionToken);
-      (window as any).__pendingActionOrder = null;
-      return;
-    }
-    if (!order) return;
-    if (otpModal.pendingAction === 'mark_delivered') executeMarkDelivered(order, actionToken);
-    else if (otpModal.pendingAction === 'mark_countered') executeMarkCountered(order, actionToken);
-    else if (otpModal.pendingAction === 'advance_balance_due') executeAdvanceBalanceDue(order, actionToken);
-    else if (otpModal.pendingAction === 'cancel_schedule') executeCancelSchedule(order, actionToken);
-    else if (otpModal.pendingAction === 'verify_balance') executeVerifyBalance(order, actionToken);
-    else if (otpModal.pendingAction === 'mark_payment_received') executeMarkPaymentReceived(order, actionToken);
-    else if (otpModal.pendingAction === 'mark_payment_confirmed') executeMarkPaymentConfirmed(order, actionToken);
-    else if (otpModal.pendingAction === 'advance_payment_received') executeAdvancePaymentReceived(order, actionToken);
-    else if (otpModal.pendingAction === 'advance_payment_confirmed') executeAdvancePaymentConfirmed(order, actionToken);
-    (window as any).__pendingActionOrder = null;
   }
 
   // ── Partial Delivery ────────────────────────────────────────────────────
@@ -1287,7 +1299,7 @@ export default function DeliveryPage() {
 
   function handleCompleteInventoryVerificationPartial(order: Order) {
     (window as any).__pendingActionOrder = order;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Complete Partial Inventory Verification',
       description: `Advance order ${order.quotation_number ?? order.id.slice(0, 8)} to Inventory Arrived with partial delivery enabled. Verified items will be available for delivery.`,
@@ -2954,7 +2966,7 @@ export default function DeliveryPage() {
                         alert('Please select at least one item to deliver.');
                         return;
                       }
-                      setOtpModal({
+                      setConfirmModal({
                         open: true,
                         title: 'Record Partial Delivery',
                         description: `Deliver ${partialDeliveryModal.selectedItemIds.size} selected item(s) for #${partialDeliveryModal.order?.quotation_number ?? '—'}.`,
@@ -3011,7 +3023,7 @@ export default function DeliveryPage() {
                     return;
                   }
                   (window as any).__pendingActionOrder = specialCaseModal.order;
-                  setOtpModal({
+                  setConfirmModal({
                     open: true,
                     title: 'Grant Special Case',
                     description: `Confirm special case for "${specialCaseModal.order!.quotation_number ?? '—'}" with reason: ${specialCaseModal.notes}`,
@@ -3065,7 +3077,7 @@ export default function DeliveryPage() {
               <button
                 onClick={() => {
                   (window as any).__pendingActionOrder = verifyCounteredModal.order;
-                  setOtpModal({
+                  setConfirmModal({
                     open: true,
                     title: 'Verify Countered',
                     description: `Create payment counter record for "${verifyCounteredModal.order!.quotation_number ?? '—'}" with notes: ${verifyCounteredModal.notes || '(none)'}`,
@@ -3254,6 +3266,24 @@ export default function DeliveryPage() {
           (window as any).__pendingCompleteData = null;
           (window as any).__pendingConfirmPaymentData = null;
           (window as any).__pendingRecordDepositData = null;
+        }}
+      />
+
+      {/* Confirm Modal (no OTP — just confirm/cancel) */}
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => {
+          setConfirmModal({ ...confirmModal, open: false });
+          (window as any).__pendingActionOrder = null;
+          (window as any).__pendingScheduleData = null;
+          (window as any).__pendingPaymentData = null;
+          (window as any).__pendingCompleteData = null;
+          (window as any).__pendingConfirmPaymentData = null;
+          (window as any).__pendingRecordDepositData = null;
+          (window as any).__pendingPaymentCounterData = null;
         }}
       />
 

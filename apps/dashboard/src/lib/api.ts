@@ -1068,6 +1068,13 @@ export async function verifyTelegramActionCode(email: string, code: string, name
   });
 }
 
+export async function generateActionToken(email: string, name?: string): Promise<{ ok: boolean; actionToken: string }> {
+  return fetchJson<{ ok: boolean; actionToken: string }>('/auth/generate-action-token', {
+    method: 'POST',
+    body: JSON.stringify({ email, name }),
+  });
+}
+
 export async function getStageUpdates(orderId: string): Promise<StageUpdate[]> {
   return fetchJson<StageUpdate[]>(`/orders/${orderId}/stage-updates`);
 }

@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   recordDepositWithFile,
   payBalanceWithFile,
@@ -16,6 +17,7 @@ import {
   revokeDeliveryException,
   verifyCountered,
   confirmPayment,
+  generateActionToken,
 } from '@/lib/api';
 import type { OrderDetail } from '@/lib/api';
 import {
@@ -299,10 +301,10 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
           Record Downpayment
         </button>
       </form>
-      <OtpModal
+      <ConfirmModal
         open={otpOpen}
         title="Confirm Downpayment"
-        description={`You are about to record a downpayment for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`}
+        description={`You are about to record a downpayment for ${pending?.quotation_number ?? 'this order'}.`}
         onVerified={handleVerified}
         onClose={() => setOtpOpen(false)}
       />
@@ -449,10 +451,10 @@ function PayBalanceForm({ onResult }: { onResult: (r: ActionResult) => void }) {
           Record Balance Payment
         </button>
       </form>
-      <OtpModal
+      <ConfirmModal
         open={otpOpen}
         title="Confirm Balance Payment"
-        description={`You are about to record a balance payment for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`}
+        description={`You are about to record a balance payment for ${pending?.quotation_number ?? 'this order'}.`}
         onVerified={handleVerified}
         onClose={() => setOtpOpen(false)}
       />
@@ -507,7 +509,7 @@ function ScheduleDeliveryForm({ onResult }: { onResult: (r: ActionResult) => voi
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Schedule Delivery
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Delivery Schedule" description={`You are about to schedule delivery for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Delivery Schedule" description={`You are about to schedule delivery for ${pending?.quotation_number ?? 'this order'}.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -556,7 +558,7 @@ function MarkDeliveredForm({ onResult }: { onResult: (r: ActionResult) => void }
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Mark as Delivered
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Delivered" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as delivered. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Delivered" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as delivered.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -643,7 +645,7 @@ function MarkStockReadyForm({ onResult }: { onResult: (r: ActionResult) => void 
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Mark Stock Ready
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Stock Ready" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as stock ready. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Stock Ready" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as stock ready.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -707,7 +709,7 @@ function RecordDepositSimpleForm({ onResult }: { onResult: (r: ActionResult) => 
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Record Deposit
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Deposit" description={`You are about to record a deposit for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Deposit" description={`You are about to record a deposit for ${pending?.quotation_number ?? 'this order'}.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -925,7 +927,7 @@ function GrantExceptionForm({ onResult }: { onResult: (r: ActionResult) => void 
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Grant Exception
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Delivery Exception" description={`You are about to grant a delivery exception for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Delivery Exception" description={`You are about to grant a delivery exception for ${pending?.quotation_number ?? 'this order'}.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -991,7 +993,7 @@ function RevokeExceptionForm({ onResult }: { onResult: (r: ActionResult) => void
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Revoke Exception
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Exception Revocation" description={`You are about to revoke the delivery exception for ${pending?.quotation_number ?? 'this order'}. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Exception Revocation" description={`You are about to revoke the delivery exception for ${pending?.quotation_number ?? 'this order'}.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -1060,7 +1062,7 @@ function MarkCounteredForm({ onResult }: { onResult: (r: ActionResult) => void }
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Mark Countered
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Countered" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as countered. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Countered" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as countered.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -1113,7 +1115,7 @@ function MarkPaymentReceivedForm({ onResult }: { onResult: (r: ActionResult) => 
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Mark Payment Received
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Payment Received" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as payment received. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Payment Received" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as payment received.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }
@@ -1174,7 +1176,7 @@ function MarkPaymentConfirmedForm({ onResult }: { onResult: (r: ActionResult) =>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />} Mark Payment Confirmed
         </button>
       </form>
-      <OtpModal open={otpOpen} title="Confirm Payment Confirmed" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as payment confirmed. Enter the OTP sent to your email to continue.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
+      <ConfirmModal open={otpOpen} title="Confirm Payment Confirmed" description={`You are about to mark ${pending?.quotation_number ?? 'this order'} as payment confirmed.`} onVerified={handleVerified} onClose={() => setOtpOpen(false)} />
     </>
   );
 }

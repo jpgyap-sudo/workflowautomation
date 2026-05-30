@@ -4,10 +4,11 @@ import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import { useClients } from '@/lib/useApi';
 import type { Client } from '@/lib/api';
-import { createClient, updateClient, deleteClient, bulkDeleteClients, searchClients, getClientOrders } from '@/lib/api';
+import { createClient, updateClient, deleteClient, bulkDeleteClients, searchClients, getClientOrders, generateActionToken } from '@/lib/api';
 import { Users, Plus, Pencil, Trash2, X, Check, Search, MapPin, Phone, UserCheck, ChevronDown, ChevronRight, FileText, ExternalLink } from 'lucide-react';
 import { useEffect } from 'react';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface ClientFormProps {
   client?: Client | null;
@@ -152,8 +153,11 @@ export default function ClientsPage() {
   const [clientOrders, setClientOrders] = useState<Record<string, any[]>>({});
   const [loadingOrders, setLoadingOrders] = useState<Record<string, boolean>>({});
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'add' | 'edit' | 'delete' | 'bulk-delete';
-  }>({ open: false, title: '', description: '', pendingAction: 'add' });
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'bulk-delete';
+  }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean; title: string; description: string;
+  }>({ open: false, title: '', description: '' });
 
   useEffect(() => {
     const q = search.trim();
@@ -232,9 +236,8 @@ export default function ClientsPage() {
     propagate_to_orders?: boolean;
   }) {
     (window as any).__pendingClientAdd = data;
-    setOtpModal({ open: true, title: 'Add Client',
-      description: `You are about to add a new client "${data.client_name}". Enter the OTP sent to your email to confirm.`,
-      pendingAction: 'add' });
+    setConfirmModal({ open: true, title: 'Add Client',
+      description: `You are about to add a new client "${data.client_name}".` });
   }
 
   async function handleAddVerified(actionToken: string) {
@@ -350,10 +353,23 @@ export default function ClientsPage() {
   }
 
   function handleOtpVerified(actionToken: string) {
-    if (otpModal.pendingAction === 'add') handleAddVerified(actionToken);
-    else if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
+    if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else if (otpModal.pendingAction === 'bulk-delete') handleBulkDeleteVerified(actionToken);
     else handleDeleteVerified(actionToken);
+  }
+
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      await handleAddVerified(result.actionToken);
+      setConfirmModal((prev) => ({ ...prev, open: false }));
+    } catch (err: any) {
+      alert('Action failed: ' + (err.message ?? 'Unknown error'));
+    }
   }
 
   if (isLoading && clients.length === 0) {
@@ -719,7 +735,15 @@ export default function ClientsPage() {
         title={otpModal.title}
         description={otpModal.description}
         onVerified={handleOtpVerified}
-        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingClientEdit = null; (window as any).__pendingClientAdd = null; }}
+        onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingClientEdit = null; }}
+      />
+
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => { setConfirmModal({ ...confirmModal, open: false }); (window as any).__pendingClientAdd = null; }}
       />
     </div>
   );

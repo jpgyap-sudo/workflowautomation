@@ -45,6 +45,8 @@ import {
   getOrder,
 } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
+import { generateActionToken } from '@/lib/api';
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -122,8 +124,11 @@ export default function CalendarPage() {
   const [noteColor, setNoteColor] = useState('#2490ef');
   const [savingNote, setSavingNote] = useState(false);
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete' | 'stageAdvance' | 'telegramNotify' | 'scheduleSave' | 'scheduleDelete';
+    open: boolean; title: string; description: string; pendingAction: 'save' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'save' });
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: string;
+  }>({ open: false, title: '', description: '', pendingAction: '' });
 
   // Schedule state
   const [schedules, setSchedules] = useState<CalendarSchedule[]>([]);
@@ -232,10 +237,10 @@ export default function CalendarPage() {
     if (!noteTitle.trim() || !selectedDate) return;
     const isEdit = !!editingNote;
     (window as any).__pendingNoteData = { isEdit, dateKey: formatDateKey(selectedDate) };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: isEdit ? 'Edit Note' : 'Save Note',
-      description: `You are about to ${isEdit ? 'edit' : 'create'} the note "${noteTitle.trim()}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to ${isEdit ? 'edit' : 'create'} the note "${noteTitle.trim()}".`,
       pendingAction: 'save',
     });
   }
@@ -266,10 +271,10 @@ export default function CalendarPage() {
   function handleDeleteNote(noteId: string) {
     const note = notes.find((n) => n.id === noteId);
     (window as any).__pendingNoteDelete = noteId;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Delete Note',
-      description: `You are about to delete the note "${note?.title ?? noteId}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to delete the note "${note?.title ?? noteId}".`,
       pendingAction: 'delete',
     });
   }
@@ -313,10 +318,10 @@ export default function CalendarPage() {
 
   function handleStageAdvance(event: CalendarEvent, targetStage: string, label: string) {
     setPendingStageAdvance({ quotationNumber: event.title, targetStage, label });
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: `Advance Stage: ${label}`,
-      description: `You are about to advance order "${event.title}" to "${targetStage}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to advance order "${event.title}" to "${targetStage}".`,
       pendingAction: 'stageAdvance',
     });
   }
@@ -361,10 +366,10 @@ export default function CalendarPage() {
 
   function handleSendTelegramNotify() {
     if (!telegramMessage.trim() || !selectedDate) return;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Send Telegram Notification',
-      description: `You are about to send a notification to the escalation group about "${selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to send a notification to the escalation group about "${selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}".`,
       pendingAction: 'telegramNotify',
     });
   }
@@ -466,10 +471,10 @@ export default function CalendarPage() {
 
   function handleSaveSchedule() {
     if (!scheduleTitle.trim() || !scheduleDate) return;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: editingSchedule ? 'Edit Schedule' : 'Save Schedule',
-      description: `You are about to ${editingSchedule ? 'edit' : 'create'} the schedule "${scheduleTitle.trim()}" on ${scheduleDate}. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to ${editingSchedule ? 'edit' : 'create'} the schedule "${scheduleTitle.trim()}" on ${scheduleDate}.`,
       pendingAction: 'scheduleSave',
     });
   }
@@ -509,10 +514,10 @@ export default function CalendarPage() {
 
   function handleDeleteSchedule(scheduleId: string) {
     const schedule = schedules.find((s) => s.id === scheduleId);
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Delete Schedule',
-      description: `You are about to delete the schedule "${schedule?.title ?? scheduleId}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to delete the schedule "${schedule?.title ?? scheduleId}".`,
       pendingAction: 'scheduleDelete',
     });
     (window as any).__pendingScheduleDelete = scheduleId;
@@ -533,14 +538,31 @@ export default function CalendarPage() {
     }
   }
 
-  // ── Updated OTP handler ────────────────────────────────────────────
+  // ── OTP handler (only for note save/delete) ────────────────────────
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'save') handleSaveVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
-    else if (otpModal.pendingAction === 'stageAdvance') executeStageAdvance(actionToken);
-    else if (otpModal.pendingAction === 'telegramNotify') executeTelegramNotify(actionToken);
-    else if (otpModal.pendingAction === 'scheduleSave') handleScheduleSaveVerified(actionToken);
-    else if (otpModal.pendingAction === 'scheduleDelete') handleScheduleDeleteVerified(actionToken);
+  }
+
+  /** ConfirmModal verified handler — generates action token without OTP */
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      const actionToken = result.actionToken;
+
+      if (confirmModal.pendingAction === 'stageAdvance') executeStageAdvance(actionToken);
+      else if (confirmModal.pendingAction === 'telegramNotify') executeTelegramNotify(actionToken);
+      else if (confirmModal.pendingAction === 'scheduleSave') handleScheduleSaveVerified(actionToken);
+      else if (confirmModal.pendingAction === 'scheduleDelete') handleScheduleDeleteVerified(actionToken);
+
+      setConfirmModal((prev) => ({ ...prev, open: false }));
+    } catch (err: any) {
+      alert('Action failed: ' + (err.message ?? 'Unknown error'));
+    }
   }
 
   return (
@@ -1376,6 +1398,16 @@ export default function CalendarPage() {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingNoteData = null;
           (window as any).__pendingNoteDelete = null;
+        }}
+      />
+
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => {
+          setConfirmModal({ ...confirmModal, open: false });
           setPendingStageAdvance(null);
         }}
       />

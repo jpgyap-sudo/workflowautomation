@@ -23,6 +23,8 @@ import {
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
+import { generateActionToken } from '@/lib/api';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
@@ -2344,8 +2346,11 @@ export default function ProductionPage() {
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
   const [otpModal, setOtpModal] = useState<{
-    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete' | 'reportStatus' | 'finishProduction' | 'confirmEnRoute' | 'proceedInventoryVerification' | 'grantProductionException' | 'revokeProductionException' | 'setProduction' | 'stockReplenishment' | 'itemFinish' | 'itemDelayed' | 'itemProductionStatus' | 'itemEnRouteStatus' | 'itemStartConfirm' | 'bulkFinish' | 'bulkEnRoute' | 'bulkFinishSelected' | 'bulkEnRouteSelected' | 'bulkArriveAll' | 'bulkArriveSelected' | 'recordDeposit';
+    open: boolean; title: string; description: string; pendingAction: 'edit' | 'delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: string;
+  }>({ open: false, title: '', description: '', pendingAction: '' });
 
   // Stock replenishment modal state
   const [stockReplModal, setStockReplModal] = useState(false);
@@ -2394,26 +2399,42 @@ export default function ProductionPage() {
   function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
-    else if (otpModal.pendingAction === 'reportStatus') handleReportStatusVerified(actionToken);
-    else if (otpModal.pendingAction === 'finishProduction') handleFinishProductionVerified(actionToken);
-    else if (otpModal.pendingAction === 'confirmEnRoute') handleConfirmEnRouteVerified(actionToken);
-    else if (otpModal.pendingAction === 'proceedInventoryVerification') handleProceedInventoryVerificationVerified(actionToken);
-    else if (otpModal.pendingAction === 'setProduction') handleStartProductionVerified(actionToken);
-    else if (otpModal.pendingAction === 'grantProductionException') handleGrantExceptionVerified(actionToken);
-    else if (otpModal.pendingAction === 'revokeProductionException') handleRevokeExceptionVerified(actionToken);
-    else if (otpModal.pendingAction === 'stockReplenishment') handleStockReplVerified(actionToken);
-    else if (otpModal.pendingAction === 'itemFinish') handleItemFinishVerified(actionToken);
-    else if (otpModal.pendingAction === 'itemDelayed') handleItemDelayedVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulkFinish') handleBulkFinishVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulkEnRoute') handleBulkEnRouteVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulkFinishSelected') handleBulkFinishSelectedVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulkEnRouteSelected') handleBulkEnRouteSelectedVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulkArriveAll') handleBulkArriveAllVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulkArriveSelected') handleBulkArriveSelectedVerified(actionToken);
-    else if (otpModal.pendingAction === 'itemProductionStatus') handleItemProductionStatusVerified(actionToken);
-    else if (otpModal.pendingAction === 'itemEnRouteStatus') handleItemEnRouteStatusVerified(actionToken);
-    else if (otpModal.pendingAction === 'itemStartConfirm') handleItemStartConfirmVerified(actionToken);
-    else if (otpModal.pendingAction === 'recordDeposit') handleRecordDepositVerified(actionToken);
+  }
+
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      const actionToken = result.actionToken;
+
+      if (confirmModal.pendingAction === 'reportStatus') await handleReportStatusVerified(actionToken);
+      else if (confirmModal.pendingAction === 'finishProduction') await handleFinishProductionVerified(actionToken);
+      else if (confirmModal.pendingAction === 'confirmEnRoute') await handleConfirmEnRouteVerified(actionToken);
+      else if (confirmModal.pendingAction === 'proceedInventoryVerification') await handleProceedInventoryVerificationVerified(actionToken);
+      else if (confirmModal.pendingAction === 'setProduction') await handleStartProductionVerified(actionToken);
+      else if (confirmModal.pendingAction === 'grantProductionException') await handleGrantExceptionVerified(actionToken);
+      else if (confirmModal.pendingAction === 'revokeProductionException') await handleRevokeExceptionVerified(actionToken);
+      else if (confirmModal.pendingAction === 'stockReplenishment') await handleStockReplVerified(actionToken);
+      else if (confirmModal.pendingAction === 'itemFinish') await handleItemFinishVerified(actionToken);
+      else if (confirmModal.pendingAction === 'itemDelayed') await handleItemDelayedVerified(actionToken);
+      else if (confirmModal.pendingAction === 'bulkFinish') await handleBulkFinishVerified(actionToken);
+      else if (confirmModal.pendingAction === 'bulkEnRoute') await handleBulkEnRouteVerified(actionToken);
+      else if (confirmModal.pendingAction === 'bulkFinishSelected') await handleBulkFinishSelectedVerified(actionToken);
+      else if (confirmModal.pendingAction === 'bulkEnRouteSelected') await handleBulkEnRouteSelectedVerified(actionToken);
+      else if (confirmModal.pendingAction === 'bulkArriveAll') await handleBulkArriveAllVerified(actionToken);
+      else if (confirmModal.pendingAction === 'bulkArriveSelected') await handleBulkArriveSelectedVerified(actionToken);
+      else if (confirmModal.pendingAction === 'itemProductionStatus') await handleItemProductionStatusVerified(actionToken);
+      else if (confirmModal.pendingAction === 'itemEnRouteStatus') await handleItemEnRouteStatusVerified(actionToken);
+      else if (confirmModal.pendingAction === 'itemStartConfirm') await handleItemStartConfirmVerified(actionToken);
+      else if (confirmModal.pendingAction === 'recordDeposit') await handleRecordDepositVerified(actionToken);
+
+      setConfirmModal({ ...confirmModal, open: false });
+    } catch (err: any) {
+      alert('Failed to generate action token: ' + (err.message ?? 'Unknown error'));
+    }
   }
 
   async function handleGrantExceptionVerified(actionToken: string) {
@@ -2507,7 +2528,7 @@ export default function ProductionPage() {
   // ── Record Deposit handlers ──────────────────────────────────────────
   function handleRecordDeposit(order: Order) {
     (window as any).__pendingRecordDepositData = { order };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Record Downpayment',
       description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`,
@@ -2551,8 +2572,8 @@ export default function ProductionPage() {
   }
 
   async function handleReportOnTime(order: Order) {
-    setOtpModal({ open: true, title: 'Report Production Status',
-      description: `You are about to report order "${order.quotation_number ?? '—'}" as on time. Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Report Production Status',
+      description: `You are about to report order "${order.quotation_number ?? '—'}" as on time.`,
       pendingAction: 'reportStatus' });
     (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: true, delay_days: 0 } };
   }
@@ -2562,8 +2583,8 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days < 0) { alert('Please enter a valid delay in days.'); return; }
-    setOtpModal({ open: true, title: 'Report Production Status',
-      description: `You are about to report order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s). Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Report Production Status',
+      description: `You are about to report order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s).`,
       pendingAction: 'reportStatus' });
     (window as any).__pendingReportStatusData = { orderId: order.id, data: { on_time: false, delay_days: days } };
   }
@@ -2601,10 +2622,10 @@ export default function ProductionPage() {
     }
     const order = prodDaysModal.order!;
     setProdDaysModal((prev) => ({ ...prev, open: false }));
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Start Production',
-      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) overall estimate. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) overall estimate.`,
       pendingAction: 'setProduction',
     });
     (window as any).__pendingStartProductionData = { orderId: order.id, days, itemDays: pendingItemDays };
@@ -2615,8 +2636,8 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    setOtpModal({ open: true, title: 'Finish Production',
-      description: `You are about to mark order "${order.quotation_number ?? '—'}" as finished with ${days} day(s) delivery estimate. Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Finish Production',
+      description: `You are about to mark order "${order.quotation_number ?? '—'}" as finished with ${days} day(s) delivery estimate.`,
       pendingAction: 'finishProduction' });
     (window as any).__pendingFinishProductionData = { orderId: order.id, days };
   }
@@ -2626,8 +2647,8 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days <= 0) { alert('Please enter a valid positive number of days.'); return; }
-    setOtpModal({ open: true, title: 'Confirm En Route',
-      description: `You are about to confirm order "${order.quotation_number ?? '—'}" as en route with ${days} day(s) estimated arrival. Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Confirm En Route',
+      description: `You are about to confirm order "${order.quotation_number ?? '—'}" as en route with ${days} day(s) estimated arrival.`,
       pendingAction: 'confirmEnRoute' });
     (window as any).__pendingConfirmEnRouteData = { orderId: order.id, days };
   }
@@ -2635,8 +2656,8 @@ export default function ProductionPage() {
   async function handleProceedInventoryVerification(order: Order) {
     if (!order.quotation_number) { alert('Cannot proceed: this order has no quotation number.'); return; }
     if (!window.confirm(`Proceed order "${order.quotation_number}" to Inventory Verification now? Use this when items arrived earlier than the estimated arrival date.`)) return;
-    setOtpModal({ open: true, title: 'Proceed to Inventory Verification',
-      description: `You are about to manually move order "${order.quotation_number}" to Inventory Verification because items arrived early. Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Proceed to Inventory Verification',
+      description: `You are about to manually move order "${order.quotation_number}" to Inventory Verification because items arrived early.`,
       pendingAction: 'proceedInventoryVerification' });
     (window as any).__pendingProceedInventoryVerificationData = { orderId: order.id, quotationNumber: order.quotation_number };
   }
@@ -2644,16 +2665,16 @@ export default function ProductionPage() {
   async function handleGrantException(order: Order) {
     const notes = window.prompt('Reason for production exception (why is production starting without downpayment)?');
     if (!notes) return;
-    setOtpModal({ open: true, title: 'Grant Production Exception',
-      description: `You are about to grant a production exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Grant Production Exception',
+      description: `You are about to grant a production exception for order "${order.quotation_number ?? '—'}".`,
       pendingAction: 'grantProductionException' });
     (window as any).__pendingGrantExceptionData = { orderId: order.id, notes };
   }
 
   async function handleRevokeException(order: Order) {
     if (!window.confirm(`Revoke production exception for #${order.quotation_number ?? 'unknown'}? This will block production until downpayment is verified.`)) return;
-    setOtpModal({ open: true, title: 'Revoke Production Exception',
-      description: `You are about to revoke the production exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Revoke Production Exception',
+      description: `You are about to revoke the production exception for order "${order.quotation_number ?? '—'}".`,
       pendingAction: 'revokeProductionException' });
     (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
@@ -2688,10 +2709,10 @@ export default function ProductionPage() {
         filename: stockReplFile.name,
         label: stockReplLabel.trim() || undefined,
       };
-      setOtpModal({
+      setConfirmModal({
         open: true,
         title: 'Create Stock Replenishment Order',
-        description: 'Enter the OTP sent to your email to confirm the stock replenishment order creation.',
+        description: 'Confirm the stock replenishment order creation.',
         pendingAction: 'stockReplenishment',
       });
     };
@@ -2723,10 +2744,10 @@ export default function ProductionPage() {
   // ── Per-item production action handlers ──────────────────────────────
 
   async function handleItemFinish(order: Order, item: OrderItem) {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Finish Item Production',
-      description: `You are about to mark item "${item.name}" in order "${order.quotation_number ?? '—'}" as finished. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark item "${item.name}" in order "${order.quotation_number ?? '—'}" as finished.`,
       pendingAction: 'itemFinish',
     });
     (window as any).__pendingItemFinishData = { orderId: order.id, itemId: item.id };
@@ -2752,10 +2773,10 @@ export default function ProductionPage() {
     if (!input) return;
     const days = Number(input.replace(/[^0-9]/g, ''));
     if (!Number.isInteger(days) || days < 0) { alert('Please enter a valid delay in days.'); return; }
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Report Item Delay',
-      description: `You are about to report item "${item.name}" in order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s). Enter the OTP sent to your email to confirm.`,
+      description: `You are about to report item "${item.name}" in order "${order.quotation_number ?? '—'}" as delayed by ${days} day(s).`,
       pendingAction: 'itemDelayed',
     });
     (window as any).__pendingItemDelayedData = { orderId: order.id, itemId: item.id, delayDays: days };
@@ -2784,10 +2805,10 @@ export default function ProductionPage() {
   // ── Bulk finish all items ────────────────────────────────────────────
 
   function handleBulkFinish(order: Order) {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Finish All Items',
-      description: `You are about to mark all unfinished items in order "${order.quotation_number ?? '—'}" as finished. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark all unfinished items in order "${order.quotation_number ?? '—'}" as finished.`,
       pendingAction: 'bulkFinish',
     });
     (window as any).__pendingBulkFinishData = { orderId: order.id };
@@ -2810,10 +2831,10 @@ export default function ProductionPage() {
 
   function handleBulkFinishSelected(order: Order, itemIds: string[]) {
     const names = itemIds.length === 1 ? '1 item' : `${itemIds.length} items`;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Finish Selected Items',
-      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as finished. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as finished.`,
       pendingAction: 'bulkFinishSelected',
     });
     (window as any).__pendingBulkFinishSelectedData = { orderId: order.id, itemIds };
@@ -2850,10 +2871,10 @@ export default function ProductionPage() {
       if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
       defaultDays = days;
     }
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark All En Route',
-      description: `You are about to mark all not-yet items in order "${order.quotation_number ?? '—'}" as en route. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark all not-yet items in order "${order.quotation_number ?? '—'}" as en route.`,
       pendingAction: 'bulkEnRoute',
     });
     (window as any).__pendingBulkEnRouteData = { orderId: order.id, defaultDays, refreshCallback };
@@ -2882,10 +2903,10 @@ export default function ProductionPage() {
     if (input === null) return;
     const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
     if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark Selected En Route',
-      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as en route. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as en route.`,
       pendingAction: 'bulkEnRouteSelected',
     });
     (window as any).__pendingBulkEnRouteSelectedData = { orderId: order.id, itemIds, defaultDays: days, refreshCallback };
@@ -2912,10 +2933,10 @@ export default function ProductionPage() {
   // ── Bulk arrive all items ────────────────────────────────────────────
 
   function handleBulkArriveAll(order: Order, refreshCallback?: () => void) {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark All Items Arrived',
-      description: `You are about to mark all pending items in order "${order.quotation_number ?? '—'}" as arrived. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark all pending items in order "${order.quotation_number ?? '—'}" as arrived.`,
       pendingAction: 'bulkArriveAll',
     });
     (window as any).__pendingBulkArriveAllData = { orderId: order.id, refreshCallback };
@@ -2939,10 +2960,10 @@ export default function ProductionPage() {
 
   function handleBulkArriveSelected(order: Order, itemIds: string[], refreshCallback?: () => void) {
     const names = itemIds.length === 1 ? '1 item' : `${itemIds.length} items`;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Mark Selected Items Arrived',
-      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as arrived. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to mark ${names} in order "${order.quotation_number ?? '—'}" as arrived.`,
       pendingAction: 'bulkArriveSelected',
     });
     (window as any).__pendingBulkArriveSelectedData = { orderId: order.id, itemIds, refreshCallback };
@@ -2970,10 +2991,10 @@ export default function ProductionPage() {
   // These are called from ProductionInfoCards which has access to the order
   // We store the orderId alongside the item data
   function handleItemProductionStatusAction(orderId: string, item: OrderItem, status: 'pending' | 'in_progress' | 'finished') {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Update Item Production Status',
-      description: `You are about to change production status of item "${item.name}" to "${status}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to change production status of item "${item.name}" to "${status}".`,
       pendingAction: 'itemProductionStatus',
     });
     (window as any).__pendingItemProductionStatusData = { orderId, item, status };
@@ -3013,10 +3034,10 @@ export default function ProductionPage() {
       if (!days || days <= 0) { alert('Please enter a valid number of days.'); return; }
       estimatedArrivalDays = days;
     }
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Update Item En Route Status',
-      description: `You are about to change en route status of item "${item.name}" to "${enRouteStatus}". Enter the OTP sent to your email to confirm.`,
+      description: `You are about to change en route status of item "${item.name}" to "${enRouteStatus}".`,
       pendingAction: 'itemEnRouteStatus',
     });
     (window as any).__pendingItemEnRouteStatusData = { orderId, item, enRouteStatus, estimatedArrivalDays, refreshCallback };
@@ -3048,10 +3069,10 @@ export default function ProductionPage() {
   // ── Item start confirm (from ProductionItemSection) ──────────────────
 
   function handleItemStartConfirm(order: Order, item: OrderItem, days: number) {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Start Item Production',
-      description: `You are about to start production for item "${item.name}" in order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to start production for item "${item.name}" in order "${order.quotation_number ?? '—'}" with ${days} day(s) estimate.`,
       pendingAction: 'itemStartConfirm',
     });
     (window as any).__pendingItemStartConfirmData = { orderId: order.id, itemId: item.id, days };
@@ -3449,6 +3470,11 @@ export default function ProductionPage() {
         open={otpModal.open} title={otpModal.title} description={otpModal.description}
         onVerified={handleOtpVerified}
         onClose={() => { setOtpModal({ ...otpModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingRecordDepositData = null; }}
+      />
+      <ConfirmModal
+        open={confirmModal.open} title={confirmModal.title} description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => { setConfirmModal({ ...confirmModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingRecordDepositData = null; (window as any).__pendingReportStatusData = null; (window as any).__pendingStartProductionData = null; (window as any).__pendingFinishProductionData = null; (window as any).__pendingConfirmEnRouteData = null; (window as any).__pendingProceedInventoryVerificationData = null; (window as any).__pendingGrantExceptionData = null; (window as any).__pendingRevokeExceptionData = null; (window as any).__pendingStockRepl = null; (window as any).__pendingItemFinishData = null; (window as any).__pendingItemDelayedData = null; (window as any).__pendingBulkFinishData = null; (window as any).__pendingBulkEnRouteData = null; (window as any).__pendingBulkFinishSelectedData = null; (window as any).__pendingBulkEnRouteSelectedData = null; (window as any).__pendingBulkArriveAllData = null; (window as any).__pendingBulkArriveSelectedData = null; (window as any).__pendingItemProductionStatusData = null; (window as any).__pendingItemEnRouteStatusData = null; (window as any).__pendingItemStartConfirmData = null; }}
       />
 
       {deleting && (

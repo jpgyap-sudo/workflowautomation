@@ -5,7 +5,7 @@ import { Suspense } from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ScanEye, Upload, FileText, User, DollarSign, Hash, Loader2, CheckCircle, XCircle, AlertCircle, ExternalLink, Clock, Image as ImageIcon, Eye } from 'lucide-react';
-import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import { useAuth } from '@/lib/auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -1198,8 +1198,8 @@ function VisionPageContent() {
         </div>
       )}
 
-      {/* OTP Modal */}
-      <OtpModal
+      {/* Confirm Modal */}
+      <ConfirmModal
         open={showOtp}
         title={
           otpAction === 'recordPayment'
@@ -1210,10 +1210,10 @@ function VisionPageContent() {
         }
         description={
           otpAction === 'recordPayment'
-            ? `Confirm recording the edited payment for "${paymentQuotationNumber || 'this order'}". Enter the OTP sent to your email to confirm.`
+            ? `Confirm recording the edited payment for "${paymentQuotationNumber || 'this order'}".`
             : existingOrder
-              ? `Confirm syncing extracted data/payment to order "${existingOrder.quotation_number || existingOrder.id}". Only empty fields and new items will be added. Enter the OTP sent to your email to confirm.`
-              : `Confirm creating order "${quotationNumber || clientName || '?'}". Enter the OTP sent to your email to confirm.`
+              ? `Confirm syncing extracted data/payment to order "${existingOrder.quotation_number || existingOrder.id}". Only empty fields and new items will be added.`
+              : `Confirm creating order "${quotationNumber || clientName || '?'}".`
         }
         onVerified={handleOtpVerified}
         onClose={() => setShowOtp(false)}

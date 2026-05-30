@@ -1,0 +1,83 @@
+'use client';
+
+import { useState } from 'react';
+import { useAuth } from '@/lib/auth';
+import { generateActionToken } from '@/lib/api';
+import { X, ShieldAlert } from 'lucide-react';
+
+interface ConfirmModalProps {
+  open: boolean;
+  title: string;
+  description: string;
+  onVerified: (actionToken: string) => void;
+  onClose: () => void;
+}
+
+export default function ConfirmModal({ open, title, description, onVerified, onClose }: ConfirmModalProps) {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!open) return null;
+
+  async function handleConfirm() {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await generateActionToken(user?.email ?? '', user?.name ?? undefined);
+      if (result.ok && result.actionToken) {
+        onVerified(result.actionToken);
+        onClose();
+      } else {
+        setError('Failed to generate action token. Please try again.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-5 w-5 text-amber-500" />
+            <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">{description}</p>
+
+          {error && (
+            <p className="text-center text-xs text-red-500">{error}</p>
+          )}
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={loading}
+              className="flex-1 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              {loading ? 'Processing…' : 'Confirm Action'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

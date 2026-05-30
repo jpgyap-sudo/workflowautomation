@@ -6,6 +6,7 @@ import type { Order, Client } from '@/lib/api';
 import { updateOrder, deleteOrder, bulkDeleteOrders, createOrder, recordDeposit, recordDepositWithFile, recordFullPaymentWithFile, uploadOrderFile, visionExtract, searchClients, verifyDeposit, verifyBalance } from '@/lib/api';
 import OrderTable from '@/components/OrderTable';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { useAuth } from '@/lib/auth';
 import { X, Check, Plus, Loader2, Trash2, Upload, Sparkles as SparklesIcon, ChevronDown } from 'lucide-react';
@@ -539,10 +540,10 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
         </form>
       </div>
       {showOtp && (
-        <OtpModal
+        <ConfirmModal
           open={showOtp}
           title="Create Order"
-          description={`You are about to create a new order "${qn}" with files. Enter the OTP sent to your email to confirm.`}
+          description={`You are about to create a new order "${qn}" with files. Confirm to proceed.`}
           onVerified={handleVerified}
           onClose={() => setShowOtp(false)}
         />
@@ -1199,11 +1200,11 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Deposit OTP Modal */}
-      <OtpModal
+      {/* Deposit Confirm Modal */}
+      <ConfirmModal
         open={depositOtpOpen}
-        title="Verify Deposit Recording"
-        description={depositOrder ? `You are about to record a downpayment of ₱${parseFloat(depositAmount || '0').toLocaleString()} for order "${depositOrder.quotation_number ?? '—'}". Enter the code sent to your Telegram or email to confirm.` : ''}
+        title="Record Deposit"
+        description={depositOrder ? `You are about to record a downpayment of ₱${parseFloat(depositAmount || '0').toLocaleString()} for order "${depositOrder.quotation_number ?? '—'}". Confirm to proceed.` : ''}
         onVerified={(token) => {
           setDepositOtpOpen(false);
           handleDepositVerified(token);

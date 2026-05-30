@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import StageBadge from '@/components/StageBadge';
 import {
   getOrder,
@@ -497,7 +497,7 @@ export default function InventoryVerificationDetailPage() {
         </table>
       </div>
 
-      <OtpModal
+      <ConfirmModal
         open={itemOtp.open}
         title={itemOtp.arrivedQty !== undefined ? 'Record Arrived Quantity' : 'Verify Inventory Item'}
         description={itemOtp.arrivedQty !== undefined
@@ -507,21 +507,21 @@ export default function InventoryVerificationDetailPage() {
         onVerified={handleItemOtp}
         onClose={() => setItemOtp({ open: false, itemId: '', itemName: '', action: 'all' })}
       />
-      <OtpModal
+      <ConfirmModal
         open={completeOtpOpen}
         title="Complete Inventory Verification"
         description={`Complete inventory verification for #${order.quotation_number}.`}
         onVerified={handleCompleteOtp}
         onClose={() => setCompleteOtpOpen(false)}
       />
-      <OtpModal
+      <ConfirmModal
         open={completePartialOtpOpen}
         title="Complete Partial Inventory Verification"
         description={`Complete inventory verification for #${order.quotation_number} with ${fullyVerified}/${items.length} items fully verified (${pct}%). This enables partial delivery — verified items can be delivered while pending items are tracked for later.`}
         onVerified={handleCompletePartialOtp}
         onClose={() => setCompletePartialOtpOpen(false)}
       />
-      <OtpModal
+      <ConfirmModal
         open={bulkVerifyOtpOpen}
         title={bulkAction === 'not_yet' ? 'Bulk Mark as Not Yet' : bulkAction === 'arrived' ? 'Bulk Set Arrived Quantity' : 'Bulk Verify Inventory Items'}
         description={bulkAction === 'not_yet'

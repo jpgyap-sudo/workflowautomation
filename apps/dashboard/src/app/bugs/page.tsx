@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Bug, Plus, CheckCircle, Clock, AlertCircle, XCircle, RefreshCw, Search, MessageSquare } from 'lucide-react';
-import { getBugReports, reportBug, updateBugReportStatus, type BugReport } from '@/lib/api';
+import { getBugReports, reportBug, updateBugReportStatus, generateActionToken, type BugReport } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -164,10 +165,10 @@ function NewBugModal({
         </form>
       </div>
       {showOtp && (
-        <OtpModal
+        <ConfirmModal
           open={showOtp}
           title="Report a Bug"
-          description={`You are about to submit a bug report "${title}". Enter the OTP sent to your email to confirm.`}
+          description={`You are about to submit a bug report "${title}".`}
           onVerified={handleVerified}
           onClose={() => setShowOtp(false)}
         />
@@ -199,7 +200,7 @@ export default function BugsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [otpModal, setOtpModal] = useState<{
+  const [confirmModal, setConfirmModal] = useState<{
     open: boolean;
     title: string;
     description: string;
@@ -225,11 +226,25 @@ export default function BugsPage() {
   function handleStatusChange(id: string, status: 'open' | 'in_progress' | 'resolved' | 'closed') {
     const report = reports.find((r) => r.id === id);
     (window as any).__pendingBugStatusChange = { id, status };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Update Bug Status',
       description: `Confirm changing "${report?.title ?? 'this report'}" to ${status.replace(/_/g, ' ')}.`,
     });
+  }
+
+  async function handleConfirmVerified() {
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      await handleStatusChangeVerified(result.actionToken);
+      setConfirmModal((prev) => ({ ...prev, open: false }));
+    } catch (err: any) {
+      alert('Action failed: ' + (err.message ?? 'Unknown error'));
+    }
   }
 
   async function handleStatusChangeVerified(actionToken: string) {
@@ -418,14 +433,14 @@ export default function BugsPage() {
         />
       )}
 
-      {/* OTP Modal */}
-      <OtpModal
-        open={otpModal.open}
-        title={otpModal.title}
-        description={otpModal.description}
-        onVerified={handleStatusChangeVerified}
+      {/* Confirm Modal */}
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onVerified={handleConfirmVerified}
         onClose={() => {
-          setOtpModal({ ...otpModal, open: false });
+          setConfirmModal({ ...confirmModal, open: false });
           (window as any).__pendingBugStatusChange = null;
         }}
       />

@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
+import { generateActionToken } from '@/lib/api';
 import { useInventory, useInventoryDrafts, useOrdersByStage } from '@/lib/useApi';
 import {
   createInventoryItem,
@@ -129,14 +131,20 @@ export default function InventoryPage() {
   // Edit item inline
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ product_name: '', description: '', dimension: '', category: '', quantity: '0' });
-  type OtpPendingAction =
-    | 'add' | 'edit' | 'delete' | 'bulk-upload'
-    | 'approve-selected' | 'approve-all' | 'reject-draft' | 'clear-drafts'
-    | 'bulk-delete-drafts' | 'delete-all-drafts' | 'bulk-delete-items';
+  type OtpPendingAction = 'edit' | 'delete';
 
   const [otpModal, setOtpModal] = useState<{
     open: boolean; title: string; description: string; pendingAction: OtpPendingAction; targetEmail?: string;
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+
+  type ConfirmPendingAction =
+    | 'add' | 'bulk-upload'
+    | 'approve-selected' | 'approve-all' | 'reject-draft' | 'clear-drafts'
+    | 'bulk-delete-drafts' | 'delete-all-drafts' | 'bulk-delete-items';
+
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean; title: string; description: string; pendingAction: ConfirmPendingAction;
+  }>({ open: false, title: '', description: '', pendingAction: 'add' });
 
   // Selected inventory items for bulk actions
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -225,10 +233,10 @@ export default function InventoryPage() {
       quantity: Number(addForm.quantity) || 0,
       image_url: addForm.image_url || null,
     };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Add Inventory Item',
-      description: `You are about to add "${addForm.product_name.trim()}" to inventory. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to add "${addForm.product_name.trim()}" to inventory. Confirm to proceed.`,
       pendingAction: 'add',
     });
   }
@@ -279,10 +287,10 @@ export default function InventoryPage() {
         mime_type: bulkFile.type || 'application/octet-stream',
         filename: bulkFile.name,
       };
-      setOtpModal({
+      setConfirmModal({
         open: true,
         title: 'Bulk Upload Inventory',
-        description: `You are about to upload "${bulkFile.name}" for bulk inventory creation. Enter the OTP sent to your email to confirm.`,
+        description: `You are about to upload "${bulkFile.name}" for bulk inventory creation. Confirm to proceed.`,
         pendingAction: 'bulk-upload',
       });
     };
@@ -357,10 +365,10 @@ export default function InventoryPage() {
     for (const id of selectedDrafts) {
       await saveDraftEdit(id);
     }
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Approve Selected Drafts',
-      description: `You are about to approve ${selectedDrafts.size} draft(s). Enter the OTP sent to your email to confirm.`,
+      description: `You are about to approve ${selectedDrafts.size} draft(s). Confirm to proceed.`,
       pendingAction: 'approve-selected',
     });
   }
@@ -383,10 +391,10 @@ export default function InventoryPage() {
   }
 
   async function handleApproveAll() {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Approve All Drafts',
-      description: `You are about to approve all inventory drafts. Enter the OTP sent to your email to confirm.`,
+      description: `You are about to approve all inventory drafts. Confirm to proceed.`,
       pendingAction: 'approve-all',
     });
   }
@@ -409,7 +417,7 @@ export default function InventoryPage() {
   function handleRejectDraft(id: string) {
     const edits = draftEdits[id];
     (window as any).__pendingRejectDraft = { id };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Reject Draft',
       description: `Confirm rejecting draft "${edits?.product_name.trim() || id}". This cannot be undone.`,
@@ -498,17 +506,28 @@ export default function InventoryPage() {
   }
 
   function handleOtpVerified(actionToken: string) {
-    if (otpModal.pendingAction === 'add') handleAddVerified(actionToken);
-    else if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
+    if (otpModal.pendingAction === 'edit') handleEditVerified(actionToken);
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulk-upload') handleBulkUploadVerified(actionToken);
-    else if (otpModal.pendingAction === 'approve-selected') handleApproveSelectedVerified(actionToken);
-    else if (otpModal.pendingAction === 'approve-all') handleApproveAllVerified(actionToken);
-    else if (otpModal.pendingAction === 'reject-draft') handleRejectDraftVerified(actionToken);
-    else if (otpModal.pendingAction === 'clear-drafts') handleClearDraftsVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulk-delete-drafts') handleBulkDeleteDraftsVerified(actionToken);
-    else if (otpModal.pendingAction === 'delete-all-drafts') handleDeleteAllDraftsVerified(actionToken);
-    else if (otpModal.pendingAction === 'bulk-delete-items') handleBulkDeleteItemsVerified(actionToken);
+  }
+
+  async function handleConfirmVerified() {
+    const action = confirmModal.pendingAction;
+    try {
+      const { actionToken } = await generateActionToken('dashboard_auto', 'dashboard');
+      if (action === 'add') await handleAddVerified(actionToken);
+      else if (action === 'bulk-upload') await handleBulkUploadVerified(actionToken);
+      else if (action === 'approve-selected') await handleApproveSelectedVerified(actionToken);
+      else if (action === 'approve-all') await handleApproveAllVerified(actionToken);
+      else if (action === 'reject-draft') await handleRejectDraftVerified(actionToken);
+      else if (action === 'clear-drafts') await handleClearDraftsVerified(actionToken);
+      else if (action === 'bulk-delete-drafts') await handleBulkDeleteDraftsVerified(actionToken);
+      else if (action === 'delete-all-drafts') await handleDeleteAllDraftsVerified(actionToken);
+      else if (action === 'bulk-delete-items') await handleBulkDeleteItemsVerified(actionToken);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Action failed');
+    } finally {
+      setConfirmModal((prev) => ({ ...prev, open: false }));
+    }
   }
 
   async function handleClearDraftsVerified(actionToken: string) {
@@ -523,12 +542,11 @@ export default function InventoryPage() {
   // ── Bulk Delete Drafts ──
   function handleBulkDeleteDrafts() {
     if (selectedDrafts.size === 0) return;
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Delete Selected Drafts',
       description: `You are about to permanently delete ${selectedDrafts.size} selected draft(s). This cannot be undone.`,
       pendingAction: 'bulk-delete-drafts',
-      targetEmail: 'jpgyap@gmail.com',
     });
   }
 
@@ -547,12 +565,11 @@ export default function InventoryPage() {
   }
 
   function handleDeleteAllDrafts() {
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Delete All Pending Drafts',
       description: `You are about to permanently delete ALL ${drafts.length} pending draft(s). This cannot be undone.`,
       pendingAction: 'delete-all-drafts',
-      targetEmail: 'jpgyap@gmail.com',
     });
   }
 
@@ -596,12 +613,11 @@ export default function InventoryPage() {
       .slice(0, 3)
       .join(', ');
     const more = selectedItems.size > 3 ? ` and ${selectedItems.size - 3} more` : '';
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Delete Selected Items',
       description: `You are about to permanently delete ${selectedItems.size} inventory item(s) (${names}${more}). This cannot be undone.`,
       pendingAction: 'bulk-delete-items',
-      targetEmail: 'jpgyap@gmail.com',
     });
   }
 
@@ -1269,7 +1285,7 @@ export default function InventoryPage() {
             <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
               <button
                 onClick={() => {
-                  setOtpModal({
+                  setConfirmModal({
                     open: true,
                     title: 'Clear Processed Drafts',
                     description: 'Confirm clearing all approved and rejected drafts. This cannot be undone.',
@@ -1344,9 +1360,20 @@ export default function InventoryPage() {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingInventoryEdit = null;
           (window as any).__pendingInventoryDelete = null;
-          (window as any).__pendingRejectDraft = null;
         }}
         targetEmail={otpModal.targetEmail}
+      />
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => {
+          setConfirmModal({ ...confirmModal, open: false });
+          (window as any).__pendingInventoryAdd = null;
+          (window as any).__pendingBulkUpload = null;
+          (window as any).__pendingRejectDraft = null;
+        }}
       />
     </div>
   );
@@ -1526,8 +1553,8 @@ function InventoryArrivalSection() {
   const [selectedArrivalItems, setSelectedArrivalItems] = useState<Record<string, string[]>>({});
   const [updatingArrival, setUpdatingArrival] = useState<string | null>(null);
 
-  // OTP modal state for "Confirm All Arrived" action
-  const [arrivalOtp, setArrivalOtp] = useState<{ open: boolean; orderId: string; quotationNumber: string }>({
+  // Confirm modal state for "Confirm All Arrived" action
+  const [arrivalConfirm, setArrivalConfirm] = useState<{ open: boolean; orderId: string; quotationNumber: string }>({
     open: false, orderId: '', quotationNumber: '',
   });
   const [confirming, setConfirming] = useState(false);
@@ -1573,16 +1600,16 @@ function InventoryArrivalSection() {
   }, [orders]);
 
   async function handleConfirmAllArrived(actionToken: string) {
-    if (!arrivalOtp.orderId) return;
+    if (!arrivalConfirm.orderId) return;
     setConfirming(true);
     try {
-      await confirmInventoryArrived(arrivalOtp.orderId, actionToken);
+      await confirmInventoryArrived(arrivalConfirm.orderId, actionToken);
       mutate();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to confirm arrival');
     } finally {
       setConfirming(false);
-      setArrivalOtp({ open: false, orderId: '', quotationNumber: '' });
+      setArrivalConfirm({ open: false, orderId: '', quotationNumber: '' });
     }
   }
 
@@ -1761,7 +1788,7 @@ function InventoryArrivalSection() {
                 {isComplete && (
                   <button
                     onClick={() =>
-                      setArrivalOtp({
+                      setArrivalConfirm({
                         open: true,
                         orderId: order.id,
                         quotationNumber: order.quotation_number ?? 'N/A',
@@ -1856,13 +1883,13 @@ function InventoryArrivalSection() {
         })}
       </div>
 
-      {/* OTP Modal for Confirm All Arrived */}
-      <OtpModal
-        open={arrivalOtp.open}
+      {/* Confirm Modal for Confirm All Arrived */}
+      <ConfirmModal
+        open={arrivalConfirm.open}
         title="Confirm Inventory Arrival"
-        description={`You are about to confirm all inventory has arrived for order #${arrivalOtp.quotationNumber}. Enter the OTP sent to your email to confirm.`}
+        description={`You are about to confirm all inventory has arrived for order #${arrivalConfirm.quotationNumber}. Confirm to proceed.`}
         onVerified={handleConfirmAllArrived}
-        onClose={() => setArrivalOtp({ open: false, orderId: '', quotationNumber: '' })}
+        onClose={() => setArrivalConfirm({ open: false, orderId: '', quotationNumber: '' })}
       />
     </div>
   );

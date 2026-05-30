@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useAgents, useAgentHealth, type AgentInfo, type AgentHealth } from '@/lib/useApi';
-import { runAgent } from '@/lib/api';
+import { runAgent, generateActionToken } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   Play,
   RefreshCw,
@@ -158,7 +159,7 @@ export default function AgentsPage() {
   const { data: healthData, mutate: refreshHealth } = useAgentHealth();
   const [runningAgents, setRunningAgents] = useState<Record<string, boolean>>({});
   const [runResult, setRunResult] = useState<{ name: string; ok: boolean; message: string } | null>(null);
-  const [otpModal, setOtpModal] = useState<{ open: boolean; agentName: string }>({ open: false, agentName: '' });
+  const [confirmModal, setConfirmModal] = useState<{ open: boolean; agentName: string }>({ open: false, agentName: '' });
 
   // Parse health data — the /health endpoint returns { agents: [...] }
   const healthMap: Record<string, AgentHealth> = {};
@@ -175,13 +176,27 @@ export default function AgentsPage() {
   }
 
   function handleRunAgent(name: string) {
-    setOtpModal({ open: true, agentName: name });
+    setConfirmModal({ open: true, agentName: name });
   }
 
-  async function executeRunAgent(actionToken: string) {
-    const name = otpModal.agentName;
+  async function handleConfirmVerified() {
+    const name = confirmModal.agentName;
     if (!name) return;
-    setOtpModal({ open: false, agentName: '' });
+    try {
+      const result = await generateActionToken('dashboard_auto', 'dashboard');
+      if (!result.ok || !result.actionToken) {
+        alert('Failed to generate action token. Please try again.');
+        return;
+      }
+      await executeRunAgent(name, result.actionToken);
+    } catch (err: any) {
+      alert('Action failed: ' + (err.message ?? 'Unknown error'));
+    }
+    setConfirmModal({ open: false, agentName: '' });
+  }
+
+  async function executeRunAgent(name: string, actionToken: string) {
+    setConfirmModal({ open: false, agentName: '' });
     setRunningAgents((prev) => ({ ...prev, [name]: true }));
     setRunResult(null);
     try {
@@ -313,12 +328,12 @@ export default function AgentsPage() {
         </div>
       )}
 
-      <OtpModal
-        open={otpModal.open}
+      <ConfirmModal
+        open={confirmModal.open}
         title="Run Agent"
-        description={`Confirm manually running agent "${otpModal.agentName.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}". Enter the OTP sent to your email to confirm.`}
-        onVerified={executeRunAgent}
-        onClose={() => setOtpModal({ open: false, agentName: '' })}
+        description={`Confirm manually running agent "${confirmModal.agentName.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}".`}
+        onVerified={handleConfirmVerified}
+        onClose={() => setConfirmModal({ open: false, agentName: '' })}
       />
     </div>
   );

@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, confirmPayment, type AcknowledgementReceipt, type Client } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, confirmPayment, generateActionToken, type AcknowledgementReceipt, type Client } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
 import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send, Download, XCircle } from 'lucide-react';
 
@@ -408,8 +409,14 @@ export default function CollectionPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance' | 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate' | 'advancePaymentReceived' | 'advancePaymentConfirmed' | 'markPaymentReceived' | 'recordDeposit' | 'recordBalance';
+    pendingAction: 'edit' | 'delete' | 'verifyDeposit' | 'verifyBalance';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    pendingAction: 'grantDeliveryException' | 'revokeDeliveryException' | 'confirmPayment' | 'markCountered' | 'markCompleted' | 'syncPaymentReceived' | 'editPaymentDate' | 'advancePaymentReceived' | 'advancePaymentConfirmed' | 'markPaymentReceived' | 'recordDeposit' | 'recordBalance';
+  }>({ open: false, title: '', description: '', pendingAction: 'confirmPayment' });
   const [paymentDateSavingKey, setPaymentDateSavingKey] = useState<string | null>(null);
 
   // Special case (delivery exception) state
@@ -584,48 +591,56 @@ export default function CollectionPage() {
       handleVerifyDepositVerified(actionToken);
     } else if (otpModal.pendingAction === 'verifyBalance') {
       handleVerifyBalanceVerified(actionToken);
-    } else if (otpModal.pendingAction === 'grantDeliveryException') {
-      handleGrantExceptionVerified(actionToken);
-    } else if (otpModal.pendingAction === 'revokeDeliveryException') {
-      handleRevokeExceptionVerified(actionToken);
-    } else if (otpModal.pendingAction === 'confirmPayment') {
-      executeConfirmPayment(actionToken);
-    } else if (otpModal.pendingAction === 'markCountered') {
+    }
+  }
+
+  async function handleConfirmVerified() {
+    const actionToken = await generateActionToken('dashboard_auto', 'dashboard');
+    if (!actionToken.actionToken) return;
+    const pendingAction = confirmModal.pendingAction;
+    if (pendingAction === 'grantDeliveryException') {
+      handleGrantExceptionVerified(actionToken.actionToken);
+    } else if (pendingAction === 'revokeDeliveryException') {
+      handleRevokeExceptionVerified(actionToken.actionToken);
+    } else if (pendingAction === 'confirmPayment') {
+      executeConfirmPayment(actionToken.actionToken);
+    } else if (pendingAction === 'markCountered') {
       const pending = (window as any).__pendingMarkCounteredData as { order: Order } | undefined;
-      if (pending) executeMarkCountered(pending.order, actionToken);
-    } else if (otpModal.pendingAction === 'markCompleted') {
+      if (pending) executeMarkCountered(pending.order, actionToken.actionToken);
+    } else if (pendingAction === 'markCompleted') {
       const pending = (window as any).__pendingMarkCompletedData as { order: Order } | undefined;
-      if (pending) executeMarkCompleted(pending.order, actionToken);
-    } else if (otpModal.pendingAction === 'syncPaymentReceived') {
+      if (pending) executeMarkCompleted(pending.order, actionToken.actionToken);
+    } else if (pendingAction === 'syncPaymentReceived') {
       const pending = (window as any).__pendingSyncData as { order: Order } | undefined;
-      if (pending) executeSyncPaymentReceived(pending.order, actionToken);
-    } else if (otpModal.pendingAction === 'editPaymentDate') {
+      if (pending) executeSyncPaymentReceived(pending.order, actionToken.actionToken);
+    } else if (pendingAction === 'editPaymentDate') {
       const pending = (window as any).__pendingPaymentDateData as {
         order: Order;
         field: 'deposit_paid_at' | 'balance_paid_at';
         value: string;
       } | undefined;
-      if (pending) executePaymentDateUpdate(pending.order, pending.field, pending.value, actionToken);
-    } else if (otpModal.pendingAction === 'markPaymentReceived') {
+      if (pending) executePaymentDateUpdate(pending.order, pending.field, pending.value, actionToken.actionToken);
+    } else if (pendingAction === 'markPaymentReceived') {
       const pending = (window as any).__pendingMarkPaymentReceivedData as { order: Order } | undefined;
-      if (pending) executeMarkPaymentReceived(pending.order, actionToken);
-    } else if (otpModal.pendingAction === 'advancePaymentReceived') {
+      if (pending) executeMarkPaymentReceived(pending.order, actionToken.actionToken);
+    } else if (pendingAction === 'advancePaymentReceived') {
       const pending = (window as any).__pendingAdvancePaymentReceivedData as { order: Order } | undefined;
-      if (pending) executeAdvancePaymentReceived(pending.order, actionToken);
-    } else if (otpModal.pendingAction === 'advancePaymentConfirmed') {
+      if (pending) executeAdvancePaymentReceived(pending.order, actionToken.actionToken);
+    } else if (pendingAction === 'advancePaymentConfirmed') {
       const pending = (window as any).__pendingAdvancePaymentConfirmedData as { order: Order } | undefined;
-      if (pending) executeAdvancePaymentConfirmed(pending.order, actionToken);
-    } else if (otpModal.pendingAction === 'recordDeposit') {
-      handleRecordDepositVerified(actionToken);
-    } else if (otpModal.pendingAction === 'recordBalance') {
-      handleRecordBalanceVerified(actionToken);
+      if (pending) executeAdvancePaymentConfirmed(pending.order, actionToken.actionToken);
+    } else if (pendingAction === 'recordDeposit') {
+      handleRecordDepositVerified(actionToken.actionToken);
+    } else if (pendingAction === 'recordBalance') {
+      handleRecordBalanceVerified(actionToken.actionToken);
     }
+    setConfirmModal((prev) => ({ ...prev, open: false }));
   }
 
   function handlePaymentDateEdit(order: Order, field: 'deposit_paid_at' | 'balance_paid_at', value: string) {
     const label = field === 'deposit_paid_at' ? 'downpayment date' : 'balance payment date';
     (window as any).__pendingPaymentDateData = { order, field, value };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: `Edit ${label}`,
       description: `Change ${label} for "${order.quotation_number ?? order.id.slice(0, 8)}" to ${value || 'blank'}? This corrects dates read incorrectly from payment slips.`,
@@ -862,15 +877,15 @@ export default function CollectionPage() {
 
   async function handleGrantException() {
     if (!exceptionModal.order) return;
-    setOtpModal({ open: true, title: 'Grant Delivery Exception',
-      description: `You are about to grant a delivery exception for order "${exceptionModal.order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Grant Delivery Exception',
+      description: `Grant a delivery exception for order "${exceptionModal.order.quotation_number ?? '—'}"? This allows delivery without payment.`,
       pendingAction: 'grantDeliveryException' });
     (window as any).__pendingGrantExceptionData = { orderId: exceptionModal.order.id, notes: exceptionModal.notes || undefined };
   }
 
   async function handleRevokeException(order: Order) {
-    setOtpModal({ open: true, title: 'Revoke Delivery Exception',
-      description: `You are about to revoke the delivery exception for order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
+    setConfirmModal({ open: true, title: 'Revoke Delivery Exception',
+      description: `Revoke the delivery exception for order "${order.quotation_number ?? '—'}"? The order will no longer be treated as a special case.`,
       pendingAction: 'revokeDeliveryException' });
     (window as any).__pendingRevokeExceptionData = { orderId: order.id };
   }
@@ -878,10 +893,10 @@ export default function CollectionPage() {
   // ── Record Deposit (quick action for inventory_arrived / balance_due) ──
   function handleRecordDeposit(order: Order) {
     (window as any).__pendingRecordDepositData = { order };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Record Downpayment',
-      description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()}). This will notify the collection group and create a deposit verification reminder.`,
+      description: `Record downpayment for "${order.quotation_number ?? '—'}" (₱${Number(order.total_amount ?? 0).toLocaleString()})? This will notify the collection group and create a deposit verification reminder.`,
       pendingAction: 'recordDeposit',
     });
   }
@@ -912,10 +927,10 @@ export default function CollectionPage() {
     const depositAmount = Number(order.deposit_amount ?? 0);
     const computedBalance = Math.max(0, totalAmount - depositAmount);
     (window as any).__pendingRecordBalanceData = { order, amount: computedBalance };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Record Balance Payment',
-      description: `Record balance payment for "${order.quotation_number ?? '—'}" (₱${computedBalance.toLocaleString()}). This will notify the collection group via Telegram.`,
+      description: `Record balance payment for "${order.quotation_number ?? '—'}" (₱${computedBalance.toLocaleString()})? This will notify the collection group via Telegram.`,
       pendingAction: 'recordBalance',
     });
   }
@@ -1054,10 +1069,10 @@ export default function CollectionPage() {
       return;
     }
     (window as any).__pendingConfirmPaymentData = { order };
-    setOtpModal({
+    setConfirmModal({
       open: true,
       title: 'Record Balance Payment',
-      description: `Record ${validSlips.length} balance payment slip(s) for "${order.quotation_number ?? '?'}". This will move the order to Balance Verification, not Payment Confirmed yet.`,
+      description: `Record ${validSlips.length} balance payment slip(s) for "${order.quotation_number ?? '?'}"? This will move the order to Balance Verification, not Payment Confirmed yet.`,
       pendingAction: 'confirmPayment',
     });
   }
@@ -1213,10 +1228,10 @@ export default function CollectionPage() {
                 <button
                   onClick={() => {
                     (window as any).__pendingMarkCounteredData = { order };
-                    setOtpModal({
+                    setConfirmModal({
                       open: true,
                       title: 'Mark as Countered',
-                      description: `Confirm marking "${order.quotation_number ?? '—'}" as countered (special case).`,
+                      description: `Mark "${order.quotation_number ?? '—'}" as countered (special case)?`,
                       pendingAction: 'markCountered',
                     });
                   }}
@@ -1232,10 +1247,10 @@ export default function CollectionPage() {
                   onClick={() => {
                     if (!confirm(`Skip payment steps (N/A) and mark "${order.quotation_number ?? '—'}" as Completed?`)) return;
                     (window as any).__pendingMarkCompletedData = { order };
-                    setOtpModal({
+                    setConfirmModal({
                       open: true,
                       title: 'Complete Order',
-                      description: `Confirm completion of "${order.quotation_number ?? '—'}" (steps 14–16 N/A).`,
+                      description: `Complete "${order.quotation_number ?? '—'}" (steps 14–16 N/A)?`,
                       pendingAction: 'markCompleted',
                     });
                   }}
@@ -1280,10 +1295,10 @@ export default function CollectionPage() {
                 <button
                   onClick={() => {
                     (window as any).__pendingMarkPaymentReceivedData = { order };
-                    setOtpModal({
+                    setConfirmModal({
                       open: true,
                       title: 'Mark Payment Received',
-                      description: `Confirm marking "${order.quotation_number ?? '—'}" as Payment Received (from Countered).`,
+                      description: `Mark "${order.quotation_number ?? '—'}" as Payment Received (from Countered)?`,
                       pendingAction: 'markPaymentReceived',
                     });
                   }}
@@ -1298,10 +1313,10 @@ export default function CollectionPage() {
                 <button
                   onClick={() => {
                     (window as any).__pendingAdvancePaymentReceivedData = { order };
-                    setOtpModal({
+                    setConfirmModal({
                       open: true,
                       title: 'Confirm Payment',
-                      description: `Confirm advancing "${order.quotation_number ?? '—'}" from Payment Received to Payment Confirmed.`,
+                      description: `Advance "${order.quotation_number ?? '—'}" from Payment Received to Payment Confirmed?`,
                       pendingAction: 'advancePaymentReceived',
                     });
                   }}
@@ -1316,10 +1331,10 @@ export default function CollectionPage() {
                 <button
                   onClick={() => {
                     (window as any).__pendingAdvancePaymentConfirmedData = { order };
-                    setOtpModal({
+                    setConfirmModal({
                       open: true,
                       title: 'Complete Order',
-                      description: `Confirm completing "${order.quotation_number ?? '—'}" (from Payment Confirmed).`,
+                      description: `Complete "${order.quotation_number ?? '—'}" (from Payment Confirmed)?`,
                       pendingAction: 'advancePaymentConfirmed',
                     });
                   }}
@@ -1686,10 +1701,10 @@ export default function CollectionPage() {
                         <button
                           onClick={() => {
                             (window as any).__pendingSyncData = { order };
-                            setOtpModal({
+                            setConfirmModal({
                               open: true,
                               title: 'Sync to Payment Received',
-                              description: `Confirm syncing "${order.quotation_number ?? '—'}" to Payment Received stage.`,
+                              description: `Sync "${order.quotation_number ?? '—'}" to Payment Received stage?`,
                               pendingAction: 'syncPaymentReceived',
                             });
                           }}
@@ -2018,6 +2033,17 @@ export default function CollectionPage() {
         onClose={() => {
           setOtpModal({ ...otpModal, open: false });
           (window as any).__pendingEditData = null;
+        }}
+      />
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onVerified={handleConfirmVerified}
+        onClose={() => {
+          setConfirmModal({ ...confirmModal, open: false });
           (window as any).__pendingConfirmPaymentData = null;
           (window as any).__pendingMarkCounteredData = null;
           (window as any).__pendingMarkCompletedData = null;

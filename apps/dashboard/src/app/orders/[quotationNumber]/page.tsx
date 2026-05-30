@@ -10,6 +10,7 @@ import GanttChart from '@/components/GanttChart';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
 import OtpModal from '@/components/OtpModal';
+import ConfirmModal from '@/components/ConfirmModal';
 import { ArrowLeft, FileText, User, DollarSign, CheckCircle2, CreditCard, Scale, MapPin, Phone, UserCheck, Truck, Clock, AlertTriangle, MessageSquare, Send, Bot, Package, Factory, List, Sparkles, CheckCircle, Upload, Sparkles as SparklesIcon, Loader2, Shield, Plus, Pencil, X, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -774,7 +775,7 @@ export default function OrderDetailPage() {
         }}
       />
 
-      <OtpModal
+      <ConfirmModal
         open={showStageAdvanceOtp}
         title="Advance Stage"
         description={
@@ -1301,65 +1302,80 @@ function ItemTrackingSection({
     return (
       <>
         {showOtp === 'complete_verification' && (
-          <OtpModal
+          <ConfirmModal
             open={true}
             title="Complete Inventory Verification"
-            description="Verify your identity to mark inventory verification as complete and advance the order to Inventory Arrived."
+            description="Mark inventory verification as complete and advance the order to Inventory Arrived."
             onVerified={handleCompleteVerification}
             onClose={() => setShowOtp(null)}
           />
         )}
         {showOtp === 'confirm_arrival' && (
-          <OtpModal
+          <ConfirmModal
             open={true}
             title="Confirm All Inventory Arrived"
-            description="Verify your identity to confirm all inventory has arrived and advance the order to Balance Due. The inventory group chat will be notified."
+            description="Confirm all inventory has arrived and advance the order to Balance Due. The inventory group chat will be notified."
             onVerified={handleConfirmAllArrived}
             onClose={() => setShowOtp(null)}
           />
         )}
         {showOtp === 'extract_items' && (
-          <OtpModal
+          <ConfirmModal
             open={true}
             title="Extract Items from Quotation"
-            description="Verify your identity to extract line items from this order's quotation using AI vision."
+            description="Extract line items from this order's quotation using AI vision."
             onVerified={doExtractItems}
             onClose={() => setShowOtp(null)}
           />
         )}
         {showOtp === 'upload_extract' && (
-          <OtpModal
+          <ConfirmModal
             open={true}
             title="Upload Quotation & Extract Items"
-            description="Verify your identity to upload the quotation file and extract line items using AI vision."
+            description="Upload the quotation file and extract line items using AI vision."
             onVerified={doUploadAndExtract}
             onClose={() => { setShowOtp(null); setPendingUploadFile(null); }}
           />
         )}
 
-        <OtpModal
-          open={otpModal.open}
-          title={otpModal.title}
-          description={otpModal.description}
-          onVerified={(token) => {
-            if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
-            else if (otpModal.pendingAction === 'bulk_verify_items') executeBulkVerifyItems(token);
-            else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
-            else if (otpModal.pendingAction === 'edit_item') executeSaveEditItem(token);
-            else if (otpModal.pendingAction === 'production_status') executeItemProductionStatus(token);
-            else if (otpModal.pendingAction === 'en_route_status') executeItemEnRouteStatus(token);
-            else if (otpModal.pendingAction === 'manual_item') executeCreateManualItem(token);
-          }}
-          onClose={() => {
-            setOtpModal((prev) => ({ ...prev, open: false }));
-            setPendingVerifyItem(null);
-            setPendingMarkArrived(null);
-            setPendingEditItem(false);
-            setPendingProdStatus(null);
-            setPendingEnRouteStatus(null);
-            setPendingManualItem(false);
-          }}
-        />
+        {/* OtpModal for edit_item (edit actions require OTP) */}
+        {otpModal.pendingAction === 'edit_item' && (
+          <OtpModal
+            open={otpModal.open}
+            title={otpModal.title}
+            description={otpModal.description}
+            onVerified={executeSaveEditItem}
+            onClose={() => {
+              setOtpModal((prev) => ({ ...prev, open: false }));
+              setPendingEditItem(false);
+            }}
+          />
+        )}
+
+        {/* ConfirmModal for all other item actions */}
+        {otpModal.open && otpModal.pendingAction !== 'edit_item' && (
+          <ConfirmModal
+            open={true}
+            title={otpModal.title}
+            description={otpModal.description}
+            onVerified={(token) => {
+              if (otpModal.pendingAction === 'verify_item') executeVerifyItem(token);
+              else if (otpModal.pendingAction === 'bulk_verify_items') executeBulkVerifyItems(token);
+              else if (otpModal.pendingAction === 'mark_arrived') executeMarkItemArrived(token);
+              else if (otpModal.pendingAction === 'production_status') executeItemProductionStatus(token);
+              else if (otpModal.pendingAction === 'en_route_status') executeItemEnRouteStatus(token);
+              else if (otpModal.pendingAction === 'manual_item') executeCreateManualItem(token);
+            }}
+            onClose={() => {
+              setOtpModal((prev) => ({ ...prev, open: false }));
+              setPendingVerifyItem(null);
+              setPendingMarkArrived(null);
+              setPendingProdStatus(null);
+              setPendingEnRouteStatus(null);
+              setPendingManualItem(false);
+            }}
+          />
+        )}
       </>
     );
   }
@@ -2186,10 +2202,10 @@ function AgentNotesSection({ orderId, quotationNumber, order }: { orderId: strin
         </div>
       )}
 
-      <OtpModal
+      <ConfirmModal
         open={showOtp}
         title="Post Agent Note"
-        description="Verify your identity to post this agent note."
+        description="Post this agent note to the order."
         onVerified={executePostNote}
         onClose={() => setShowOtp(false)}
       />
@@ -2390,10 +2406,10 @@ function DepositUploadSection({
       </div>
 
       {/* OTP Modal for deposit action verification */}
-      <OtpModal
+      <ConfirmModal
         open={showOtp}
-        title="Verify Deposit Recording"
-        description={`You are about to record a downpayment of ₱${parseFloat(amount || '0').toLocaleString()} for order "${quotationNumber}". Enter the code sent to your Telegram or email to confirm.`}
+        title="Record Deposit"
+        description={`You are about to record a downpayment of ₱${parseFloat(amount || '0').toLocaleString()} for order "${quotationNumber}". Confirm to proceed.`}
         onVerified={(token) => {
           setShowOtp(false);
           handleRecordDepositWithToken(token);
@@ -2526,10 +2542,10 @@ function BalanceUploadSection({
       </div>
 
       {/* OTP Modal */}
-      <OtpModal
+      <ConfirmModal
         open={showOtp}
-        title="Verify Balance Recording"
-        description={`You are about to record a balance payment of ₱${parseFloat(amount || '0').toLocaleString()} for order "${quotationNumber}". Enter the code sent to your Telegram or email to confirm.`}
+        title="Record Balance Payment"
+        description={`You are about to record a balance payment of ₱${parseFloat(amount || '0').toLocaleString()} for order "${quotationNumber}". Confirm to proceed.`}
         onVerified={(token) => {
           setShowOtp(false);
           handleRecordBalanceWithToken(token);
