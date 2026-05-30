@@ -17,23 +17,29 @@ export default function ConfirmModal({ open, title, description, onVerified, onC
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [prefetchStatus, setPrefetchStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const cachedToken = useRef<string | null>(null);
 
   // Pre-fetch action token when modal opens so it's ready when user clicks Confirm
   useEffect(() => {
     if (!open) {
       cachedToken.current = null;
+      setPrefetchStatus('idle');
       return;
     }
     cachedToken.current = null;
+    setPrefetchStatus('loading');
     generateActionToken(user?.email ?? '', user?.name ?? undefined)
       .then((result) => {
         if (result.ok && result.actionToken) {
           cachedToken.current = result.actionToken;
+          setPrefetchStatus('ready');
+        } else {
+          setPrefetchStatus('failed');
         }
       })
       .catch(() => {
-        // Silently fail — handleConfirm will retry
+        setPrefetchStatus('failed');
       });
   }, [open, user?.email, user?.name]);
 
@@ -73,6 +79,10 @@ export default function ConfirmModal({ open, title, description, onVerified, onC
 
         <div className="space-y-4">
           <p className="text-sm text-gray-600">{description}</p>
+
+          {prefetchStatus === 'loading' && (
+            <p className="text-center text-xs text-amber-500">Preparing confirmation…</p>
+          )}
 
           {error && (
             <p className="text-center text-xs text-red-500">{error}</p>

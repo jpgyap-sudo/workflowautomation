@@ -6712,7 +6712,7 @@ app.post('/stage-updates', async (request, reply) => {
     `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
     [orderId, body.stage, body.status, body.remarks ?? null, body.updated_by ?? null, clientName, actorName]
   );
-  await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [body.stage, orderId]);
+  await query(`UPDATE orders SET current_stage=$1, updated_at=NOW()${body.stage === 'completed' ? ', completed_at=NOW()' : ''} WHERE id=$2`, [body.stage, orderId]);
 
   // Capture delivery date explicitly when scheduling/rescheduling delivery.
   // Fallback to remarks preserves the existing Telegram /deliverydate behaviour.

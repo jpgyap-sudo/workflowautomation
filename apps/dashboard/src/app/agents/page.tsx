@@ -179,16 +179,11 @@ export default function AgentsPage() {
     setConfirmModal({ open: true, agentName: name });
   }
 
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     const name = confirmModal.agentName;
     if (!name) return;
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      await executeRunAgent(name, result.actionToken);
+      await executeRunAgent(name, actionToken);
     } catch (err: any) {
       alert('Action failed: ' + (err.message ?? 'Unknown error'));
     }

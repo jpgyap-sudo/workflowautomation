@@ -2401,15 +2401,8 @@ export default function ProductionPage() {
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
   }
 
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      const actionToken = result.actionToken;
-
       if (confirmModal.pendingAction === 'reportStatus') await handleReportStatusVerified(actionToken);
       else if (confirmModal.pendingAction === 'finishProduction') await handleFinishProductionVerified(actionToken);
       else if (confirmModal.pendingAction === 'confirmEnRoute') await handleConfirmEnRouteVerified(actionToken);

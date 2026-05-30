@@ -510,10 +510,9 @@ export default function InventoryPage() {
     else if (otpModal.pendingAction === 'delete') handleDeleteVerified(actionToken);
   }
 
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     const action = confirmModal.pendingAction;
     try {
-      const { actionToken } = await generateActionToken('dashboard_auto', 'dashboard');
       if (action === 'add') await handleAddVerified(actionToken);
       else if (action === 'bulk-upload') await handleBulkUploadVerified(actionToken);
       else if (action === 'approve-selected') await handleApproveSelectedVerified(actionToken);

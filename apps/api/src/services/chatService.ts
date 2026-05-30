@@ -1,6 +1,6 @@
 import { query } from '../db.js';
 import { semanticSearch, type SearchResult } from './knowledgeBase.js';
-import { openRouterChat, isOpenRouterConfigured } from './openRouterService.js';
+import { openRouterChat, isOpenRouterConfigured, openAiChat, isOpenAiConfigured } from './openRouterService.js';
 import { readFile } from 'fs/promises';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -224,7 +224,37 @@ async function callOpenRouter(
   }
 }
 
-// ── Call AI with Gemini → OpenRouter fallback ──────────────────────────
+// ── Call OpenAI Chat (Tier 3 Fallback) ─────────────────────────────────
+
+async function callOpenAI(
+  messages: { role: string; content: string }[],
+  systemPrompt: string
+): Promise<string | null> {
+  if (!isOpenAiConfigured()) {
+    console.warn('[chatService] OPENAI_API_KEY not set — no OpenAI fallback available');
+    return null;
+  }
+
+  try {
+    const oaiMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...messages.map(m => ({
+        role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ];
+    return await openAiChat(oaiMessages, undefined, {
+      temperature: CHAT_TEMPERATURE,
+      max_tokens: CHAT_MAX_TOKENS,
+      timeoutMs: CHAT_TIMEOUT_MS,
+    });
+  } catch (err: any) {
+    console.error(`[chatService] OpenAI fallback failed: ${err.message}`);
+    return null;
+  }
+}
+
+// ── Call AI with Gemini → OpenRouter → OpenAI fallback ─────────────────
 
 async function callChatAPI(
   messages: { role: string; content: string }[],
@@ -243,7 +273,14 @@ async function callChatAPI(
     return openRouterResult;
   }
 
-  console.warn('[chatService] Both Gemini and OpenRouter failed — using fallback response');
+  // Fallback to OpenAI if OpenRouter also fails
+  console.log('[chatService] OpenRouter unavailable, trying OpenAI fallback...');
+  const openAiResult = await callOpenAI(messages, systemPrompt);
+  if (openAiResult !== null) {
+    return openAiResult;
+  }
+
+  console.warn('[chatService] All AI providers (Gemini, OpenRouter, OpenAI) failed — using fallback response');
   return null;
 }
 

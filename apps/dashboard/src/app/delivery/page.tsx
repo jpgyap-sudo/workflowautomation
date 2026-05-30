@@ -904,11 +904,14 @@ export default function DeliveryPage() {
   async function executeCompleteDirectly(order: Order, actionToken: string) {
     setActionLoading(order.id);
     try {
+      const balancePaid = order.balance_paid ?? false;
       await recordStageUpdate({
         quotation_number: order.quotation_number ?? '',
         stage: 'completed',
         status: 'auto_completed',
-        remarks: 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)',
+        remarks: balancePaid
+          ? 'Balance already paid — auto-completed on delivery (steps 14-16 N/A)'
+          : 'Manually completed from delivered stage — balance may still be outstanding',
         action_token: actionToken,
       });
       mutateDelivered();
@@ -1187,15 +1190,9 @@ export default function DeliveryPage() {
     }
   }
 
-  /** ConfirmModal verified handler — generates action token without OTP and routes to the right executor */
-  async function handleConfirmVerified() {
+  /** ConfirmModal verified handler — uses the pre-fetched action token from ConfirmModal */
+  async function handleConfirmVerified(actionToken: string) {
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      const actionToken = result.actionToken;
       const order = (window as any).__pendingActionOrder as Order | undefined;
 
       if (confirmModal.pendingAction === 'advance_balance_due' && order) { executeAdvanceBalanceDue(order, actionToken); }

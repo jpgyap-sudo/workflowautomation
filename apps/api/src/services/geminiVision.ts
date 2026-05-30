@@ -152,7 +152,15 @@ async function callGemini(
   // Tier 3: OpenAI / ChatGPT (final fallback)
   if (isOpenAiConfigured()) {
     console.warn('[vision] OpenRouter also failed; falling back to OpenAI (ChatGPT)');
-    return openAiVision(imageBase64, mimeType, prompt);
+    try {
+      return await openAiVision(imageBase64, mimeType, prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`openai: ${message}`);
+      console.warn('[vision] OpenAI fallback failed:', message);
+    }
+  } else {
+    errors.push('OPENAI_API_KEY not configured');
   }
 
   throw new Error(`No vision AI provider available. ${errors.join(' | ')}`);

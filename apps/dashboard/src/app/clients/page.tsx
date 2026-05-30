@@ -358,14 +358,9 @@ export default function ClientsPage() {
     else handleDeleteVerified(actionToken);
   }
 
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      await handleAddVerified(result.actionToken);
+      await handleAddVerified(actionToken);
       setConfirmModal((prev) => ({ ...prev, open: false }));
     } catch (err: any) {
       alert('Action failed: ' + (err.message ?? 'Unknown error'));

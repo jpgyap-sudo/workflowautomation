@@ -822,15 +822,8 @@ export default function PurchasingPage() {
     else if (otpModal.pendingAction === 'verifyBalance') handleVerifyBalanceVerified(actionToken);
   }
 
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      const actionToken = result.actionToken;
-
       if (confirmModal.pendingAction === 'startProductionWorkflow') await handleStartProductionWorkflowVerified(actionToken);
       else if (confirmModal.pendingAction === 'markDepositPaid') await handleMarkDepositPaidVerified(actionToken);
       else if (confirmModal.pendingAction === 'grantProductionException') await handleGrantProductionExceptionVerified(actionToken);

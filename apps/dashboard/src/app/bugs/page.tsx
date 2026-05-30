@@ -233,14 +233,9 @@ export default function BugsPage() {
     });
   }
 
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      await handleStatusChangeVerified(result.actionToken);
+      await handleStatusChangeVerified(actionToken);
       setConfirmModal((prev) => ({ ...prev, open: false }));
     } catch (err: any) {
       alert('Action failed: ' + (err.message ?? 'Unknown error'));

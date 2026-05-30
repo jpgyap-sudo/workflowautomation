@@ -545,15 +545,8 @@ export default function CalendarPage() {
   }
 
   /** ConfirmModal verified handler — generates action token without OTP */
-  async function handleConfirmVerified() {
+  async function handleConfirmVerified(actionToken: string) {
     try {
-      const result = await generateActionToken('dashboard_auto', 'dashboard');
-      if (!result.ok || !result.actionToken) {
-        alert('Failed to generate action token. Please try again.');
-        return;
-      }
-      const actionToken = result.actionToken;
-
       if (confirmModal.pendingAction === 'stageAdvance') executeStageAdvance(actionToken);
       else if (confirmModal.pendingAction === 'telegramNotify') executeTelegramNotify(actionToken);
       else if (confirmModal.pendingAction === 'scheduleSave') handleScheduleSaveVerified(actionToken);

@@ -594,45 +594,43 @@ export default function CollectionPage() {
     }
   }
 
-  async function handleConfirmVerified() {
-    const actionToken = await generateActionToken('dashboard_auto', 'dashboard');
-    if (!actionToken.actionToken) return;
+  async function handleConfirmVerified(actionToken: string) {
     const pendingAction = confirmModal.pendingAction;
     if (pendingAction === 'grantDeliveryException') {
-      handleGrantExceptionVerified(actionToken.actionToken);
+      handleGrantExceptionVerified(actionToken);
     } else if (pendingAction === 'revokeDeliveryException') {
-      handleRevokeExceptionVerified(actionToken.actionToken);
+      handleRevokeExceptionVerified(actionToken);
     } else if (pendingAction === 'confirmPayment') {
-      executeConfirmPayment(actionToken.actionToken);
+      executeConfirmPayment(actionToken);
     } else if (pendingAction === 'markCountered') {
       const pending = (window as any).__pendingMarkCounteredData as { order: Order } | undefined;
-      if (pending) executeMarkCountered(pending.order, actionToken.actionToken);
+      if (pending) executeMarkCountered(pending.order, actionToken);
     } else if (pendingAction === 'markCompleted') {
       const pending = (window as any).__pendingMarkCompletedData as { order: Order } | undefined;
-      if (pending) executeMarkCompleted(pending.order, actionToken.actionToken);
+      if (pending) executeMarkCompleted(pending.order, actionToken);
     } else if (pendingAction === 'syncPaymentReceived') {
       const pending = (window as any).__pendingSyncData as { order: Order } | undefined;
-      if (pending) executeSyncPaymentReceived(pending.order, actionToken.actionToken);
+      if (pending) executeSyncPaymentReceived(pending.order, actionToken);
     } else if (pendingAction === 'editPaymentDate') {
       const pending = (window as any).__pendingPaymentDateData as {
         order: Order;
         field: 'deposit_paid_at' | 'balance_paid_at';
         value: string;
       } | undefined;
-      if (pending) executePaymentDateUpdate(pending.order, pending.field, pending.value, actionToken.actionToken);
+      if (pending) executePaymentDateUpdate(pending.order, pending.field, pending.value, actionToken);
     } else if (pendingAction === 'markPaymentReceived') {
       const pending = (window as any).__pendingMarkPaymentReceivedData as { order: Order } | undefined;
-      if (pending) executeMarkPaymentReceived(pending.order, actionToken.actionToken);
+      if (pending) executeMarkPaymentReceived(pending.order, actionToken);
     } else if (pendingAction === 'advancePaymentReceived') {
       const pending = (window as any).__pendingAdvancePaymentReceivedData as { order: Order } | undefined;
-      if (pending) executeAdvancePaymentReceived(pending.order, actionToken.actionToken);
+      if (pending) executeAdvancePaymentReceived(pending.order, actionToken);
     } else if (pendingAction === 'advancePaymentConfirmed') {
       const pending = (window as any).__pendingAdvancePaymentConfirmedData as { order: Order } | undefined;
-      if (pending) executeAdvancePaymentConfirmed(pending.order, actionToken.actionToken);
+      if (pending) executeAdvancePaymentConfirmed(pending.order, actionToken);
     } else if (pendingAction === 'recordDeposit') {
-      handleRecordDepositVerified(actionToken.actionToken);
+      handleRecordDepositVerified(actionToken);
     } else if (pendingAction === 'recordBalance') {
-      handleRecordBalanceVerified(actionToken.actionToken);
+      handleRecordBalanceVerified(actionToken);
     }
     setConfirmModal((prev) => ({ ...prev, open: false }));
   }

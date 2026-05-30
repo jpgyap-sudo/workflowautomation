@@ -21,6 +21,7 @@ const OPENROUTER_SITE_NAME = 'Quotation Automation System';
 const OPENAI_API_KEY       = process.env.OPENAI_API_KEY       ?? '';
 const OPENAI_API_BASE      = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_VISION_MODEL  = process.env.OPENAI_VISION_MODEL  ?? 'gpt-4o-mini';
+const OPENAI_CHAT_MODEL    = process.env.OPENAI_CHAT_MODEL    ?? 'gpt-4o-mini';
 
 export const OPENROUTER_MODELS = {
   /** Default vision/multimodal model — free, 262k context */
@@ -216,6 +217,58 @@ export async function openAiVision(
       },
     ],
     temperature: options.temperature ?? 0.1,
+    max_tokens: options.max_tokens ?? 1024,
+  };
+
+  const res = await fetch(OPENAI_API_BASE, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'unknown error');
+    throw new Error(`OpenAI API error ${res.status}: ${errText}`);
+  }
+
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+    error?: { message?: string };
+  };
+
+  if (data.error?.message) {
+    throw new Error(`OpenAI error: ${data.error.message}`);
+  }
+
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    throw new Error('OpenAI returned empty response');
+  }
+
+  return text;
+}
+
+/**
+ * Chat / text completion via OpenAI (ChatGPT).
+ * Used as a third-tier fallback when both Gemini and OpenRouter fail for chat.
+ */
+export async function openAiChat(
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  model = OPENAI_CHAT_MODEL,
+  options: { temperature?: number; max_tokens?: number; timeoutMs?: number } = {}
+): Promise<string> {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured');
+  }
+
+  const body = {
+    model,
+    messages,
+    temperature: options.temperature ?? 0.3,
     max_tokens: options.max_tokens ?? 1024,
   };
 
