@@ -523,8 +523,8 @@ async function callGeminiVisionForItems(
 ): Promise<string> {
   const errors: string[] = [];
 
-  // Try each Gemini key
-  for (const [i, key] of GEMINI_KEYS.entries()) {
+  // Helper to try a single Gemini key
+  async function tryGeminiKey(key: string, label: string): Promise<string | null> {
     try {
       const url = `${API_BASE}:generateContent?key=${key}`;
 
@@ -575,26 +575,41 @@ async function callGeminiVisionForItems(
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      errors.push(`key${i + 1}: ${message}`);
-      console.warn(`[HermesClaw] Gemini key${i + 1} failed for vision:`, message);
+      errors.push(`${label}: ${message}`);
+      console.warn(`[HermesClaw] ${label} failed for vision:`, message);
+      return null;
     }
+  }
+
+  // Phase 1: Try Gemini keys 1-3 (first 3 entries)
+  const primaryKeys = GEMINI_KEYS.slice(0, 3);
+  for (const [i, key] of primaryKeys.entries()) {
+    const result = await tryGeminiKey(key, `key${i + 1}`);
+    if (result !== null) return result;
   }
 
   if (GEMINI_KEYS.length === 0) {
     errors.push('No GEMINI_API_KEY configured');
   }
 
-  // Fallback to OpenRouter via the centralized vision service
+  // Phase 2: Try OpenRouter before key4
   const { openRouterVision, isOpenRouterConfigured } = await import('./openRouterService.js');
   if (isOpenRouterConfigured()) {
-    console.warn('[HermesClaw] All Gemini keys exhausted; falling back to OpenRouter (Kimi VL)');
+    console.warn('[HermesClaw] Gemini keys 1-3 exhausted; trying OpenRouter (Kimi VL)');
     try {
       return await openRouterVision(imageBase64, mimeType, ITEM_EXTRACTION_PROMPT);
     } catch (orError) {
       const orMsg = orError instanceof Error ? orError.message : String(orError);
       errors.push(`OpenRouter: ${orMsg}`);
-      console.warn('[HermesClaw] OpenRouter fallback also failed:', orMsg);
+      console.warn('[HermesClaw] OpenRouter also failed:', orMsg);
     }
+  }
+
+  // Phase 3: Try key4 as last resort before giving up
+  if (GEMINI_KEYS.length > 3) {
+    const key4 = GEMINI_KEYS[3];
+    const result = await tryGeminiKey(key4, 'key4');
+    if (result !== null) return result;
   }
 
   throw new Error(`No vision AI provider available. ${errors.join(' | ')}`);
