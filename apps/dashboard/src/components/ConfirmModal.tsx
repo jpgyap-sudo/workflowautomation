@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
 import { generateActionToken } from '@/lib/api';
 import { X, ShieldAlert } from 'lucide-react';
@@ -17,6 +17,25 @@ export default function ConfirmModal({ open, title, description, onVerified, onC
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const cachedToken = useRef<string | null>(null);
+
+  // Pre-fetch action token when modal opens so it's ready when user clicks Confirm
+  useEffect(() => {
+    if (!open) {
+      cachedToken.current = null;
+      return;
+    }
+    cachedToken.current = null;
+    generateActionToken(user?.email ?? '', user?.name ?? undefined)
+      .then((result) => {
+        if (result.ok && result.actionToken) {
+          cachedToken.current = result.actionToken;
+        }
+      })
+      .catch(() => {
+        // Silently fail — handleConfirm will retry
+      });
+  }, [open, user?.email, user?.name]);
 
   if (!open) return null;
 
@@ -24,9 +43,10 @@ export default function ConfirmModal({ open, title, description, onVerified, onC
     setLoading(true);
     setError('');
     try {
-      const result = await generateActionToken(user?.email ?? '', user?.name ?? undefined);
-      if (result.ok && result.actionToken) {
-        onVerified(result.actionToken);
+      // Use cached token if available, otherwise fetch fresh
+      const token = cachedToken.current || (await generateActionToken(user?.email ?? '', user?.name ?? undefined)).actionToken;
+      if (token) {
+        onVerified(token);
       } else {
         setError('Failed to generate action token. Please try again.');
       }
