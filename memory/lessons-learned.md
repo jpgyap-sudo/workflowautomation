@@ -14607,3 +14607,45 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] feat: Complete Order button on Delivered section — onCompleteOrder prop on DeliveryItemSection, handleCompleteOrder + ex
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 82be6efaa6b28a5a46ec4b9dbb68c3e1523c3733
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 82be6efaa6b28a5a46ec4b9dbb68c3e1523c3733
+**Files:** apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/components/DeliveryItemSection.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** A syntax error in `executeCompleteDirectly` — a missing closing brace for the `finally` block.
+
+**Why it broke:** The developer omitted the `}` that closes the `finally` block, causing a parse error that prevented the function from executing. This likely happened during rapid wiring of the `complete_directly` dispatch logic.
+
+**Reusable takeaway:** Always verify brace matching after adding or modifying try/catch/finally blocks. Use an auto-formatter or linter (e.g., ESLint with `curly` rule) to catch missing braces before committing. A single missing brace can silently break an entire feature chain.
+
+---
+*Original commit message: feat: Complete Order button on Delivered section — onCompleteOrder prop on DeliveryItemSection, handleCompleteOrder + executeCompleteDirectly wired, complete_directly dispatch in handleConfirmVerified. Fixed syntax error in executeCompleteDirectly (missing finally block closing brace)*
+
+#### Lesson Learned
+
+**What was fixed:** A syntax error in `executeCompleteDirectly` — a missing closing brace for the `finally` block.
+
+**Why it broke:** The developer omitted the `}` that closes the `finally` block, causing a parse error that prevented the function from executing. This likely happened during rapid wiring of the `complete_directly` dispatch logic.
+
+**Reusable takeaway:** Always verify brace matching after adding or modifying try/catch/finally blocks. Use an auto-formatter or linter (e.g., ESLint with `curly` rule) to catch missing braces before committing. A single missing brace can silently break an entire feature chain.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
