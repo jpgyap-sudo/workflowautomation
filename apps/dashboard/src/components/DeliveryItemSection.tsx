@@ -6,7 +6,7 @@ import { getDeliveryProgress } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import { QuotationNumberCell } from '@/components/OrderFileViewer';
 import {
-  ChevronUp, ChevronDown, Pencil, Trash2,
+  ChevronUp, ChevronDown, Pencil, Trash2, ArrowLeft,
   MapPin, Phone, UserCheck,
 } from 'lucide-react';
 
@@ -258,6 +258,12 @@ export default function DeliveryItemSection({
                       </button>
                     )}
                     <div className="flex items-center gap-1">
+                      {onRevert && order.current_stage !== 'quotation_received' && (
+                        <button onClick={(e) => { e.stopPropagation(); onRevert(order); }}
+                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600" title="Revert stage (OTP required)">
+                          <ArrowLeft className="h-4 w-4" />
+                        </button>
+                      )}
                       {onEdit && (
                         <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
                           className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">

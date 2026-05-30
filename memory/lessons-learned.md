@@ -14893,3 +14893,45 @@ When adding new pending items to a tracked workflow, always reset their status t
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: delivery buttons missing for items with verified_qty=0
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b760dd59775e7ae49534eb4f8ff56fb091aaffc7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b760dd59775e7ae49534eb4f8ff56fb091aaffc7
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/components/DeliveryItemSection.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** Delivery action buttons (e.g., "Mark Delivered") were not appearing for items where `verified_qty` was zero.
+
+**Why it broke:** A conditional check in the UI logic incorrectly required `verified_qty > 0` to render the delivery buttons. When items had zero verified quantity (e.g., newly added or unverified items), the buttons were hidden, blocking the intended workflow.
+
+**Reusable takeaway:** Avoid using quantity-based conditions to control UI visibility for action buttons unless the action itself depends on that quantity. Instead, base button visibility on the item's state or role (e.g., "is pending delivery") rather than a numeric threshold. When a zero value is a valid state, treat it as a distinct case, not a missing or invalid one. Always test edge cases where quantities are zero or null.
+
+---
+*Original commit message: fix: delivery buttons missing for items with verified_qty=0*
+
+#### Lesson Learned
+
+**What was fixed:** Delivery action buttons (e.g., "Mark Delivered") were not appearing for items where `verified_qty` was zero.
+
+**Why it broke:** A conditional check in the UI logic incorrectly required `verified_qty > 0` to render the delivery buttons. When items had zero verified quantity (e.g., newly added or unverified items), the buttons were hidden, blocking the intended workflow.
+
+**Reusable takeaway:** Avoid using quantity-based conditions to control UI visibility for action buttons unless the action itself depends on that quantity. Instead, base button visibility on the item's state or role (e.g., "is pending delivery") rather than a numeric threshold. When a zero value is a valid state, treat it as a distinct case, not a missing or invalid one. Always test edge cases where quantities are zero or null.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
