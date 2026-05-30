@@ -17,7 +17,11 @@ export interface ItemExtractionResult {
 
 // ── Configuration ──────────────────────────────────────────────────────
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const GEMINI_KEYS = [
+  process.env.GEMINI_API_KEY   ?? '',
+  process.env.GEMINI_API_KEY_2 ?? '',
+  process.env.GEMINI_API_KEY_3 ?? '',
+].filter(Boolean);
 const HERMES_MODEL = process.env.HERMES_MODEL ?? 'gemini-2.0-flash';
 const HERMES_TIMEOUT_MS = parseInt(process.env.HERMES_TIMEOUT_MS ?? '30000', 10);
 const HERMES_TEMPERATURE = parseFloat(process.env.HERMES_TEMPERATURE ?? '0.3');
@@ -134,11 +138,12 @@ interface GeminiResponse {
 }
 
 async function callGemini(prompt: string): Promise<string> {
-  if (!GEMINI_API_KEY) {
+  const key = GEMINI_KEYS[0];
+  if (!key) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const url = `${API_BASE}:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `${API_BASE}:generateContent?key=${key}`;
 
   const body = {
     contents: [
@@ -319,8 +324,8 @@ Provide your analysis as JSON with these fields:
  * 3. Rule-based fallback
  */
 async function callAiWithFallback(prompt: string): Promise<string | null> {
-  // Try 1: Gemini direct
-  if (GEMINI_API_KEY) {
+  // Try 1: Gemini direct (try all keys)
+  if (GEMINI_KEYS.length > 0) {
     try {
       return await callGemini(prompt);
     } catch (err) {
@@ -358,7 +363,7 @@ export async function analyzeProductionOrder(
   orderId: string,
 ): Promise<HermesAnalysis> {
   // If no AI provider is configured at all, skip straight to rule-based
-  if (!GEMINI_API_KEY && !OPENROUTER_API_KEY) {
+  if (GEMINI_KEYS.length === 0 && !OPENROUTER_API_KEY) {
     return fallbackAnalysis(ctx);
   }
 
@@ -508,63 +513,90 @@ Rules:
 
 /**
  * Call Gemini Vision API with an image to extract items.
+ * Tries multiple GEMINI_API_KEY values, then falls back to OpenRouter.
  * Uses the same pattern as geminiVision.ts but specialized for item extraction.
  */
 async function callGeminiVisionForItems(
   imageBase64: string,
   mimeType: string
 ): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured');
-  }
+  const errors: string[] = [];
 
-  const url = `${API_BASE}:generateContent?key=${GEMINI_API_KEY}`;
+  // Try each Gemini key
+  for (const [i, key] of GEMINI_KEYS.entries()) {
+    try {
+      const url = `${API_BASE}:generateContent?key=${key}`;
 
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: ITEM_EXTRACTION_PROMPT },
+      const body = {
+        contents: [
           {
-            inline_data: {
-              mime_type: mimeType,
-              data: imageBase64,
-            },
+            parts: [
+              { text: ITEM_EXTRACTION_PROMPT },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: imageBase64,
+                },
+              },
+            ],
           },
         ],
-      },
-    ],
-    generation_config: {
-      temperature: 0.1,
-      max_output_tokens: 2048,
-    },
-  };
+        generation_config: {
+          temperature: 0.1,
+          max_output_tokens: 2048,
+        },
+      };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HERMES_TIMEOUT_MS);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), HERMES_TIMEOUT_MS);
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => 'unknown error');
-      throw new Error(`Gemini API error ${res.status}: ${errText}`);
+        if (!res.ok) {
+          const errText = await res.text().catch(() => 'unknown error');
+          throw new Error(`Gemini API error ${res.status}: ${errText}`);
+        }
+
+        const data = (await res.json()) as GeminiResponse;
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          throw new Error('Gemini returned empty response');
+        }
+        return text;
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`key${i + 1}: ${message}`);
+      console.warn(`[HermesClaw] Gemini key${i + 1} failed for vision:`, message);
     }
-
-    const data = (await res.json()) as GeminiResponse;
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      throw new Error('Gemini returned empty response');
-    }
-    return text;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  if (GEMINI_KEYS.length === 0) {
+    errors.push('No GEMINI_API_KEY configured');
+  }
+
+  // Fallback to OpenRouter via the centralized vision service
+  const { openRouterVision, isOpenRouterConfigured } = await import('./openRouterService.js');
+  if (isOpenRouterConfigured()) {
+    console.warn('[HermesClaw] All Gemini keys exhausted; falling back to OpenRouter (Kimi VL)');
+    try {
+      return await openRouterVision(imageBase64, mimeType, ITEM_EXTRACTION_PROMPT);
+    } catch (orError) {
+      const orMsg = orError instanceof Error ? orError.message : String(orError);
+      errors.push(`OpenRouter: ${orMsg}`);
+      console.warn('[HermesClaw] OpenRouter fallback also failed:', orMsg);
+    }
+  }
+
+  throw new Error(`No vision AI provider available. ${errors.join(' | ')}`);
 }
 
 /**
@@ -743,51 +775,19 @@ Return ONLY valid JSON array, no extra text.`;
     }
   }
 
-  // Strategy 3: Try OpenRouter fallback with image if available
+  // Strategy 3: Try OpenRouter fallback with image via centralized vision service
   if (imageData && OPENROUTER_API_KEY) {
     try {
-      const openRouterBody = {
-        model: OPENROUTER_MODEL,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: ITEM_EXTRACTION_PROMPT },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${imageData.mimeType};base64,${imageData.data}`,
-                },
-              },
-            ],
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 2048,
-      };
-
-      const res = await fetch(OPENROUTER_API_BASE, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(openRouterBody),
-        signal: AbortSignal.timeout(HERMES_TIMEOUT_MS),
-      });
-
-      if (res.ok) {
-        const data = (await res.json()) as OpenRouterResponse;
-        const text = data.choices?.[0]?.message?.content;
-        if (text) {
-          const items = parseExtractedItems(text);
-          return {
-            ok: items.length > 0,
-            items,
-            raw_text: text,
-            error: items.length === 0 ? 'No items could be extracted via OpenRouter' : undefined,
-          };
-        }
+      const { openRouterVision } = await import('./openRouterService.js');
+      const text = await openRouterVision(imageData.data, imageData.mimeType, ITEM_EXTRACTION_PROMPT);
+      if (text) {
+        const items = parseExtractedItems(text);
+        return {
+          ok: items.length > 0,
+          items,
+          raw_text: text,
+          error: items.length === 0 ? 'No items could be extracted via OpenRouter' : undefined,
+        };
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -807,5 +807,5 @@ Return ONLY valid JSON array, no extra text.`;
  * Check if Hermes Claw (Gemini) is available/configured.
  */
 export function isHermesAvailable(): boolean {
-  return GEMINI_API_KEY.length > 0;
+  return GEMINI_KEYS.length > 0;
 }
