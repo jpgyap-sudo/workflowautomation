@@ -11,6 +11,7 @@ import {
   reportProductionStatus, finishProduction, finishAllItems, bulkEnRoute, bulkEnRouteSelected, bulkFinishSelected, bulkArriveAll, bulkArriveSelected, confirmEnRoute, setProduction,
   recordStageUpdate,
   recordDeposit,
+  revertStage,
   getItemCompletion, getOrderItems, updateOrderItem,
   grantProductionException, revokeProductionException,
   createStockReplenishmentOrder,
@@ -30,7 +31,7 @@ import {
   Factory, Truck, AlertTriangle, Clock, Calendar, CheckCircle,
   Pencil, Trash2, X, Check, ChevronDown, ChevronUp,
   RefreshCw, Package, Loader2, MessageSquare, Search, XCircle,
-  ExternalLink, DollarSign,
+  ExternalLink, DollarSign, ArrowLeft,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -783,6 +784,7 @@ interface OrderRowProps {
   order: Order;
   onEdit: (o: Order) => void;
   onDelete: (o: Order) => void;
+  onRevert?: (o: Order) => void;
   onViewFiles?: (o: Order) => void;
   onStartProduction?: (o: Order) => void;
   onReportOnTime?: (o: Order) => void;
@@ -801,7 +803,7 @@ interface OrderRowProps {
   onBulkArriveSelected?: (order: Order, itemIds: string[], refresh?: () => void) => void;
  }
 
-function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onRecordDeposit, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onRevert, onViewFiles, onStartProduction, onReportOnTime, onReportDelayed, onFinishProduction, onConfirmEnRoute, onProceedInventoryVerification, onGrantException, onRevokeException, onRecordDeposit, onItemProductionStatus, onItemEnRouteStatus, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const progress = getProductionProgress(order);
@@ -925,6 +927,12 @@ function OrderRow({ order, onEdit, onDelete, onViewFiles, onStartProduction, onR
           <DaysAgo updatedAt={order.updated_at} />
           <StageBadge stage={order.current_stage} />
           <div className="flex items-center gap-1">
+            {onRevert && order.current_stage !== 'quotation_received' && (
+              <button onClick={(e) => { e.stopPropagation(); onRevert(order); }}
+                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600" title="Revert stage (OTP required)">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
             <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
               className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
               <Pencil className="h-4 w-4" />
@@ -2352,6 +2360,12 @@ export default function ProductionPage() {
     open: boolean; title: string; description: string; pendingAction: string;
   }>({ open: false, title: '', description: '', pendingAction: '' });
 
+  // Revert stage state
+  const [revertTargetOrder, setRevertTargetOrder] = useState<Order | null>(null);
+  const [showRevertOtp, setShowRevertOtp] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertResult, setRevertResult] = useState<{ ok: boolean; previous_stage: string; current_stage: string } | null>(null);
+
   // Stock replenishment modal state
   const [stockReplModal, setStockReplModal] = useState(false);
   const [stockReplFile, setStockReplFile] = useState<File | null>(null);
@@ -2562,6 +2576,31 @@ export default function ProductionPage() {
     setOtpModal({ open: true, title: 'Delete Order',
       description: `You are about to permanently delete order "${order.quotation_number ?? '—'}". Enter the OTP sent to your email to confirm.`,
       pendingAction: 'delete' });
+  }
+
+  function handleRevertClick(order: Order) {
+    setRevertTargetOrder(order);
+    setShowRevertOtp(true);
+  }
+
+  async function handleRevertVerified(actionToken: string) {
+    if (!revertTargetOrder) return;
+    setReverting(true);
+    try {
+      const res = await revertStage({
+        quotation_number: revertTargetOrder.quotation_number ?? '',
+        action_token: actionToken,
+        updated_by: 'dashboard_quick_action',
+      });
+      setRevertResult(res);
+      refresh();
+    } catch (err: any) {
+      alert('Failed to revert stage: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setReverting(false);
+      setShowRevertOtp(false);
+      setRevertTargetOrder(null);
+    }
   }
 
   async function handleReportOnTime(order: Order) {
@@ -3217,7 +3256,7 @@ export default function ProductionPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onViewFiles={handleViewFiles} onStartProduction={handleStartProduction}
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onRevert={handleRevertClick} onViewFiles={handleViewFiles} onStartProduction={handleStartProduction}
               onRecordDeposit={handleRecordDeposit}
               onItemProductionStatus={makeItemProductionStatusHandler(order)}
               onItemEnRouteStatus={makeItemEnRouteStatusHandler(order)}
@@ -3469,6 +3508,56 @@ export default function ProductionPage() {
         onVerified={handleConfirmVerified}
         onClose={() => { setConfirmModal({ ...confirmModal, open: false }); (window as any).__pendingEditData = null; (window as any).__pendingRecordDepositData = null; (window as any).__pendingReportStatusData = null; (window as any).__pendingStartProductionData = null; (window as any).__pendingFinishProductionData = null; (window as any).__pendingConfirmEnRouteData = null; (window as any).__pendingProceedInventoryVerificationData = null; (window as any).__pendingGrantExceptionData = null; (window as any).__pendingRevokeExceptionData = null; (window as any).__pendingStockRepl = null; (window as any).__pendingItemFinishData = null; (window as any).__pendingItemDelayedData = null; (window as any).__pendingBulkFinishData = null; (window as any).__pendingBulkEnRouteData = null; (window as any).__pendingBulkFinishSelectedData = null; (window as any).__pendingBulkEnRouteSelectedData = null; (window as any).__pendingBulkArriveAllData = null; (window as any).__pendingBulkArriveSelectedData = null; (window as any).__pendingItemProductionStatusData = null; (window as any).__pendingItemEnRouteStatusData = null; (window as any).__pendingItemStartConfirmData = null; }}
       />
+
+      {/* Revert Stage OTP Modal */}
+      <OtpModal
+        open={showRevertOtp}
+        title="Revert Stage"
+        description={revertTargetOrder ? `You are about to revert order "${revertTargetOrder.quotation_number ?? '—'}" (${revertTargetOrder.client_name ?? 'Unknown'}) to the previous stage. Enter the OTP sent to your email to confirm.` : ''}
+        onVerified={handleRevertVerified}
+        onClose={() => { setShowRevertOtp(false); setRevertTargetOrder(null); }}
+      />
+
+      {reverting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
+            <p className="text-sm text-gray-600">Reverting stage...</p>
+          </div>
+        </div>
+      )}
+
+      {revertResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRevertResult(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              {revertResult.ok ? (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Stage Reverted</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Order moved from <strong>{revertResult.previous_stage}</strong> back to <strong>{revertResult.current_stage}</strong>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                    <XCircle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Revert Failed</h3>
+                  <p className="mt-1 text-sm text-gray-500">Could not revert the stage. Please try again.</p>
+                </>
+              )}
+            </div>
+            <button onClick={() => setRevertResult(null)}
+              className="mt-4 w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, confirmPayment, generateActionToken, type AcknowledgementReceipt, type Client } from '@/lib/api';
+import { updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, recordStageUpdate, verifyDeposit, verifyBalance, payBalance, payBalanceWithFileBulk, visionExtract, getOrderPayments, getAcknowledgementReceipts, searchClients, recordDeposit, confirmPayment, generateActionToken, revertStage, type AcknowledgementReceipt, type Client } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send, Download, XCircle } from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, AlertTriangle, Pencil, Trash2, X, Check, ShieldAlert, ShieldCheck, FileText, Scale, Upload, Image, Loader2, ArrowRight, Search, ThumbsUp, CreditCard, Send, Download, XCircle, ArrowLeft } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -419,6 +419,12 @@ export default function CollectionPage() {
   }>({ open: false, title: '', description: '', pendingAction: 'confirmPayment' });
   const [paymentDateSavingKey, setPaymentDateSavingKey] = useState<string | null>(null);
 
+  // ── Revert Stage ────────────────────────────────────────────────────
+  const [revertTargetOrder, setRevertTargetOrder] = useState<Order | null>(null);
+  const [showRevertOtp, setShowRevertOtp] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertResult, setRevertResult] = useState<{ ok: boolean; previous_stage: string; current_stage: string } | null>(null);
+
   // Special case (delivery exception) state
   const [exceptionModal, setExceptionModal] = useState<{
     open: boolean;
@@ -579,6 +585,39 @@ export default function CollectionPage() {
       alert('Failed to delete order: ' + (err.message ?? 'Unknown error'));
     } finally {
       setDeleting(false);
+    }
+  }
+
+  function handleRevertClick(order: Order) {
+    setRevertTargetOrder(order);
+    setShowRevertOtp(true);
+  }
+
+  async function handleRevertVerified(actionToken: string) {
+    if (!revertTargetOrder) return;
+    setReverting(true);
+    try {
+      const res = await revertStage({
+        quotation_number: revertTargetOrder.quotation_number ?? '',
+        action_token: actionToken,
+        updated_by: 'dashboard_quick_action',
+      });
+      setRevertResult(res);
+      mutateArrived();
+      mutateBalanceDue();
+      mutateDelivered();
+      mutateCountered();
+      mutateReceived();
+      mutateConfirmed();
+      mutateCompleted();
+      mutateDepositVerification();
+      mutateBalanceVerification();
+    } catch (err: any) {
+      alert('Failed to revert stage: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setReverting(false);
+      setShowRevertOtp(false);
+      setRevertTargetOrder(null);
     }
   }
 
@@ -1361,6 +1400,15 @@ export default function CollectionPage() {
                   <ShieldCheck className="h-4 w-4" />
                 </button>
               )}
+              {order.current_stage !== 'quotation_received' && (
+                <button
+                  onClick={() => handleRevertClick(order)}
+                  className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                  title="Revert stage (OTP required)"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={() => handleEdit(order)}
                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
@@ -2071,6 +2119,56 @@ export default function CollectionPage() {
           <div className="rounded-xl bg-white p-6 text-center shadow-xl">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
             <p className="text-sm text-gray-600">Deleting order...</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Revert Stage OTP Modal ──────────────────────────────────────── */}
+      <OtpModal
+        open={showRevertOtp}
+        title="Revert Stage"
+        description={revertTargetOrder ? `You are about to revert order "${revertTargetOrder.quotation_number ?? '—'}" (${revertTargetOrder.client_name ?? 'Unknown'}) to the previous stage. Enter the OTP sent to your email to confirm.` : ''}
+        onVerified={handleRevertVerified}
+        onClose={() => { setShowRevertOtp(false); setRevertTargetOrder(null); }}
+      />
+
+      {reverting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
+            <p className="text-sm text-gray-600">Reverting stage...</p>
+          </div>
+        </div>
+      )}
+
+      {revertResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRevertResult(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              {revertResult.ok ? (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Stage Reverted</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Order moved from <strong>{revertResult.previous_stage}</strong> back to <strong>{revertResult.current_stage}</strong>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                    <XCircle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Revert Failed</h3>
+                  <p className="mt-1 text-sm text-gray-500">Could not revert the stage. Please try again.</p>
+                </>
+              )}
+            </div>
+            <button onClick={() => setRevertResult(null)}
+              className="mt-4 w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+              Close
+            </button>
           </div>
         </div>
       )}

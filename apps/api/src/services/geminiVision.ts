@@ -27,6 +27,7 @@ export interface ExtractedQuotation {
   sales_agent?: string;
   total_amount?: number;
   order_date?: string;
+  projected_lead_time?: number;
   items?: ExtractedInventoryItem[];
 }
 
@@ -199,6 +200,7 @@ const QUOTATION_PROMPT = `You are a data extraction assistant. Analyze the image
   "sales_agent": "string or null — the sales agent or person who prepared the quotation",
   "total_amount": "number or null — the total amount in PHP (numeric only, no currency symbol)",
   "order_date": "string or null — the date on the quotation/order confirmation document in ISO 8601 format (YYYY-MM-DD)",
+  "projected_lead_time": "number or null — the estimated lead time in days (e.g. 30 for 30 days). Look for phrases like 'lead time', 'delivery time', 'estimated completion', 'production time' followed by a number of days or weeks. If in weeks, convert to days (1 week = 7 days).",
   "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number, category: string }"
 }
 
@@ -209,6 +211,7 @@ Rules:
 - If a field is not visible in the image, set it to null.
 - For total_amount, extract the numeric value only (e.g. 15000, not "₱15,000").
 - For order_date, look for any date printed on the document (issued date, quotation date, etc.) and format as YYYY-MM-DD.
+- For projected_lead_time, look for any mention of lead time, delivery time, estimated completion time, or production time in days or weeks. Convert weeks to days (e.g., "4 weeks" = 28). If not found, set to null.
 - For items, extract EVERY product/item listed in the quotation with its name, quantity, and category. If quantity is not specified, default to 1.
 - If no items are visible, set items to an empty array [].
 - Be as accurate as possible.`;
@@ -247,6 +250,7 @@ export async function extractQuotation(
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
     order_date: typeof parsed.order_date === 'string' ? parsed.order_date : undefined,
+    projected_lead_time: typeof parsed.projected_lead_time === 'number' ? parsed.projected_lead_time : undefined,
     items,
   };
 
@@ -334,6 +338,7 @@ If it's a QUOTATION or ORDER CONFIRMATION, return:
   "sales_agent": "string or null",
   "total_amount": "number or null",
   "order_date": "string or null — the date on the document in YYYY-MM-DD format",
+  "projected_lead_time": "number or null — the estimated lead time in days (e.g. 30 for 30 days). Look for phrases like 'lead time', 'delivery time', 'estimated completion', 'production time' followed by a number of days or weeks. If in weeks, convert to days (1 week = 7 days).",
   "items": "array of objects — list all products/items listed in the quotation, each with { product_name: string, quantity: number, category: string }"
 }
 
@@ -412,6 +417,7 @@ export async function autoExtract(
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
     order_date: typeof parsed.order_date === 'string' ? parsed.order_date : undefined,
+    projected_lead_time: typeof parsed.projected_lead_time === 'number' ? parsed.projected_lead_time : undefined,
     items,
   };
 

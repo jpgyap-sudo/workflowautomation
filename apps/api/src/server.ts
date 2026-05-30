@@ -7045,6 +7045,219 @@ app.post('/stage-updates', async (request, reply) => {
   return { ok: true };
 });
 
+// ── Stage Revert (OTP-protected) ──────────────────────────────────────
+// Allows reverting an order to its previous stage. Requires OTP verification.
+// The reverse transition map defines which stage an order can revert to.
+const REVERSE_TRANSITIONS: Record<string, string[]> = {
+  order_confirmation_received: ['quotation_received'],
+  math_verified:              ['quotation_received', 'order_confirmation_received'],
+  deposit_pending:            ['quotation_received', 'order_confirmation_received', 'math_verified'],
+  deposit_verification:       ['deposit_pending'],
+  purchasing_pending:         ['deposit_verification'],
+  production_pending:         ['purchasing_pending'],
+  production_in_progress:     ['production_pending', 'partial_production'],
+  partial_production:         ['production_pending', 'production_in_progress'],
+  stock_preparation:          ['deposit_verification'],
+  en_route:                   ['production_in_progress', 'partial_production'],
+  en_route_verification:      ['en_route'],
+  inventory_verification:     ['en_route'],
+  inventory_arrived:          ['en_route', 'inventory_verification'],
+  balance_due:                ['stock_preparation', 'inventory_arrived'],
+  balance_verification:       ['balance_due'],
+  delivery_pending:           ['balance_due', 'balance_verification', 'delivery_scheduled'],
+  delivery_scheduled:         ['balance_due', 'balance_verification', 'delivery_pending'],
+  delivered:                  ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'],
+  countered:                  ['balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled', 'delivered'],
+  payment_received:           ['delivered', 'countered'],
+  payment_confirmed:          ['delivered', 'countered', 'payment_received'],
+  completed:                  ['delivered', 'countered', 'payment_received', 'payment_confirmed'],
+};
+
+app.post('/stage-updates/revert', async (request, reply) => {
+  const body = request.body as {
+    quotation_number: string;
+    action_token: string;
+    updated_by?: string;
+  };
+
+  if (!body.quotation_number || !body.action_token) {
+    return reply.code(400).send({ error: 'quotation_number and action_token are required' });
+  }
+
+  // Verify action token
+  let userEmail: string | null = null;
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+  try {
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  } catch { /* non-fatal */ }
+
+  // Fetch the order
+  const orders = await query(
+    `SELECT id, quotation_number, client_name, current_stage, balance_paid, delivered_at, completed_at
+     FROM orders WHERE quotation_number=$1`,
+    [body.quotation_number]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+  const currentStage = order.current_stage;
+  const allowedRevertStages = REVERSE_TRANSITIONS[currentStage];
+
+  if (!allowedRevertStages || allowedRevertStages.length === 0) {
+    return reply.code(400).send({
+      error: `Cannot revert stage '${currentStage}': no previous stage defined.`,
+      current_stage: currentStage,
+    });
+  }
+
+  // For stages with multiple possible previous stages, pick the first one
+  // (the most common/safe reverse path)
+  const targetStage = allowedRevertStages[0];
+  const actorName = userEmail ?? body.updated_by ?? null;
+  const clientName = order?.client_name ?? null;
+  const orderId = order.id;
+
+  // Record the revert in stage_updates
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
+     VALUES ($1, $2, 'reverted', $3, $4, $5, $6)`,
+    [orderId, targetStage, `Reverted from ${currentStage} via dashboard`, body.updated_by ?? 'dashboard_quick_action', clientName, actorName]
+  );
+
+  // Update the order's current_stage
+  await query(`UPDATE orders SET current_stage=$1, updated_at=NOW() WHERE id=$2`, [targetStage, orderId]);
+
+  // ── Cleanup: Revert from delivered ──────────────────────────────────
+  // Restore inventory, clear delivery progress, reset order_items delivery state
+  if (currentStage === 'delivered') {
+    await query(`UPDATE orders SET delivered_at=NULL, partial_delivery=FALSE, partial_delivery_notes=NULL WHERE id=$1`, [orderId]);
+
+    // Restore inventory: add back the quantities that were deducted on delivery
+    const deliveredItems = await query<{ id: string; name: string; delivered_qty: number; quantity: number }>(
+      `SELECT id, name, delivered_qty, quantity FROM order_items WHERE order_id = $1 AND COALESCE(delivered_qty, 0) > 0`,
+      [orderId]
+    );
+    for (const item of deliveredItems) {
+      const qtyToRestore = Number(item.delivered_qty);
+      await adjustInventoryForOrderItem(
+        orderId,
+        item.id,
+        item.name,
+        qtyToRestore,
+        'delivery_deduct',
+        `Inventory restored after reverting delivery of order.`,
+        body.updated_by ?? 'dashboard_quick_action',
+      );
+    }
+
+    // Reset order_items delivery state
+    await query(
+      `UPDATE order_items
+       SET delivered_qty = 0,
+           remaining_qty = quantity,
+           delivered_at = NULL,
+           last_partial_delivery_at = NULL,
+           partial_delivery_count = 0,
+           updated_at = NOW()
+       WHERE order_id = $1`,
+      [orderId]
+    );
+
+    // Clear partial delivery logs
+    await query(`DELETE FROM partial_delivery_logs WHERE order_id = $1`, [orderId]);
+  }
+
+  // ── Cleanup: Revert from completed ──────────────────────────────────
+  if (currentStage === 'completed') {
+    await query(`UPDATE orders SET completed_at=NULL WHERE id=$1`, [orderId]);
+  }
+
+  // ── Cleanup: Revert from countered ──────────────────────────────────
+  // Clear countered-related flags if they exist
+  if (currentStage === 'countered') {
+    await query(`UPDATE orders SET special_case=FALSE WHERE id=$1 AND special_case=TRUE`, [orderId]);
+  }
+
+  // ── Cleanup: Revert from payment_received or payment_confirmed ──────
+  // These stages don't have additional cleanup beyond the stage update
+
+  // Auto-complete reminders for the current stage (since we're leaving it)
+  await query(
+    `UPDATE reminders SET status='completed', updated_at=NOW() WHERE order_id=$1 AND stage=$2 AND status='active'`,
+    [orderId, currentStage]
+  );
+
+  // Re-activate reminders for the target stage (since we're going back to it)
+  // This ensures the team gets reminded again for the stage we reverted to
+  await query(
+    `UPDATE reminders SET status='active', updated_at=NOW() WHERE order_id=$1 AND stage=$2 AND status='completed'`,
+    [orderId, targetStage]
+  );
+
+  // Invalidate caches
+  await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${body.quotation_number}`, 'calendar:*', 'sales:*']);
+
+  // ── Telegram Notifications ──────────────────────────────────────────
+  // Notify escalation group about the revert
+  await notifyManualChange(
+    '⏪ Stage Reverted',
+    `Quotation: *${body.quotation_number}*\nClient: ${clientName ?? 'N/A'}\nReverted from: ${currentStage}\nReverted to: ${targetStage}\nActor: ${actorName ?? 'dashboard'}`,
+    userEmail,
+  );
+
+  // Also notify the relevant functional group about the revert
+  const stageToGroup: Record<string, string | null> = {
+    deposit_pending: COLLECTION_CHAT_ID,
+    deposit_verification: COLLECTION_CHAT_ID,
+    purchasing_pending: PURCHASING_CHAT_ID,
+    production_pending: PRODUCTION_CHAT_ID,
+    production_in_progress: PRODUCTION_CHAT_ID,
+    partial_production: PRODUCTION_CHAT_ID,
+    stock_preparation: DELIVERY_CHAT_ID,
+    en_route: PRODUCTION_CHAT_ID,
+    en_route_verification: PRODUCTION_CHAT_ID,
+    inventory_verification: DELIVERY_CHAT_ID,
+    inventory_arrived: DELIVERY_CHAT_ID,
+    balance_due: COLLECTION_CHAT_ID,
+    balance_verification: COLLECTION_CHAT_ID,
+    delivery_pending: DELIVERY_CHAT_ID,
+    delivery_scheduled: DELIVERY_CHAT_ID,
+    delivered: DELIVERY_CHAT_ID,
+    countered: DELIVERY_CHAT_ID,
+    payment_received: COLLECTION_CHAT_ID,
+    payment_confirmed: COLLECTION_CHAT_ID,
+    completed: COLLECTION_CHAT_ID,
+  };
+  const targetChatId = stageToGroup[targetStage];
+  if (targetChatId) {
+    const stageLabel = targetStage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const prevStageLabel = currentStage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    setImmediate(() => {
+      notifyGroupChat(
+        targetChatId,
+        `⏪ <b>Stage Reverted (Dashboard)</b>\n\n` +
+        `Quotation: <b>${body.quotation_number}</b>\n` +
+        `Client: ${clientName ?? 'N/A'}\n` +
+        `Reverted from: <b>${prevStageLabel}</b>\n` +
+        `Reverted to: <b>${stageLabel}</b>\n` +
+        `Updated by: ${actorName ?? 'dashboard'}\n\n` +
+        `Please review and take necessary action.`
+      );
+    });
+  }
+
+  return { ok: true, previous_stage: currentStage, current_stage: targetStage };
+});
+
 // ── Schedule Delivery for Specific Items (Itemized Progression) ───────
 // Allows scheduling delivery for selected items only, rather than the
 // entire order. Sets delivery_date on the order and marks the selected

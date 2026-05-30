@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, OrderItem, InventoryItem, Client } from '@/lib/api';
-import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit, updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, searchClients, generateActionToken } from '@/lib/api';
+import { markStockReady, setStockPrep, getOrderItems, searchInventory, matchInventoryItem, setOrderItemMatch, recordDeposit, updateOrder, deleteOrder, grantDeliveryException, revokeDeliveryException, searchClients, generateActionToken, revertStage } from '@/lib/api';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter, DollarSign, Pencil, Trash2, ShieldAlert, Shield, ShieldCheck, XCircle } from 'lucide-react';
+import { PackageCheck, Clock, CheckCircle, AlertCircle, Loader2, Edit2, Save, X, Search, ChevronDown, ChevronRight, Check, Tag, Box, Filter, DollarSign, Pencil, Trash2, ShieldAlert, Shield, ShieldCheck, XCircle, ArrowLeft } from 'lucide-react';
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return null;
@@ -46,12 +46,13 @@ function ReadyBadge({ readyAt }: { readyAt: string | null | undefined }) {
   );
 }
 
-function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGrantException, onRevokeException }: {
+function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onRevert, onGrantException, onRevokeException }: {
   order: Order;
   onUpdated: () => void;
   onViewFiles?: (order: Order) => void;
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
+  onRevert?: (order: Order) => void;
   onGrantException?: (order: Order) => void;
   onRevokeException?: (order: Order) => void;
 }) {
@@ -62,6 +63,30 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
   const [deductInventory, setDeductInventory] = useState(true);
   const [marking, setMarking] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // ── Revert Stage ────────────────────────────────────────────────────
+  const [showRevertOtp, setShowRevertOtp] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertResult, setRevertResult] = useState<{ ok: boolean; previous_stage: string; current_stage: string } | null>(null);
+
+  async function handleRevertVerified(actionToken: string) {
+    if (!onRevert) return;
+    setReverting(true);
+    try {
+      const res = await revertStage({
+        quotation_number: order.quotation_number ?? '',
+        action_token: actionToken,
+        updated_by: 'dashboard_quick_action',
+      });
+      setRevertResult(res);
+      onUpdated();
+    } catch (err: any) {
+      alert('Failed to revert stage: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setReverting(false);
+      setShowRevertOtp(false);
+    }
+  }
 
   // Prep days edit
   const [editingDays, setEditingDays] = useState(false);
@@ -204,6 +229,16 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
               title="Revoke delivery exception"
             >
               <ShieldCheck className="h-4 w-4" />
+            </button>
+          )}
+          {/* Revert */}
+          {onRevert && order.current_stage !== 'quotation_received' && (
+            <button
+              onClick={() => setShowRevertOtp(true)}
+              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+              title="Revert stage (OTP required)"
+            >
+              <ArrowLeft className="h-4 w-4" />
             </button>
           )}
           {/* Edit */}
@@ -355,6 +390,56 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onGran
         onVerified={handleConfirmVerified}
         onClose={() => { setShowConfirm(false); setConfirmAction(null); }}
       />
+
+      {/* ── Revert Stage OTP Modal ──────────────────────────────────────── */}
+      <OtpModal
+        open={showRevertOtp}
+        title="Revert Stage"
+        description={`You are about to revert order "${order.quotation_number ?? '—'}" (${order.client_name ?? 'Unknown'}) to the previous stage. Enter the OTP sent to your email to confirm.`}
+        onVerified={handleRevertVerified}
+        onClose={() => { setShowRevertOtp(false); }}
+      />
+
+      {reverting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
+            <p className="text-sm text-gray-600">Reverting stage...</p>
+          </div>
+        </div>
+      )}
+
+      {revertResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRevertResult(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              {revertResult.ok ? (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Stage Reverted</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Order moved from <strong>{revertResult.previous_stage}</strong> back to <strong>{revertResult.current_stage}</strong>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                    <XCircle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Revert Failed</h3>
+                  <p className="mt-1 text-sm text-gray-500">Could not revert the stage. Please try again.</p>
+                </>
+              )}
+            </div>
+            <button onClick={() => setRevertResult(null)}
+              className="mt-4 w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1047,6 +1132,7 @@ export default function StockPrepPage() {
                 onViewFiles={handleViewFiles}
                 onEdit={handleEdit}
                 onDelete={handleDeleteClick}
+                onRevert={() => {}}
                 onGrantException={handleGrantException}
                 onRevokeException={handleRevokeException}
               />

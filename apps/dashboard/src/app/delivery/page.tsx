@@ -3,13 +3,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, generateActionToken, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, generateActionToken, revertStage, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import DeliveryItemSection from '@/components/DeliveryItemSection';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks, ChevronUp, ChevronDown } from 'lucide-react';
+import { Truck, Calendar, CheckCircle2, Scale, Pencil, Trash2, X, Check, MapPin, Phone, UserCheck, ShieldAlert, DollarSign, PackageCheck, PackageOpen, Clock, ThumbsUp, CreditCard, Send, Upload, FileText, Loader2, Search, XCircle, Package, ListChecks, ChevronUp, ChevronDown, ArrowLeft } from 'lucide-react';
 
 interface EditFormProps {
   order: Order;
@@ -66,11 +66,18 @@ interface RowActionsProps {
   order: Order;
   onEdit: (order: Order) => void;
   onDelete: (order: Order) => void;
+  onRevert?: (order: Order) => void;
 }
 
-function RowActions({ order, onEdit, onDelete }: RowActionsProps) {
+function RowActions({ order, onEdit, onDelete, onRevert }: RowActionsProps) {
   return (
     <div className="flex items-center gap-1">
+      {onRevert && order.current_stage !== 'quotation_received' && (
+        <button onClick={() => onRevert(order)}
+          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600" title="Revert stage (OTP required)">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      )}
       <button onClick={() => onEdit(order)}
         className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
         <Pencil className="h-4 w-4" />
@@ -180,6 +187,12 @@ export default function DeliveryPage() {
   
   // Track which orders have been verified as countered (to hide "Verify Countered" button)
   const [verifiedCounterIds, setVerifiedCounterIds] = useState<Set<string>>(new Set());
+
+  // ── Revert Stage ────────────────────────────────────────────────────
+  const [revertTargetOrder, setRevertTargetOrder] = useState<Order | null>(null);
+  const [showRevertOtp, setShowRevertOtp] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertResult, setRevertResult] = useState<{ ok: boolean; message: string } | null>(null);
   
   // ── Verify Countered Modal ─────────────────────────────────────────
   const [verifyCounteredModal, setVerifyCounteredModal] = useState<{
@@ -887,6 +900,35 @@ export default function DeliveryPage() {
     });
   }
 
+  function handleRevertClick(order: Order) {
+    setRevertTargetOrder(order);
+    setShowRevertOtp(true);
+    setRevertResult(null);
+  }
+
+  async function handleRevertVerified(actionToken: string) {
+    if (!revertTargetOrder) return;
+    setReverting(true);
+    setRevertResult(null);
+    try {
+      const res = await revertStage({
+        quotation_number: revertTargetOrder.quotation_number ?? '',
+        action_token: actionToken,
+      });
+      if (res.ok) {
+        setRevertResult({ ok: true, message: `✅ Reverted from ${res.previous_stage.replace(/_/g, ' ')} to ${res.current_stage.replace(/_/g, ' ')}!` });
+        setRevertTargetOrder(null);
+        setTimeout(() => { setShowRevertOtp(false); mutateAll(); }, 1500);
+      } else {
+        setRevertResult({ ok: false, message: 'Failed to revert stage.' });
+      }
+    } catch (err: any) {
+      setRevertResult({ ok: false, message: err.message ?? 'Failed to revert stage.' });
+    } finally {
+      setReverting(false);
+    }
+  }
+
   async function handleDeleteVerified(actionToken: string) {
     if (!deletingOrder) return;
     setDeleting(true);
@@ -1508,7 +1550,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Balance Due →'}
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -1564,7 +1606,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -1636,7 +1678,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Balance Due →'}
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -1759,7 +1801,7 @@ export default function DeliveryPage() {
                           </button>
                         </>
                       )}
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -1813,7 +1855,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Verify Balance →'}
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -1848,6 +1890,7 @@ export default function DeliveryPage() {
         onViewFiles={handleViewFiles}
         onEdit={setEditingOrder}
         onDelete={handleDeleteClick}
+        onRevert={handleRevertClick}
         actionLoading={actionLoading}
       />
 
@@ -1867,6 +1910,7 @@ export default function DeliveryPage() {
         onViewFiles={handleViewFiles}
         onEdit={setEditingOrder}
         onDelete={handleDeleteClick}
+        onRevert={handleRevertClick}
         actionLoading={actionLoading}
       />
 
@@ -1886,6 +1930,7 @@ export default function DeliveryPage() {
         onViewFiles={handleViewFiles}
         onEdit={setEditingOrder}
         onDelete={handleDeleteClick}
+        onRevert={handleRevertClick}
         onCompleteOrder={handleCompleteOrder}
         actionLoading={actionLoading}
       />
@@ -1960,7 +2005,7 @@ export default function DeliveryPage() {
                       >
                         <Upload className="h-3.5 w-3.5 inline mr-0.5" />Upload Invoice / Receipt
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2014,7 +2059,7 @@ export default function DeliveryPage() {
                       >
                         {actionLoading === order.id ? '…' : 'Confirm Payment →'}
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2068,7 +2113,7 @@ export default function DeliveryPage() {
                       >
                         <CheckCircle2 className="h-3.5 w-3.5 inline mr-1" />Order Complete
                       </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} />
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
                   {editingOrder?.id === order.id && (
@@ -2918,6 +2963,35 @@ export default function DeliveryPage() {
           (window as any).__pendingPaymentCounterData = null;
         }}
       />
+
+      {/* Revert OTP Modal */}
+      <OtpModal
+        open={showRevertOtp}
+        title="Stage Revert (OTP Required)"
+        description={
+          revertTargetOrder
+            ? `Revert ${revertTargetOrder.quotation_number ?? 'this order'} to the previous stage? This requires OTP verification.`
+            : ''
+        }
+        onVerified={handleRevertVerified}
+        onClose={() => {
+          setShowRevertOtp(false);
+          setRevertTargetOrder(null);
+          setRevertResult(null);
+        }}
+      />
+
+      {/* Revert result toast */}
+      {revertResult && (
+        <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
+          revertResult.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {revertResult.message}
+          <button onClick={() => setRevertResult(null)} className="ml-3 text-white/80 hover:text-white">
+            <X className="h-4 w-4 inline" />
+          </button>
+        </div>
+      )}
 
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

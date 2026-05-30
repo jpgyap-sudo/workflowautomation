@@ -5,7 +5,7 @@ import { Fragment, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useOrder } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
-import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment, type OrderDetail } from '@/lib/api';
+import { STAGE_CONFIG, STAGE_ORDER, getItemCompletion, getOrderItems, getProductionLogs, extractOrderItems, inventoryVerifyItem, bulkInventoryVerify, completeInventoryVerification, confirmInventoryArrived, createOrderItem, updateOrderItem, uploadOrderFile, postAgentNote, recordDepositWithFile, recordStageUpdate, visionExtract, verifyDeposit, getOrderPayments, revertStage, type OrderItem, type ItemCompletion, type ProductionUpdateLog, type Payment, type OrderDetail } from '@/lib/api';
 import GanttChart from '@/components/GanttChart';
 import StageBadge from '@/components/StageBadge';
 import Timestamp from '@/components/Timestamp';
@@ -38,6 +38,10 @@ export default function OrderDetailPage() {
   const [targetAdvanceStage, setTargetAdvanceStage] = useState<string | null>(null);
   const [advancingStage, setAdvancingStage] = useState(false);
   const [advanceResult, setAdvanceResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const [showRevertOtp, setShowRevertOtp] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertResult, setRevertResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   async function handleVerifyDepositVerified(actionToken: string) {
     if (!order) return;
@@ -696,6 +700,64 @@ export default function OrderDetailPage() {
         );
       })()}
 
+      {/* Stage Revert (admin only) — revert to previous stage with OTP */}
+      {user?.role === 'admin' && order.current_stage !== 'quotation_received' && (() => {
+        const REVERSE_TRANSITIONS: Record<string, string[]> = {
+          order_confirmation_received: ['quotation_received'],
+          math_verified:              ['quotation_received', 'order_confirmation_received'],
+          deposit_pending:            ['quotation_received', 'order_confirmation_received', 'math_verified'],
+          deposit_verification:       ['deposit_pending'],
+          purchasing_pending:         ['deposit_verification'],
+          production_pending:         ['purchasing_pending'],
+          production_in_progress:     ['production_pending', 'partial_production'],
+          partial_production:         ['production_pending', 'production_in_progress'],
+          stock_preparation:          ['deposit_verification'],
+          en_route:                   ['production_in_progress', 'partial_production'],
+          en_route_verification:      ['en_route'],
+          inventory_verification:     ['en_route'],
+          inventory_arrived:          ['en_route', 'inventory_verification'],
+          balance_due:                ['stock_preparation', 'inventory_arrived'],
+          balance_verification:       ['balance_due'],
+          delivery_pending:           ['balance_due', 'balance_verification', 'delivery_scheduled'],
+          delivery_scheduled:         ['balance_due', 'balance_verification', 'delivery_pending'],
+          delivered:                  ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'],
+          countered:                  ['balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled', 'delivered'],
+          payment_received:           ['delivered', 'countered'],
+          payment_confirmed:          ['delivered', 'countered', 'payment_received'],
+          completed:                  ['delivered', 'countered', 'payment_received', 'payment_confirmed'],
+        };
+        const allowedRevertStages = REVERSE_TRANSITIONS[order.current_stage];
+        if (!allowedRevertStages || allowedRevertStages.length === 0) return null;
+        const targetRevertStage = allowedRevertStages[0];
+        const revertConfig = STAGE_CONFIG[targetRevertStage];
+        return (
+          <div className="rounded-xl border border-2 border-dashed border-red-300 bg-red-50 p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-800">
+              <ArrowLeft className="h-4 w-4" />
+              Stage Revert (OTP Required)
+            </div>
+            <p className="mt-1 text-xs text-red-700">
+              Revert this order from &ldquo;{order.current_stage.replace(/_/g, ' ')}&rdquo; back to &ldquo;{targetRevertStage.replace(/_/g, ' ')}&rdquo;.
+              This will restore inventory (if delivered), clear delivery progress, and notify the team.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => setShowRevertOtp(true)}
+                disabled={reverting}
+                className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm ring-1 ring-red-300 hover:bg-red-100 disabled:opacity-50"
+              >
+                {revertConfig?.icon} Revert to {revertConfig?.label ?? targetRevertStage}
+              </button>
+            </div>
+            {revertResult && (
+              <p className={`mt-2 text-xs font-medium ${revertResult.ok ? 'text-green-700' : 'text-red-600'}`}>
+                {revertResult.message}
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Item-Level Tracking (admin only) */}
       {user?.role === 'admin' && (
         <ItemTrackingSection
@@ -788,6 +850,37 @@ export default function OrderDetailPage() {
           setShowStageAdvanceOtp(false);
           setTargetAdvanceStage(null);
           setAdvanceResult(null);
+        }}
+      />
+
+      <OtpModal
+        open={showRevertOtp}
+        title="Revert Stage"
+        description={`Revert this order from "${order?.current_stage?.replace(/_/g, ' ') ?? ''}" back to a previous stage? This will restore inventory (if delivered), clear delivery progress, and notify the team. OTP is required for this action.`}
+        onVerified={async (actionToken) => {
+          if (!order) return;
+          setReverting(true);
+          setRevertResult(null);
+          try {
+            const res = await revertStage({
+              quotation_number: order.quotation_number ?? '',
+              action_token: actionToken,
+            });
+            if (res.ok) {
+              setRevertResult({ ok: true, message: `✅ Reverted from ${res.previous_stage.replace(/_/g, ' ')} to ${res.current_stage.replace(/_/g, ' ')}!` });
+              setTimeout(() => window.location.reload(), 1500);
+            } else {
+              setRevertResult({ ok: false, message: 'Failed to revert stage.' });
+            }
+          } catch (err: any) {
+            setRevertResult({ ok: false, message: err.message ?? 'Failed to revert stage.' });
+          } finally {
+            setReverting(false);
+          }
+        }}
+        onClose={() => {
+          setShowRevertOtp(false);
+          setRevertResult(null);
         }}
       />
     </div>

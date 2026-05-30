@@ -14649,3 +14649,199 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: all 6 gap fixes — GAP 1: handleConfirmVerified uses ConfirmModal pre-fetched token (9 pages), GAP 2: executeComplet
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 4eefb599a9abb54f5a9c1bcb2e4d329a3626c9ab
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 4eefb599a9abb54f5a9c1bcb2e4d329a3626c9ab
+**Files:** apps/api/src/server.ts,apps/api/src/services/chatService.ts,apps/api/src/services/geminiVision.ts,apps/api/src/services/openRouterService.ts,apps/dashboard/src/app/agents/page.tsx,apps/dashboard/src/app/bugs/page.tsx,apps/dashboard/src/app/calendar/page.tsx,apps/dashboard/src/app/clients/page.tsx,apps/dashboard/src/app/collection/page.tsx,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/production/page.tsx,apps/dashboard/src/app/purchasing/page.tsx,apps/dashboard/src/app/stock-prep/page.tsx,apps/dashboard/src/components/ConfirmModal.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**Summary of Engineering Commit (6 Gap Fixes)**
+
+**What was fixed:** Six gaps across frontend and backend: token pre-fetching in ConfirmModal (9 pages), dynamic remarks in `executeCompleteDirectly`, `completed_at=NOW()` on orders table, OpenAI chat fallback in `chatService`, ConfirmModal pre-fetch feedback text, and OpenAI vision errors in errors array.
+
+**Why it broke:** Each gap was a missing edge case or inconsistent state: stale token references, missing dynamic remarks, unset timestamps, absent fallback logic, unhandled error arrays, and missing feedback text after pre-fetch.
+
+**Reusable takeaway:** Always verify that pre-fetched data (tokens, feedback) is used consistently across all dependent pages. Ensure timestamps are set atomically with state transitions. Implement fallback logic for external API calls. Collect all errors in a structured array, not just the first.
+
+---
+*Original commit message: fix: all 6 gap fixes — GAP 1: handleConfirmVerified uses ConfirmModal pre-fetched token (9 pages), GAP 2: executeCompleteDirectly dynamic remarks, GAP 3: completed_at=NOW() on orders table, GAP 4: OpenAI chat fallback in chatService, GAP 5: ConfirmModal pre-fetch feedback text, GAP 6: OpenAI vision errors in errors array*
+
+#### Lesson Learned
+
+**Summary of Engineering Commit (6 Gap Fixes)**
+
+**What was fixed:** Six gaps across frontend and backend: token pre-fetching in ConfirmModal (9 pages), dynamic remarks in `executeCompleteDirectly`, `completed_at=NOW()` on orders table, OpenAI chat fallback in `chatService`, ConfirmModal pre-fetch feedback text, and OpenAI vision errors in errors array.
+
+**Why it broke:** Each gap was a missing edge case or inconsistent state: stale token references, missing dynamic remarks, unset timestamps, absent fallback logic, unhandled error arrays, and missing feedback text after pre-fetch.
+
+**Reusable takeaway:** Always verify that pre-fetched data (tokens, feedback) is used consistently across all dependent pages. Ensure timestamps are set atomically with state transitions. Implement fallback logic for external API calls. Collect all errors in a structured array, not just the first.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for gap fixes commit 4eefb59 — all 6 gaps fixed and deployed
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit bd429c49518d9d14a07653cbfdaaaa8ec50aec5b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** bd429c49518d9d14a07653cbfdaaaa8ec50aec5b
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Six gaps in documentation (CHANGELOG and UPDATE_LOG) were corrected and deployed.
+
+**Why it broke:**  
+The gaps likely resulted from incomplete or inconsistent updates during prior releases, causing the logs to miss entries or misalign with actual changes.
+
+**Reusable takeaway:**  
+Maintain changelogs and update logs as living documents updated *simultaneously* with every code change, not retroactively. Use automated checks (e.g., pre-commit hooks or CI) to enforce that any commit altering functionality also updates these logs, preventing documentation drift.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for gap fixes commit 4eefb59 — all 6 gaps fixed and deployed*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Six gaps in documentation (CHANGELOG and UPDATE_LOG) were corrected and deployed.
+
+**Why it broke:**  
+The gaps likely resulted from incomplete or inconsistent updates during prior releases, causing the logs to miss entries or misalign with actual changes.
+
+**Reusable takeaway:**  
+Maintain changelogs and update logs as living documents updated *simultaneously* with every code change, not retroactively. Use automated checks (e.g., pre-commit hooks or CI) to enforce that any commit altering functionality also updates these logs, preventing documentation drift.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: Telegram vision extraction link uses wrong domain (localhost:3000) — DASHBOARD_BASE_URL fallback was 'http://localh
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 21511762cd4ba03f86aee53c90762482b4116f37
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 21511762cd4ba03f86aee53c90762482b4116f37
+**Files:** .env.example,apps/telegram-bot/src/bot.ts
+
+**Summary:**
+**Engineering Lesson: Hardcoded Localhost Fallback in Production**
+
+**What was fixed:** Telegram bot's vision extraction feature was constructing URLs using `http://localhost:3000` instead of the production domain `https://track.abcx124.xyz`.
+
+**Why it broke:** The `DASHBOARD_BASE_URL` environment variable had a fallback value of `'http://localhost:3000'` in the code. This fallback was never updated for production deployment, causing all vision extraction requests to fail when the bot ran on the VPS.
+
+**Reusable takeaway:** Never hardcode localhost fallbacks in production code. Instead:
+1. Remove fallback values for environment-specific variables
+2. Make required environment variables fail explicitly at startup
+3. Always update `.env.example` when adding new configuration
+4. Use environment validation to catch missing variables before runtime
+
+---
+*Original commit message: fix: Telegram vision extraction link uses wrong domain (localhost:3000) — DASHBOARD_BASE_URL fallback was 'http://localhost:3000' instead of 'https://track.abcx124.xyz'. Fixed both vision URL construction sites (lines 7329, 8719). Added DASHBOARD_BASE_URL to VPS .env and .env.example*
+
+#### Lesson Learned
+
+**Engineering Lesson: Hardcoded Localhost Fallback in Production**
+
+**What was fixed:** Telegram bot's vision extraction feature was constructing URLs using `http://localhost:3000` instead of the production domain `https://track.abcx124.xyz`.
+
+**Why it broke:** The `DASHBOARD_BASE_URL` environment variable had a fallback value of `'http://localhost:3000'` in the code. This fallback was never updated for production deployment, causing all vision extraction requests to fail when the bot ran on the VPS.
+
+**Reusable takeaway:** Never hardcode localhost fallbacks in production code. Instead:
+1. Remove fallback values for environment-specific variables
+2. Make required environment variables fail explicitly at startup
+3. Always update `.env.example` when adding new configuration
+4. Use environment validation to catch missing variables before runtime
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for vision link domain fix commit 2151176
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 122664b073d415b386e31d2c9da7689c4b6d5f39
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 122664b073d415b386e31d2c9da7689c4b6d5f39
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A broken link in the documentation (CHANGELOG and UPDATE_LOG) related to the vision link domain.
+
+**Why it broke:**  
+The domain or URL for the vision link was outdated or incorrect, causing the link to point to a non-existent or inaccessible resource.
+
+**Reusable takeaway:**  
+Always validate external links in documentation after domain changes, migrations, or rebranding. Use relative links or centralized URL constants where possible to avoid manual updates across multiple files. Automate link checking in CI/CD to catch broken references before release.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for vision link domain fix commit 2151176*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A broken link in the documentation (CHANGELOG and UPDATE_LOG) related to the vision link domain.
+
+**Why it broke:**  
+The domain or URL for the vision link was outdated or incorrect, causing the link to point to a non-existent or inaccessible resource.
+
+**Reusable takeaway:**  
+Always validate external links in documentation after domain changes, migrations, or rebranding. Use relative links or centralized URL constants where possible to avoid manual updates across multiple files. Automate link checking in CI/CD to catch broken references before release.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

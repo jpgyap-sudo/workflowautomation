@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useOrdersByStage, useAwaitingDownpayment, useProductionExceptionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
-import { updateOrder, deleteOrder, recordStageUpdate, getItemCompletion, getOrderItems, verifyDeposit, verifyBalance, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDeposit, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
+import { updateOrder, deleteOrder, recordStageUpdate, revertStage, getItemCompletion, getOrderItems, verifyDeposit, verifyBalance, updateOrderItem, searchClients, grantProductionException, revokeProductionException, visionExtract, recordDeposit, recordDepositWithFile, payBalanceWithFile, uploadOrderFile } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -17,7 +17,7 @@ import {
   AlertTriangle, RefreshCw, CheckCircle,
   Shield, DollarSign, ShieldAlert, Loader2,
   Search, XCircle, Zap, RotateCcw, Calendar, BadgeCheck, BadgeX,
-  Upload, FileText, Image,
+  Upload, FileText, Image, ArrowLeft,
 } from 'lucide-react';
 
 function fmtDate(d: string | null | undefined) {
@@ -29,6 +29,7 @@ interface OrderRowProps {
   order: Order;
   onEdit: (order: Order) => void;
   onDelete: (order: Order) => void;
+  onRevert?: (order: Order) => void;
   onStartProductionWorkflow?: (order: Order) => void;
   onViewFiles?: (order: Order) => void;
   onVerifyDeposit?: (order: Order) => void;
@@ -49,7 +50,7 @@ interface OrderRowProps {
   onSetBalanceSlipField?: (field: string, value: string) => void;
 }
 
-function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onVerifyBalance, onMarkDepositPaid, onGrantSpecialCase, onRevokeException, depositSlipUpload, onDepositSlipFileSelect, onUploadDepositSlip, onClearDepositSlip, onSetDepositSlipField, balanceSlipUpload, onBalanceSlipFileSelect, onMarkBalancePaid, onClearBalanceSlip, onSetBalanceSlipField }: OrderRowProps) {
+function OrderRow({ order, onEdit, onDelete, onRevert, onStartProductionWorkflow, onViewFiles, onVerifyDeposit, onVerifyBalance, onMarkDepositPaid, onGrantSpecialCase, onRevokeException, depositSlipUpload, onDepositSlipFileSelect, onUploadDepositSlip, onClearDepositSlip, onSetDepositSlipField, balanceSlipUpload, onBalanceSlipFileSelect, onMarkBalancePaid, onClearBalanceSlip, onSetBalanceSlipField }: OrderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [completion, setCompletion] = useState<ItemCompletion | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -158,6 +159,12 @@ function OrderRow({ order, onEdit, onDelete, onStartProductionWorkflow, onViewFi
           })()}
           <StageBadge stage={order.current_stage} />
           <div className="flex items-center gap-1">
+            {onRevert && order.current_stage !== 'quotation_received' && (
+              <button onClick={(e) => { e.stopPropagation(); onRevert(order); }}
+                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600" title="Revert stage (OTP required)">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(order); }}
               className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
@@ -702,6 +709,12 @@ export default function PurchasingPage() {
     open: boolean; title: string; description: string; pendingAction: string;
   }>({ open: false, title: '', description: '', pendingAction: '' });
 
+  // Revert stage state
+  const [revertTargetOrder, setRevertTargetOrder] = useState<Order | null>(null);
+  const [showRevertOtp, setShowRevertOtp] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertResult, setRevertResult] = useState<{ ok: boolean; previous_stage: string; current_stage: string } | null>(null);
+
   // ── Deposit slip upload (production exception section) ──────────────
   const [depositSlipUpload, setDepositSlipUpload] = useState<{
     orderId: string | null;
@@ -912,6 +925,34 @@ export default function PurchasingPage() {
     setOtpModal({ open: true, title: 'Delete Order',
       description: `You are about to permanently delete order "${order.quotation_number ?? '—'}". This will also remove all stage updates, files, and reminders. Enter the OTP sent to your email to confirm.`,
       pendingAction: 'delete' });
+  }
+
+  function handleRevertClick(order: Order) {
+    setRevertTargetOrder(order);
+    setShowRevertOtp(true);
+  }
+
+  async function handleRevertVerified(actionToken: string) {
+    if (!revertTargetOrder) return;
+    setReverting(true);
+    try {
+      const res = await revertStage({
+        quotation_number: revertTargetOrder.quotation_number ?? '',
+        action_token: actionToken,
+        updated_by: 'dashboard_quick_action',
+      });
+      setRevertResult(res);
+      mutatePending();
+      mutateDepositPending();
+      mutateDepositVerification();
+      mutateExceptions();
+    } catch (err: any) {
+      alert('Failed to revert stage: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setReverting(false);
+      setShowRevertOtp(false);
+      setRevertTargetOrder(null);
+    }
   }
 
   async function handleStartProductionWorkflow(order: Order) {
@@ -1252,7 +1293,7 @@ export default function PurchasingPage() {
         {(order) => (
           <>
             <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick}
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onRevert={handleRevertClick}
               onMarkDepositPaid={handleMarkDepositPaid}
               onGrantSpecialCase={handleGrantSpecialCase}
               onViewFiles={handleViewFiles}
@@ -1276,7 +1317,7 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onVerifyDeposit={handleVerifyDeposit} onViewFiles={handleViewFiles} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onRevert={handleRevertClick} onVerifyDeposit={handleVerifyDeposit} onViewFiles={handleViewFiles} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -1297,7 +1338,7 @@ export default function PurchasingPage() {
         {(order) => (
           <>
             <OrderRow
-              order={order} onEdit={handleEdit} onDelete={handleDeleteClick}
+              order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onRevert={handleRevertClick}
               onStartProductionWorkflow={!order.production_started ? handleStartProductionWorkflow : undefined}
               onVerifyDeposit={order.deposit_paid && !order.deposit_verified ? handleVerifyDeposit : undefined}
               onVerifyBalance={order.balance_paid && !order.balance_verified ? handleVerifyBalance : undefined}
@@ -1334,7 +1375,7 @@ export default function PurchasingPage() {
       >
         {(order) => (
           <>
-            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onStartProductionWorkflow={handleStartProductionWorkflow} onViewFiles={handleViewFiles} />
+            <OrderRow order={order} onEdit={handleEdit} onDelete={handleDeleteClick} onRevert={handleRevertClick} onStartProductionWorkflow={handleStartProductionWorkflow} onViewFiles={handleViewFiles} />
             {editingOrder?.id === order.id && (
               <EditForm order={order} onSave={handleEditSave} onCancel={handleCancelEdit} saving={saving} />
             )}
@@ -1362,6 +1403,56 @@ export default function PurchasingPage() {
         onVerified={handleConfirmVerified}
         onClose={() => { setConfirmModal({ ...confirmModal, open: false }); (window as any).__pendingStartProductionWorkflowData = null; (window as any).__pendingMarkDepositPaidData = null; (window as any).__pendingGrantExceptionData = null; (window as any).__pendingRevokeExceptionData = null; (window as any).__pendingMarkBalancePaidData = null; }}
       />
+
+      {/* Revert Stage OTP Modal */}
+      <OtpModal
+        open={showRevertOtp}
+        title="Revert Stage"
+        description={revertTargetOrder ? `You are about to revert order "${revertTargetOrder.quotation_number ?? '—'}" (${revertTargetOrder.client_name ?? 'Unknown'}) to the previous stage. Enter the OTP sent to your email to confirm.` : ''}
+        onVerified={handleRevertVerified}
+        onClose={() => { setShowRevertOtp(false); setRevertTargetOrder(null); }}
+      />
+
+      {reverting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-red-500" />
+            <p className="text-sm text-gray-600">Reverting stage...</p>
+          </div>
+        </div>
+      )}
+
+      {revertResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRevertResult(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              {revertResult.ok ? (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Stage Reverted</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Order moved from <strong>{revertResult.previous_stage}</strong> back to <strong>{revertResult.current_stage}</strong>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                    <XCircle className="h-6 w-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Revert Failed</h3>
+                  <p className="mt-1 text-sm text-gray-500">Could not revert the stage. Please try again.</p>
+                </>
+              )}
+            </div>
+            <button onClick={() => setRevertResult(null)}
+              className="mt-4 w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

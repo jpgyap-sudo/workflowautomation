@@ -135,6 +135,7 @@ export interface DeliveryItemSectionProps {
   onViewFiles?: (order: Order) => void;
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
+  onRevert?: (order: Order) => void;
   onCompleteOrder?: (order: Order) => void;
   actionLoading?: string | null;
 }
@@ -148,7 +149,7 @@ export default function DeliveryItemSection({
   onScheduleDelivery, onScheduleSelected, onScheduleAll,
   schedulingOrderId, scheduleDate, scheduleRemarks,
   onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
-  onViewFiles, onEdit, onDelete, onCompleteOrder,
+  onViewFiles, onEdit, onDelete, onRevert, onCompleteOrder,
   actionLoading,
 }: DeliveryItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);

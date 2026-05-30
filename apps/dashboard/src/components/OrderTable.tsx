@@ -94,6 +94,100 @@ function formatDate(value: string | null | undefined) {
   return <Timestamp value={value} variant="compact" />;
 }
 
+interface AmountCellProps {
+  order: Order;
+  mobile?: boolean;
+  isEditing: boolean;
+  isSaving: boolean;
+  amountDraft: string;
+  reasonDraft: string;
+  amountError: string | null;
+  onStartEdit: (order: Order) => void;
+  onCancel: () => void;
+  onSubmit: (order: Order) => void;
+  onAmountChange: (value: string) => void;
+  onReasonChange: (value: string) => void;
+  canEdit: boolean;
+}
+
+function AmountCell({
+  order,
+  mobile = false,
+  isEditing,
+  isSaving,
+  amountDraft,
+  reasonDraft,
+  amountError,
+  onStartEdit,
+  onCancel,
+  onSubmit,
+  onAmountChange,
+  onReasonChange,
+  canEdit,
+}: AmountCellProps) {
+  const changed = Boolean(order.total_amount_changed);
+  if (isEditing) {
+    return (
+      <div className={`space-y-2 ${mobile ? '' : 'min-w-[220px] text-left'}`}>
+        <input
+          value={amountDraft}
+          onChange={(e) => onAmountChange(e.target.value.replace(/[^0-9.,]/g, ''))}
+          className="w-full rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-right text-sm font-semibold text-red-600 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+          placeholder="Amount"
+          autoFocus
+        />
+        <textarea
+          value={reasonDraft}
+          onChange={(e) => onReasonChange(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+          rows={2}
+          placeholder="Reason required, e.g. due to change order of item"
+        />
+        {amountError && <p className="text-[11px] text-red-600">{amountError}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
+            disabled={isSaving}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubmit(order)}
+            className="rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onStartEdit(order)}
+      className={`inline-flex items-center justify-end gap-1 text-right ${canEdit ? 'cursor-pointer rounded px-1 py-0.5 hover:bg-red-50' : ''} ${
+        changed ? 'font-semibold text-red-600' : 'text-gray-600'
+      }`}
+      title={
+        changed
+          ? `Amount changed${order.amount_change_reason ? `: ${order.amount_change_reason}` : ''}`
+          : 'Click to edit amount'
+      }
+      disabled={!canEdit}
+    >
+      <span>{money(order.total_amount)}</span>
+      {canEdit && (
+        <Pencil className={`h-3.5 w-3.5 ${changed ? 'text-red-500' : 'text-gray-400'}`} aria-hidden="true" />
+      )}
+      {changed && <span className="ml-1 text-[10px] font-medium text-red-500">edited</span>}
+    </button>
+  );
+}
+
 export default function OrderTable({
   orders,
   showClient = true,
@@ -156,76 +250,14 @@ export default function OrderTable({
     onUpdateAmount?.(order, amount, reasonDraft.trim());
   }
 
-  function AmountCell({ order, mobile = false }: { order: Order; mobile?: boolean }) {
-    const isEditing = editingAmountId === order.id;
-    const changed = Boolean(order.total_amount_changed);
-    const isSaving = savingAmountOrderId === order.id;
-    if (isEditing) {
-      return (
-        <div className={`space-y-2 ${mobile ? '' : 'min-w-[220px] text-left'}`}>
-          <input
-            value={amountDraft}
-            onChange={(e) => {
-              setAmountDraft(e.target.value.replace(/[^0-9.,]/g, ''));
-              setAmountError(null);
-            }}
-            className="w-full rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-right text-sm font-semibold text-red-600 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-            placeholder="Amount"
-            autoFocus
-          />
-          <textarea
-            value={reasonDraft}
-            onChange={(e) => {
-              setReasonDraft(e.target.value);
-              setAmountError(null);
-            }}
-            className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
-            rows={2}
-            placeholder="Reason required, e.g. due to change order of item"
-          />
-          {amountError && <p className="text-[11px] text-red-600">{amountError}</p>}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={cancelAmountEdit}
-              className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
-              disabled={isSaving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => submitAmountEdit(order)}
-              className="rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-60"
-              disabled={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={() => startAmountEdit(order)}
-        className={`inline-flex items-center justify-end gap-1 text-right ${onUpdateAmount ? 'cursor-pointer rounded px-1 py-0.5 hover:bg-red-50' : ''} ${
-          changed ? 'font-semibold text-red-600' : 'text-gray-600'
-        }`}
-        title={
-          changed
-            ? `Amount changed${order.amount_change_reason ? `: ${order.amount_change_reason}` : ''}`
-            : 'Click to edit amount'
-        }
-        disabled={!onUpdateAmount}
-      >
-        <span>{money(order.total_amount)}</span>
-        {onUpdateAmount && (
-          <Pencil className={`h-3.5 w-3.5 ${changed ? 'text-red-500' : 'text-gray-400'}`} aria-hidden="true" />
-        )}
-        {changed && <span className="ml-1 text-[10px] font-medium text-red-500">edited</span>}
-      </button>
-    );
+  function handleAmountChange(value: string) {
+    setAmountDraft(value);
+    setAmountError(null);
+  }
+
+  function handleReasonChange(value: string) {
+    setReasonDraft(value);
+    setAmountError(null);
   }
 
   if (orders.length === 0) {
@@ -279,7 +311,7 @@ export default function OrderTable({
                 {showAmount && (
                   <div>
                     <dt className="text-gray-400">Amount</dt>
-                    <dd className="font-medium"><AmountCell order={order} mobile /></dd>
+                    <dd className="font-medium"><AmountCell order={order} mobile isEditing={editingAmountId === order.id} isSaving={savingAmountOrderId === order.id} amountDraft={amountDraft} reasonDraft={reasonDraft} amountError={amountError} onStartEdit={startAmountEdit} onCancel={cancelAmountEdit} onSubmit={submitAmountEdit} onAmountChange={handleAmountChange} onReasonChange={handleReasonChange} canEdit={!!onUpdateAmount} /></dd>
                   </div>
                 )}
                 {showDeposit && (
@@ -538,7 +570,7 @@ export default function OrderTable({
                   <td className="px-4 py-3"><StageBadge stage={order.current_stage} /></td>
                   {showAmount && (
                     <td className="px-4 py-3 text-right align-top">
-                      <AmountCell order={order} />
+                      <AmountCell order={order} isEditing={editingAmountId === order.id} isSaving={savingAmountOrderId === order.id} amountDraft={amountDraft} reasonDraft={reasonDraft} amountError={amountError} onStartEdit={startAmountEdit} onCancel={cancelAmountEdit} onSubmit={submitAmountEdit} onAmountChange={handleAmountChange} onReasonChange={handleReasonChange} canEdit={!!onUpdateAmount} />
                     </td>
                   )}
                   {showDeposit && (

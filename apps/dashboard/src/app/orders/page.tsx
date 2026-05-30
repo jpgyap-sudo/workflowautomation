@@ -121,6 +121,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
         if (res.quotation.sales_agent && !salesAgent) setSalesAgent(res.quotation.sales_agent);
         if (res.quotation.total_amount && !totalAmount) setTotalAmount(String(res.quotation.total_amount));
         if (res.quotation.quotation_number && !qn) setQn(res.quotation.quotation_number);
+        if (res.quotation.projected_lead_time && !projectedLeadTime) setProjectedLeadTime(String(res.quotation.projected_lead_time));
         const items = (res.quotation.items ?? [])
           .filter((i: any) => i?.product_name)
           .map((i: any) => ({ name: i.product_name, quantity: Number(i.quantity ?? 1) }));

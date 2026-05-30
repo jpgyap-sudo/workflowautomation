@@ -246,6 +246,7 @@ export interface VisionExtractResult {
     sales_agent?: string;
     total_amount?: number;
     order_date?: string;
+    projected_lead_time?: number;
     items?: { product_name?: string; quantity?: number }[];
   };
   raw_text: string;
@@ -472,6 +473,17 @@ export async function recordStageUpdate(data: {
   action_token?: string;
 }): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>('/stage-updates', {
+    method: 'POST',
+    body: JSON.stringify({ updated_by: 'dashboard_quick_action', ...data }),
+  });
+}
+
+export async function revertStage(data: {
+  quotation_number: string;
+  action_token: string;
+  updated_by?: string;
+}): Promise<{ ok: boolean; previous_stage: string; current_stage: string }> {
+  return fetchJson<{ ok: boolean; previous_stage: string; current_stage: string }>('/stage-updates/revert', {
     method: 'POST',
     body: JSON.stringify({ updated_by: 'dashboard_quick_action', ...data }),
   });
