@@ -5858,24 +5858,44 @@ app.post('/orders/:id/items', async (request, reply) => {
   const { id } = request.params as { id: string };
   const body = bulkUpsertItemsSchema.parse(request.body);
 
-  // Verify order exists
+  // Verify order exists and get current stage
   const orderRows = await query(
-    `SELECT id, quotation_number FROM orders WHERE id = $1`,
+    `SELECT id, quotation_number, current_stage FROM orders WHERE id = $1`,
     [id]
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0] as any;
 
   // Delete existing items and re-insert (bulk replace)
   await query(`DELETE FROM order_items WHERE order_id = $1`, [id]);
 
+  let hasPendingItems = false;
   for (const item of body.items) {
+    const prodStatus = item.production_status ?? 'pending';
+    if (prodStatus === 'pending') hasPendingItems = true;
     await query(
       `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status, estimated_arrival_days, production_finished_at)
        VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'finished' THEN NOW() ELSE NULL END)`,
       [id, item.name, item.quantity,
-       item.production_status ?? 'pending',
+       prodStatus,
        item.en_route_status ?? 'not_yet',
        item.estimated_arrival_days ?? null]
+    );
+  }
+
+  // ── Gap fix: if the order is in a production stage (not yet en_route/delivery),
+  // revert to partial_production so new pending items appear in the
+  // Partial Production section on the production page ──
+  const productionStages = ['production_in_progress', 'partial_production'];
+  if (hasPendingItems && productionStages.includes(order.current_stage) && order.current_stage !== 'partial_production') {
+    await query(
+      `UPDATE orders SET current_stage = 'partial_production', updated_at = NOW() WHERE id = $1`,
+      [id]
+    );
+    await query(
+      `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+       VALUES ($1, $2, 'system', 'api')`,
+      [id, `Order reverted to partial_production because new pending items were added via bulk upsert.`]
     );
   }
 
@@ -5913,10 +5933,11 @@ app.post('/orders/:id/items/manual', async (request, reply) => {
   }
 
   const orderRows = await query(
-    `SELECT id, quotation_number FROM orders WHERE id = $1`,
+    `SELECT id, quotation_number, current_stage FROM orders WHERE id = $1`,
     [id]
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
+  const order = orderRows[0] as any;
 
   const rows = await query(
     `INSERT INTO order_items (
@@ -5940,6 +5961,23 @@ app.post('/orders/:id/items/manual', async (request, reply) => {
 
   const item = rows[0] as any;
   const actor = body.updated_by ?? 'dashboard';
+
+  // ── Gap fix: if the order is in a production stage (not yet en_route/delivery),
+  // revert to partial_production so the new pending item appears in the
+  // Partial Production section on the production page ──
+  const productionStages = ['production_in_progress', 'partial_production'];
+  if (productionStages.includes(order.current_stage) && (body.production_status ?? 'pending') === 'pending') {
+    await query(
+      `UPDATE orders SET current_stage = 'partial_production', updated_at = NOW() WHERE id = $1 AND current_stage != 'partial_production'`,
+      [id]
+    );
+    await query(
+      `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+       VALUES ($1, $2, 'system', 'api')`,
+      [id, `Order reverted to partial_production because new pending item "${item.name}" was added.`]
+    );
+  }
+
   await query(
     `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
      VALUES ($1, $2, $3, 'user', $4)`,
@@ -6386,9 +6424,9 @@ app.post('/orders/:id/extract-items', async (request, reply) => {
   }
   await cacheClient.del(tokenKey);
 
-  // Get the order's quotation number
+  // Get the order's quotation number and current stage
   const orderRows = await query(
-    `SELECT id, quotation_number, client_name FROM orders WHERE id = $1`,
+    `SELECT id, quotation_number, client_name, current_stage FROM orders WHERE id = $1`,
     [id]
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -6422,6 +6460,22 @@ app.post('/orders/:id/extract-items', async (request, reply) => {
         `INSERT INTO order_items (order_id, name, quantity, production_status, en_route_status)
          VALUES ($1, $2, $3, 'pending', 'not_yet')`,
         [id, item.name, item.quantity]
+      );
+    }
+
+    // ── Gap fix: if the order is in a production stage (not yet en_route/delivery),
+    // revert to partial_production so extracted pending items appear in the
+    // Partial Production section on the production page ──
+    const productionStages = ['production_in_progress', 'partial_production'];
+    if (productionStages.includes(order.current_stage) && order.current_stage !== 'partial_production') {
+      await query(
+        `UPDATE orders SET current_stage = 'partial_production', updated_at = NOW() WHERE id = $1`,
+        [id]
+      );
+      await query(
+        `INSERT INTO production_update_logs (order_id, note, log_type, created_by)
+         VALUES ($1, $2, 'system', 'api')`,
+        [id, `Order reverted to partial_production because ${result.items.length} pending item(s) were extracted from quotation.`]
       );
     }
 
@@ -7239,8 +7293,8 @@ app.post('/stage-updates/revert', async (request, reply) => {
   };
   const targetChatId = stageToGroup[targetStage];
   if (targetChatId) {
-    const stageLabel = targetStage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    const prevStageLabel = currentStage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const stageLabel = targetStage.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const prevStageLabel = currentStage.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
     setImmediate(() => {
       notifyGroupChat(
         targetChatId,
@@ -8973,9 +9027,10 @@ app.post('/orders/:id/stock-ready', async (request, reply) => {
     [id],
   );
   if (unmatchedItems.length > 0) {
+    const names = unmatchedItems.map((i: { name: string }) => i.name).join(', ');
     return reply.code(400).send({
-      error: `Cannot mark stock ready: ${unmatchedItems.length} item(s) are not matched to inventory.`,
-      unmatched_items: unmatchedItems.map((i) => i.name),
+      error: `Cannot mark stock ready — ${unmatchedItems.length} item(s) still unmatched: ${names}. Go to the Matching Verification section below and match these items first.`,
+      unmatched_items: unmatchedItems.map((i: { name: string }) => i.name),
     });
   }
 
@@ -12893,6 +12948,53 @@ app.post('/inventory/drafts/:id/approve', async (request, reply) => {
   await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
   broadcastSSE('inventory_updated', { id: itemRows[0].id });
   return { ok: true, item: itemRows[0] };
+});
+
+app.post('/inventory/drafts/approve-selected', async (request, reply) => {
+  const body = z.object({
+    ids: z.array(z.string().uuid()).min(1),
+    action_token: z.string(),
+  }).parse(request.body);
+
+  if (!cacheClient?.isOpen) {
+    return reply.status(503).send({ error: 'Action verification unavailable' });
+  }
+  const tokenKey = `action_token:${body.action_token}`;
+  const tokenData = await cacheClient.get(tokenKey);
+  if (!tokenData) {
+    return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+  }
+  await cacheClient.del(tokenKey);
+
+  let userEmail: string | null = null;
+  try { userEmail = JSON.parse(tokenData).email ?? null; } catch { /* ignore */ }
+
+  const placeholders = body.ids.map((_, i) => `$${i + 1}`).join(',');
+  const draftRows = await query(
+    `SELECT * FROM inventory_drafts WHERE id IN (${placeholders}) AND status='pending'`,
+    body.ids
+  );
+
+  const items: any[] = [];
+  for (const draft of draftRows) {
+    const itemRows = await query(
+      `INSERT INTO inventory_items (product_name, description, dimension, quantity, image_url, category)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [draft.product_name, draft.description, draft.dimension, draft.quantity ?? 0, draft.image_url, draft.category]
+    );
+    await query(`UPDATE inventory_drafts SET status='approved', updated_at=NOW() WHERE id=$1`, [draft.id]);
+    items.push(itemRows[0]);
+  }
+
+  await notifyManualChange(
+    'Inventory drafts approved',
+    `Approved: ${items.length} draft(s)`,
+    userEmail,
+  );
+
+  await invalidateCache(['inventory:*', '/inventory', '/inventory/drafts']);
+  broadcastSSE('inventory_updated', { count: items.length });
+  return { ok: true, approved_count: items.length, items };
 });
 
 app.post('/inventory/drafts/approve-all', async (request, reply) => {

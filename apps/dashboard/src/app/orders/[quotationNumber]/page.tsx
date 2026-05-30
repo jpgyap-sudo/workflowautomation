@@ -949,7 +949,7 @@ function ItemTrackingSection({
   const [selectedVerifyItemIds, setSelectedVerifyItemIds] = useState<Set<string>>(new Set());
   const [pendingMarkArrived, setPendingMarkArrived] = useState<{ itemId: string } | null>(null);
   const [pendingEditItem, setPendingEditItem] = useState<boolean>(false);
-  const [pendingProdStatus, setPendingProdStatus] = useState<{ itemId: string; status: 'pending' | 'in_progress' | 'finished' } | null>(null);
+  const [pendingProdStatus, setPendingProdStatus] = useState<{ itemId: string; status: 'pending' | 'in_progress' | 'finished'; estimatedProductionDays?: number } | null>(null);
   const [pendingEnRouteStatus, setPendingEnRouteStatus] = useState<{ itemId: string; status: 'not_yet' | 'en_route' | 'arrived'; estimatedArrivalDays?: number | null } | null>(null);
   const [pendingManualItem, setPendingManualItem] = useState<boolean>(false);
   const [otpModal, setOtpModal] = useState<{
@@ -1308,7 +1308,17 @@ function ItemTrackingSection({
   }
 
   function handleItemProductionStatus(itemId: string, status: 'pending' | 'in_progress' | 'finished') {
-    setPendingProdStatus({ itemId, status });
+    // When starting production, prompt for estimated production days
+    if (status === 'in_progress') {
+      const item = items.find((i) => i.id === itemId);
+      const input = window.prompt(`Estimated production days for "${item?.name ?? 'Item'}"?`, item?.estimated_production_days?.toString() ?? '30');
+      if (input === null) return;
+      const days = parseInt(input.replace(/[^0-9]/g, ''), 10);
+      if (!days || days <= 0) { alert('Please enter a valid number of production days.'); return; }
+      setPendingProdStatus({ itemId, status, estimatedProductionDays: days });
+    } else {
+      setPendingProdStatus({ itemId, status });
+    }
     const statusLabel = status === 'in_progress' ? 'Start Production' : status === 'finished' ? 'Finish Production' : 'Reset to Pending';
     setOtpModal({
       open: true,
@@ -1320,10 +1330,14 @@ function ItemTrackingSection({
 
   async function executeItemProductionStatus(actionToken: string) {
     if (!pendingProdStatus) return;
-    const { itemId, status } = pendingProdStatus;
+    const { itemId, status, estimatedProductionDays } = pendingProdStatus;
     setUpdatingItemId(itemId);
     try {
-      await updateOrderItem(orderId, itemId, { production_status: status, action_token: actionToken });
+      await updateOrderItem(orderId, itemId, {
+        production_status: status,
+        ...(estimatedProductionDays != null ? { estimated_production_days: estimatedProductionDays } : {}),
+        action_token: actionToken,
+      });
       const res = await getOrderItems(orderId);
       if (res.ok) setItems(res.items);
       const compRes = await getItemCompletion(orderId);
@@ -1565,7 +1579,8 @@ function ItemTrackingSection({
               min="1"
               value={form.estimated_production_days}
               onChange={(e) => setForm({ ...form, estimated_production_days: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              disabled={form.production_status === 'pending'}
+              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="days"
             />
           </label>

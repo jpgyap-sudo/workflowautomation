@@ -13,7 +13,7 @@ import {
   extractInventoryImage,
   bulkUploadInventory,
   updateInventoryDraft,
-  approveInventoryDraft,
+  approveSelectedInventoryDrafts,
   approveAllInventoryDrafts,
   rejectInventoryDraft,
   clearProcessedDrafts,
@@ -377,9 +377,7 @@ export default function InventoryPage() {
     setApproving(true);
     setDraftError('');
     try {
-      for (const id of selectedDrafts) {
-        await approveInventoryDraft(id, actionToken);
-      }
+      await approveSelectedInventoryDrafts(Array.from(selectedDrafts), actionToken);
       mutateDrafts();
       mutateItems();
       setSelectedDrafts(new Set());

@@ -473,7 +473,7 @@ function MatchCard({ order, item, suggestedMatch, suggestedScore, onConfirm, con
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selectedMatch, setSelectedMatch] = useState<InventoryItem | null>(suggestedMatch);
+  const [selectedMatch, setSelectedMatch] = useState<InventoryItem | null>(null);
   const [searchTab, setSearchTab] = useState<'all' | 'name' | 'description'>('all');
 
   // Debounced search
@@ -655,7 +655,7 @@ function MatchCard({ order, item, suggestedMatch, suggestedScore, onConfirm, con
       )}
 
       {/* Confirm match button */}
-      {selectedMatch && selectedMatch.id !== suggestedMatch?.id && (
+      {selectedMatch && (
         <div className="mt-2 ml-5">
           <button
             onClick={handleConfirm}

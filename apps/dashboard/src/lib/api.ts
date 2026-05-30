@@ -1640,6 +1640,13 @@ export async function approveInventoryDraft(id: string, actionToken?: string): P
   });
 }
 
+export async function approveSelectedInventoryDrafts(ids: string[], actionToken: string): Promise<{ ok: boolean; approved_count: number; items: InventoryItem[] }> {
+  return fetchJson('/inventory/drafts/approve-selected', {
+    method: 'POST',
+    body: JSON.stringify({ ids, action_token: actionToken }),
+  });
+}
+
 export async function approveAllInventoryDrafts(actionToken?: string): Promise<{ ok: boolean; approved_count: number; items: InventoryItem[] }> {
   return fetchJson('/inventory/drafts/approve-all', {
     method: 'POST',
