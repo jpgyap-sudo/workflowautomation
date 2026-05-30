@@ -21,6 +21,7 @@ const GEMINI_KEYS = [
   process.env.GEMINI_API_KEY   ?? '',
   process.env.GEMINI_API_KEY_2 ?? '',
   process.env.GEMINI_API_KEY_3 ?? '',
+  process.env.GEMINI_API_KEY_4 ?? '',
 ].filter(Boolean);
 const HERMES_MODEL = process.env.HERMES_MODEL ?? 'gemini-2.0-flash';
 const HERMES_TIMEOUT_MS = parseInt(process.env.HERMES_TIMEOUT_MS ?? '30000', 10);
