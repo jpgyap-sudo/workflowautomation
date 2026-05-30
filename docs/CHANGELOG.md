@@ -70,8 +70,14 @@
   | `5e1a4d9` | Roo (Code) | fix: QTN-MNDesign itemized arrival → verification gap (part 1) — advanceFromEnRouteToVerificationIfAllDispatched required allFinished (production_status === 'finished') in addition to allDispatched. In itemized progression, items can be dispatched before all are finished production, blocking the en_route → en_route_verification transition. Removed the allFinished check — only allDispatched is required. | ✅ VPS `5e1a4d9` |
   | `f2b6a9d` | Roo (Code) | fix: QTN-MNDesign itemized arrival → verification gap (part 2) — advanceToEnRouteIfAllDispatched also required allFinished, blocking orders in partial_production from advancing to en_route. Since the order never reaches en_route, the part 1 fix (advanceFromEnRouteToVerificationIfAllDispatched) could never trigger. Removed the allFinished check — only allDispatched is required. | ✅ VPS `f2b6a9d` |
   | | Roo (Code) | fix: remove all UI restrictions blocking itemized progression — order detail page: stageAllowsEnRouteEdit and stageShowsArrivalCols now always true (en-route buttons + arrival columns visible for any stage). Production tab: isEnRoute and isArrivalTracking now always true (en-route buttons + arrival tracking buttons visible for any stage). Server-side auto-advance chain already fixed in commits 5e1a4d9 and f2b6a9d. | ✅ VPS |
- 
- ## 2026-05-26
+  
+  ## 2026-05-30
+  
+  | Commit | Extension | Description | Deployed |
+  |--------|-----------|-------------|----------|
+  | | Roo (Code) | feat: add inventory_verification stage to delivery tab with "Complete Partial Verification" button — allows orders in inventory_verification stage to appear in delivery tab. Clicking the button calls completeInventoryVerificationPartial (existing endpoint) which advances to inventory_arrived with partial delivery enabled. The order then appears in the existing Inventory Arrived section for balance payment and delivery scheduling. | 🔴 Deploying |
+  
+  ## 2026-05-26
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|

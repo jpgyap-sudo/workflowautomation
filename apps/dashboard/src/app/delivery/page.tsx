@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -166,6 +166,7 @@ function DeliveryInfo({ order }: { order: Order }) {
 }
 
 export default function DeliveryPage() {
+  const { data: inventoryVerificationOrders = [], isLoading: loadingInventoryVerification, mutate: mutateInventoryVerification } = useOrdersByStage('inventory_verification');
   const { data: inventoryArrivedOrders = [], isLoading: loadingInventory, mutate: mutateInventory } = useOrdersByStage('inventory_arrived');
   const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, mutate: mutateBalanceDue } = useOrdersByStage('balance_due');
   const { data: balanceVerificationOrders = [], isLoading: loadingBalanceVerification, mutate: mutateBalanceVerification } = useOrdersByStage('balance_verification');
@@ -177,7 +178,7 @@ export default function DeliveryPage() {
   const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, mutate: mutatePaymentConfirmed } = useOrdersByStage('payment_confirmed');
   const { data: stockPrepOrders = [], isLoading: loadingStockPrep, mutate: mutateStockPrep } = useOrdersByStage('stock_preparation');
 
-  const loading = loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingStockPrep;
+  const loading = loadingInventoryVerification && loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingStockPrep;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -195,7 +196,7 @@ export default function DeliveryPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered' | 'recordDeposit';
+    pendingAction: 'edit' | 'delete' | 'mark_delivered' | 'mark_countered' | 'advance_balance_due' | 'schedule_delivery' | 'cancel_schedule' | 'record_payment' | 'complete_directly' | 'verify_balance' | 'advance_payment_received' | 'advance_payment_confirmed' | 'mark_payment_received' | 'mark_payment_confirmed' | 'confirmPayment' | 'partial_delivery' | 'special_case' | 'payment_counter' | 'verify_countered' | 'recordDeposit' | 'complete_inventory_verification_partial';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
   
   // Track which orders have been verified as countered (to hide "Verify Countered" button)
@@ -266,7 +267,7 @@ export default function DeliveryPage() {
   });
 
   function mutateAll() {
-    mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
+    mutateInventoryVerification(); mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
   }
 
   // ── Client filter ──────────────────────────────────────────────────────
@@ -1181,6 +1182,7 @@ export default function DeliveryPage() {
       return;
     }
     if (otpModal.pendingAction === 'partial_delivery') { handlePartialDeliveryOtp(actionToken); return; }
+    if (otpModal.pendingAction === 'complete_inventory_verification_partial') { handleCompleteInventoryVerificationPartialOtp(actionToken); return; }
     if (otpModal.pendingAction === 'special_case') {
       const pending = (window as any).__pendingActionOrder as Order | undefined;
       if (pending) executeSpecialCase(pending, actionToken);
@@ -1259,6 +1261,34 @@ export default function DeliveryPage() {
     } catch (err: any) {
       alert('Failed to record partial delivery: ' + (err.message ?? 'Unknown error'));
       setPartialDeliveryModal((prev) => ({ ...prev, submitting: false }));
+    }
+  }
+
+  // ── Complete Inventory Verification Partial (from delivery tab) ────────────
+
+  function handleCompleteInventoryVerificationPartial(order: Order) {
+    (window as any).__pendingActionOrder = order;
+    setOtpModal({
+      open: true,
+      title: 'Complete Partial Inventory Verification',
+      description: `Advance order ${order.quotation_number ?? order.id.slice(0, 8)} to Inventory Arrived with partial delivery enabled. Verified items will be available for delivery.`,
+      pendingAction: 'complete_inventory_verification_partial',
+    });
+  }
+
+  async function handleCompleteInventoryVerificationPartialOtp(actionToken: string) {
+    const order = (window as any).__pendingActionOrder as Order | undefined;
+    if (!order) return;
+    (window as any).__pendingActionOrder = null;
+    setActionLoading(order.id);
+    try {
+      const result = await completeInventoryVerificationPartial(order.id, actionToken);
+      alert(result.message);
+      mutateAll();
+    } catch (err: any) {
+      alert('Failed to complete partial inventory verification: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setActionLoading(null);
     }
   }
 
@@ -1637,6 +1667,7 @@ export default function DeliveryPage() {
   }
 
   // ── Apply client filter ──────────────────────────────────────────────
+  const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
   const filteredBalanceDueOrders = filterByClient(balanceDueOrders);
   const filteredBalanceVerificationOrders = filterByClient(balanceVerificationOrders);
@@ -1648,7 +1679,7 @@ export default function DeliveryPage() {
   const filteredPaymentConfirmedOrders = filterByClient(paymentConfirmedOrders);
   const filteredStockPrepOrders = filterByClient(stockPrepOrders);
 
-  if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
+  if (loading && inventoryVerificationOrders.length === 0 && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
@@ -1796,6 +1827,62 @@ export default function DeliveryPage() {
                         title="Advance to Balance Due"
                       >
                         {actionLoading === order.id ? '…' : 'Balance Due →'}
+                      </button>
+                      <RowActions order={order} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Inventory Verification (Partial Delivery) ──────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <ListChecks className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-base font-semibold text-gray-800">Inventory Verification</h2>
+          <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+            {filteredInventoryVerificationOrders.length}
+          </span>
+        </div>
+        {filteredInventoryVerificationOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No orders awaiting inventory verification</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filteredInventoryVerificationOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleCompleteInventoryVerificationPartial(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+                        title="Complete partial verification and advance to Inventory Arrived"
+                      >
+                        {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
                       </button>
                       <RowActions order={order} />
                     </div>

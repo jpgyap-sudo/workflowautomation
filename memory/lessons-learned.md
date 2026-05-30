@@ -14045,3 +14045,141 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: QTN-MNDesign itemized arrival -> verification gap — advanceFromEnRouteToVerificationIfAllDispatched required allFin
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5e1a4d968923383179bb68aaa5b991ee8b546fa4
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5e1a4d968923383179bb68aaa5b991ee8b546fa4
+**Files:** apps/api/src/server.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+A bug blocking the transition from `en_route` to `en_route_verification` in itemized arrival workflows. The system incorrectly required all items to have `production_status === 'finished'` before allowing the transition.
+
+**Why it broke:**  
+In itemized progression, items can be dispatched (set to `en_route`) before their production is fully finished. The condition `allFinished` was added alongside `allDispatched`, creating a false dependency. This prevented valid transitions when items were dispatched but not yet finished.
+
+**Reusable takeaway:**  
+When modeling state transitions in itemized workflows, ensure each transition depends only on the state it logically requires. Avoid conflating independent statuses (e.g., production finished vs. dispatched). A transition from `en_route` to verification should only check that all items are dispatched — not that they are finished production. Over-constraining transitions with unrelated checks creates false blocking conditions.
+
+---
+*Original commit message: fix: QTN-MNDesign itemized arrival -> verification gap — advanceFromEnRouteToVerificationIfAllDispatched required allFinished (production_status === 'finished') in addition to allDispatched. In itemized progression, items can be dispatched before all are finished production, blocking the en_route -> en_route_verification transition. Removed the allFinished check — only allDispatched is required.*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug blocking the transition from `en_route` to `en_route_verification` in itemized arrival workflows. The system incorrectly required all items to have `production_status === 'finished'` before allowing the transition.
+
+**Why it broke:**  
+In itemized progression, items can be dispatched (set to `en_route`) before their production is fully finished. The condition `allFinished` was added alongside `allDispatched`, creating a false dependency. This prevented valid transitions when items were dispatched but not yet finished.
+
+**Reusable takeaway:**  
+When modeling state transitions in itemized workflows, ensure each transition depends only on the state it logically requires. Avoid conflating independent statuses (e.g., production finished vs. dispatched). A transition from `en_route` to verification should only check that all items are dispatched — not that they are finished production. Over-constraining transitions with unrelated checks creates false blocking conditions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: QTN-MNDesign itemized arrival → verification gap (part 2) — advanceToEnRouteIfAllDispatched also required allFinish
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f2b6a9d1ba52898cd848a08b3cb070a83cd0e552
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f2b6a9d1ba52898cd848a08b3cb070a83cd0e552
+**Files:** apps/api/src/server.ts,docs/BUG_LOG.md,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where itemized orders in `partial_production` state could not advance to `en_route`, blocking the subsequent transition to `verification`.
+
+**Why it broke:**  
+The method `advanceToEnRouteIfAllDispatched` incorrectly required both `allDispatched` and `allFinished` conditions. Orders in `partial_production` had `allDispatched` true but `allFinished` false, so they never reached `en_route`. This prevented Part 1's fix (`advanceFromEnRouteToVerificationIfAllDispatched`) from ever triggering.
+
+**Reusable takeaway:**  
+When chaining state transitions, ensure each step's guard condition only checks the prerequisite for that specific transition—not downstream requirements. Over-constraining early steps can create unreachable states. Validate that each condition is minimal and necessary for its own transition, not inherited from later steps.
+
+---
+*Original commit message: fix: QTN-MNDesign itemized arrival → verification gap (part 2) — advanceToEnRouteIfAllDispatched also required allFinished, blocking orders in partial_production from advancing to en_route. Since the order never reaches en_route, part 1's fix (advanceFromEnRouteToVerificationIfAllDispatched) could never trigger. Removed the allFinished check — only allDispatched is required.*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where itemized orders in `partial_production` state could not advance to `en_route`, blocking the subsequent transition to `verification`.
+
+**Why it broke:**  
+The method `advanceToEnRouteIfAllDispatched` incorrectly required both `allDispatched` and `allFinished` conditions. Orders in `partial_production` had `allDispatched` true but `allFinished` false, so they never reached `en_route`. This prevented Part 1's fix (`advanceFromEnRouteToVerificationIfAllDispatched`) from ever triggering.
+
+**Reusable takeaway:**  
+When chaining state transitions, ensure each step's guard condition only checks the prerequisite for that specific transition—not downstream requirements. Over-constraining early steps can create unreachable states. Validate that each condition is minimal and necessary for its own transition, not inherited from later steps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove all UI restrictions blocking itemized progression
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 0fd7c4fff7831e2d27277bda6d60ccf918ebf282
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 0fd7c4fff7831e2d27277bda6d60ccf918ebf282
+**Files:** apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/production/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** Removed UI restrictions that prevented itemized progression (e.g., step-by-step order fulfillment) in the dashboard’s order and production pages.
+
+**Why it broke:** The original UI logic imposed blocking conditions (likely validation or state checks) that halted progression when items were processed individually, rather than allowing granular, item-level advancement.
+
+**Reusable takeaway:** When designing workflow UIs, avoid monolithic blocking conditions that treat an order as a single unit. Instead, support itemized progression by decoupling state checks per line item. This prevents unnecessary halts and enables flexible, partial fulfillment. Always test edge cases where individual items may be processed out of sequence.
+
+---
+*Original commit message: fix: remove all UI restrictions blocking itemized progression*
+
+#### Lesson Learned
+
+**What was fixed:** Removed UI restrictions that prevented itemized progression (e.g., step-by-step order fulfillment) in the dashboard’s order and production pages.
+
+**Why it broke:** The original UI logic imposed blocking conditions (likely validation or state checks) that halted progression when items were processed individually, rather than allowing granular, item-level advancement.
+
+**Reusable takeaway:** When designing workflow UIs, avoid monolithic blocking conditions that treat an order as a single unit. Instead, support itemized progression by decoupling state checks per line item. This prevents unnecessary halts and enables flexible, partial fulfillment. Always test edge cases where individual items may be processed out of sequence.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
