@@ -35,6 +35,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `476a167` | Roo (Code) | feat: item-level selection in Delivery Pending section for itemized delivery scheduling — added onScheduleSelected/onScheduleAll props to DeliveryItemSection, scheduleDeliveryItems API function, POST /orders/:id/schedule-items server endpoint, converted Delivered section to use DeliveryItemSection with item-level expansion for partial delivery | ✅ VPS `476a167` |
+| `4fd65ac` | Roo (Code) | fix: update default password from Purchasing888 to Purchasing@888 for jpgyap@gmail.com and maiquocquynh2506@gmail.com accounts | 🔴 Pending |
 
 ## 2026-05-28
 
