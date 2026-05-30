@@ -14845,3 +14845,51 @@ Always validate external links in documentation after domain changes, migrations
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: item-level tracking gaps — new pending items revert order to partial_production, disable prod est when pending, pro
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 97f6240c5ed8898d8b55c76a48a8c1d155759b81
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 97f6240c5ed8898d8b55c76a48a8c1d155759b81
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/orders/[quotationNumber]/page.tsx,apps/dashboard/src/app/stock-prep/page.tsx,apps/dashboard/src/lib/api.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Item-level tracking gaps where new pending items incorrectly retained a `partial_production` status, production estimates were shown for pending items, and production days weren't prompted when starting a new item.
+
+**Why it broke:**  
+The system allowed pending items to inherit or maintain `partial_production` status instead of resetting to a neutral state. Production estimates were computed without checking if the item was still pending, and the start workflow didn't enforce a production days input.
+
+**Reusable takeaway:**  
+When adding new pending items to a tracked workflow, always reset their status to a clean default (e.g., `pending`), disable downstream calculations (like estimates) until the item is active, and require all prerequisite inputs (e.g., production days) before allowing the item to move forward. This prevents stale or premature state transitions.
+
+---
+*Original commit message: fix: item-level tracking gaps — new pending items revert order to partial_production, disable prod est when pending, prompt for production days on start*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Item-level tracking gaps where new pending items incorrectly retained a `partial_production` status, production estimates were shown for pending items, and production days weren't prompted when starting a new item.
+
+**Why it broke:**  
+The system allowed pending items to inherit or maintain `partial_production` status instead of resetting to a neutral state. Production estimates were computed without checking if the item was still pending, and the start workflow didn't enforce a production days input.
+
+**Reusable takeaway:**  
+When adding new pending items to a tracked workflow, always reset their status to a clean default (e.g., `pending`), disable downstream calculations (like estimates) until the item is active, and require all prerequisite inputs (e.g., production days) before allowing the item to move forward. This prevents stale or premature state transitions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
