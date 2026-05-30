@@ -42,6 +42,7 @@
 | `07fc046` | Roo (Code) | fix: "Start Production Workflow" button does nothing on purchasing page — ConfirmModal called onVerified() then onClose() synchronously; onClose cleared window.__pendingStartProductionWorkflowData before handleStartProductionWorkflowVerified could read it. Removed onClose() from ConfirmModal handleConfirm since all page-level handlers close the modal themselves | ✅ VPS `07fc046` |
 | `a6b5bab` | Roo (Code) | perf: pre-fetch action token when ConfirmModal opens — useEffect fetches token while user reads description, stored in useRef for instant use on Confirm click. Falls back to synchronous fetch if user clicks before fetch completes | ✅ VPS `a6b5bab` |
 | `3ab2ce3` | Roo (Code) | fix: "No items found" in Delivered section after partial delivery — extracted DeliveryItemSection from nested function component to separate file to prevent React unmount/remount on parent re-render. Fixed RowActions nested component (now accepts onEdit/onDelete as props). Fixed handlePartialDeliveryOtp stale closure bug (now reads from window.__pendingPartialDeliveryData). Added partial_delivery, partial_delivery_notes to ORDER_LIST_SELECT | ✅ VPS `3ab2ce3` |
+| | Roo (Code) | feat: "Complete Order" button on Delivered section — onCompleteOrder prop on DeliveryItemSection, handleCompleteOrder + executeCompleteDirectly wired, complete_directly dispatch in handleConfirmVerified. Fixed syntax error in executeCompleteDirectly (missing finally block closing brace) | ❌ |
 
 ## 2026-05-28
 

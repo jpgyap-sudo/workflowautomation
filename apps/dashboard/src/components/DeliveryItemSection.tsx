@@ -135,6 +135,7 @@ export interface DeliveryItemSectionProps {
   onViewFiles?: (order: Order) => void;
   onEdit?: (order: Order) => void;
   onDelete?: (order: Order) => void;
+  onCompleteOrder?: (order: Order) => void;
   actionLoading?: string | null;
 }
 
@@ -147,7 +148,7 @@ export default function DeliveryItemSection({
   onScheduleDelivery, onScheduleSelected, onScheduleAll,
   schedulingOrderId, scheduleDate, scheduleRemarks,
   onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
-  onViewFiles, onEdit, onDelete,
+  onViewFiles, onEdit, onDelete, onCompleteOrder,
   actionLoading,
 }: DeliveryItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -241,6 +242,16 @@ export default function DeliveryItemSection({
                   </div>
                   <div className="flex items-center gap-3">
                     <StageBadge stage={order.current_stage} />
+                    {onCompleteOrder && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCompleteOrder(order); }}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+                        title="Manually complete this order"
+                      >
+                        {actionLoading === order.id ? '…' : 'Complete Order'}
+                      </button>
+                    )}
                     <div className="flex items-center gap-1">
                       {onEdit && (
                         <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}

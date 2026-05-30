@@ -919,6 +919,16 @@ export default function DeliveryPage() {
     }
   }
 
+  function handleCompleteOrder(order: Order) {
+    (window as any).__pendingCompleteData = { order };
+    setConfirmModal({
+      open: true,
+      title: 'Complete Order',
+      description: `Manually mark order ${order.quotation_number ?? '—'} (${order.client_name ?? 'Unknown'}) as completed? This will advance it from delivered to completed.`,
+      pendingAction: 'complete_directly',
+    });
+  }
+
   // ── Verify Balance (balance_verification → delivery_pending) ────────────
 
   function handleVerifyBalance(order: Order) {
@@ -1197,6 +1207,7 @@ export default function DeliveryPage() {
       else if (confirmModal.pendingAction === 'complete_directly') {
         const pending = (window as any).__pendingCompleteData as { order: Order } | undefined;
         if (pending) executeCompleteDirectly(pending.order, actionToken);
+        (window as any).__pendingCompleteData = null;
       }
       else if (confirmModal.pendingAction === 'cancel_schedule' && order) { executeCancelSchedule(order, actionToken); }
       else if (confirmModal.pendingAction === 'mark_payment_received' && order) { executeMarkPaymentReceived(order, actionToken); }
@@ -1878,6 +1889,7 @@ export default function DeliveryPage() {
         onViewFiles={handleViewFiles}
         onEdit={setEditingOrder}
         onDelete={handleDeleteClick}
+        onCompleteOrder={handleCompleteOrder}
         actionLoading={actionLoading}
       />
 

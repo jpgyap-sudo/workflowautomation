@@ -14501,3 +14501,109 @@ When a modal triggers an async action (like starting a workflow), ensure the act
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: DeliveryItemSection nested component anti-pattern — extracted to separate file, fixed RowActions stale closure, fix
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 3ab2ce32d3ee71652a9a17c0d99159ec8986c3c1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 3ab2ce32d3ee71652a9a17c0d99159ec8986c3c1
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/components/DeliveryItemSection.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Engineering Lesson: Avoid Nested Component Anti-Patterns and Stale Closures**
+
+**What was fixed:**  
+- Extracted a nested `DeliveryItemSection` component to a separate file.  
+- Fixed stale closures in `RowActions` and `handlePartialDeliveryOtp`.  
+- Added `partial_delivery` fields to `ORDER_LIST_SELECT`.
+
+**Why it broke:**  
+- Nested components inside other components caused re-creation on every render, breaking React’s reconciliation and causing stale closures (capturing outdated state/props).  
+- Missing `partial_delivery` fields in the query led to incomplete data for the OTP flow.
+
+**Reusable takeaway:**  
+- **Never define components inside other components** — extract them to separate files to avoid re-mounting and stale closures.  
+- **Always verify that all required fields are selected in GraphQL queries** when adding new features.  
+- **Stale closures** occur when callbacks capture old state; use `useCallback` with proper dependencies or extract logic to avoid inline definitions.  
+- **Separate concerns** — keep components, queries, and handlers modular for testability and maintainability.
+
+---
+*Original commit message: fix: DeliveryItemSection nested component anti-pattern — extracted to separate file, fixed RowActions stale closure, fixed handlePartialDeliveryOtp stale closure, added partial_delivery fields to ORDER_LIST_SELECT*
+
+#### Lesson Learned
+
+**Engineering Lesson: Avoid Nested Component Anti-Patterns and Stale Closures**
+
+**What was fixed:**  
+- Extracted a nested `DeliveryItemSection` component to a separate file.  
+- Fixed stale closures in `RowActions` and `handlePartialDeliveryOtp`.  
+- Added `partial_delivery` fields to `ORDER_LIST_SELECT`.
+
+**Why it broke:**  
+- Nested components inside other components caused re-creation on every render, breaking React’s reconciliation and causing stale closures (capturing outdated state/props).  
+- Missing `partial_delivery` fields in the query led to incomplete data for the OTP flow.
+
+**Reusable takeaway:**  
+- **Never define components inside other components** — extract them to separate files to avoid re-mounting and stale closures.  
+- **Always verify that all required fields are selected in GraphQL queries** when adding new features.  
+- **Stale closures** occur when callbacks capture old state; use `useCallback` with proper dependencies or extract logic to avoid inline definitions.  
+- **Separate concerns** — keep components, queries, and handlers modular for testability and maintainability.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: mark DeliveryItemSection fix as deployed (3ab2ce3)
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit fe7f22b9b11746f11454efd70cf2a94c645f70e1
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** fe7f22b9b11746f11454efd70cf2a94c645f70e1
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:** A bug in `DeliveryItemSection` where certain delivery items were not displaying correctly in the UI.
+
+**Why it broke:** The root cause was a mismatch between the data structure expected by the frontend component and the actual data returned by the backend API. Specifically, the `DeliveryItemSection` component assumed a flat list of items, but the backend started returning nested or grouped data after a schema change, causing rendering failures.
+
+**Reusable takeaway:** Always validate frontend assumptions against backend data contracts, especially after schema changes. Use explicit data shape validation (e.g., TypeScript types or runtime checks) at the component boundary to catch mismatches early. When updating APIs, coordinate frontend and backend changes in the same release cycle to avoid silent breakage.
+
+---
+*Original commit message: docs: mark DeliveryItemSection fix as deployed (3ab2ce3)*
+
+#### Lesson Learned
+
+**What was fixed:** A bug in `DeliveryItemSection` where certain delivery items were not displaying correctly in the UI.
+
+**Why it broke:** The root cause was a mismatch between the data structure expected by the frontend component and the actual data returned by the backend API. Specifically, the `DeliveryItemSection` component assumed a flat list of items, but the backend started returning nested or grouped data after a schema change, causing rendering failures.
+
+**Reusable takeaway:** Always validate frontend assumptions against backend data contracts, especially after schema changes. Use explicit data shape validation (e.g., TypeScript types or runtime checks) at the component boundary to catch mismatches early. When updating APIs, coordinate frontend and backend changes in the same release cycle to avoid silent breakage.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
