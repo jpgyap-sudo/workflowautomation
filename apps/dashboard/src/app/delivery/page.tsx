@@ -2560,7 +2560,7 @@ export default function DeliveryPage() {
                   ) : (
                     <div className="space-y-2">
                       {partialDeliveryModal.items.map((item) => {
-                        const canDeliver = !item.fully_delivered && item.verified_qty > 0;
+                        const canDeliver = !item.fully_delivered && (item.verified_qty > 0 || Number(item.quantity) > 0);
                         const isSelected = partialDeliveryModal.selectedItemIds.has(item.id);
                         return (
                           <div
