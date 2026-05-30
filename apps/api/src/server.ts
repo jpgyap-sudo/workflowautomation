@@ -4887,7 +4887,9 @@ app.post('/orders/:id/partial-delivery', async (request, reply) => {
   for (const item of items) {
     const verified = Number(item.verified_qty ?? 0);
     const alreadyDelivered = Number(item.delivered_qty ?? 0);
-    const maxDeliverable = Math.max(0, verified - alreadyDelivered);
+    // If verified_qty is 0 (e.g. items added after inventory verification), fall back to full quantity
+    const deliverableQty = verified > 0 ? verified : Number(item.quantity ?? 0);
+    const maxDeliverable = Math.max(0, deliverableQty - alreadyDelivered);
 
     if (maxDeliverable <= 0) {
       deliveryResults.push({

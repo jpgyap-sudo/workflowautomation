@@ -211,7 +211,11 @@ export default function DeliveryItemSection({
           {orders.map((order) => {
             const isExpanded = expandedOrderId === order.id;
             const orderItems = itemsByOrder[order.id] ?? [];
-            const deliverableItems = orderItems.filter((i) => !i.fully_delivered && i.verified_qty > 0);
+            const deliverableItems = orderItems.filter((i) => {
+              if (i.fully_delivered) return false;
+              // Items with verified_qty=0 (e.g. added after inventory verification) are still deliverable
+              return i.verified_qty > 0 || Number(i.quantity) > 0;
+            });
             const hasDeliverableItems = deliverableItems.length > 0;
             const orderSelected = selectedItemIds[order.id] ?? new Set<string>();
             const allSelected = deliverableItems.length > 0 && deliverableItems.every((i) => orderSelected.has(i.id));
@@ -365,7 +369,7 @@ export default function DeliveryItemSection({
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                               {orderItems.map((item) => {
-                                const canDeliver = !item.fully_delivered && item.verified_qty > 0;
+                                const canDeliver = !item.fully_delivered && (item.verified_qty > 0 || Number(item.quantity) > 0);
                                 const isChecked = orderSelected.has(item.id);
                                 return (
                                   <tr

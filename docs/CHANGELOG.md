@@ -30,6 +30,12 @@
 | `11685ce` | Roo (Code) | feat: partial production finish, partial dispatch, partial en-route arrival — 3 new API endpoints (complete-production-partial, complete-dispatch-partial, complete-arrival-partial), API client functions, "Complete (Partial)" buttons in OrderRow and ProductionItemSection, OTP handlers, wired into all relevant production sections | ✅ VPS `11685ce` |
 | `420dde7` | Roo (Code) | feat: Special Case on Balance Due — new "Special Case" button on balance_due orders (non-exception) that skips balance payment and advances to countered → payment_received → payment_confirmed → completed. Migration 043 adds special_case columns + payment_counter table. Server: POST /orders/special-case, POST/GET /orders/:id/payment-counter endpoints. Dashboard: Special Case button, Countered section (between Delivered and Payment Received), Payment Counter modal (invoice status, dates, file uploads). Guard added for balance_due → countered requiring special_case or delivery_exception. | ❌ |
 
+## 2026-05-31
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
+| | Roo (Code) | fix: delivery buttons missing for items with verified_qty=0 — items added via item-level tracking after inventory verification had verified_qty=0, making them invisible to delivery UI. Fixed deliverableItems filter, canDeliver check, handleOpenPartialDelivery selectedItemIds filter, and API maxDeliverable calculation to fall back to quantity when verified_qty is 0 | ❌ |
+
 ## 2026-05-30
 
 | Commit | Extension | Description | Deployed |
@@ -46,6 +52,7 @@
 | `4eefb59` | Roo (Code) | fix: all 6 gap fixes — GAP 1: handleConfirmVerified uses ConfirmModal pre-fetched token (9 pages: bugs, agents, clients, calendar, inventory, purchasing, production, collection, stock-prep). GAP 2: executeCompleteDirectly dynamic remarks based on balance_paid. GAP 3: completed_at=NOW() on orders table when stage transitions to completed. GAP 4: OpenAI chat fallback in chatService (Gemini→OpenRouter→OpenAI). GAP 5: ConfirmModal shows "Preparing confirmation…" text while pre-fetching token. GAP 6: OpenAI vision fallback errors captured in errors array | ✅ VPS `4eefb59` |
 | `2151176` | Roo (Code) | fix: Telegram vision extraction link uses wrong domain — DASHBOARD_BASE_URL fallback was 'http://localhost:3000' instead of 'https://track.abcx124.xyz' at bot.ts lines 7329 and 8719. Fixed both fallbacks. Added DASHBOARD_BASE_URL to VPS .env and .env.example | ✅ VPS `2151176` |
 | `87dfa8a` | Roo (Code) | feat: manual revert button with OTP on all stage pipeline sections — POST /stage-updates/revert endpoint with REVERSE_TRANSITIONS, delivered/completed/countered cleanup, inventory restoration, reminder management, Telegram notifications. revertStage API function. Revert button (ArrowLeft, red, OTP-protected) on: delivery (RowActions ×8 + DeliveryItemSection ×3), production (OrderRow), purchasing (OrderRow ×4), collection (renderOrderRow ×9), stock-prep (StockPrepCard), order detail page. Fix GAP: vision extraction now extracts projected_lead_time for Gantt chart sync. | ✅ VPS `87dfa8a` |
+| `97f6240` | Roo (Code) | fix: item-level tracking gaps — new items added after production_pending now revert order to partial_production; "Prod. Est." input disabled when production_status is 'pending'; production days prompt when marking item as in_progress from order detail page | ✅ VPS `97f6240` |
 
 ## 2026-05-28
 

@@ -1278,7 +1278,11 @@ export default function DeliveryPage() {
         summary: data.summary,
         selectedItemIds: new Set(
           data.items
-            .filter((item) => !item.fully_delivered && item.verified_qty > 0)
+            .filter((item) => {
+              if (item.fully_delivered) return false;
+              // Items with verified_qty=0 (e.g. added after inventory verification) are still deliverable
+              return item.verified_qty > 0 || Number(item.quantity) > 0;
+            })
             .map((item) => item.id)
         ),
         loading: false,
