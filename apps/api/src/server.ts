@@ -711,13 +711,15 @@ app.post('/auth/verify-action-code', async (request, reply) => {
 
 // ── Quick action token (no OTP required, for non-critical actions) ──
 app.post('/auth/generate-action-token', async (request, reply) => {
-  const { email, name } = z.object({ email: z.string().email(), name: z.string().optional() }).parse(request.body);
+  const body = request.body as Record<string, unknown> | undefined;
+  const email = typeof body?.email === 'string' && body.email.includes('@') ? body.email : 'dashboard_auto';
+  const name = typeof body?.name === 'string' ? body.name : 'dashboard';
   if (!cacheClient?.isOpen) {
     return reply.status(503).send({ error: 'Action verification unavailable' });
   }
   // Generate a short-lived action token (valid for 2 minutes)
   const actionToken = randomUUID();
-  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), name: name ?? null, verified: true }));
+  await cacheClient.setEx(`action_token:${actionToken}`, 120, JSON.stringify({ email: email.toLowerCase(), name, verified: true }));
   return reply.send({ ok: true, actionToken });
 });
 
