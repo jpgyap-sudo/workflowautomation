@@ -7011,6 +7011,104 @@ app.post('/stage-updates', async (request, reply) => {
   return { ok: true };
 });
 
+// ── Schedule Delivery for Specific Items (Itemized Progression) ───────
+// Allows scheduling delivery for selected items only, rather than the
+// entire order. Sets delivery_date on the order and marks the selected
+// items with a scheduled delivery status.
+
+app.post('/orders/:id/schedule-items', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = request.body as {
+    item_ids: string[];
+    delivery_date: string;
+    action_token?: string;
+    remarks?: string;
+  };
+
+  if (!body.item_ids || !Array.isArray(body.item_ids) || body.item_ids.length === 0) {
+    return reply.status(400).send({ error: 'item_ids must be a non-empty array' });
+  }
+  if (!body.delivery_date) {
+    return reply.status(400).send({ error: 'delivery_date is required' });
+  }
+
+  // Verify action token
+  let userEmail: string | null = null;
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    try {
+      const tokenPayload = JSON.parse(tokenData);
+      userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+    } catch { /* non-fatal */ }
+  }
+
+  const orders = await query(
+    `SELECT id, quotation_number, client_name, current_stage FROM orders WHERE id=$1`,
+    [id]
+  );
+  if (!orders[0]) return reply.code(404).send({ error: 'Order not found' });
+
+  const order = orders[0];
+
+  // Verify the items belong to this order
+  const itemRows = await query(
+    `SELECT id, name FROM order_items WHERE id = ANY($1::uuid[]) AND order_id = $2`,
+    [body.item_ids, id]
+  );
+  if (itemRows.length === 0) {
+    return reply.status(400).send({ error: 'None of the specified items belong to this order' });
+  }
+
+  // Set delivery_date on the order
+  await query(`UPDATE orders SET delivery_date=$1, updated_at=NOW() WHERE id=$2`, [body.delivery_date, id]);
+
+  // Record stage update for the order
+  const actorName = userEmail ?? 'dashboard';
+  const clientName = order?.client_name ?? null;
+  const itemNames = itemRows.map((r: any) => r.name).join(', ');
+  const remarks = body.remarks
+    ? `Scheduled delivery for items: ${itemNames}. ${body.remarks}`
+    : `Scheduled delivery for items: ${itemNames}`;
+
+  await query(
+    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by, client_name, actor_name)
+     VALUES ($1, 'delivery_scheduled', 'scheduled', $2, $3, $4, $5)`,
+    [id, remarks, 'dashboard', clientName, actorName]
+  );
+
+  // If order is not yet in delivery_scheduled stage, advance it
+  if (order.current_stage !== 'delivery_scheduled') {
+    await query(`UPDATE orders SET current_stage='delivery_scheduled', updated_at=NOW() WHERE id=$1`, [id]);
+  }
+
+  // Notify group chat
+  const targetChatId = process.env.DELIVERY_GROUP_CHAT_ID || process.env.GROUP_CHAT_ID;
+  if (targetChatId) {
+    setImmediate(() => {
+      notifyGroupChat(
+        targetChatId,
+        `📅 <b>Itemized Delivery Scheduled</b>\n\n` +
+        `Quotation: <b>${order.quotation_number}</b>\n` +
+        `Client: ${clientName ?? 'N/A'}\n` +
+        `Items: <b>${itemNames}</b>\n` +
+        `Delivery Date: <b>${body.delivery_date}</b>\n` +
+        `Updated by: ${actorName}\n\n` +
+        `Please check and prepare for delivery.`
+      );
+    });
+  }
+
+  return { ok: true, message: `Delivery scheduled for ${itemRows.length} item(s) on ${body.delivery_date}` };
+});
+
 // ── Payment Helpers ───────────────────────────────────────────────────
 // With the payments table (migration 030), orders can have multiple
 // deposit and balance payment records. These helpers compute running totals.

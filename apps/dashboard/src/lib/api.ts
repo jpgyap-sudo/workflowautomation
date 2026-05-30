@@ -726,6 +726,25 @@ export async function completeInventoryVerificationPartial(
   );
 }
 
+// ── Schedule Delivery for Specific Items ──────────────────────────────
+// Allows scheduling delivery for selected items only (itemized progression).
+
+export async function scheduleDeliveryItems(
+  id: string,
+  itemIds: string[],
+  deliveryDate: string,
+  actionToken: string,
+  remarks?: string
+): Promise<{ ok: boolean; message: string }> {
+  return fetchJson(
+    `/orders/${encodeURIComponent(id)}/schedule-items`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ item_ids: itemIds, delivery_date: deliveryDate, action_token: actionToken, remarks }),
+    }
+  );
+}
+
 // ── Partial Production Finish ──────────────────────────────────────────
 // Allows advancing from production stages to 'en_route' even when some
 // items are not yet finished.

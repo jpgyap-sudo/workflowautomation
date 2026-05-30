@@ -30,6 +30,12 @@
 | `11685ce` | Roo (Code) | feat: partial production finish, partial dispatch, partial en-route arrival — 3 new API endpoints (complete-production-partial, complete-dispatch-partial, complete-arrival-partial), API client functions, "Complete (Partial)" buttons in OrderRow and ProductionItemSection, OTP handlers, wired into all relevant production sections | ✅ VPS `11685ce` |
 | `420dde7` | Roo (Code) | feat: Special Case on Balance Due — new "Special Case" button on balance_due orders (non-exception) that skips balance payment and advances to countered → payment_received → payment_confirmed → completed. Migration 043 adds special_case columns + payment_counter table. Server: POST /orders/special-case, POST/GET /orders/:id/payment-counter endpoints. Dashboard: Special Case button, Countered section (between Delivered and Payment Received), Payment Counter modal (invoice status, dates, file uploads). Guard added for balance_due → countered requiring special_case or delivery_exception. | ❌ |
 
+## 2026-05-30
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
+| | Roo (Code) | feat: item-level selection in Delivery Pending section for itemized delivery scheduling — added onScheduleSelected/onScheduleAll props to DeliveryItemSection, scheduleDeliveryItems API function, POST /orders/:id/schedule-items server endpoint, converted Delivered section to use DeliveryItemSection with item-level expansion for partial delivery | ❌ |
+
 ## 2026-05-28
 
 | Commit | Extension | Description | Deployed |
@@ -75,7 +81,7 @@
   
   | Commit | Extension | Description | Deployed |
   |--------|-----------|-------------|----------|
-  | | Roo (Code) | feat: add inventory_verification stage to delivery tab with "Complete Partial Verification" button — allows orders in inventory_verification stage to appear in delivery tab. Clicking the button calls completeInventoryVerificationPartial (existing endpoint) which advances to inventory_arrived with partial delivery enabled. The order then appears in the existing Inventory Arrived section for balance payment and delivery scheduling. | 🔴 Deploying |
+  | | Roo (Code) | feat: add inventory_verification stage to delivery tab with "Complete Partial Verification" button — allows orders in inventory_verification stage to appear in delivery tab. Clicking the button calls completeInventoryVerificationPartial (existing endpoint) which advances to inventory_arrived with partial delivery enabled. The order then appears in the existing Inventory Arrived section for balance payment and delivery scheduling. | ✅ VPS (direct deploy) |
   
   ## 2026-05-26
 

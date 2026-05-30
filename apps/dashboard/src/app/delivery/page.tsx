@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
@@ -579,6 +579,18 @@ export default function DeliveryPage() {
     setScheduleRemarks('');
   }
 
+  /** Schedule Selected — stores item IDs and opens schedule form */
+  function handleScheduleSelected(order: Order, itemIds: string[]) {
+    (window as any).__pendingScheduleItemIds = itemIds;
+    handleOpenSchedule(order);
+  }
+
+  /** Schedule All — stores all deliverable items and opens schedule form */
+  function handleScheduleAll(order: Order) {
+    (window as any).__pendingScheduleItemIds = '__all__';
+    handleOpenSchedule(order);
+  }
+
   function handleScheduleSubmit(order: Order) {
     if (!scheduleDate.trim()) {
       alert('Please choose the delivery date and time.');
@@ -604,17 +616,24 @@ export default function DeliveryPage() {
     if (!pending) return;
 
     const { order, delivery_date, remarks } = pending;
+    const itemIds = (window as any).__pendingScheduleItemIds as string[] | string | undefined;
+    (window as any).__pendingScheduleItemIds = undefined;
 
     setActionLoading(order.id);
     try {
-      await recordStageUpdate({
-        quotation_number: order.quotation_number ?? '',
-        stage: 'delivery_scheduled',
-        status: 'scheduled',
-        remarks: remarks || delivery_date,
-        delivery_date,
-        action_token: actionToken,
-      });
+      // If specific items were selected, use the itemized scheduling endpoint
+      if (itemIds && itemIds !== '__all__' && Array.isArray(itemIds) && itemIds.length > 0) {
+        await scheduleDeliveryItems(order.id, itemIds, delivery_date, actionToken, remarks || undefined);
+      } else {
+        await recordStageUpdate({
+          quotation_number: order.quotation_number ?? '',
+          stage: 'delivery_scheduled',
+          status: 'scheduled',
+          remarks: remarks || delivery_date,
+          delivery_date,
+          action_token: actionToken,
+        });
+      }
       setSchedulingOrder(null);
       setScheduleDate('');
       setScheduleRemarks('');
@@ -1369,6 +1388,9 @@ export default function DeliveryPage() {
     onDeliverAll?: (order: Order) => void;
     /** Schedule mode — show Schedule Delivery form instead of deliver buttons */
     onScheduleDelivery?: (order: Order) => void;
+    /** Schedule selected mode — show checkboxes + "Schedule Selected" button */
+    onScheduleSelected?: (order: Order, itemIds: string[]) => void;
+    onScheduleAll?: (order: Order) => void;
     schedulingOrderId?: string | null;
     scheduleDate?: string;
     scheduleRemarks?: string;
@@ -1387,7 +1409,8 @@ export default function DeliveryPage() {
     icon, title, count, countBg, countText,
     orders, isLoading, emptyText,
     onDeliverItem, onDeliverSelected, onDeliverAll,
-    onScheduleDelivery, schedulingOrderId, scheduleDate, scheduleRemarks,
+    onScheduleDelivery, onScheduleSelected, onScheduleAll,
+    schedulingOrderId, scheduleDate, scheduleRemarks,
     onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
     onViewFiles, onEdit, onDelete,
     actionLoading,
@@ -1512,57 +1535,78 @@ export default function DeliveryPage() {
                         <p className="py-2 text-center text-xs text-gray-400">No items found for this order.</p>
                       ) : (
                         <div>
-                          {/* Toolbar: Schedule Delivery (pending section) OR Deliver Selected + Deliver All (scheduled section) */}
-                          {onScheduleDelivery ? (
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className="text-[11px] text-gray-400">Schedule this order before delivering items.</span>
+                        {/* Toolbar: Schedule Delivery (pending section) OR Schedule Selected (pending with checkboxes) OR Deliver Selected + Deliver All (scheduled section) */}
+                        {onScheduleDelivery && !onScheduleSelected ? (
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-[11px] text-gray-400">Schedule this order before delivering items.</span>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onScheduleDelivery(order); }}
+                              className="rounded-md border border-purple-300 bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 transition-colors"
+                            >
+                              📅 Schedule Delivery
+                            </button>
+                          </div>
+                        ) : (onScheduleSelected || onScheduleAll) ? (
+                          <div className="mb-2 flex items-center justify-end gap-2">
+                            {onScheduleSelected && orderSelected.size > 0 && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); onScheduleDelivery(order); }}
+                                onClick={(e) => { e.stopPropagation(); onScheduleSelected(order, Array.from(orderSelected)); }}
                                 className="rounded-md border border-purple-300 bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 transition-colors"
                               >
-                                📅 Schedule Delivery
+                                📅 Schedule Selected ({orderSelected.size})
                               </button>
-                            </div>
-                          ) : (onDeliverSelected || onDeliverAll) && (
-                            <div className="mb-2 flex items-center justify-end gap-2">
-                              {onDeliverSelected && orderSelected.size > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); onDeliverSelected(order, Array.from(orderSelected)); }}
-                                  className="rounded-md border border-amber-300 bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 transition-colors"
-                                >
-                                  🚚 Deliver Selected ({orderSelected.size})
-                                </button>
-                              )}
-                              {onDeliverAll && hasDeliverableItems && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); onDeliverAll(order); }}
-                                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
-                                >
-                                  🚚 Deliver All ({deliverableItems.length})
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          <div className="overflow-x-auto rounded-lg border border-gray-200">
-                            <table className="w-full text-left text-xs">
-                              <thead>
-                                <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                                  {(onDeliverSelected || onDeliverAll) && (
-                                    <th className="w-8 px-3 py-2">
-                                      <input
-                                        type="checkbox"
-                                        title="Select all"
-                                        checked={allSelected}
-                                        ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                                        onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, deliverableItems); }}
-                                        disabled={deliverableItems.length === 0}
-                                        className="rounded border-gray-300 accent-amber-600 disabled:opacity-30"
-                                      />
-                                    </th>
-                                  )}
+                            )}
+                            {onScheduleAll && hasDeliverableItems && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onScheduleAll(order); }}
+                                className="rounded-md border border-purple-200 bg-purple-50 px-3 py-1.5 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 transition-colors"
+                              >
+                                📅 Schedule All ({deliverableItems.length})
+                              </button>
+                            )}
+                          </div>
+                        ) : (onDeliverSelected || onDeliverAll) && (
+                          <div className="mb-2 flex items-center justify-end gap-2">
+                            {onDeliverSelected && orderSelected.size > 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDeliverSelected(order, Array.from(orderSelected)); }}
+                                className="rounded-md border border-amber-300 bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 transition-colors"
+                              >
+                                🚚 Deliver Selected ({orderSelected.size})
+                              </button>
+                            )}
+                            {onDeliverAll && hasDeliverableItems && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDeliverAll(order); }}
+                                className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                              >
+                                🚚 Deliver All ({deliverableItems.length})
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                {(onDeliverSelected || onDeliverAll || onScheduleSelected || onScheduleAll) && (
+                                  <th className="w-8 px-3 py-2">
+                                    <input
+                                      type="checkbox"
+                                      title="Select all"
+                                      checked={allSelected}
+                                      ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                                      onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, deliverableItems); }}
+                                      disabled={deliverableItems.length === 0}
+                                      className="rounded border-gray-300 accent-purple-600 disabled:opacity-30"
+                                    />
+                                  </th>
+                                )}
                                   <th className="px-3 py-2">Item</th>
                                   <th className="px-3 py-2">Ordered</th>
                                   <th className="px-3 py-2">Verified</th>
@@ -1579,16 +1623,16 @@ export default function DeliveryPage() {
                                   return (
                                     <tr
                                       key={item.id}
-                                      className={`hover:bg-gray-50 ${isChecked ? 'bg-amber-50/40' : ''} ${item.fully_delivered ? 'opacity-60' : ''}`}
+                                      className={`hover:bg-gray-50 ${isChecked ? (onScheduleSelected || onScheduleAll ? 'bg-purple-50/40' : 'bg-amber-50/40') : ''} ${item.fully_delivered ? 'opacity-60' : ''}`}
                                     >
-                                      {(onDeliverSelected || onDeliverAll) && (
+                                      {(onDeliverSelected || onDeliverAll || onScheduleSelected || onScheduleAll) && (
                                         <td className="px-3 py-2">
                                           {canDeliver && (
                                             <input
                                               type="checkbox"
                                               checked={isChecked}
                                               onChange={(e) => { e.stopPropagation(); toggleSelectItem(order.id, item.id); }}
-                                              className="rounded border-gray-300 accent-amber-600"
+                                              className={`rounded border-gray-300 ${onScheduleSelected || onScheduleAll ? 'accent-purple-600' : 'accent-amber-600'}`}
                                             />
                                           )}
                                         </td>
@@ -2190,84 +2234,24 @@ export default function DeliveryPage() {
         actionLoading={actionLoading}
       />
 
-      {/* ── Delivered ─────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <CheckCircle2 className="h-4 w-4 text-orange-500" />
-          <h2 className="text-base font-semibold text-gray-800">Delivered</h2>
-          <span className="ml-auto rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
-            {filteredDeliveredOrders.length}
-          </span>
-        </div>
-        {filteredDeliveredOrders.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">No delivered orders</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filteredDeliveredOrders.map((order) => {
-              const totalAmount = Number(order.total_amount ?? 0);
-              const depositAmount = Number(order.deposit_amount ?? 0);
-              const balance = totalAmount - depositAmount;
-              return (
-                <div key={order.id}>
-                  <div className="flex items-center justify-between px-6 py-4">
-                    <div>
-                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
-                      {order.total_amount != null && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Total: ₱{totalAmount.toLocaleString()} | Balance: {order.balance_paid ? '✅ Paid' : `₱${balance.toLocaleString()} unpaid`}
-                        </p>
-                      )}
-                      {order.delivery_date && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Scheduled delivery date: {formatDeliveryDate(order.delivery_date) ?? order.delivery_date}
-                        </p>
-                      )}
-                      <DeliveryInfo order={order} />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={order.current_stage} />
-                      {order.balance_paid ? (
-                        <button
-                          onClick={() => {
-                            if (!confirm(`Balance already paid. Mark "${order.quotation_number ?? '—'}" as Completed?`)) return;
-                            (window as any).__pendingCompleteData = { order };
-                            setOtpModal({
-                              open: true,
-                              title: 'Complete Order',
-                              description: `Confirm completion of "${order.quotation_number ?? '—'}" (balance already paid).`,
-                              pendingAction: 'complete_directly',
-                            });
-                          }}
-                          disabled={actionLoading === order.id}
-                          className="rounded-lg p-1.5 text-green-600 hover:bg-green-50 disabled:opacity-40"
-                          title="Balance already paid — complete directly (steps 14-16 N/A)"
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleMarkCountered(order)}
-                          disabled={actionLoading === order.id}
-                          className="rounded-lg px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-40"
-                          title="Mark as countered (awaiting payment)"
-                        >
-                          <DollarSign className="h-3.5 w-3.5 inline mr-1" />Mark as Countered
-                        </button>
-                      )}
-                      <RowActions order={order} />
-                    </div>
-                  </div>
-                  {editingOrder?.id === order.id && (
-                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* ── Delivered (itemized progression) ──────────────────────────────── */}
+      <DeliveryItemSection
+        icon={<CheckCircle2 className="h-4 w-4 text-orange-500" />}
+        title="Delivered"
+        count={filteredDeliveredOrders.length}
+        countBg="bg-orange-100"
+        countText="text-orange-700"
+        orders={filteredDeliveredOrders}
+        isLoading={loading}
+        emptyText="No delivered orders"
+        onDeliverItem={handleDeliverItem}
+        onDeliverSelected={handleDeliverSelected}
+        onDeliverAll={handleDeliverAll}
+        onViewFiles={handleViewFiles}
+        onEdit={setEditingOrder}
+        onDelete={handleDeleteClick}
+        actionLoading={actionLoading}
+      />
 
       {/* ── Countered (Awaiting Payment) ───────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
