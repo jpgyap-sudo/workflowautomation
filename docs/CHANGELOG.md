@@ -38,7 +38,7 @@
 | `f625b01` | Roo (Code) | feat: add revert button to DeliveryItemSection order header row — the component accepted onRevert prop but never rendered the revert button. Added ArrowLeft button (red, OTP-protected) matching the pattern used in RowActions | ✅ VPS `f625b01` |
 | `2dfbc4d` | Roo (Code) | fix: partial delivery modal canDeliver also uses quantity fallback — the modal's item checkbox was still using `item.verified_qty > 0` without quantity fallback, so items with verified_qty=0 were disabled/not selectable in the modal | ✅ VPS `2dfbc4d` |
 | `f662187` | Roo (Code) | fix: Start Production button does nothing on production pending — missing e.stopPropagation() on the button caused click event to bubble to parent row toggle, collapsing the row and preventing the production days modal from appearing | ✅ VPS `f662187` |
-| | Roo (Code) | fix: QTN-20262505-06 "Order not found" when clicked from orders list — OrderTable.tsx (3 locations) and vision/page.tsx (2 locations) constructed order detail links without encodeURIComponent(). Quotation number `QTN- 20262505- 06` contains spaces around dashes, causing URL encoding inconsistencies between the `<Link>` href and the `useOrder()` hook's encodeURIComponent call | ❌ |
+| `721b06f` | Roo (Code) | fix: QTN-20262505-06 "Order not found" when clicked from orders list — OrderTable.tsx (3 locations) and vision/page.tsx (2 locations) constructed order detail links without encodeURIComponent(). Quotation number `QTN- 20262505- 06` contains spaces around dashes, causing URL encoding inconsistencies between the `<Link>` href and the `useOrder()` hook's encodeURIComponent call | ✅ VPS `721b06f` |
 
 ## 2026-05-30
 
