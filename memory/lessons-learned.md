@@ -15219,3 +15219,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: partial inventory verification + partial delivery gap — API endpoints relaxed for partial_delivery orders at later 
+
+Date: 2026-05-31
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b0cc6bdeb235d6569863aba13ec21aff69b723ef
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b0cc6bdeb235d6569863aba13ec21aff69b723ef
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/inventory/verification/[quotationNumber]/page.tsx,apps/dashboard/src/lib/useApi.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Partial inventory verification and partial delivery gap. API endpoints were relaxed for `partial_delivery` orders at later stages. Frontend `canVerify` flag was corrected, a new `partial-delivery-verification` endpoint and hook were added, and the delivery tab's "Verify Inventory" link was fixed.
+
+**Why it broke:**  
+The system previously treated all orders with the same verification logic, not accounting for the unique state transitions of partial delivery orders. This caused verification flags to be incorrectly set and endpoints to reject valid partial delivery verification requests at later stages.
+
+**Reusable takeaway:**  
+When handling partial fulfillment workflows, ensure verification logic is decoupled from full-order verification. Add dedicated endpoints and conditional flags that respect the partial delivery lifecycle. Always test state transitions for partial vs. full orders separately to avoid false rejections or missing verification paths.
+
+---
+*Original commit message: fix: partial inventory verification + partial delivery gap — API endpoints relaxed for partial_delivery orders at later stages, frontend canVerify flag fixed, new partial-delivery-verification endpoint + hook, delivery tab 'Verify Inventory' link*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Partial inventory verification and partial delivery gap. API endpoints were relaxed for `partial_delivery` orders at later stages. Frontend `canVerify` flag was corrected, a new `partial-delivery-verification` endpoint and hook were added, and the delivery tab's "Verify Inventory" link was fixed.
+
+**Why it broke:**  
+The system previously treated all orders with the same verification logic, not accounting for the unique state transitions of partial delivery orders. This caused verification flags to be incorrectly set and endpoints to reject valid partial delivery verification requests at later stages.
+
+**Reusable takeaway:**  
+When handling partial fulfillment workflows, ensure verification logic is decoupled from full-order verification. Add dedicated endpoints and conditional flags that respect the partial delivery lifecycle. Always test state transitions for partial vs. full orders separately to avoid false rejections or missing verification paths.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
