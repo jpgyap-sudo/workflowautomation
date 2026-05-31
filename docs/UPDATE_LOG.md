@@ -19,7 +19,7 @@ When you **finish**:
 
 **Status**: `🔴 Active` / `✅ Done` / `⏸️ Blocked` / `🔄 In Progress`
 
-| 2026-05-31 08:52 | Roo (Code) | Fix: Start Production button does nothing on production pending — missing e.stopPropagation() on the button caused click event to bubble to parent row toggle, collapsing the row and preventing the production days modal from appearing | 🔴 Active |
+| 2026-05-31 08:52 | Roo (Code) | Fix: Start Production button does nothing on production pending — missing e.stopPropagation() on the button caused click event to bubble to parent row toggle, collapsing the row and preventing the production days modal from appearing | ✅ Done |
 | Date | Extension | Description | Status |
 |------|-----------|-------------|--------|
 | 2026-05-30 23:36 | Roo (Code) | Fix: "No items found" in Delivered section after partial delivery — extracted DeliveryItemSection from nested function component to separate file. Fixed RowActions nested component (now accepts onEdit/onDelete as props). Fixed handlePartialDeliveryOtp stale closure bug (reads from window.__pendingPartialDeliveryData). Added partial_delivery, partial_delivery_notes to ORDER_LIST_SELECT | ✅ Done |

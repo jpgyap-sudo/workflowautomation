@@ -37,7 +37,7 @@
 | `b760dd5` | Roo (Code) | fix: delivery buttons missing for items with verified_qty=0 — items added via item-level tracking after inventory verification had verified_qty=0, making them invisible to delivery UI. Fixed deliverableItems filter, canDeliver check, handleOpenPartialDelivery selectedItemIds filter, and API maxDeliverable calculation to fall back to quantity when verified_qty is 0 | ✅ VPS `b760dd5` |
 | `f625b01` | Roo (Code) | feat: add revert button to DeliveryItemSection order header row — the component accepted onRevert prop but never rendered the revert button. Added ArrowLeft button (red, OTP-protected) matching the pattern used in RowActions | ✅ VPS `f625b01` |
 | `2dfbc4d` | Roo (Code) | fix: partial delivery modal canDeliver also uses quantity fallback — the modal's item checkbox was still using `item.verified_qty > 0` without quantity fallback, so items with verified_qty=0 were disabled/not selectable in the modal | ✅ VPS `2dfbc4d` |
-| | Roo (Code) | fix: Start Production button does nothing on production pending — missing e.stopPropagation() on the button caused click event to bubble to parent row toggle, collapsing the row and preventing the production days modal from appearing | ❌ |
+| `f662187` | Roo (Code) | fix: Start Production button does nothing on production pending — missing e.stopPropagation() on the button caused click event to bubble to parent row toggle, collapsing the row and preventing the production days modal from appearing | ✅ VPS `f662187` |
 
 ## 2026-05-30
 
