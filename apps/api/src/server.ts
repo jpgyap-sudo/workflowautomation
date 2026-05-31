@@ -4551,9 +4551,15 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
   }
   const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
-  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, partial_delivery FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+
+  // Allow full completion for orders in inventory_verification or en_route_verification.
+  // For partial-delivery orders at later stages, this endpoint is intentionally blocked
+  // because the order has already been partially verified and advanced. Users should
+  // verify remaining items individually via inventory-verify-item instead.
+  const allowedStages = ['inventory_verification', 'en_route_verification'];
+  if (!allowedStages.includes(orderRows[0].current_stage)) {
     return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
@@ -4694,9 +4700,15 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
   }
   const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
-  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, partial_delivery FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+
+  // Allow partial completion for orders in inventory_verification or en_route_verification.
+  // For partial-delivery orders at later stages, this endpoint is intentionally blocked
+  // because the order has already been partially verified and advanced. Users should
+  // verify remaining items individually via inventory-verify-item instead.
+  const allowedStages = ['inventory_verification', 'en_route_verification'];
+  if (!allowedStages.includes(orderRows[0].current_stage)) {
     return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 

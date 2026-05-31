@@ -58,9 +58,20 @@ export default function InventoryVerificationDetailPage() {
   const [arrivedQtyInputs, setArrivedQtyInputs] = useState<Record<string, string>>({});
   const [bulkArrivedQty, setBulkArrivedQty] = useState<string>('');
 
+  // canVerify controls whether the user can edit verification quantities.
+  // For partial-delivery orders at later stages, the user can still verify
+  // remaining items individually, but cannot "complete" verification again
+  // (the order has already been advanced past inventory_verification).
   const canVerify = order?.current_stage === 'inventory_verification'
     || order?.current_stage === 'en_route_verification'
     || (order?.partial_delivery === true && ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'].includes(order?.current_stage ?? ''));
+
+  // canComplete controls whether the "Complete Verification" and "Complete (Partial)"
+  // buttons are shown. These should only appear when the order is still at
+  // inventory_verification or en_route_verification stage, not for partial-delivery
+  // orders that have already been advanced to later stages.
+  const canComplete = order?.current_stage === 'inventory_verification'
+    || order?.current_stage === 'en_route_verification';
   const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
   const verifiedQty = items.reduce((sum, item) => sum + (item.verified_qty ?? 0), 0);
   const fullyVerified = items.filter((item) => (item.verified_qty ?? 0) >= item.quantity).length;
@@ -306,7 +317,7 @@ export default function InventoryVerificationDetailPage() {
               Permanent verification record • {fullyVerified}/{items.length} item(s) fully verified • {verifiedQty}/{totalQty} units ({pct}%)
             </p>
           </div>
-          {canVerify ? (
+          {canComplete ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setCompleteOtpOpen(true)}
@@ -328,6 +339,8 @@ export default function InventoryVerificationDetailPage() {
                 </button>
               )}
             </div>
+          ) : canVerify ? (
+            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Editing remaining items — verification already completed</span>
           ) : (
             <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">Read-only after leaving inventory verification</span>
           )}
