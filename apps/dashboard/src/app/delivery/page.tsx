@@ -1939,6 +1939,18 @@ export default function DeliveryPage() {
         onDeliverItem={handleDeliverItem}
         onDeliverSelected={handleDeliverSelected}
         onDeliverAll={handleDeliverAll}
+        onRescheduleDelivery={handleOpenSchedule}
+        onRescheduleSelected={handleScheduleSelected}
+        onRescheduleAll={handleScheduleAll}
+        onCancelSchedule={handleCancelSchedule}
+        schedulingOrderId={schedulingOrder?.id ?? null}
+        scheduleDate={scheduleDate}
+        scheduleRemarks={scheduleRemarks}
+        onScheduleDateChange={setScheduleDate}
+        onScheduleRemarksChange={setScheduleRemarks}
+        onScheduleSubmit={handleScheduleSubmit}
+        onScheduleCancel={() => { setSchedulingOrder(null); setScheduleDate(''); setScheduleRemarks(''); }}
+        scheduleSaving={actionLoading !== null}
         onViewFiles={handleViewFiles}
         onEdit={setEditingOrder}
         onDelete={handleDeleteClick}
