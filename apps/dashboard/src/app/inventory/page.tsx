@@ -5,7 +5,7 @@ import Link from 'next/link';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import { generateActionToken } from '@/lib/api';
-import { useInventory, useInventoryDrafts, useOrdersByStage } from '@/lib/useApi';
+import { useInventory, useInventoryDrafts, useOrdersByStage, usePartialDeliveryVerificationOrders } from '@/lib/useApi';
 import {
   createInventoryItem,
   updateInventoryItem,
@@ -55,6 +55,7 @@ import {
   ExternalLink,
   Eye,
   History,
+  RefreshCw,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -1381,13 +1382,15 @@ export default function InventoryPage() {
 function InventoryVerificationSection() {
   const { data: invVerifOrders = [], isLoading: invLoading, mutate: invMutate } = useOrdersByStage('inventory_verification');
   const { data: enRouteVerifOrders = [], isLoading: enRouteLoading, mutate: enRouteMutate } = useOrdersByStage('en_route_verification');
+  const { data: partialDeliveryOrders = [], isLoading: partialLoading, mutate: partialMutate } = usePartialDeliveryVerificationOrders();
   const [itemSummaryMap, setItemSummaryMap] = useState<Record<string, { verified: number; total: number; totalQty: number; verifiedQty: number }>>({});
   const [enRouteOrdersWithArrived, setEnRouteOrdersWithArrived] = useState<Order[]>([]);
   const [loadingEnRouteItems, setLoadingEnRouteItems] = useState(false);
 
   // Merge all orders: inventory_verification + en_route_verification orders that have arrived items
-  const orders = [...invVerifOrders, ...enRouteOrdersWithArrived];
-  const isLoading = invLoading || enRouteLoading || loadingEnRouteItems;
+  // + partial-delivery orders at later stages that still need verification
+  const orders = [...invVerifOrders, ...enRouteOrdersWithArrived, ...partialDeliveryOrders];
+  const isLoading = invLoading || enRouteLoading || loadingEnRouteItems || partialLoading;
 
   // Listen for SSE events to revalidate data
   useEffect(() => {
@@ -1395,6 +1398,7 @@ function InventoryVerificationSection() {
     const handleUpdate = () => {
       invMutate();
       enRouteMutate();
+      partialMutate();
     };
     eventSource.addEventListener('order_updated', handleUpdate);
     eventSource.addEventListener('invalidate', handleUpdate);
@@ -1403,7 +1407,7 @@ function InventoryVerificationSection() {
       eventSource.removeEventListener('invalidate', handleUpdate);
       eventSource.close();
     };
-  }, [invMutate, enRouteMutate]);
+  }, [invMutate, enRouteMutate, partialMutate]);
 
   // Filter en_route_verification orders to only those with arrived items
   useEffect(() => {
@@ -1501,6 +1505,7 @@ function InventoryVerificationSection() {
           const summary = itemSummaryMap[order.id] ?? { verified: 0, total: 0, totalQty: 0, verifiedQty: 0 };
           const verificationUrl = `/inventory/verification/${encodeURIComponent(order.quotation_number ?? order.id)}`;
           const isEarlyVerification = order.current_stage === 'en_route_verification';
+          const isPartialDeliveryOrder = order.partial_delivery === true && !['inventory_verification', 'en_route_verification'].includes(order.current_stage);
           return (
             <div key={order.id} className="flex items-center justify-between py-4">
               <div className="flex items-center gap-3">
@@ -1521,6 +1526,11 @@ function InventoryVerificationSection() {
                   {isEarlyVerification && (
                     <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                       <Clock className="h-3 w-3" /> Early verification — some items still in transit
+                    </span>
+                  )}
+                  {isPartialDeliveryOrder && (
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">
+                      <RefreshCw className="h-3 w-3" /> Partial delivery — verifying remaining items
                     </span>
                   )}
                 </div>

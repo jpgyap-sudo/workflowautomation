@@ -1267,6 +1267,24 @@ app.get('/orders/stage/:stage', async (request, reply) => {
   return rows;
 });
 
+// GET /orders/partial-delivery-verification — Fetch partial-delivery orders at later stages
+// that still have items pending inventory verification (remaining items yet to arrive).
+app.get('/orders/partial-delivery-verification', async (request, reply) => {
+  const allowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
+  const rows = await query(
+    `SELECT ${ORDER_LIST_SELECT},
+            COALESCE(MAX(r.escalation_level), 0) AS escalation_level
+     FROM orders o
+     LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
+     WHERE o.partial_delivery = TRUE
+       AND o.current_stage = ANY($1::text[])
+       AND o.status = 'active'
+     GROUP BY o.id
+     ORDER BY o.created_at DESC`, [allowedStages]
+  );
+  return rows;
+});
+
 // ── Unsynced Payments: orders where balance_paid=TRUE but stage is still balance_due ──
 // This catches the gap for orders that were paid before the auto-sync fix was deployed.
 app.get('/orders/unsynced-payments', async (request, reply) => {
@@ -3943,10 +3961,17 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
 
   console.log(`[inventory-verify-item] order=${id} item=${body.item_id} action=${body.action} verified_qty=${body.verified_qty} arrived_qty=${body.arrived_qty}`);
 
-  // Verify the order is in inventory_verification or en_route_verification stage
-  const orderRows = await query(`SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]);
+  // Verify the order is in an allowed stage for inventory verification.
+  // Partial-delivery orders can still verify remaining items at later stages.
+  const orderRows = await query(`SELECT current_stage, quotation_number, client_name, partial_delivery FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+
+  const allowedStages = ['inventory_verification', 'en_route_verification'];
+  const partialDeliveryAllowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
+  const isAllowed = allowedStages.includes(orderRows[0].current_stage)
+    || (orderRows[0].partial_delivery === true && partialDeliveryAllowedStages.includes(orderRows[0].current_stage));
+
+  if (!isAllowed) {
     return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 
@@ -4140,12 +4165,19 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
   }
   const userEmail: string | null = (tokenPayload.name ?? tokenPayload.email ?? null) as string | null;
 
-  // Verify the order is in inventory_verification or en_route_verification stage
-  const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null }>(
-    `SELECT current_stage, quotation_number, client_name FROM orders WHERE id = $1`, [id]
+  // Verify the order is in an allowed stage for inventory verification.
+  // Partial-delivery orders can still verify remaining items at later stages.
+  const orderRows = await query<{ current_stage: string; quotation_number: string | null; client_name: string | null; partial_delivery: boolean | null }>(
+    `SELECT current_stage, quotation_number, client_name, partial_delivery FROM orders WHERE id = $1`, [id]
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
-  if (!['inventory_verification', 'en_route_verification'].includes(orderRows[0].current_stage)) {
+
+  const allowedStages = ['inventory_verification', 'en_route_verification'];
+  const partialDeliveryAllowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
+  const isAllowed = allowedStages.includes(orderRows[0].current_stage)
+    || (orderRows[0].partial_delivery === true && partialDeliveryAllowedStages.includes(orderRows[0].current_stage));
+
+  if (!isAllowed) {
     return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
   }
 

@@ -76,6 +76,11 @@ export function useOrdersByStage(stage: string) {
   );
 }
 
+// Fetch partial-delivery orders at later stages that still have items pending verification.
+export function usePartialDeliveryVerificationOrders() {
+  return useSWR<Order[]>('/orders/partial-delivery-verification', fetcher, SWR_CONFIG);
+}
+
 export function usePartialProductionOrders() {
   return useSWR<Order[]>('/orders/partial-production', fetcher, SWR_CONFIG);
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
 import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, generateActionToken, revertStage, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
@@ -1664,6 +1665,15 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
+                      {order.partial_delivery === true && (
+                        <Link
+                          href={`/inventory/verification/${encodeURIComponent(order.quotation_number ?? order.id)}`}
+                          className="rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-600"
+                          title="Verify remaining items for this partial-delivery order"
+                        >
+                          Verify Inventory
+                        </Link>
+                      )}
                       {!order.deposit_paid && (
                         <button
                           onClick={() => handleRecordDeposit(order)}
