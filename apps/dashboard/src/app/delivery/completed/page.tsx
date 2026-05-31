@@ -4,15 +4,36 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order } from '@/lib/api';
-import { updateOrder, deleteOrder, revertStage, generateActionToken } from '@/lib/api';
+import { updateOrder, deleteOrder, bulkDeleteOrders, revertStage, generateActionToken } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import { QuotationNumberCell, FileViewerModal, useOrderFileViewer } from '@/components/OrderFileViewer';
-import { ArrowLeft, CheckCircle2, MapPin, Phone, UserCheck, Pencil, Trash2, ArrowLeft as ArrowLeftIcon, Loader2, Search, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, MapPin, Phone, UserCheck, Pencil, Trash2, ArrowLeft as ArrowLeftIcon, Loader2, Search, X, CheckSquare, Square, Trash as TrashIcon } from 'lucide-react';
 
 export default function CompletedOrdersPage() {
   const { data: completedOrders = [], isLoading, mutate } = useOrdersByStage('completed');
+
+  // ── Selection state ──────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filteredOrders.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredOrders.map(o => o.id)));
+    }
+  }
+
+  const selectedCount = selectedIds.size;
 
   // ── Edit state ──────────────────────────────────────────────────────
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -24,8 +45,12 @@ export default function CompletedOrdersPage() {
     quotation_number: '',
   });
 
-  // ── Delete state ────────────────────────────────────────────────────
+  // ── Delete state (single) ────────────────────────────────────────────
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+
+  // ── Bulk delete state ────────────────────────────────────────────────
+  const [showBulkDeleteOtp, setShowBulkDeleteOtp] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // ── Revert state ────────────────────────────────────────────────────
   const [revertTargetOrder, setRevertTargetOrder] = useState<Order | null>(null);
@@ -37,7 +62,7 @@ export default function CompletedOrdersPage() {
     open: boolean;
     title: string;
     description: string;
-    pendingAction: 'edit' | 'delete' | 'revert';
+    pendingAction: 'edit' | 'delete' | 'bulk-delete';
   }>({ open: false, title: '', description: '', pendingAction: 'edit' });
 
   const [confirmModal, setConfirmModal] = useState<{
@@ -153,7 +178,7 @@ export default function CompletedOrdersPage() {
     }
   }
 
-  // ── Delete handlers ─────────────────────────────────────────────────
+  // ── Delete handlers (single) ────────────────────────────────────────
   function handleDeleteClick(order: Order) {
     setDeletingOrder(order);
     setOtpModal({ open: true, title: 'Delete Order', description: `Are you sure you want to delete order ${order.quotation_number ?? ''}?`, pendingAction: 'delete' });
@@ -167,6 +192,34 @@ export default function CompletedOrdersPage() {
       mutate();
     } catch (err: any) {
       setConfirmModal({ open: true, title: 'Error', description: err.message ?? 'Failed to delete order', });
+    }
+  }
+
+  // ── Bulk delete handlers ────────────────────────────────────────────
+  function handleBulkDeleteClick() {
+    setOtpModal({
+      open: true,
+      title: 'Delete Selected Orders',
+      description: `Are you sure you want to delete ${selectedCount} selected completed order${selectedCount !== 1 ? 's' : ''}?`,
+      pendingAction: 'bulk-delete',
+    });
+  }
+
+  async function handleBulkDeleteVerified(actionToken: string) {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      const result = await bulkDeleteOrders(Array.from(selectedIds), actionToken);
+      if (result.ok) {
+        setSelectedIds(new Set());
+        mutate();
+      } else {
+        setConfirmModal({ open: true, title: 'Error', description: 'Bulk delete failed' });
+      }
+    } catch (err: any) {
+      setConfirmModal({ open: true, title: 'Error', description: err.message ?? 'Bulk delete failed' });
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -198,6 +251,8 @@ export default function CompletedOrdersPage() {
   async function handleOtpVerified(actionToken: string) {
     if (otpModal.pendingAction === 'delete') {
       await handleDeleteVerified(actionToken);
+    } else if (otpModal.pendingAction === 'bulk-delete') {
+      await handleBulkDeleteVerified(actionToken);
     }
     setOtpModal(prev => ({ ...prev, open: false }));
   }
@@ -213,12 +268,23 @@ export default function CompletedOrdersPage() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-800">Completed Orders</h1>
           <p className="text-xs text-gray-500">
             {completedOrders.length} order{completedOrders.length !== 1 ? 's' : ''} completed
           </p>
         </div>
+        {/* Bulk Delete button */}
+        {selectedCount > 0 && (
+          <button
+            onClick={handleBulkDeleteClick}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-40"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+            Delete Selected ({selectedCount})
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -251,99 +317,129 @@ export default function CompletedOrdersPage() {
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
-          {filteredOrders.map((order) => {
-            const totalAmount = Number(order.total_amount ?? 0);
-            const depositAmount = Number(order.deposit_amount ?? 0);
-            const balance = totalAmount - depositAmount;
-            return (
-              <div key={order.id}>
-                <div className="flex items-center justify-between px-6 py-4">
-                  <div className="min-w-0 flex-1">
-                    <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                    <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                    {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
-                    {order.total_amount != null && (
-                      <p className="mt-0.5 text-xs text-gray-400">
-                        Total: ₱{totalAmount.toLocaleString()} | {order.balance_paid ? '✅ Fully Paid' : `Balance: ₱${balance.toLocaleString()}`}
-                      </p>
-                    )}
-                    {order.completed_at && (
-                      <p className="mt-0.5 text-[11px] text-emerald-600">
-                        ✅ Completed: {formatDate(order.completed_at)}
-                      </p>
-                    )}
-                    <DeliveryInfo order={order} />
+        <div className="rounded-xl border border-gray-200 bg-white">
+          {/* Select All header row */}
+          <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-3">
+            <button onClick={toggleSelectAll} className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700">
+              {selectedIds.size === filteredOrders.length ? (
+                <CheckSquare className="h-4 w-4 text-[#2490ef]" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+              {selectedIds.size === filteredOrders.length ? 'Deselect all' : `Select all (${filteredOrders.length})`}
+            </button>
+            {selectedCount > 0 && (
+              <span className="text-xs text-gray-400">{selectedCount} selected</span>
+            )}
+          </div>
+          <div className="divide-y divide-gray-100">
+            {filteredOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              const isSelected = selectedIds.has(order.id);
+              return (
+                <div key={order.id} className={`transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => toggleSelect(order.id)}
+                      className="mr-3 shrink-0"
+                      title={isSelected ? 'Deselect' : 'Select'}
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="h-4 w-4 text-[#2490ef]" />
+                      ) : (
+                        <Square className="h-4 w-4 text-gray-300 hover:text-gray-500" />
+                      )}
+                    </button>
+
+                    <div className="min-w-0 flex-1">
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | {order.balance_paid ? '✅ Fully Paid' : `Balance: ₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      {order.completed_at && (
+                        <p className="mt-0.5 text-[11px] text-emerald-600">
+                          ✅ Completed: {formatDate(order.completed_at)}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3 pl-4">
+                      <StageBadge stage={order.current_stage} />
+                      <RowActions order={order} />
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3 pl-4">
-                    <StageBadge stage={order.current_stage} />
-                    <RowActions order={order} />
-                  </div>
+                  {editingOrder?.id === order.id && (
+                    <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">Client Name</label>
+                          <input
+                            type="text"
+                            value={editForm.client_name}
+                            onChange={(e) => setEditForm(prev => ({ ...prev, client_name: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">Sales Agent</label>
+                          <input
+                            type="text"
+                            value={editForm.sales_agent}
+                            onChange={(e) => setEditForm(prev => ({ ...prev, sales_agent: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">Total Amount (₱)</label>
+                          <input
+                            type="number"
+                            value={editForm.total_amount}
+                            onChange={(e) => setEditForm(prev => ({ ...prev, total_amount: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">Quotation Number</label>
+                          <input
+                            type="text"
+                            value={editForm.quotation_number}
+                            onChange={(e) => setEditForm(prev => ({ ...prev, quotation_number: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          onClick={() => setEditingOrder(null)}
+                          className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleEditSave}
+                          disabled={saving}
+                          className="rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-40"
+                        >
+                          {saving ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {editingOrder?.id === order.id && (
-                  <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600">Client Name</label>
-                        <input
-                          type="text"
-                          value={editForm.client_name}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, client_name: e.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600">Sales Agent</label>
-                        <input
-                          type="text"
-                          value={editForm.sales_agent}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, sales_agent: e.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600">Total Amount (₱)</label>
-                        <input
-                          type="number"
-                          value={editForm.total_amount}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, total_amount: e.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600">Quotation Number</label>
-                        <input
-                          type="text"
-                          value={editForm.quotation_number}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, quotation_number: e.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4 flex justify-end gap-2">
-                      <button
-                        onClick={() => setEditingOrder(null)}
-                        className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleEditSave}
-                        disabled={saving}
-                        className="rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-40"
-                      >
-                        {saving ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* OTP Modal */}
+      {/* OTP Modal (single delete / bulk delete) */}
       <OtpModal
         open={otpModal.open}
         title={otpModal.title}
