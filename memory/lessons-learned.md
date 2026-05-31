@@ -15173,3 +15173,49 @@ Always `encodeURIComponent()` any dynamic string that will be placed into a URL 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: quotation number spacing root cause — AI vision extraction inserts spaces in quotation numbers (e.g., QTN- 20262505
+
+Date: 2026-05-31
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 7f63ac0ac1f826858f4f4f2720fcbd2b556577cb
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 7f63ac0ac1f826858f4f4f2720fcbd2b556577cb
+**Files:** apps/api/src/server.ts,apps/api/src/services/geminiVision.ts,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Engineering Lesson: Normalize Input at Every Boundary**
+
+**What was fixed:** Quotation numbers (e.g., QTN-20262505-06) were being stored with incorrect spaces inserted by AI vision extraction (e.g., QTN- 20262505- 06), causing lookup failures.
+
+**Why it broke:** The AI vision model introduced spaces during text extraction, and the system had no input normalization layer. Each API endpoint and service processed raw AI output without stripping spaces, allowing corrupted data to persist.
+
+**Reusable takeaway:** When integrating AI-generated data, normalize inputs at every system boundary—API entry points, database writes, and extraction services. A single normalization function applied consistently prevents data corruption from propagating. Also, clean existing corrupted rows to restore integrity.
+
+---
+*Original commit message: fix: quotation number spacing root cause — AI vision extraction inserts spaces in quotation numbers (e.g., QTN- 20262505- 06). Fixed at 6 points: (1) API GET /orders/:quotation_number uses REPLACE() + normalized input; (2) POST /orders strips spaces on insert; (3) PATCH /orders/:id strips spaces on update; (4) POST /orders/:id/sync-extracted strips spaces; (5) geminiVision.ts extractQuotation strips spaces; (6) geminiVision.ts autoExtract strips spaces. Also cleaned up 6 existing rows in DB.*
+
+#### Lesson Learned
+
+**Engineering Lesson: Normalize Input at Every Boundary**
+
+**What was fixed:** Quotation numbers (e.g., QTN-20262505-06) were being stored with incorrect spaces inserted by AI vision extraction (e.g., QTN- 20262505- 06), causing lookup failures.
+
+**Why it broke:** The AI vision model introduced spaces during text extraction, and the system had no input normalization layer. Each API endpoint and service processed raw AI output without stripping spaces, allowing corrupted data to persist.
+
+**Reusable takeaway:** When integrating AI-generated data, normalize inputs at every system boundary—API entry points, database writes, and extraction services. A single normalization function applied consistently prevents data corruption from propagating. Also, clean existing corrupted rows to restore integrity.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
