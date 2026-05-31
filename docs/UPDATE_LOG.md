@@ -96,7 +96,7 @@ When you **finish**:
 | 2026-05-31 07:34 | Roo (Code) | Feat: add revert button to DeliveryItemSection order header row — the component accepted onRevert prop but never rendered the revert button. Added ArrowLeft button (red, OTP-protected) matching the pattern used in RowActions. Commit `f625b01`. Rebuilt dashboard container on VPS. All 7 containers healthy. | ✅ Done |
 | 2026-05-31 07:41 | Roo (Code) | Fix: partial delivery modal canDeliver also uses quantity fallback — the modal's item checkbox was still using `item.verified_qty > 0` without quantity fallback, so items with verified_qty=0 were disabled/not selectable in the modal | ✅ Done |
 | 2026-05-31 18:56 | Roo (Code) | Fix: QTN-20262505-06 "Order not found" when clicked from orders list — OrderTable.tsx (3 locations) and vision/page.tsx (2 locations) constructed order detail links without encodeURIComponent(). Quotation number `QTN- 20262505- 06` contains spaces around dashes, causing URL encoding inconsistencies | ✅ Done |
-| 2026-05-31 21:07 | Roo (Code) | Deploying: partial inventory verification + partial delivery gap fix — API endpoints relaxed for partial_delivery orders at later stages, frontend canVerify flag fixed, new partial-delivery-verification endpoint + hook, delivery tab "Verify Inventory" link | 🔴 Active |
+| 2026-05-31 21:07 | Roo (Code) | Deploying: partial inventory verification + partial delivery gap fix — API endpoints relaxed for partial_delivery orders at later stages, frontend canVerify flag fixed, new partial-delivery-verification endpoint + hook, delivery tab "Verify Inventory" link | ✅ Done |
 
 ---
 
