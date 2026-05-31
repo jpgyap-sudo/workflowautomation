@@ -72,6 +72,7 @@ export interface Order {
   escalation_level: number;
   projected_lead_time: number | null;
   projected_lead_time_started_at: string | null;
+  completed_at: string | null;
 }
 
 export interface StageUpdate {

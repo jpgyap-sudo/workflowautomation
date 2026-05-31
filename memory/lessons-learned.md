@@ -15267,3 +15267,147 @@ When handling partial fulfillment workflows, ensure verification logic is decoup
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] chore: mark partial inventory verification fix as deployed (commit b0cc6bd)
+
+Date: 2026-05-31
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d0a83143a7ff5ea6fa6e1cd0d37611b7e1c1b8a7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d0a83143a7ff5ea6fa6e1cd0d37611b7e1c1b8a7
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A partial fix for inventory verification was deployed, addressing a bug where inventory checks could incorrectly pass or fail when only a subset of items was verified.
+
+**Why it broke:**  
+The original verification logic assumed all inventory items would be checked in a single pass, but the system allowed partial verification (e.g., due to pagination or user interruption). This mismatch caused inconsistent validation results.
+
+**Reusable takeaway:**  
+When designing verification or validation logic, explicitly handle partial vs. complete states. Use a flag or counter to track whether all required items have been checked, and ensure the verification result reflects the actual scope of the check—not an implicit assumption of completeness.
+
+---
+*Original commit message: chore: mark partial inventory verification fix as deployed (commit b0cc6bd)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A partial fix for inventory verification was deployed, addressing a bug where inventory checks could incorrectly pass or fail when only a subset of items was verified.
+
+**Why it broke:**  
+The original verification logic assumed all inventory items would be checked in a single pass, but the system allowed partial verification (e.g., due to pagination or user interruption). This mismatch caused inconsistent validation results.
+
+**Reusable takeaway:**  
+When designing verification or validation logic, explicitly handle partial vs. complete states. Use a flag or counter to track whether all required items have been checked, and ensure the verification result reflects the actual scope of the check—not an implicit assumption of completeness.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: 4 additional gaps in partial inventory verification + partial delivery flow
+
+Date: 2026-05-31
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a4459f7a4637a61bf5bd42e344356301d1359189
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a4459f7a4637a61bf5bd42e344356301d1359189
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/app/inventory/verification/[quotationNumber]/page.tsx,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Four additional logic gaps in the partial inventory verification and partial delivery flow were patched. The fix spans API server logic, dashboard delivery page, inventory verification page, and update documentation.
+
+**Why it broke:**  
+The original implementation did not account for edge cases where partial verification or partial delivery could leave inconsistent states (e.g., mismatched quantities, unclosed workflows, or missing status transitions). These gaps allowed incomplete or contradictory data to persist.
+
+**Reusable takeaway:**  
+When building multi-step workflows with partial operations (e.g., partial verification, partial delivery), explicitly model and test every possible state transition, including boundary cases where a step is partially completed. Use a state machine or validation matrix to ensure no combination of partial states can leave the system in an inconsistent or deadlocked state. Always update documentation alongside code changes to reflect the corrected flow.
+
+---
+*Original commit message: fix: 4 additional gaps in partial inventory verification + partial delivery flow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Four additional logic gaps in the partial inventory verification and partial delivery flow were patched. The fix spans API server logic, dashboard delivery page, inventory verification page, and update documentation.
+
+**Why it broke:**  
+The original implementation did not account for edge cases where partial verification or partial delivery could leave inconsistent states (e.g., mismatched quantities, unclosed workflows, or missing status transitions). These gaps allowed incomplete or contradictory data to persist.
+
+**Reusable takeaway:**  
+When building multi-step workflows with partial operations (e.g., partial verification, partial delivery), explicitly model and test every possible state transition, including boundary cases where a step is partially completed. Use a state machine or validation matrix to ensure no combination of partial states can leave the system in an inconsistent or deadlocked state. Always update documentation alongside code changes to reflect the corrected flow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: update CHANGELOG and UPDATE_LOG for commit a4459f7 (4 gap fixes + VPS deployment)
+
+Date: 2026-05-31
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1da279431ad04db321be622cd99d1b2dc4fe4365
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 1da279431ad04db321be622cd99d1b2dc4fe4365
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Updated changelog and update log to document 4 gap fixes and a VPS deployment.
+
+**Why it broke:**  
+The commit itself is a documentation update, not a bug fix. The "gaps" likely refer to missing features or incomplete workflows that were identified and resolved in prior code changes (commit `a4459f7`).
+
+**Reusable takeaway:**  
+Always keep changelogs and update logs in sync with code changes. Documenting fixes and deployments immediately after they are made prevents gaps in project history and helps teams track progress. Use structured logs (e.g., `CHANGELOG.md`, `UPDATE_LOG.md`) to maintain clarity across releases.
+
+---
+*Original commit message: chore: update CHANGELOG and UPDATE_LOG for commit a4459f7 (4 gap fixes + VPS deployment)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Updated changelog and update log to document 4 gap fixes and a VPS deployment.
+
+**Why it broke:**  
+The commit itself is a documentation update, not a bug fix. The "gaps" likely refer to missing features or incomplete workflows that were identified and resolved in prior code changes (commit `a4459f7`).
+
+**Reusable takeaway:**  
+Always keep changelogs and update logs in sync with code changes. Documenting fixes and deployments immediately after they are made prevents gaps in project history and helps teams track progress. Use structured logs (e.g., `CHANGELOG.md`, `UPDATE_LOG.md`) to maintain clarity across releases.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

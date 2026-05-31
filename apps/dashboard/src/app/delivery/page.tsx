@@ -156,9 +156,10 @@ export default function DeliveryPage() {
   const { data: deliveredOrders = [], isLoading: loadingDelivered, mutate: mutateDelivered } = useOrdersByStage('delivered');
   const { data: paymentReceivedOrders = [], isLoading: loadingPaymentReceived, mutate: mutatePaymentReceived } = useOrdersByStage('payment_received');
   const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, mutate: mutatePaymentConfirmed } = useOrdersByStage('payment_confirmed');
+  const { data: completedOrders = [], isLoading: loadingCompleted, mutate: mutateCompleted } = useOrdersByStage('completed');
   const { data: stockPrepOrders = [], isLoading: loadingStockPrep, mutate: mutateStockPrep } = useOrdersByStage('stock_preparation');
 
-  const loading = loadingInventoryVerification && loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingStockPrep;
+  const loading = loadingInventoryVerification && loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingCompleted && loadingStockPrep;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -260,7 +261,7 @@ export default function DeliveryPage() {
   });
 
   function mutateAll() {
-    mutateInventoryVerification(); mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateStockPrep();
+    mutateInventoryVerification(); mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateCompleted(); mutateStockPrep();
   }
 
   // ── Client filter ──────────────────────────────────────────────────────
@@ -1404,6 +1405,7 @@ export default function DeliveryPage() {
   const filteredDeliveredOrders = filterByClient(deliveredOrders);
   const filteredPaymentReceivedOrders = filterByClient(paymentReceivedOrders);
   const filteredPaymentConfirmedOrders = filterByClient(paymentConfirmedOrders);
+  const filteredCompletedOrders = filterByClient(completedOrders);
   const filteredStockPrepOrders = filterByClient(stockPrepOrders);
 
   if (loading && inventoryVerificationOrders.length === 0 && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
@@ -2157,6 +2159,60 @@ export default function DeliveryPage() {
                       >
                         <CheckCircle2 className="h-3.5 w-3.5 inline mr-1" />Order Complete
                       </button>
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Completed Orders ───────────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          <h2 className="text-base font-semibold text-gray-800">Completed Orders</h2>
+          <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+            {filteredCompletedOrders.length}
+          </span>
+        </div>
+        {filteredCompletedOrders.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No completed orders</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filteredCompletedOrders.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()} | {order.balance_paid ? '✅ Fully Paid' : `Balance: ₱${balance.toLocaleString()}`}
+                        </p>
+                      )}
+                      {order.completed_at && (
+                        <p className="mt-0.5 text-[11px] text-emerald-600">
+                          ✅ Completed: {new Date(order.completed_at).toLocaleString('en-PH', {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
                       <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
                     </div>
                   </div>
