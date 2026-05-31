@@ -952,7 +952,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onViewFiles, onStartProdu
           <div className="flex flex-wrap gap-2 border-t border-gray-100 bg-white px-6 py-3">
             {/* Start Production button for production_pending orders */}
             {onStartProduction && !order.production_started && (
-              <button onClick={() => onStartProduction(order)}
+              <button onClick={(e) => { e.stopPropagation(); onStartProduction(order); }}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 Start Production
               </button>

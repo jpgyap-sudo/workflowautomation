@@ -82,3 +82,12 @@
 - **Fix:** Removed `onClose()` from `ConfirmModal`'s `handleConfirm` function. All page-level `handleConfirmVerified` handlers already close the modal themselves after processing the action token.
 - **Extension:** Roo (Code)
 - **Status:** ✅ Fixed — pending deploy verification.
+
+## 2026-05-31 — "Start Production" button does nothing on production pending section
+
+- **Found by:** User report
+- **Symptom:** Clicking "Start Production" on a production_pending order (e.g., QTN-MNDesign) does nothing — no production days modal appears. The order row collapses instead.
+- **Root cause:** The Start Production button at line 955 of `production/page.tsx` did not call `e.stopPropagation()`. When clicked, the click event bubbled to the parent `<button>` at line 828 (the row expand/collapse toggle), which called `setExpanded(false)`. In React 18, both state updates (`setProdDaysModal` and `setExpanded`) were batched, causing the row to collapse simultaneously. While the modal should still render (it's outside `OrderRow`), the row collapsing created a poor UX where the user perceived "nothing happened."
+- **Fix:** Added `e.stopPropagation()` to the Start Production button's `onClick` handler so the event does not bubble to the parent toggle button.
+- **Extension:** Roo (Code)
+- **Status:** ✅ Fixed — pending deploy verification.

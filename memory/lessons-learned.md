@@ -14935,3 +14935,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: partial delivery modal canDeliver also uses quantity fallback for verified_qty=0 items
+
+Date: 2026-05-30
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 2dfbc4d7684b0da82b5bfa462c6c86b313d36f06
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 2dfbc4d7684b0da82b5bfa462c6c86b313d36f06
+**Files:** apps/dashboard/src/app/delivery/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+The `canDeliver` logic in the partial delivery modal now correctly uses a quantity fallback for items where `verified_qty` is zero.
+
+**Why it broke:**  
+When `verified_qty` was zero, the modal incorrectly treated the item as undeliverable, even if other quantity fields (e.g., `ordered_qty` or `delivered_qty`) indicated deliverability. The fallback logic was missing.
+
+**Reusable takeaway:**  
+When validating delivery or fulfillment conditions, always define a clear fallback chain for quantity fields (e.g., `verified_qty` → `ordered_qty` → `delivered_qty`). Never assume a zero in one field means zero availability—check all relevant sources before blocking an action. This prevents false negatives in UI logic.
+
+---
+*Original commit message: fix: partial delivery modal canDeliver also uses quantity fallback for verified_qty=0 items*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `canDeliver` logic in the partial delivery modal now correctly uses a quantity fallback for items where `verified_qty` is zero.
+
+**Why it broke:**  
+When `verified_qty` was zero, the modal incorrectly treated the item as undeliverable, even if other quantity fields (e.g., `ordered_qty` or `delivered_qty`) indicated deliverability. The fallback logic was missing.
+
+**Reusable takeaway:**  
+When validating delivery or fulfillment conditions, always define a clear fallback chain for quantity fields (e.g., `verified_qty` → `ordered_qty` → `delivered_qty`). Never assume a zero in one field means zero availability—check all relevant sources before blocking an action. This prevents false negatives in UI logic.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
