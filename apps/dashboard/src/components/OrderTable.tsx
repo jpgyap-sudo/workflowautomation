@@ -274,7 +274,7 @@ export default function OrderTable({
       {/* Mobile cards */}
       <div className="divide-y divide-gray-100 sm:hidden">
         {orders.map((order) => {
-          const detailHref = `/orders/${order.quotation_number ?? order.id}`;
+          const detailHref = `/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`;
           const isSelected = selectedIds.has(order.id);
           return (
             <article key={order.id} className="space-y-3 p-4">
@@ -559,7 +559,7 @@ export default function OrderTable({
                   )}
                   <td className="px-4 py-3 font-medium">
                     <Link
-                      href={`/orders/${order.quotation_number ?? order.id}`}
+                      href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`}
                       className="text-[#2490ef] hover:underline"
                     >
                       {order.quotation_number ?? '—'}
@@ -700,7 +700,7 @@ export default function OrderTable({
                           <DollarSign className="h-4 w-4" />
                         </button>
                       )}
-                      <Link href={`/orders/${order.quotation_number ?? order.id}`} className="text-xs font-medium text-[#2490ef] hover:underline">
+                      <Link href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`} className="text-xs font-medium text-[#2490ef] hover:underline">
                         View
                       </Link>
                       {onEdit && (

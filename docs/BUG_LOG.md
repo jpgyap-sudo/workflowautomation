@@ -91,3 +91,12 @@
 - **Fix:** Added `e.stopPropagation()` to the Start Production button's `onClick` handler so the event does not bubble to the parent toggle button.
 - **Extension:** Roo (Code)
 - **Status:** ✅ Fixed — pending deploy verification.
+
+## 2026-05-31 — QTN-20262505-06 shows "Order not found" when clicked from orders list
+
+- **Found by:** User report (Claude was working on this)
+- **Symptom:** Clicking on order QTN-20262505-06 from the orders list navigates to the order detail page which shows "Order not found".
+- **Root cause:** `OrderTable.tsx` and `vision/page.tsx` constructed order detail links without `encodeURIComponent()`. The quotation number `QTN- 20262505- 06` contains spaces around the dashes. When the browser navigated to `/orders/QTN- 20262505- 06` (with literal spaces), the URL encoding was inconsistent — the browser would encode spaces as `%20`, but Next.js's `useParams()` would decode them back. However, the SWR fetcher in `useOrder()` then called `encodeURIComponent()` on the already-decoded string, producing `/api/orders/QTN-%2020262505-%2006`. While the API itself handles this correctly, the inconsistent encoding between the `<Link>` href and the actual API call caused edge cases where the order detail page failed to load.
+- **Fix:** Added `encodeURIComponent()` to all order detail links in `OrderTable.tsx` (3 locations: mobile view line 277, desktop view lines 562 and 703) and `vision/page.tsx` (2 locations: lines 1112 and 1172). This ensures the URL parameter is properly encoded from the start, matching the encoding used by the `useOrder()` hook.
+- **Extension:** Roo (Code)
+- **Status:** ✅ Fixed — pending deploy verification.

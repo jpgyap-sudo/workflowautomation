@@ -1109,7 +1109,7 @@ function VisionPageContent() {
           </div>
           <div className="mt-4 flex justify-center gap-3">
             <a
-              href={`/orders/${createdOrder.quotation_number ?? createdOrder.id}`}
+              href={`/orders/${encodeURIComponent(createdOrder.quotation_number ?? createdOrder.id)}`}
               className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
             >
               <ExternalLink className="h-4 w-4" />
@@ -1169,7 +1169,7 @@ function VisionPageContent() {
           <div className="mt-4 flex justify-center gap-3">
             {existingOrder && (
               <a
-                href={`/orders/${existingOrder.quotation_number ?? existingOrder.id}`}
+                href={`/orders/${encodeURIComponent(existingOrder.quotation_number ?? existingOrder.id)}`}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
               >
                 <ExternalLink className="h-4 w-4" />
