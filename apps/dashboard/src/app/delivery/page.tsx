@@ -2172,20 +2172,25 @@ export default function DeliveryPage() {
         )}
       </div>
 
-      {/* ── Completed Orders ───────────────────────────────────────────── */}
+      {/* ── Completed Orders (last 5) ──────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          <h2 className="text-base font-semibold text-gray-800">Completed Orders</h2>
-          <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-            {filteredCompletedOrders.length}
-          </span>
-        </div>
+        <Link href="/delivery/completed" className="block">
+          <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4 hover:bg-gray-50 transition-colors">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            <h2 className="text-base font-semibold text-gray-800">Completed Orders</h2>
+            <span className="ml-auto flex items-center gap-2">
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                {filteredCompletedOrders.length}
+              </span>
+              <span className="text-[11px] text-[#2490ef] hover:underline">View all →</span>
+            </span>
+          </div>
+        </Link>
         {filteredCompletedOrders.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No completed orders</div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {filteredCompletedOrders.map((order) => {
+            {filteredCompletedOrders.slice(0, 5).map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
               const balance = totalAmount - depositAmount;

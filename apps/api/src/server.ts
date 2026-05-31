@@ -68,6 +68,8 @@ const ORDER_LIST_SELECT = `
   o.amount_changed_at, o.amount_changed_by,
   o.order_type, o.stock_prep_days, o.stock_prep_ready_at,
   o.partial_delivery, o.partial_delivery_notes,
+  o.special_case, o.special_case_notes, o.special_case_granted_at, o.special_case_granted_by,
+  o.completed_at,
   o.created_at, o.updated_at
 `;
 
