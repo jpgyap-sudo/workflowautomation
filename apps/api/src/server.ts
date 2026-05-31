@@ -982,7 +982,7 @@ app.post('/orders', async (request, reply) => {
      ON CONFLICT (quotation_number) DO UPDATE SET updated_at = NOW()
      RETURNING *`,
     [
-      body.quotation_number ?? null,
+      (body.quotation_number ?? '').replace(/\s+/g, '') || null,
       body.client_name ?? null,
       body.sales_agent ?? null,
       body.total_amount ?? null,
@@ -1395,16 +1395,19 @@ app.get('/orders/picker', async (request, reply) => {
 
 app.get('/orders/:quotation_number', async (request, reply) => {
   const params = z.object({ quotation_number: z.string() }).parse(request.params);
-  const cacheKey = `order:detail:${params.quotation_number}`;
+  // Normalize: strip all whitespace from the lookup value so that
+  // "QTN- 20262505- 06" and "qtn-20262505-06" both match "QTN-20262505-06"
+  const normalized = params.quotation_number.replace(/\s+/g, '');
+  const cacheKey = `order:detail:${normalized}`;
   const cached = await cacheGet<object>(cacheKey);
   if (cached) return cached;
   const rows = await query(
     `SELECT o.*, COALESCE(MAX(r.escalation_level), 0) AS escalation_level
      FROM orders o
      LEFT JOIN reminders r ON r.order_id = o.id AND r.stage = o.current_stage AND r.status = 'active'
-     WHERE o.quotation_number = $1
+     WHERE REPLACE(o.quotation_number, ' ', '') = $1
      GROUP BY o.id`,
-    [params.quotation_number]
+    [normalized]
   );
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
 
@@ -1512,7 +1515,7 @@ app.patch('/orders/:id', async (request, reply) => {
       fields.push(`amount_changed_by=$${idx++}`); values.push(userEmail ?? 'dashboard');
     }
   }
-  if (body.quotation_number !== undefined) { fields.push(`quotation_number=$${idx++}`); values.push(body.quotation_number); }
+  if (body.quotation_number !== undefined) { fields.push(`quotation_number=$${idx++}`); values.push(body.quotation_number.replace(/\s+/g, '')); }
   if (body.delivery_date !== undefined) { fields.push(`delivery_date=$${idx++}`); values.push(body.delivery_date); }
   if (body.delivery_exception !== undefined) { fields.push(`delivery_exception=$${idx++}`); values.push(body.delivery_exception); }
   if (body.delivery_exception_notes !== undefined) { fields.push(`delivery_exception_notes=$${idx++}`); values.push(body.delivery_exception_notes); }
@@ -1732,7 +1735,7 @@ app.post('/orders/:id/sync-extracted', async (request, reply) => {
 
     if (body.quotation_number && !order.quotation_number) {
       updateFields.push(`quotation_number=$${idx++}`);
-      updateValues.push(body.quotation_number);
+      updateValues.push(body.quotation_number.replace(/\s+/g, ''));
       syncReport.order_fields.push('quotation_number');
     }
     if (body.client_name && !order.client_name) {

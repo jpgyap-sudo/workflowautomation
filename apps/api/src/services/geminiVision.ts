@@ -245,7 +245,7 @@ export async function extractQuotation(
   }
 
   const quotation: ExtractedQuotation = {
-    quotation_number: typeof parsed.quotation_number === 'string' ? parsed.quotation_number : undefined,
+    quotation_number: typeof parsed.quotation_number === 'string' ? parsed.quotation_number.replace(/\s+/g, '') : undefined,
     client_name: typeof parsed.client_name === 'string' ? parsed.client_name : undefined,
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,
@@ -412,7 +412,7 @@ export async function autoExtract(
   }
 
   const quotation: ExtractedQuotation = {
-    quotation_number: typeof parsed.quotation_number === 'string' ? parsed.quotation_number : undefined,
+    quotation_number: typeof parsed.quotation_number === 'string' ? parsed.quotation_number.replace(/\s+/g, '') : undefined,
     client_name: typeof parsed.client_name === 'string' ? parsed.client_name : undefined,
     sales_agent: typeof parsed.sales_agent === 'string' ? parsed.sales_agent : undefined,
     total_amount: typeof parsed.total_amount === 'number' ? parsed.total_amount : undefined,

@@ -39,6 +39,7 @@
 | `2dfbc4d` | Roo (Code) | fix: partial delivery modal canDeliver also uses quantity fallback — the modal's item checkbox was still using `item.verified_qty > 0` without quantity fallback, so items with verified_qty=0 were disabled/not selectable in the modal | ✅ VPS `2dfbc4d` |
 | `f662187` | Roo (Code) | fix: Start Production button does nothing on production pending — missing e.stopPropagation() on the button caused click event to bubble to parent row toggle, collapsing the row and preventing the production days modal from appearing | ✅ VPS `f662187` |
 | `721b06f` | Roo (Code) | fix: QTN-20262505-06 "Order not found" when clicked from orders list — OrderTable.tsx (3 locations) and vision/page.tsx (2 locations) constructed order detail links without encodeURIComponent(). Quotation number `QTN- 20262505- 06` contains spaces around dashes, causing URL encoding inconsistencies between the `<Link>` href and the `useOrder()` hook's encodeURIComponent call | ✅ VPS `721b06f` |
+| | Roo (Code) | fix: quotation number spacing root cause — AI vision extraction inserts spaces in quotation numbers (e.g., `QTN- 20262505- 06`). Fixed at 6 points: (1) API GET /orders/:quotation_number uses REPLACE() + normalized input; (2) POST /orders strips spaces on insert; (3) PATCH /orders/:id strips spaces on update; (4) POST /orders/:id/sync-extracted strips spaces; (5) geminiVision.ts extractQuotation strips spaces; (6) geminiVision.ts autoExtract strips spaces. Also cleaned up 6 existing rows in DB. | ❌ |
 
 ## 2026-05-30
 
