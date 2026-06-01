@@ -9,7 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `b1b2130` | Roo Code | fix: auto-advance en_route → en_route_verification → inventory_verification on bulk arrive | ❌ |
+| `b1b2130` | Roo Code | fix: auto-advance en_route → en_route_verification → inventory_verification on bulk arrive | ✅ |
 | `0461697` | Roo Code | fix: only show Start Production button on production_pending orders | ✅ |
 
 ## 2026-05-27
