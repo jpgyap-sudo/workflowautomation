@@ -15603,3 +15603,45 @@ When adding batch processing to a stateful workflow, ensure all intermediate sta
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: mark bulk arrive auto-advance fix as deployed
+
+Date: 2026-06-01
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 51869f82e49f4ac97aff3fc2d3770a50f47f6c9c
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 51869f82e49f4ac97aff3fc2d3770a50f47f6c9c
+**Files:** docs/CHANGELOG.md
+
+**Summary:**
+**What was fixed:** A bug where bulk-arriving items did not trigger automatic advancement to the next workflow step.
+
+**Why it broke:** The auto-advance logic was designed for single-item processing and did not handle batch arrival events. When multiple items arrived simultaneously, the event handler either skipped the advancement or processed only the first item, leaving the rest stuck.
+
+**Reusable takeaway:** When implementing auto-advance or state-change triggers, ensure the logic is batch-aware. Test with bulk inputs (e.g., multiple items arriving at once) to verify that the event handler iterates correctly over all items, not just the first. Use idempotent processing to avoid duplicate advancements.
+
+---
+*Original commit message: docs: mark bulk arrive auto-advance fix as deployed*
+
+#### Lesson Learned
+
+**What was fixed:** A bug where bulk-arriving items did not trigger automatic advancement to the next workflow step.
+
+**Why it broke:** The auto-advance logic was designed for single-item processing and did not handle batch arrival events. When multiple items arrived simultaneously, the event handler either skipped the advancement or processed only the first item, leaving the rest stuck.
+
+**Reusable takeaway:** When implementing auto-advance or state-change triggers, ensure the logic is batch-aware. Test with bulk inputs (e.g., multiple items arriving at once) to verify that the event handler iterates correctly over all items, not just the first. Use idempotent processing to avoid duplicate advancements.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
