@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-06-01
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
+| `0461697` | Roo Code | fix: only show Start Production button on production_pending orders | ❌ |
+
 ## 2026-05-27
 
 | Commit | Extension | Description | Deployed |

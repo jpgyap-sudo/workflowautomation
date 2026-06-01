@@ -15459,3 +15459,51 @@ When building dashboards or summary views, always include a visible, clickable l
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: only show Start Production button on production_pending orders
+
+Date: 2026-06-01
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 046169753ab3d9003a0511fe5ba7fc81f43d5bf7
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 046169753ab3d9003a0511fe5ba7fc81f43d5bf7
+**Files:** apps/dashboard/src/app/production/page.tsx,docs/CHANGELOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The "Start Production" button was incorrectly displayed on all orders, regardless of status. It now only appears for orders with `production_pending` status.
+
+**Why it broke:**  
+The button’s visibility logic lacked a status filter—likely a missing conditional check or defaulting to `true` for all order states.
+
+**Reusable takeaway:**  
+Always scope UI actions (buttons, links, forms) to explicit state conditions. Use a clear status-based guard (e.g., `order.status === 'production_pending'`) to prevent unintended user actions on irrelevant or invalid states.
+
+---
+*Original commit message: fix: only show Start Production button on production_pending orders*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The "Start Production" button was incorrectly displayed on all orders, regardless of status. It now only appears for orders with `production_pending` status.
+
+**Why it broke:**  
+The button’s visibility logic lacked a status filter—likely a missing conditional check or defaulting to `true` for all order states.
+
+**Reusable takeaway:**  
+Always scope UI actions (buttons, links, forms) to explicit state conditions. Use a clear status-based guard (e.g., `order.status === 'production_pending'`) to prevent unintended user actions on irrelevant or invalid states.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
