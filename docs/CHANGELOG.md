@@ -46,6 +46,7 @@
 | `bdc5e6b` | Roo (Code) | feat: add Completed Orders section on delivery page — new "Completed Orders" section after Payment Confirmed showing order info, total, completed_at timestamp, StageBadge, RowActions (edit/delete/revert); added completed_at field to Order interface; wired useOrdersByStage('completed') hook, mutateCompleted, loadingCompleted, filteredCompletedOrders | ✅ VPS `bdc5e6b` |
 | `c5696a3` | Roo (Code) | feat: make Completed Orders header clickable → separate /delivery/completed page — header links to new page with "View all →"; section shows last 5 only; new page has search/filter, edit/delete/revert with OTP, file viewer; added completed_at to API ORDER_LIST_SELECT | ✅ VPS `c5696a3` |
 | `70ba657` | Roo (Code) | feat: add selectable checkboxes + bulk delete on /delivery/completed page; remove Completed Orders section from delivery page (all completed orders now on separate page only) | ✅ VPS `70ba657` |
+| `313dad0` | Roo (Code) | fix: restore last 5 completed orders on delivery page with clickable header linking to /delivery/completed | ✅ VPS `313dad0` |
 
 ## 2026-05-30
 

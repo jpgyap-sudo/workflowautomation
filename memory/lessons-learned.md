@@ -15411,3 +15411,51 @@ Always keep changelogs and update logs in sync with code changes. Documenting fi
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: restore last 5 completed orders on delivery page with clickable header linking to /delivery/completed
+
+Date: 2026-05-31
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 313dad01209e59ab2aaf748e488ffb0e7210e71f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 313dad01209e59ab2aaf748e488ffb0e7210e71f
+**Files:** apps/dashboard/src/app/delivery/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+The delivery page now shows the last 5 completed orders and includes a clickable header linking to `/delivery/completed`.
+
+**Why it broke:**  
+The previous implementation likely lacked a query or UI component to fetch and display recent completed orders, and the navigation link to the full completed-orders list was missing or broken.
+
+**Reusable takeaway:**  
+When building dashboards or summary views, always include a visible, clickable link to the full data set (e.g., "View all completed orders"). This prevents users from being stuck with only a partial view and ensures discoverability of deeper functionality. Additionally, cache or query the most recent N records to provide immediate context without overwhelming the interface.
+
+---
+*Original commit message: fix: restore last 5 completed orders on delivery page with clickable header linking to /delivery/completed*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The delivery page now shows the last 5 completed orders and includes a clickable header linking to `/delivery/completed`.
+
+**Why it broke:**  
+The previous implementation likely lacked a query or UI component to fetch and display recent completed orders, and the navigation link to the full completed-orders list was missing or broken.
+
+**Reusable takeaway:**  
+When building dashboards or summary views, always include a visible, clickable link to the full data set (e.g., "View all completed orders"). This prevents users from being stuck with only a partial view and ensures discoverability of deeper functionality. Additionally, cache or query the most recent N records to provide immediate context without overwhelming the interface.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

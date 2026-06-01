@@ -560,8 +560,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             {updatingItemId === item.id ? 'Saving...' : '▶ Start'}
                           </button>
                         )}
-                        {/* En route action buttons — shown for any stage (itemized progression should not be blocked by order stage) */}
-                        {(() => {
+                        {/* En route action buttons — hidden for production_pending (only Start Production should show) */}
+                        {order.current_stage !== 'production_pending' && (() => {
                           const isBusy = updatingEnRouteItemId === item.id;
                           if (item.en_route_status === 'arrived') {
                             return <span className="text-[10px] text-gray-400 italic">Arrived ✓</span>;
@@ -601,8 +601,8 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                             </>
                           );
                         })()}
-                        {/* Arrival tracking buttons — shown for any stage (itemized progression should not be blocked by order stage) */}
-                        {(() => {
+                        {/* Arrival tracking buttons — hidden for production_pending (only Start Production should show) */}
+                        {order.current_stage !== 'production_pending' && (() => {
                           const isBusy = updatingEnRouteItemId === item.id || markingDelayedId === item.id;
                           if (item.en_route_status === 'arrived') {
                             return <span className="text-[10px] font-medium text-green-600">✓ Arrived</span>;
@@ -994,20 +994,20 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onViewFiles, onStartProdu
                 Proceed to Inventory Verification
               </button>
             )}
-            {/* Production Exception actions */}
-            {(!order.deposit_paid || !order.deposit_verified) && !order.production_exception && onGrantException && (
+            {/* Production Exception actions — hidden for production_pending (only Start Production should show) */}
+            {order.current_stage !== 'production_pending' && (!order.deposit_paid || !order.deposit_verified) && !order.production_exception && onGrantException && (
               <button onClick={() => onGrantException(order)}
                 className="rounded-lg bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100">
                 Grant Exception (No DP)
               </button>
             )}
-            {order.production_exception && onRevokeException && (
+            {order.current_stage !== 'production_pending' && order.production_exception && onRevokeException && (
               <button onClick={() => onRevokeException(order)}
                 className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
                 Revoke Exception
               </button>
             )}
-            {onRecordDeposit && !order.deposit_paid && (
+            {order.current_stage !== 'production_pending' && onRecordDeposit && !order.deposit_paid && (
               <button onClick={() => onRecordDeposit(order)}
                 className="inline-flex items-center gap-1 rounded-lg bg-pink-50 px-3 py-1.5 text-xs font-medium text-pink-700 hover:bg-pink-100">
                 <DollarSign className="h-3.5 w-3.5" /> Record Deposit
