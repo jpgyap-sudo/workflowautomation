@@ -15555,3 +15555,51 @@ When designing state-machine-based automation, explicitly define and test every 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: auto-advance en_route → en_route_verification → inventory_verification on bulk arrive
+
+Date: 2026-06-01
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit b1b213024a8b3296362943022416021ce256c65d
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** b1b213024a8b3296362943022416021ce256c65d
+**Files:** apps/api/src/server.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+The workflow state machine now correctly auto-advances from `en_route` → `en_route_verification` → `inventory_verification` during bulk arrival events.
+
+**Why it broke:**  
+The state transition logic only handled single-item arrivals. Bulk arrivals bypassed the intermediate `en_route_verification` step, causing the workflow to skip directly to `inventory_verification` or stall.
+
+**Reusable takeaway:**  
+When adding batch processing to a stateful workflow, ensure all intermediate states are explicitly triggered for each item in the batch. Bulk operations must replicate the same state transitions as single-item flows, or the state machine will diverge. Always test batch paths against the single-item reference flow.
+
+---
+*Original commit message: fix: auto-advance en_route → en_route_verification → inventory_verification on bulk arrive*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The workflow state machine now correctly auto-advances from `en_route` → `en_route_verification` → `inventory_verification` during bulk arrival events.
+
+**Why it broke:**  
+The state transition logic only handled single-item arrivals. Bulk arrivals bypassed the intermediate `en_route_verification` step, causing the workflow to skip directly to `inventory_verification` or stall.
+
+**Reusable takeaway:**  
+When adding batch processing to a stateful workflow, ensure all intermediate states are explicitly triggered for each item in the batch. Bulk operations must replicate the same state transitions as single-item flows, or the state machine will diverge. Always test batch paths against the single-item reference flow.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
