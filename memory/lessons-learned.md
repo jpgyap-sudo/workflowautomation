@@ -15507,3 +15507,51 @@ Always scope UI actions (buttons, links, forms) to explicit state conditions. Us
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] docs: mark production_pending fix as deployed
+
+Date: 2026-06-01
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 35fc6d4b3389a5da4a3bfeb73b9ec64c2b8dae5f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 35fc6d4b3389a5da4a3bfeb73b9ec64c2b8dae5f
+**Files:** docs/CHANGELOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where `production_pending` status was not properly handled in workflow automation, causing incorrect state transitions or stalled deployments.
+
+**Why it broke:**  
+The `production_pending` state lacked a dedicated handler or transition rule, so the automation system defaulted to an error or fallback behavior instead of processing the expected workflow step.
+
+**Reusable takeaway:**  
+When designing state-machine-based automation, explicitly define and test every intermediate state (e.g., `production_pending`) with its own transition logic. Never rely on default handlers for states that represent critical workflow gates.
+
+---
+*Original commit message: docs: mark production_pending fix as deployed*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where `production_pending` status was not properly handled in workflow automation, causing incorrect state transitions or stalled deployments.
+
+**Why it broke:**  
+The `production_pending` state lacked a dedicated handler or transition rule, so the automation system defaulted to an error or fallback behavior instead of processing the expected workflow step.
+
+**Reusable takeaway:**  
+When designing state-machine-based automation, explicitly define and test every intermediate state (e.g., `production_pending`) with its own transition logic. Never rely on default handlers for states that represent critical workflow gates.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

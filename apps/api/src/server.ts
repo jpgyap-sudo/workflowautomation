@@ -3068,7 +3068,8 @@ app.post('/orders/:id/bulk-arrive-all', async (request, reply) => {
   const orderRows = await query(`SELECT * FROM orders WHERE id = $1`, [id]);
   const effectiveOrder = orderRows[0] ?? null;
 
-  // Auto-advance to inventory_verification if all items arrived
+  // Auto-advance: en_route → en_route_verification → inventory_verification
+  await advanceFromEnRouteToVerificationIfAllDispatched(id, 'bulk_arrive_all');
   const advanceResult = await advanceToInventoryVerificationIfAllArrived(id, 'bulk_arrive_all');
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${effectiveOrder?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
@@ -3124,7 +3125,8 @@ app.post('/orders/:id/bulk-arrive-selected', async (request, reply) => {
   const orderRows = await query(`SELECT * FROM orders WHERE id = $1`, [id]);
   const effectiveOrder = orderRows[0] ?? null;
 
-  // Auto-advance to inventory_verification if all items are now arrived
+  // Auto-advance: en_route → en_route_verification → inventory_verification
+  await advanceFromEnRouteToVerificationIfAllDispatched(id, 'bulk_arrive_selected');
   const advanceResult = await advanceToInventoryVerificationIfAllArrived(id, 'bulk_arrive_selected');
 
   await invalidateCache(['dashboard:*', 'orders:*', `order:detail:${effectiveOrder?.quotation_number ?? ''}`, 'calendar:*', 'sales:*']);
