@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useOrdersByStage } from '@/lib/useApi';
 import type { Order, Client, PaymentCounter } from '@/lib/api';
-import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, generateActionToken, revertStage, type DeliveryProgressItem, type DeliveryProgressSummary } from '@/lib/api';
+import { updateOrder, deleteOrder, payBalance, payBalanceWithFileBulk, visionExtract, recordStageUpdate, getOrderPayments, searchClients, getDeliveryProgress, partialDelivery, grantSpecialCase, verifyCountered, updatePaymentCounter, getPaymentCounter, uploadOrderFile, recordDeposit, confirmPayment, completeInventoryVerificationPartial, scheduleDeliveryItems, generateActionToken, revertStage, getOrderItems, type DeliveryProgressItem, type DeliveryProgressSummary, type OrderItem } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -158,8 +158,29 @@ export default function DeliveryPage() {
   const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, mutate: mutatePaymentConfirmed } = useOrdersByStage('payment_confirmed');
   const { data: completedOrders = [], isLoading: loadingCompleted, mutate: mutateCompleted } = useOrdersByStage('completed');
   const { data: stockPrepOrders = [], isLoading: loadingStockPrep, mutate: mutateStockPrep } = useOrdersByStage('stock_preparation');
+  const { data: productionInProgressOrders = [], isLoading: loadingProductionInProgress, mutate: mutateProductionInProgress } = useOrdersByStage('production_in_progress');
 
-  const loading = loadingInventoryVerification && loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingCompleted && loadingStockPrep;
+  const [inProgressOrdersWithVerifiedItems, setInProgressOrdersWithVerifiedItems] = useState<Order[]>([]);
+
+  // Fetch items for production_in_progress orders to find those with verified items
+  useEffect(() => {
+    if (!productionInProgressOrders.length) { setInProgressOrdersWithVerifiedItems([]); return; }
+    let cancelled = false;
+    (async () => {
+      const results: Order[] = [];
+      for (const order of productionInProgressOrders) {
+        try {
+          const res = await getOrderItems(order.id);
+          const hasVerified = (res.items ?? []).some((item: OrderItem) => Number(item.verified_qty) > 0);
+          if (hasVerified) results.push(order);
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setInProgressOrdersWithVerifiedItems(results);
+    })();
+    return () => { cancelled = true; };
+  }, [productionInProgressOrders]);
+
+  const loading = loadingInventoryVerification && loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingCompleted && loadingStockPrep && loadingProductionInProgress;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -261,7 +282,7 @@ export default function DeliveryPage() {
   });
 
   function mutateAll() {
-    mutateInventoryVerification(); mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateCompleted(); mutateStockPrep();
+    mutateInventoryVerification(); mutateInventory(); mutateBalanceDue(); mutateBalanceVerification(); mutatePending(); mutateScheduled(); mutateCountered(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateCompleted(); mutateStockPrep(); mutateProductionInProgress();
   }
 
   // ── Client filter ──────────────────────────────────────────────────────
@@ -1576,13 +1597,14 @@ export default function DeliveryPage() {
           <ListChecks className="h-4 w-4 text-indigo-500" />
           <h2 className="text-base font-semibold text-gray-800">Inventory Verification</h2>
           <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-            {filteredInventoryVerificationOrders.length}
+            {filteredInventoryVerificationOrders.length + inProgressOrdersWithVerifiedItems.length}
           </span>
         </div>
-        {filteredInventoryVerificationOrders.length === 0 ? (
+        {filteredInventoryVerificationOrders.length === 0 && inProgressOrdersWithVerifiedItems.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">No orders awaiting inventory verification</div>
         ) : (
           <div className="divide-y divide-gray-100">
+            {/* Orders already in inventory_verification stage */}
             {filteredInventoryVerificationOrders.map((order) => {
               const totalAmount = Number(order.total_amount ?? 0);
               const depositAmount = Number(order.deposit_amount ?? 0);
@@ -1610,6 +1632,49 @@ export default function DeliveryPage() {
                         disabled={actionLoading === order.id}
                         className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
                         title="Complete partial verification and advance to Inventory Arrived"
+                      >
+                        {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
+                      </button>
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                </div>
+              );
+            })}
+            {/* Production in progress orders with verified items — can advance to inventory_arrived with partial delivery */}
+            {inProgressOrdersWithVerifiedItems.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          <Package className="h-3 w-3" />Partial Arrival
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={() => handleCompleteInventoryVerificationPartial(order)}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
+                        title="Some items have been verified as arrived. Advance to Inventory Arrived with partial delivery enabled."
                       >
                         {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
                       </button>

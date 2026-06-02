@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `77931c9` | Roo Code | feat: add Verify Arrived button on Arrival Verification — item-level verification via inventory-verify-item (no stage change). Added production_in_progress to allowed stages. Added onItemVerifyArrived/onBulkVerifyArrived props with teal buttons. Added Quick Verify All Arrived in Inventory tab. | ✅ |
 | `d493575` | Roo Code | fix: Verify button in Arrival Verification only shows for en_route_verification orders — added showVerifyButtonForOrder prop to ProductionItemSection, hides Verify button for production_in_progress orders with arrived items. Reverted VALID_TRANSITIONS change. | ✅ |
 
 ## 2026-06-01

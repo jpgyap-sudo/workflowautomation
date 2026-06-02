@@ -23,6 +23,7 @@ import {
   completeArrivalPartial,
   inventoryVerifyItem,
   bulkInventoryVerify,
+  completeInventoryVerificationPartial,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -1270,6 +1271,8 @@ interface ProductionItemSectionProps {
   onFinishProduction?: (order: Order) => void;
   /** Per-order filter: if provided, Verify button only shows for orders where this returns true */
   showVerifyButtonForOrder?: (order: Order) => boolean;
+  /** Callback when Complete Partial Verification is clicked (advance to inventory_arrived with partial delivery) */
+  onCompletePartialVerification?: (order: Order) => void;
  }
 
 function ProductionItemSection({
@@ -1284,6 +1287,7 @@ function ProductionItemSection({
   updatingItemId,
   onFinishProduction,
   showVerifyButtonForOrder,
+  onCompletePartialVerification,
  }: ProductionItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1452,6 +1456,15 @@ function ProductionItemSection({
                         className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 transition-colors"
                       >
                         Finish Production
+                      </button>
+                    )}
+                    {onCompletePartialVerification && order.current_stage === 'production_in_progress' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCompletePartialVerification(order); }}
+                        className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 transition-colors"
+                        title="Advance to Inventory Arrived with partial delivery enabled"
+                      >
+                        Complete Partial Verification →
                       </button>
                     )}
                     {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
@@ -2538,6 +2551,7 @@ export default function ProductionPage() {
       else if (confirmModal.pendingAction === 'itemEnRouteStatus') await handleItemEnRouteStatusVerified(actionToken);
       else if (confirmModal.pendingAction === 'itemStartConfirm') await handleItemStartConfirmVerified(actionToken);
       else if (confirmModal.pendingAction === 'recordDeposit') await handleRecordDepositVerified(actionToken);
+      else if (confirmModal.pendingAction === 'completePartialVerification') await handleCompletePartialVerificationVerified(actionToken);
 
       setConfirmModal({ ...confirmModal, open: false });
     } catch (err: any) {
@@ -2828,6 +2842,30 @@ export default function ProductionPage() {
       refresh();
     } catch (err: any) {
       alert('Failed to bulk verify arrived items: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  // ── Complete Partial Verification (advance to inventory_arrived with partial delivery) ──
+  function handleCompletePartialVerification(order: Order) {
+    (window as any).__pendingCompletePartialVerificationData = { order };
+    setConfirmModal({
+      open: true,
+      title: 'Complete Partial Verification',
+      description: `Advance order "${order.quotation_number ?? order.id.slice(0, 8)}" to Inventory Arrived with partial delivery enabled. Verified items will be available for delivery on the Delivery page.`,
+      pendingAction: 'completePartialVerification',
+    });
+  }
+
+  async function handleCompletePartialVerificationVerified(actionToken: string) {
+    const pending = (window as any).__pendingCompletePartialVerificationData as { order: Order } | undefined;
+    if (!pending) return;
+    (window as any).__pendingCompletePartialVerificationData = null;
+    try {
+      const result = await completeInventoryVerificationPartial(pending.order.id, actionToken);
+      alert(result.message);
+      refresh();
+    } catch (err: any) {
+      alert('Failed to complete partial verification: ' + (err.message ?? 'Unknown error'));
     }
   }
 
@@ -3544,6 +3582,7 @@ export default function ProductionPage() {
         onBulkVerify={(order) => handleProceedInventoryVerification(order)}
         onItemVerifyArrived={handleItemVerifyArrived}
         onBulkVerifyArrived={handleBulkVerifyArrived}
+        onCompletePartialVerification={handleCompletePartialVerification}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}

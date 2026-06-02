@@ -4707,13 +4707,14 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name, partial_delivery FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
 
-  // Allow partial completion for orders in inventory_verification or en_route_verification.
+  // Allow partial completion for orders in inventory_verification, en_route_verification,
+  // or production_in_progress (when items have been individually verified as arrived).
   // For partial-delivery orders at later stages, this endpoint is intentionally blocked
   // because the order has already been partially verified and advanced. Users should
   // verify remaining items individually via inventory-verify-item instead.
-  const allowedStages = ['inventory_verification', 'en_route_verification'];
+  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress'];
   if (!allowedStages.includes(orderRows[0].current_stage)) {
-    return reply.code(400).send({ error: 'Order is not in inventory verification or en route verification stage' });
+    return reply.code(400).send({ error: 'Order is not in inventory verification, en route verification, or production in progress stage' });
   }
 
   // Check that at least SOME items have been verified (not all zero)
@@ -6740,7 +6741,7 @@ app.post('/stage-updates', async (request, reply) => {
     deposit_verification:      ['purchasing_pending', 'stock_preparation'],
     purchasing_pending:        ['production_pending'],
     production_pending:        ['production_in_progress', 'partial_production'],
-    production_in_progress:    ['en_route', 'partial_production'],
+    production_in_progress:    ['en_route', 'partial_production', 'inventory_arrived'],
     partial_production:        ['production_in_progress', 'en_route'],
     stock_preparation:         ['balance_due'],
     en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
