@@ -2489,7 +2489,7 @@ export default function ProductionPage() {
 
   // Orders in later stages that still have items in production (not yet finished)
   const laterStageOrdersWithRemainingProduction = productionFinishedCandidateOrders.filter((order) => {
-    if (['production_pending', 'production_in_progress', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived'].includes(order.current_stage)) return false;
+    if (['production_pending', 'production_in_progress', 'en_route', 'en_route_verification', 'inventory_verification'].includes(order.current_stage)) return false;
     const summary = productionFinishedSummaries[order.id];
     if (!summary) return false;
     // Has at least one item still in production (not finished)
