@@ -4712,7 +4712,7 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
   // For partial-delivery orders at later stages, this endpoint is intentionally blocked
   // because the order has already been partially verified and advanced. Users should
   // verify remaining items individually via inventory-verify-item instead.
-  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress'];
+  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress', 'partial_production'];
   if (!allowedStages.includes(orderRows[0].current_stage)) {
     return reply.code(400).send({ error: 'Order is not in inventory verification, en route verification, or production in progress stage' });
   }

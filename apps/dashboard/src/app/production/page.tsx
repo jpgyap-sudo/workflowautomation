@@ -1458,7 +1458,7 @@ function ProductionItemSection({
                         Finish Production
                       </button>
                     )}
-                    {onCompletePartialVerification && order.current_stage === 'production_in_progress' && (
+                    {onCompletePartialVerification && ['production_in_progress', 'partial_production'].includes(order.current_stage) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onCompletePartialVerification(order); }}
                         className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 transition-colors"
