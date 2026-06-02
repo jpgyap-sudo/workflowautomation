@@ -2484,7 +2484,25 @@ export default function ProductionPage() {
 
   const finishedOrders = productionFinishedCandidateOrders.filter((order) => {
     const summary = productionFinishedSummaries[order.id];
-    return summary?.hasFinishedProduction && !['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
+    return summary?.hasFinishedProduction && !['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_pending', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
+  });
+
+  // Orders in later stages (e.g. delivery_scheduled) that have items with
+  // production_status = 'finished' AND en_route_status = 'not_yet'.
+  // These are items that were just finished in production but their en_route_status
+  // was reset (e.g. from premature 'arrived' back to 'not_yet') so they need to
+  // go through the En Route → Arrival → Verification flow again.
+  // We merge these into finishedOrders so they appear in the Production Finished section.
+  const laterStageOrdersWithFinishedItemsNeedingEnRoute = productionFinishedCandidateOrders.filter((order) => {
+    if (['production_pending', 'production_in_progress', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_pending'].includes(order.current_stage)) return false;
+    const summary = productionFinishedSummaries[order.id];
+    if (!summary) return false;
+    // Must have at least one finished item
+    if (!summary.hasFinishedProduction) return false;
+    // Must have at least one item that is finished but not yet en route (needs En Route flow)
+    // We can't check en_route_status from the summary alone, so we check if
+    // the order has finished items but not all items have arrived (meaning some need En Route)
+    return summary.finishedCount > 0;
   });
 
   // Orders in later stages that still have items in production (not yet finished)
@@ -3377,7 +3395,10 @@ export default function ProductionPage() {
   const filteredPendingOrders = filterByClient(pendingOrders);
   const filteredPartialOrders = filterByClient(partialOrders);
   const filteredInProgressStageOrders = filterByClient(inProgressStageOrders);
-  const filteredFinishedOrders = filterByClient(finishedOrders);
+  // Merge later-stage orders (e.g. delivery_scheduled) that have items needing En Route flow
+  // into the Production Finished section so users can dispatch them through the pipeline again.
+  const mergedFinishedOrders = dedupeOrders([...finishedOrders, ...laterStageOrdersWithFinishedItemsNeedingEnRoute]);
+  const filteredFinishedOrders = filterByClient(mergedFinishedOrders);
   const filteredEnRouteOrders = filterByClient(enRouteOrders);
   const filteredEnRouteVerificationStageOrders = filterByClient(enRouteVerificationStageOrders);
   const filteredEnRouteVerificationOrders = filterByClient(enRouteVerificationOrders);

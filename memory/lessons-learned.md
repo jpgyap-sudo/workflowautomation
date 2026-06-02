@@ -16201,3 +16201,135 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: comprehensive delivery tab gap fixes
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a93879807e1c2ade31089fd5dd39427c8264fdd6
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** a93879807e1c2ade31089fd5dd39427c8264fdd6
+**Files:** apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/components/DeliveryItemSection.tsx,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md,{console.log(JSON.stringify(r.rows))
+
+**Summary:**
+**What was fixed:**  
+Delivery tab layout gaps and misalignments in the dashboard UI.
+
+**Why it broke:**  
+Inconsistent spacing and missing responsive handling in `DeliveryItemSection.tsx` and `page.tsx` caused visual gaps between delivery items and tabs.
+
+**Reusable takeaway:**  
+Always define explicit spacing (e.g., `gap`, `margin`, `padding`) at the container level rather than relying on child elements to self-space. Use consistent layout primitives (e.g., flex/grid with fixed gaps) to prevent cumulative layout shifts across different viewports.
+
+---
+*Original commit message: fix: comprehensive delivery tab gap fixes*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Delivery tab layout gaps and misalignments in the dashboard UI.
+
+**Why it broke:**  
+Inconsistent spacing and missing responsive handling in `DeliveryItemSection.tsx` and `page.tsx` caused visual gaps between delivery items and tabs.
+
+**Reusable takeaway:**  
+Always define explicit spacing (e.g., `gap`, `margin`, `padding`) at the container level rather than relying on child elements to self-space. Use consistent layout primitives (e.g., flex/grid with fixed gaps) to prevent cumulative layout shifts across different viewports.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for comprehensive delivery tab gap fixes (commit a938798)
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 731776129d60faca073dbf41212f5697a034ccf9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 731776129d60faca073dbf41212f5697a034ccf9
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**Fix:** Updated documentation (CHANGELOG and UPDATE_LOG) to reflect comprehensive fixes for delivery tab gap issues.
+
+**Root Cause:** The delivery tab had gaps (likely spacing, alignment, or data display inconsistencies) that were not fully addressed in prior patches, leading to incomplete or misleading documentation of the fixes.
+
+**Reusable Takeaway:** When fixing UI or data gaps, ensure documentation is updated *after* all related patches are merged. A single, comprehensive changelog entry prevents confusion and ensures traceability. Always verify that documentation matches the final state of the fix, not intermediate steps.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for comprehensive delivery tab gap fixes (commit a938798)*
+
+#### Lesson Learned
+
+**Fix:** Updated documentation (CHANGELOG and UPDATE_LOG) to reflect comprehensive fixes for delivery tab gap issues.
+
+**Root Cause:** The delivery tab had gaps (likely spacing, alignment, or data display inconsistencies) that were not fully addressed in prior patches, leading to incomplete or misleading documentation of the fixes.
+
+**Reusable Takeaway:** When fixing UI or data gaps, ensure documentation is updated *after* all related patches are merged. A single, comprehensive changelog entry prevents confusion and ensures traceability. Always verify that documentation matches the final state of the fix, not intermediate steps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove dangerous 'Advance to Delivered' button and add server-side guard for partial delivery
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 58e128f2f5744b2fc3c7aaee2a9d56ac833dafac
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 58e128f2f5744b2fc3c7aaee2a9d56ac833dafac
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/components/DeliveryItemSection.tsx
+
+**Summary:**
+**What was fixed:** Removed a dangerous "Advance to Delivered" button from the delivery UI and added a server-side guard to prevent partial deliveries from being incorrectly marked as fully delivered.
+
+**Why it broke:** The client-side button allowed users to bypass business logic by forcing a delivery status change without checking if all items were actually delivered. Partial deliveries could be erroneously advanced to "Delivered" status, corrupting order fulfillment data.
+
+**Reusable takeaway:** Never trust client-side-only status transitions. Always enforce business rules (e.g., "all items must be delivered before marking order complete") on the server side. Client-side UI controls should only trigger server-validated actions, not directly mutate state.
+
+---
+*Original commit message: fix: remove dangerous 'Advance to Delivered' button and add server-side guard for partial delivery*
+
+#### Lesson Learned
+
+**What was fixed:** Removed a dangerous "Advance to Delivered" button from the delivery UI and added a server-side guard to prevent partial deliveries from being incorrectly marked as fully delivered.
+
+**Why it broke:** The client-side button allowed users to bypass business logic by forcing a delivery status change without checking if all items were actually delivered. Partial deliveries could be erroneously advanced to "Delivered" status, corrupting order fulfillment data.
+
+**Reusable takeaway:** Never trust client-side-only status transitions. Always enforce business rules (e.g., "all items must be delivered before marking order complete") on the server side. Client-side UI controls should only trigger server-validated actions, not directly mutate state.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -2749,10 +2749,17 @@ app.post('/orders/:id/finish-all-items', async (request, reply) => {
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   // Mark all non-finished items as finished
+  // Also reset en_route_status for items that were prematurely marked as 'arrived'
+  // (e.g. via auto-advance chain) but haven't been verified in inventory yet,
+  // so the user can properly go through En Route → Arrival → Verification flow.
   await query(
     `UPDATE order_items
      SET production_status = 'finished',
          production_finished_at = COALESCE(production_finished_at, NOW()),
+         en_route_status = CASE
+           WHEN en_route_status = 'arrived' AND (verified_qty IS NULL OR verified_qty = 0) THEN 'not_yet'
+           ELSE en_route_status
+         END,
          updated_at = NOW()
      WHERE order_id = $1 AND production_status != 'finished'`,
     [id]
@@ -2822,10 +2829,17 @@ app.post('/orders/:id/finish-selected-items', async (request, reply) => {
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
   // Mark only the selected items as finished
+  // Also reset en_route_status for items that were prematurely marked as 'arrived'
+  // (e.g. via auto-advance chain) but haven't been verified in inventory yet,
+  // so the user can properly go through En Route → Arrival → Verification flow.
   await query(
     `UPDATE order_items
      SET production_status = 'finished',
          production_finished_at = COALESCE(production_finished_at, NOW()),
+         en_route_status = CASE
+           WHEN en_route_status = 'arrived' AND (verified_qty IS NULL OR verified_qty = 0) THEN 'not_yet'
+           ELSE en_route_status
+         END,
          updated_at = NOW()
      WHERE order_id = $1 AND id = ANY($2::uuid[]) AND production_status != 'finished'`,
     [id, body.item_ids]
@@ -6117,6 +6131,12 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     values.push(body.production_status);
     if (body.production_status === 'finished') {
       setClauses.push(`production_finished_at = COALESCE(production_finished_at, NOW())`);
+      // If the item was prematurely marked as 'arrived' (e.g. via auto-advance)
+      // but hasn't been verified in inventory yet, reset en_route_status to 'not_yet'
+      // so the user can properly go through En Route → Arrival → Verification flow.
+      if (oldItem.en_route_status === 'arrived' && (oldItem.verified_qty ?? 0) === 0) {
+        setClauses.push(`en_route_status = 'not_yet'`);
+      }
     } else {
       setClauses.push(`production_finished_at = NULL`);
     }

@@ -23,7 +23,8 @@ When you **finish**:
 
 | Date | Extension | Activity | Status |
 |------|-----------|----------|--------|
-| 2026-06-02 21:35 | Roo Code | feat: itemized delivery — fully delivered items shown in separate 'Delivered Items' section while order stays in Scheduled Deliveries | 🔴 Active |
+| 2026-06-02 21:35 | Roo Code | feat: itemized delivery — fully delivered items shown in separate 'Delivered Items' section while order stays in Scheduled Deliveries | ✅ Done |
+| 2026-06-02 22:03 | Roo Code | fix: production tab gap — items finished in later-stage orders (e.g. delivery_scheduled) now appear in Production Finished section for En Route flow. Server-side: reset en_route_status in finish-all-items/finish-selected-items for items prematurely marked as 'arrived'. Production tab: added laterStageOrdersWithFinishedItemsNeedingEnRoute, removed delivery_scheduled from finishedOrders exclusion. | 🔴 Active |
 
 | Timestamp | Extension | Description | Status |
 |-----------|-----------|-------------|--------|
