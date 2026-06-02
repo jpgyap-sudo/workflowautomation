@@ -16333,3 +16333,237 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: production tab gap — items finished in later-stage orders (e.g. delivery_scheduled) now appear in Production Finish
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 49e72cd9169969cebe26f44056c5a357fa9e8959
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 49e72cd9169969cebe26f44056c5a357fa9e8959
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,docs/CHANGELOG.md,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+Items in later-stage orders (e.g., `delivery_scheduled`) were missing from the "Production Finished" section in the En Route flow, causing a tab gap.
+
+**Why it broke:**  
+The production page logic filtered finished items by a narrow set of terminal statuses, excluding legitimate later-stage statuses like `delivery_scheduled`. This created a mismatch between actual workflow state and UI visibility.
+
+**Reusable takeaway:**  
+When defining "finished" or "completed" states in a workflow UI, include all terminal and post-production statuses (e.g., shipped, delivered, scheduled) — not just the immediate production-end status. Use a status-allowlist that mirrors the full lifecycle, and keep it synchronized across backend (server.ts) and frontend (page.tsx) to prevent tab gaps.
+
+---
+*Original commit message: fix: production tab gap — items finished in later-stage orders (e.g. delivery_scheduled) now appear in Production Finished section for En Route flow*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Items in later-stage orders (e.g., `delivery_scheduled`) were missing from the "Production Finished" section in the En Route flow, causing a tab gap.
+
+**Why it broke:**  
+The production page logic filtered finished items by a narrow set of terminal statuses, excluding legitimate later-stage statuses like `delivery_scheduled`. This created a mismatch between actual workflow state and UI visibility.
+
+**Reusable takeaway:**  
+When defining "finished" or "completed" states in a workflow UI, include all terminal and post-production statuses (e.g., shipped, delivered, scheduled) — not just the immediate production-end status. Use a status-allowlist that mirrors the full lifecycle, and keep it synchronized across backend (server.ts) and frontend (page.tsx) to prevent tab gaps.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for production tab gap fix (49e72cd)
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit ed88450820dfba3fe71a569cd5e35c49a1a399c8
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** ed88450820dfba3fe71a569cd5e35c49a1a399c8
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A production bug where tab gaps in the workflow UI were misaligned or missing, causing layout issues.
+
+**Why it broke:**  
+The gap logic relied on a CSS calculation that didn’t account for dynamic tab widths or container resizing during production rendering. The fix adjusted the gap spacing to use a more robust measurement method.
+
+**Reusable takeaway:**  
+When spacing UI elements dynamically, avoid hardcoded or static CSS values. Instead, measure actual element dimensions at render time (e.g., via `getBoundingClientRect` or flexbox gap properties) to ensure layout stability across different screen sizes and content loads.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for production tab gap fix (49e72cd)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A production bug where tab gaps in the workflow UI were misaligned or missing, causing layout issues.
+
+**Why it broke:**  
+The gap logic relied on a CSS calculation that didn’t account for dynamic tab widths or container resizing during production rendering. The fix adjusted the gap spacing to use a more robust measurement method.
+
+**Reusable takeaway:**  
+When spacing UI elements dynamically, avoid hardcoded or static CSS values. Instead, measure actual element dimensions at render time (e.g., via `getBoundingClientRect` or flexbox gap properties) to ensure layout stability across different screen sizes and content loads.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: orders in later stages (e.g. delivery_scheduled) with pending/in-progress items now persist in Partial Production a
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6622e360faf49a9e61b1c6401897181126b56a43
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6622e360faf49a9e61b1c6401897181126b56a43
+**Files:** apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**Fix:** Orders in later stages (e.g., `delivery_scheduled`) with any pending or in-progress items now remain visible in the "Partial Production" and "Production In Progress" sections until all items have progressed.
+
+**Root Cause:** The UI filtered out orders based on the order's overall stage, ignoring the status of individual items. Once an order reached a later stage, it disappeared from these sections even if some items were still unfinished.
+
+**Reusable Takeaway:** When tracking multi-item order progress, always evaluate at the item level, not the order level. An order should remain in an "in progress" view until every item has moved to a completed or later stage. This prevents premature removal and ensures operators see all work still needing attention.
+
+---
+*Original commit message: fix: orders in later stages (e.g. delivery_scheduled) with pending/in-progress items now persist in Partial Production and Production In Progress sections until ALL items have progressed*
+
+#### Lesson Learned
+
+**Fix:** Orders in later stages (e.g., `delivery_scheduled`) with any pending or in-progress items now remain visible in the "Partial Production" and "Production In Progress" sections until all items have progressed.
+
+**Root Cause:** The UI filtered out orders based on the order's overall stage, ignoring the status of individual items. Once an order reached a later stage, it disappeared from these sections even if some items were still unfinished.
+
+**Reusable Takeaway:** When tracking multi-item order progress, always evaluate at the item level, not the order level. An order should remain in an "in progress" view until every item has moved to a completed or later stage. This prevents premature removal and ensures operators see all work still needing attention.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] docs: update CHANGELOG and UPDATE_LOG for production tab persistence fix (6622e36)
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 5d64c71d2b2fc5e19708c59d8e36818ddc0dafaa
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 5d64c71d2b2fc5e19708c59d8e36818ddc0dafaa
+**Files:** docs/CHANGELOG.md,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A bug where production tabs lost their state (e.g., selected tab, unsaved changes) after a page refresh or navigation.
+
+**Why it broke:**  
+Tab persistence relied on in-memory state only, without saving the active tab index or associated data to a persistent store (e.g., localStorage, sessionStorage, or backend). On reload, the UI defaulted to the first tab, discarding user context.
+
+**Reusable takeaway:**  
+For UI components that must survive page refreshes (tabs, accordions, wizards), persist state explicitly in `localStorage` or a backend session. Use a unique key per user/session and restore state on mount. Avoid relying solely on ephemeral React state for navigation-critical UI elements.
+
+---
+*Original commit message: docs: update CHANGELOG and UPDATE_LOG for production tab persistence fix (6622e36)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A bug where production tabs lost their state (e.g., selected tab, unsaved changes) after a page refresh or navigation.
+
+**Why it broke:**  
+Tab persistence relied on in-memory state only, without saving the active tab index or associated data to a persistent store (e.g., localStorage, sessionStorage, or backend). On reload, the UI defaulted to the first tab, discarding user context.
+
+**Reusable takeaway:**  
+For UI components that must survive page refreshes (tabs, accordions, wizards), persist state explicitly in `localStorage` or a backend session. Use a unique key per user/session and restore state on mount. Avoid relying solely on ephemeral React state for navigation-critical UI elements.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove inventory_arrived from exclusion lists in laterStageOrdersWithPendingItems and laterStageOrdersWithInProgres
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 17eede2b4f48f43c1ba52e459b59d0c9537cba88
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 17eede2b4f48f43c1ba52e459b59d0c9537cba88
+**Files:** apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**What was fixed:**  
+Removed `inventory_arrived` from the exclusion lists in two order-filtering functions (`laterStageOrdersWithPendingItems` and `laterStageOrdersWithInProgressItems`).
+
+**Why it broke:**  
+The `inventory_arrived` status was incorrectly excluded, causing orders that had reached that stage to be filtered out. This prevented valid orders from appearing in later-stage views, breaking the workflow visibility for items that had actually arrived.
+
+**Reusable takeaway:**  
+When defining exclusion lists for status-based filters, ensure each excluded status is genuinely irrelevant to the view. Over-filtering can silently hide valid data. Always cross-check exclusion logic against the actual lifecycle stages of the entity.
+
+---
+*Original commit message: fix: remove inventory_arrived from exclusion lists in laterStageOrdersWithPendingItems and laterStageOrdersWithInProgressItems*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Removed `inventory_arrived` from the exclusion lists in two order-filtering functions (`laterStageOrdersWithPendingItems` and `laterStageOrdersWithInProgressItems`).
+
+**Why it broke:**  
+The `inventory_arrived` status was incorrectly excluded, causing orders that had reached that stage to be filtered out. This prevented valid orders from appearing in later-stage views, breaking the workflow visibility for items that had actually arrived.
+
+**Reusable takeaway:**  
+When defining exclusion lists for status-based filters, ensure each excluded status is genuinely irrelevant to the view. Over-filtering can silently hide valid data. Always cross-check exclusion logic against the actual lifecycle stages of the entity.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

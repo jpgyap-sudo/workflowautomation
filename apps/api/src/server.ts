@@ -2611,6 +2611,17 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   );
   const hasItems = itemRows[0]?.cnt > 0;
 
+  // Update item_stage for all items to production_finished
+  await query(
+    `UPDATE order_items
+     SET item_stage = 'production_finished',
+         updated_at = NOW()
+     WHERE order_id = $1
+       AND production_status = 'finished'
+       AND item_stage NOT IN ('arrived', 'inventory_verified', 'delivered')`,
+    [id]
+  );
+
   // For item-level orders, advance to en_route so the en-route dispatch flow
   // (process of elimination) can begin. The stage will advance further to
   // en_route_verification via advanceFromEnRouteToVerificationIfAllDispatched
@@ -2756,6 +2767,7 @@ app.post('/orders/:id/finish-all-items', async (request, reply) => {
     `UPDATE order_items
      SET production_status = 'finished',
          production_finished_at = COALESCE(production_finished_at, NOW()),
+         item_stage = 'production_finished',
          en_route_status = CASE
            WHEN en_route_status = 'arrived' AND (verified_qty IS NULL OR verified_qty = 0) THEN 'not_yet'
            ELSE en_route_status
@@ -2836,6 +2848,7 @@ app.post('/orders/:id/finish-selected-items', async (request, reply) => {
     `UPDATE order_items
      SET production_status = 'finished',
          production_finished_at = COALESCE(production_finished_at, NOW()),
+         item_stage = 'production_finished',
          en_route_status = CASE
            WHEN en_route_status = 'arrived' AND (verified_qty IS NULL OR verified_qty = 0) THEN 'not_yet'
            ELSE en_route_status
@@ -2918,6 +2931,7 @@ app.post('/orders/:id/bulk-en-route', async (request, reply) => {
   await query(
     `UPDATE order_items
      SET en_route_status = 'en_route',
+         item_stage = 'en_route',
          estimated_arrival_days = COALESCE(estimated_arrival_days, $2),
          updated_at = NOW()
      WHERE order_id = $1 AND en_route_status = 'not_yet'`,
@@ -2992,6 +3006,7 @@ app.post('/orders/:id/bulk-en-route-selected', async (request, reply) => {
   await query(
     `UPDATE order_items
      SET en_route_status = 'en_route',
+         item_stage = 'en_route',
          estimated_arrival_days = COALESCE(estimated_arrival_days, $2),
          updated_at = NOW()
      WHERE order_id = $1 AND id = ANY($3::uuid[]) AND en_route_status = 'not_yet'`,
@@ -3066,7 +3081,12 @@ app.post('/orders/:id/bulk-arrive-all', async (request, reply) => {
   // Mark all non-arrived items as arrived
   await query(
     `UPDATE order_items
-     SET en_route_status = 'arrived', updated_at = NOW()
+     SET en_route_status = 'arrived',
+         item_stage = CASE
+           WHEN item_stage IN ('en_route', 'production_finished') THEN 'arrived'
+           ELSE item_stage
+         END,
+         updated_at = NOW()
      WHERE order_id = $1 AND en_route_status != 'arrived'`,
     [id]
   );
@@ -3123,7 +3143,12 @@ app.post('/orders/:id/bulk-arrive-selected', async (request, reply) => {
   // Mark only selected items as arrived
   await query(
     `UPDATE order_items
-     SET en_route_status = 'arrived', updated_at = NOW()
+     SET en_route_status = 'arrived',
+         item_stage = CASE
+           WHEN item_stage IN ('en_route', 'production_finished') THEN 'arrived'
+           ELSE item_stage
+         END,
+         updated_at = NOW()
      WHERE order_id = $1 AND id = ANY($2::uuid[]) AND en_route_status != 'arrived'`,
     [id, body.item_ids]
   );
@@ -3328,6 +3353,17 @@ app.post('/orders/:id/complete-production-partial', async (request, reply) => {
   );
   const unfinishedNames = unfinishedItems.map((i) => i.name);
 
+  // Update item_stage for finished items
+  await query(
+    `UPDATE order_items
+     SET item_stage = 'production_finished',
+         updated_at = NOW()
+     WHERE order_id = $1
+       AND production_status = 'finished'
+       AND item_stage NOT IN ('arrived', 'inventory_verified', 'delivered')`,
+    [id]
+  );
+
   // Mark order as production finished and advance to en_route
   const deliveryDays = body.delivery_estimated_days ?? 28;
   const rows = await query(
@@ -3488,6 +3524,17 @@ app.post('/orders/:id/complete-dispatch-partial', async (request, reply) => {
     ?? order.estimated_arrival_days
     ?? 28;
 
+  // Update item_stage for dispatched items
+  await query(
+    `UPDATE order_items
+     SET item_stage = 'en_route',
+         updated_at = NOW()
+     WHERE order_id = $1
+       AND en_route_status IN ('en_route', 'arrived')
+       AND item_stage = 'production_finished'`,
+    [id]
+  );
+
   // Advance to en_route_verification
   const rows = await query(
     `UPDATE orders SET
@@ -3601,9 +3648,14 @@ app.post('/orders/:id/complete-arrival-partial', async (request, reply) => {
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
   const order = orderRows[0];
 
-  if (order.current_stage !== 'en_route_verification') {
+  // Allow partial arrival completion for orders in en_route_verification, inventory_arrived,
+  // or any later stage where items may still need to go through the arrival flow.
+  // This enables remaining items to progress through the pipeline even after the order
+  // has advanced to a later stage.
+  const allowedArrivalStages = ['en_route_verification', 'inventory_arrived', 'inventory_verification', 'balance_due', 'delivery_pending', 'delivery_scheduled'];
+  if (!allowedArrivalStages.includes(order.current_stage)) {
     return reply.code(400).send({
-      error: `Cannot complete arrival partial in stage '${order.current_stage}'. Order must be in 'en_route_verification' stage.`,
+      error: `Cannot complete arrival partial in stage '${order.current_stage}'. Allowed stages: ${allowedArrivalStages.join(', ')}.`,
     });
   }
 
@@ -3631,21 +3683,48 @@ app.post('/orders/:id/complete-arrival-partial', async (request, reply) => {
   );
   const notArrivedNames = notArrivedItems.map((i) => i.name);
 
-  // Advance to inventory_verification
-  const rows = await query(
-    `UPDATE orders SET
-      current_stage = 'inventory_verification',
-      updated_at = NOW()
-     WHERE id = $1 RETURNING *`,
+  // Update item_stage for arrived items
+  await query(
+    `UPDATE order_items
+     SET item_stage = 'arrived',
+         updated_at = NOW()
+     WHERE order_id = $1
+       AND en_route_status = 'arrived'
+       AND item_stage != 'inventory_verified'
+       AND item_stage != 'delivered'`,
     [id]
   );
-  if (!rows[0]) return reply.code(500).send({ error: 'Failed to update order' });
 
-  await query(
-    `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
-     VALUES ($1, 'inventory_verification', 'arrival_partial', $2, 'system')`,
-    [id, `Partial arrival completion: ${itemCheck[0].arrived}/${itemCheck[0].total} items arrived. ${notArrivedNames.length} item(s) pending: ${notArrivedNames.join(', ') || 'none'}. Notes: ${body.notes ?? 'N/A'}`]
-  );
+  // Only advance the order stage if it's still in en_route_verification
+  // If the order is already in a later stage (e.g. inventory_arrived, delivery_scheduled),
+  // don't downgrade it — just update the item-level tracking
+  if (order.current_stage === 'en_route_verification') {
+    const rows = await query(
+      `UPDATE orders SET
+        current_stage = 'inventory_verification',
+        updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    if (!rows[0]) return reply.code(500).send({ error: 'Failed to update order' });
+
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, 'inventory_verification', 'arrival_partial', $2, 'system')`,
+      [id, `Partial arrival completion: ${itemCheck[0].arrived}/${itemCheck[0].total} items arrived. ${notArrivedNames.length} item(s) pending: ${notArrivedNames.join(', ') || 'none'}. Notes: ${body.notes ?? 'N/A'}`]
+    );
+
+    // Fire agents for inventory_verification
+    triggerAgentsForStage('inventory_verification', order.quotation_number, order.client_name);
+  } else {
+    // Order is in a later stage — just log the item-level arrival update
+    console.log(`[complete-arrival-partial] Order ${order.quotation_number} is in stage ${order.current_stage}. Item-level arrival updated without stage change.`);
+    await query(
+      `INSERT INTO stage_updates (order_id, stage, status, remarks, updated_by)
+       VALUES ($1, $2, 'item_arrival', $3, 'system')`,
+      [id, order.current_stage, `Item-level arrival: ${itemCheck[0].arrived}/${itemCheck[0].total} items arrived. ${notArrivedNames.length} item(s) pending: ${notArrivedNames.join(', ') || 'none'}.`]
+    );
+  }
 
   // Complete en_route arrival reminders
   await query(
@@ -4032,6 +4111,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
     updateSQL = `UPDATE order_items
      SET verified_qty = $1,
          arrived_qty = $2,
+         item_stage = CASE WHEN $1 > 0 THEN 'inventory_verified' ELSE item_stage END,
          inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
          updated_at = NOW()
      WHERE id = $3
@@ -4040,6 +4120,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   } else {
     updateSQL = `UPDATE order_items
      SET verified_qty = $1,
+         item_stage = CASE WHEN $1 > 0 THEN 'inventory_verified' ELSE item_stage END,
          inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
          updated_at = NOW()
      WHERE id = $2
@@ -4265,6 +4346,7 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
         updateSQL = `UPDATE order_items
          SET verified_qty = $1,
              arrived_qty = $2,
+             item_stage = CASE WHEN $1 > 0 THEN 'inventory_verified' ELSE item_stage END,
              inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
              updated_at = NOW()
          WHERE id = $3`;
@@ -4272,6 +4354,7 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
       } else {
         updateSQL = `UPDATE order_items
          SET verified_qty = $1,
+             item_stage = CASE WHEN $1 > 0 THEN 'inventory_verified' ELSE item_stage END,
              inventory_verified_at = CASE WHEN $1 > 0 THEN COALESCE(inventory_verified_at, NOW()) ELSE NULL END,
              updated_at = NOW()
          WHERE id = $2`;
@@ -4450,6 +4533,7 @@ app.post('/orders/:id/bulk-inventory-unverify', async (request, reply) => {
       await query(
         `UPDATE order_items
          SET verified_qty = 0,
+             item_stage = CASE WHEN en_route_status = 'arrived' THEN 'arrived' ELSE 'production_finished' END,
              inventory_verified_at = NULL,
              updated_at = NOW()
          WHERE id = $1`,
@@ -4786,6 +4870,35 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
   const verificationRef = orderRows[0].quotation_number ?? id.slice(0, 8);
   const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(verificationRef)}`;
 
+  // Reset en_route_status for items that haven't been verified yet
+  // This ensures remaining items go through the proper En Route → Arrival → Verification flow
+  // instead of being stuck with en_route_status = 'arrived' from a previous auto-advance
+  await query(
+    `UPDATE order_items
+     SET en_route_status = 'not_yet',
+         item_stage = CASE
+           WHEN verified_qty > 0 THEN 'inventory_verified'
+           WHEN en_route_status = 'arrived' THEN 'production_finished'
+           ELSE item_stage
+         END,
+         updated_at = NOW()
+     WHERE order_id = $1
+       AND (COALESCE(verified_qty, 0) = 0 OR verified_qty IS NULL)
+       AND en_route_status = 'arrived'`,
+    [id]
+  );
+
+  // Update item_stage for verified items
+  await query(
+    `UPDATE order_items
+     SET item_stage = 'inventory_verified',
+         updated_at = NOW()
+     WHERE order_id = $1
+       AND COALESCE(verified_qty, 0) > 0
+       AND item_stage != 'delivered'`,
+    [id]
+  );
+
   // Mark order as partial delivery and advance to inventory_arrived
   await query(
     `UPDATE orders SET
@@ -5001,6 +5114,7 @@ app.post('/orders/:id/partial-delivery', async (request, reply) => {
       `UPDATE order_items
        SET delivered_qty = LEAST(quantity, COALESCE(delivered_qty, 0) + $1),
            remaining_qty = GREATEST(0, quantity - LEAST(quantity, COALESCE(delivered_qty, 0) + $1)),
+           item_stage = CASE WHEN $2 = 0 THEN 'delivered' ELSE item_stage END,
            partial_delivery_count = COALESCE(partial_delivery_count, 0) + 1,
            delivered_at = CASE WHEN $2 = 0 THEN delivered_at ELSE COALESCE(delivered_at, NOW()) END,
            last_partial_delivery_at = NOW(),
@@ -6131,19 +6245,30 @@ app.patch('/orders/:order_id/items/:item_id', async (request, reply) => {
     values.push(body.production_status);
     if (body.production_status === 'finished') {
       setClauses.push(`production_finished_at = COALESCE(production_finished_at, NOW())`);
+      setClauses.push(`item_stage = 'production_finished'`);
       // If the item was prematurely marked as 'arrived' (e.g. via auto-advance)
       // but hasn't been verified in inventory yet, reset en_route_status to 'not_yet'
       // so the user can properly go through En Route → Arrival → Verification flow.
       if (oldItem.en_route_status === 'arrived' && (oldItem.verified_qty ?? 0) === 0) {
         setClauses.push(`en_route_status = 'not_yet'`);
       }
+    } else if (body.production_status === 'in_progress') {
+      setClauses.push(`item_stage = 'production_in_progress'`);
     } else {
       setClauses.push(`production_finished_at = NULL`);
+      setClauses.push(`item_stage = 'production_pending'`);
     }
   }
   if (body.en_route_status !== undefined) {
     setClauses.push(`en_route_status = $${idx++}`);
     values.push(body.en_route_status);
+    if (body.en_route_status === 'en_route') {
+      setClauses.push(`item_stage = 'en_route'`);
+    } else if (body.en_route_status === 'arrived') {
+      setClauses.push(`item_stage = CASE WHEN item_stage IN ('en_route', 'production_finished') THEN 'arrived' ELSE item_stage END`);
+    } else if (body.en_route_status === 'not_yet') {
+      setClauses.push(`item_stage = 'production_finished'`);
+    }
   }
   if (body.estimated_arrival_days !== undefined) {
     setClauses.push(`estimated_arrival_days = $${idx++}`);
@@ -6438,6 +6563,101 @@ app.get('/orders/:id/items/completion', async (request, reply) => {
     en_route_completion_pct: rows[0]?.en_route_pct ?? 0,
     inventory_completion_pct: rows[0]?.inventory_pct ?? 0,
   });
+});
+
+// POST /orders/:id/reprocess-item — Reset an item's tracking fields for re-processing
+// Resets production_status → pending, en_route_status → not_yet, clears timestamps and verified_qty
+app.post('/orders/:id/reprocess-item', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = request.body as {
+    item_id: string;
+    action_token?: string;
+    updated_by?: string;
+  };
+  if (!body.item_id) {
+    return reply.code(400).send({ error: 'item_id is required' });
+  }
+
+  // Verify action token if provided
+  let userEmail: string | null = null;
+  if (body.action_token) {
+    if (!cacheClient?.isOpen) {
+      return reply.status(503).send({ error: 'Action verification unavailable' });
+    }
+    const tokenKey = `action_token:${body.action_token}`;
+    const tokenData = await cacheClient.get(tokenKey);
+    if (!tokenData) {
+      return reply.status(401).send({ error: 'Action token expired or invalid. Please verify OTP again.' });
+    }
+    await cacheClient.del(tokenKey);
+    const tokenPayload = JSON.parse(tokenData);
+    userEmail = tokenPayload.name ?? tokenPayload.email ?? null;
+  }
+
+  // Fetch current item state for audit trail
+  const oldRows = await query(
+    `SELECT id, name, production_status, en_route_status, production_finished_at, inventory_verified_at, verified_qty
+     FROM order_items
+     WHERE id = $1 AND order_id = $2`,
+    [body.item_id, id]
+  );
+  const oldItem = oldRows[0] as any;
+  if (!oldItem) return reply.code(404).send({ error: 'Item not found' });
+
+  // Reset the item's tracking fields
+  const rows = await query(
+    `UPDATE order_items
+     SET production_status = 'pending',
+         en_route_status = 'not_yet',
+         production_finished_at = NULL,
+         inventory_verified_at = NULL,
+         verified_qty = 0,
+         item_stage = 'production_pending',
+         updated_at = NOW()
+     WHERE id = $1 AND order_id = $2
+     RETURNING id, order_id, name, quantity, production_status, en_route_status,
+               estimated_arrival_days, estimated_production_days, production_finished_at,
+               inventory_verified_at, verified_qty, delivered_qty, delivered_at, created_at, updated_at`,
+    [body.item_id, id]
+  );
+
+  if (!rows[0]) return reply.code(404).send({ error: 'Item not found' });
+
+  const updatedItem = rows[0] as any;
+
+  // Log the re-process action
+  await query(
+    `INSERT INTO production_update_logs (order_id, order_item_id, note, log_type, created_by)
+     VALUES ($1, $2, $3, 'user', $4)`,
+    [
+      id,
+      body.item_id,
+      `Item re-processed: production_status: ${oldItem.production_status} → pending, en_route_status: ${oldItem.en_route_status} → not_yet, production_finished_at cleared, inventory_verified_at cleared, verified_qty reset to 0`,
+      body.updated_by ?? userEmail ?? 'dashboard',
+    ]
+  );
+
+  // Create a production reminder for the re-processed item
+  const PURCHASING_GROUP_CHAT_ID = process.env.PURCHASING_GROUP_CHAT_ID;
+  if (PURCHASING_GROUP_CHAT_ID) {
+    const orderRows = await query(
+      `SELECT quotation_number, client_name FROM orders WHERE id = $1`,
+      [id]
+    );
+    const orderRef = orderRows[0]?.quotation_number ?? `Order #${id.slice(0, 8)}`;
+    const client = orderRows[0]?.client_name ?? 'Unknown';
+    await query(
+      `SELECT create_item_reminder($1, $2, 'item_level_production', $3, $4)`,
+      [
+        id,
+        body.item_id,
+        PURCHASING_GROUP_CHAT_ID,
+        `🔄 *Item Re-processed* — ${orderRef} (${client})\nItem: *${updatedItem.name}* x${updatedItem.quantity}\nThis item has been sent back for re-processing. Please update when production begins.`,
+      ]
+    );
+  }
+
+  return reply.send({ ok: true, item: updatedItem });
 });
 
 // GET /orders/:id/production-logs — Get production update logs

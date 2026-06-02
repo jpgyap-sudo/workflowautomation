@@ -586,6 +586,16 @@ export async function finishAllItems(
   });
 }
 
+export async function reprocessItem(
+  orderId: string,
+  data: { item_id: string; action_token?: string; updated_by?: string }
+): Promise<{ ok: boolean; item: OrderItem }> {
+  return fetchJson<{ ok: boolean; item: OrderItem }>(`/orders/${encodeURIComponent(orderId)}/reprocess-item`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function bulkEnRoute(
   id: string,
   data: { action_token: string; default_arrival_days?: number }

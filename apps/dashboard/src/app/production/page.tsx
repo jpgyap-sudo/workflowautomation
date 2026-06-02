@@ -24,6 +24,7 @@ import {
   inventoryVerifyItem,
   bulkInventoryVerify,
   completeInventoryVerificationPartial,
+  reprocessItem,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -1273,6 +1274,10 @@ interface ProductionItemSectionProps {
   showVerifyButtonForOrder?: (order: Order) => boolean;
   /** Callback when Complete Partial Verification is clicked (advance to inventory_arrived with partial delivery) */
   onCompletePartialVerification?: (order: Order) => void;
+  /** Show Re-process button for items that need to be reset back to production */
+  showReprocessButton?: boolean;
+  /** Callback when Re-process is clicked for an item (resets production_status, en_route_status, timestamps) */
+  onItemReprocess?: (order: Order, item: OrderItem) => void;
  }
 
 function ProductionItemSection({
@@ -1288,6 +1293,8 @@ function ProductionItemSection({
   onFinishProduction,
   showVerifyButtonForOrder,
   onCompletePartialVerification,
+  showReprocessButton,
+  onItemReprocess,
  }: ProductionItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1801,6 +1808,16 @@ function ProductionItemSection({
                                                 className="rounded-md border border-teal-200 bg-teal-50 px-3 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50 transition-colors"
                                               >
                                                 {updatingItemId === item.id ? 'Verifying...' : '✓ Verify Arrived'}
+                                              </button>
+                                            )}
+                                            {showReprocessButton && onItemReprocess && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={(e) => { e.stopPropagation(); onItemReprocess(order, item); }}
+                                                className="rounded-md border border-red-200 bg-red-50 px-3 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Processing...' : '↺ Re-process'}
                                               </button>
                                             )}
                                           </div>
@@ -2639,6 +2656,7 @@ export default function ProductionPage() {
       else if (confirmModal.pendingAction === 'itemStartConfirm') await handleItemStartConfirmVerified(actionToken);
       else if (confirmModal.pendingAction === 'recordDeposit') await handleRecordDepositVerified(actionToken);
       else if (confirmModal.pendingAction === 'completePartialVerification') await handleCompletePartialVerificationVerified(actionToken);
+      else if (confirmModal.pendingAction === 'itemReprocess') await handleItemReprocessVerified(actionToken);
 
       setConfirmModal({ ...confirmModal, open: false });
     } catch (err: any) {
@@ -3093,6 +3111,33 @@ export default function ProductionPage() {
     } finally {
       setUpdatingItemId(null);
       (window as any).__pendingItemDelayedData = null;
+    }
+  }
+
+  // ── Item re-process (reset item back to production) ───────────────────
+
+  function handleItemReprocess(order: Order, item: OrderItem) {
+    setConfirmModal({
+      open: true,
+      title: 'Re-process Item',
+      description: `You are about to reset item "${item.name}" in order "${order.quotation_number ?? '—'}" back to production pending. This will clear its production status, en route status, and verification timestamps.`,
+      pendingAction: 'itemReprocess',
+    });
+    (window as any).__pendingItemReprocessData = { orderId: order.id, itemId: item.id };
+  }
+
+  async function handleItemReprocessVerified(actionToken: string) {
+    const pending = (window as any).__pendingItemReprocessData;
+    if (!pending) return;
+    setUpdatingItemId(pending.itemId);
+    try {
+      await reprocessItem(pending.orderId, { item_id: pending.itemId, action_token: actionToken });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to re-process item: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setUpdatingItemId(null);
+      (window as any).__pendingItemReprocessData = null;
     }
   }
 
@@ -3684,6 +3729,8 @@ export default function ProductionPage() {
         onItemVerifyArrived={handleItemVerifyArrived}
         onBulkVerifyArrived={handleBulkVerifyArrived}
         onCompletePartialVerification={handleCompletePartialVerification}
+        showReprocessButton={true}
+        onItemReprocess={handleItemReprocess}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
@@ -3712,6 +3759,8 @@ export default function ProductionPage() {
           onItemDelayed={handleItemDelayed}
           onBulkFinish={handleBulkFinish}
           onBulkFinishSelected={handleBulkFinishSelected}
+          showReprocessButton={true}
+          onItemReprocess={handleItemReprocess}
           onViewFiles={handleViewFiles}
           onEdit={handleEdit}
           onDelete={handleDeleteClick}
