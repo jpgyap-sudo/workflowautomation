@@ -9,7 +9,8 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `9188437` | Roo Code | feat: add expandable item breakdown with verification dates in Delivery tab — Inventory Verification and Inventory Arrived sections now show clickable order rows with item-level table (name, qty, production status, finished at, en route, verified qty, verified at, delivered qty) | 🔴 |
+| `9188437` | Roo Code | feat: add expandable item breakdown with verification dates in Delivery tab — Inventory Verification and Inventory Arrived sections now show clickable order rows with item-level table (name, qty, production status, finished at, en route, verified qty, verified at, delivered qty) | ✅ |
+| `047f640` | Roo Code | fix: prevent Deliver button for items that haven't arrived yet — use arrived_qty instead of quantity fallback in canDeliver logic (DeliveryItemSection + handleOpenPartialDelivery) so items must have arrived_qty>0 or verified_qty>0 before Deliver is enabled | 🔴 |
 | `f3afbc9` | Roo Code | fix: remove inventory_arrived from Remaining Production Items exclusion so orders at inventory_arrived with unfinished items still appear | ✅ |
 | `111510e` | Roo Code | fix: add partial_production to complete-inventory-verification-partial allowedStages and show Complete Partial Verification button for partial_production orders | ✅ |
 | `43a740d` | Roo Code | fix: add partial_production to inventory-verify-item allowedStages, add Finished At/Verified At columns to production item table | ✅ |
