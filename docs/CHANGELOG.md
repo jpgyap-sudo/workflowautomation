@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `f3afbc9` | Roo Code | fix: remove inventory_arrived from Remaining Production Items exclusion so orders at inventory_arrived with unfinished items still appear | ✅ |
 | `111510e` | Roo Code | fix: add partial_production to complete-inventory-verification-partial allowedStages and show Complete Partial Verification button for partial_production orders | ✅ |
 | `43a740d` | Roo Code | fix: add partial_production to inventory-verify-item allowedStages, add Finished At/Verified At columns to production item table | ✅ |
 | `6125e6e` | Roo Code | fix: prioritize OpenRouter as primary vision provider with google/gemini-2.5-flash — swapped Tier 1/2 in callGemini() so OpenRouter is tried first, updated VPS .env with user's OpenRouter key and gemini-2.5-flash model | ✅ |
