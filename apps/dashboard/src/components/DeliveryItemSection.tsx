@@ -144,6 +144,10 @@ export interface DeliveryItemSectionProps {
   onRevert?: (order: Order) => void;
   onCompleteOrder?: (order: Order) => void;
   actionLoading?: string | null;
+  /** When true, only show items that are NOT fully delivered (for Scheduled Deliveries section) */
+  showOnlyUndelivered?: boolean;
+  /** When true, only show items that ARE fully delivered (for Delivered Items section) */
+  showOnlyDelivered?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -159,6 +163,8 @@ export default function DeliveryItemSection({
   onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
   onViewFiles, onEdit, onDelete, onRevert, onCompleteOrder,
   actionLoading,
+  showOnlyUndelivered,
+  showOnlyDelivered,
 }: DeliveryItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, DeliveryProgressItem[]>>({});
@@ -219,7 +225,13 @@ export default function DeliveryItemSection({
           {orders.map((order) => {
             const isExpanded = expandedOrderId === order.id;
             const orderItems = itemsByOrder[order.id] ?? [];
-            const deliverableItems = orderItems.filter((i) => {
+            // Filter items based on section mode
+            const displayItems = showOnlyUndelivered
+              ? orderItems.filter((i) => !i.fully_delivered)
+              : showOnlyDelivered
+                ? orderItems.filter((i) => i.fully_delivered)
+                : orderItems;
+            const deliverableItems = displayItems.filter((i) => {
               if (i.fully_delivered) return false;
               // Item must have physically arrived (arrived_qty > 0) or been verified (verified_qty > 0) to be deliverable
               return i.verified_qty > 0 || (i.arrived_qty ?? 0) > 0;
@@ -315,7 +327,7 @@ export default function DeliveryItemSection({
                       <div className="flex items-center justify-center py-4">
                         <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
                       </div>
-                    ) : orderItems.length === 0 ? (
+                    ) : displayItems.length === 0 ? (
                       <p className="py-2 text-center text-xs text-gray-400">No items found for this order.</p>
                     ) : (
                       <div>
@@ -478,7 +490,7 @@ export default function DeliveryItemSection({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {orderItems.map((item) => {
+                              {displayItems.map((item) => {
                                 const canDeliver = !item.fully_delivered && (item.verified_qty > 0 || (item.arrived_qty ?? 0) > 0);
                                 const isChecked = orderSelected.has(item.id);
                                 return (

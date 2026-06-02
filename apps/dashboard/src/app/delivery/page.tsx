@@ -161,6 +161,8 @@ export default function DeliveryPage() {
   const { data: productionInProgressOrders = [], isLoading: loadingProductionInProgress, mutate: mutateProductionInProgress } = useOrdersByStage('production_in_progress');
 
   const [inProgressOrdersWithVerifiedItems, setInProgressOrdersWithVerifiedItems] = useState<Order[]>([]);
+  // Orders with partial_delivery=TRUE that have at least one fully delivered item (for itemized delivery section)
+  const [scheduledOrdersWithDeliveredItems, setScheduledOrdersWithDeliveredItems] = useState<Order[]>([]);
 
   // ── Expandable item breakdown ────────────────────────────────────────
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
@@ -207,6 +209,25 @@ export default function DeliveryPage() {
     })();
     return () => { cancelled = true; };
   }, [productionInProgressOrders]);
+
+  // Fetch items for scheduled orders to find those with fully delivered items (for itemized delivery section)
+  useEffect(() => {
+    const partialOrders = scheduledOrders.filter((o) => o.partial_delivery === true);
+    if (!partialOrders.length) { setScheduledOrdersWithDeliveredItems([]); return; }
+    let cancelled = false;
+    (async () => {
+      const results: Order[] = [];
+      for (const order of partialOrders) {
+        try {
+          const res = await getOrderItems(order.id);
+          const hasFullyDelivered = (res.items ?? []).some((item: OrderItem) => Number(item.delivered_qty) >= Number(item.quantity));
+          if (hasFullyDelivered) results.push(order);
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setScheduledOrdersWithDeliveredItems(results);
+    })();
+    return () => { cancelled = true; };
+  }, [scheduledOrders]);
 
   const loading = loadingInventoryVerification && loadingInventory && loadingBalanceDue && loadingBalanceVerification && loadingPending && loadingScheduled && loadingCountered && loadingDelivered && loadingPaymentReceived && loadingPaymentConfirmed && loadingCompleted && loadingStockPrep && loadingProductionInProgress;
 
@@ -2308,7 +2329,25 @@ export default function DeliveryPage() {
         onDelete={handleDeleteClick}
         onRevert={handleRevertClick}
         actionLoading={actionLoading}
+        showOnlyUndelivered
       />
+
+      {/* ── Delivered Items (itemized — orders with partial delivery that have fully delivered items) ── */}
+      {scheduledOrdersWithDeliveredItems.length > 0 && (
+        <DeliveryItemSection
+          icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}
+          title="Delivered Items"
+          count={scheduledOrdersWithDeliveredItems.length}
+          countBg="bg-green-100"
+          countText="text-green-700"
+          orders={scheduledOrdersWithDeliveredItems}
+          isLoading={loading}
+          emptyText="No delivered items"
+          onViewFiles={handleViewFiles}
+          actionLoading={actionLoading}
+          showOnlyDelivered
+        />
+      )}
 
       {/* ── Delivered (itemized progression) ──────────────────────────────── */}
       <DeliveryItemSection
