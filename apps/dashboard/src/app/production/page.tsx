@@ -1216,10 +1216,14 @@ interface ProductionItemSectionProps {
   showEnRouteButton?: boolean;
   /** Show Arrived button for items (in transit) */
   showArrivedButton?: boolean;
+  /** Show Verify button for arrived items (advance to inventory verification) */
+  showVerifyButton?: boolean;
   /** Show bulk En Route All button */
   showBulkEnRouteButton?: boolean;
   /** Show bulk Arrive All button */
   showBulkArriveButton?: boolean;
+  /** Show bulk Verify All button */
+  showBulkVerifyButton?: boolean;
   /** Callback when Start is clicked for an item */
   onItemStart?: (order: Order, item: OrderItem) => void;
   /** Callback when Start is confirmed with production days */
@@ -1236,6 +1240,8 @@ interface ProductionItemSectionProps {
   onItemEnRoute?: (order: Order, item: OrderItem) => void;
   /** Callback when Arrived is clicked for an item */
   onItemArrived?: (order: Order, item: OrderItem) => void;
+  /** Callback when Verify is clicked for an arrived item */
+  onItemVerify?: (order: Order) => void;
   /** Callback when bulk En Route All is clicked for an order */
   onBulkEnRoute?: (order: Order, items: OrderItem[], refreshCallback?: () => void) => void;
   /** Callback when bulk En Route Selected is clicked */
@@ -1244,6 +1250,8 @@ interface ProductionItemSectionProps {
   onBulkArriveAll?: (order: Order, refreshCallback?: () => void) => void;
   /** Callback when bulk Arrive Selected is clicked */
   onBulkArriveSelected?: (order: Order, itemIds: string[], refreshCallback?: () => void) => void;
+  /** Callback when bulk Verify is clicked for an order */
+  onBulkVerify?: (order: Order) => void;
   /** Callback to view files */
   onViewFiles?: (o: Order) => void;
   /** Callback to edit */
@@ -1261,9 +1269,9 @@ function ProductionItemSection({
   orders, isLoading, error, onRetry, emptyText,
   itemFilter,
   showStartButton, showFinishedButton, showDelayedButton, showBulkFinishButton,
-  showEnRouteButton, showArrivedButton, showBulkEnRouteButton, showBulkArriveButton,
+  showEnRouteButton, showArrivedButton, showVerifyButton, showBulkEnRouteButton, showBulkArriveButton, showBulkVerifyButton,
   onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish, onBulkFinishSelected,
-  onItemEnRoute, onItemArrived, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected,
+  onItemEnRoute, onItemArrived, onItemVerify, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected, onBulkVerify,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
   onFinishProduction,
@@ -1457,11 +1465,14 @@ function ProductionItemSection({
                         const orderSelected = selectedItemIds[order.id] ?? new Set<string>();
                         const isEnRouteContext = showEnRouteButton || showBulkEnRouteButton;
                         const isArrivedContext = showArrivedButton || showBulkArriveButton;
+                        const isVerifyContext = showVerifyButton || showBulkVerifyButton;
                         const selectableItems = isEnRouteContext
                           ? filteredItems.filter((i) => i.production_status === 'finished' && i.en_route_status !== 'en_route' && i.en_route_status !== 'arrived')
                           : isArrivedContext
                             ? filteredItems.filter((i) => i.en_route_status === 'en_route')
-                            : filteredItems.filter((i) => i.production_status === 'in_progress');
+                            : isVerifyContext
+                              ? filteredItems.filter((i) => i.en_route_status === 'arrived')
+                              : filteredItems.filter((i) => i.production_status === 'in_progress');
                         const allSelected = selectableItems.length > 0 && selectableItems.every((i) => orderSelected.has(i.id));
                         const someSelected = orderSelected.size > 0 && !allSelected;
                         return (
@@ -1547,11 +1558,38 @@ function ProductionItemSection({
                                 })()}
                               </div>
                             )}
+                            {/* Toolbar: Verify Selected + Verify All */}
+                            {(showBulkVerifyButton || (showVerifyButton && onBulkVerify)) && (
+                              <div className="mb-2 flex items-center justify-end gap-2">
+                                {showVerifyButton && onBulkVerify && orderSelected.size > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onBulkVerify(order); }}
+                                    className="rounded-md border border-blue-300 bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700 transition-colors"
+                                  >
+                                    ✓ Verify Selected ({orderSelected.size})
+                                  </button>
+                                )}
+                                {showBulkVerifyButton && (() => {
+                                  const notYetVerified = filteredItems.filter((i) => i.en_route_status === 'arrived');
+                                  if (notYetVerified.length === 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); onBulkVerify?.(order); }}
+                                      className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                                    >
+                                      ✓ Verify All ({notYetVerified.length})
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                            )}
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
                               <table className="w-full text-left text-xs">
                                 <thead>
                                   <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                                    {(showFinishedButton || showEnRouteButton || showArrivedButton) && (
+                                    {(showFinishedButton || showEnRouteButton || showArrivedButton || showVerifyButton) && (
                                       <th className="w-8 px-3 py-2">
                                         <input
                                           type="checkbox"
@@ -1560,14 +1598,14 @@ function ProductionItemSection({
                                           ref={(el) => { if (el) el.indeterminate = someSelected; }}
                                           onChange={(e) => { e.stopPropagation(); toggleSelectAll(order.id, selectableItems); }}
                                           disabled={selectableItems.length === 0}
-                                          className={`rounded border-gray-300 disabled:opacity-30 ${isEnRouteContext ? 'accent-amber-600' : isArrivedContext ? 'accent-sky-600' : 'accent-green-600'}`}
+                                          className={`rounded border-gray-300 disabled:opacity-30 ${isEnRouteContext ? 'accent-amber-600' : isArrivedContext ? 'accent-sky-600' : isVerifyContext ? 'accent-blue-600' : 'accent-green-600'}`}
                                         />
                                       </th>
                                     )}
                                     <th className="px-3 py-2">Item</th>
                                     <th className="px-3 py-2">Qty</th>
                                     <th className="px-3 py-2">Status</th>
-                                    {(showEnRouteButton || showArrivedButton || showBulkEnRouteButton || showBulkArriveButton) && (
+                                    {(showEnRouteButton || showArrivedButton || showVerifyButton || showBulkEnRouteButton || showBulkArriveButton || showBulkVerifyButton) && (
                                       <th className="px-3 py-2">En Route Status</th>
                                     )}
                                     <th className="px-3 py-2">Est. Finish Date</th>
@@ -1581,28 +1619,32 @@ function ProductionItemSection({
                                       ? item.production_status === 'finished' && item.en_route_status !== 'en_route' && item.en_route_status !== 'arrived'
                                       : isArrivedContext
                                         ? item.en_route_status === 'en_route'
-                                        : item.production_status === 'in_progress';
+                                        : isVerifyContext
+                                          ? item.en_route_status === 'arrived'
+                                          : item.production_status === 'in_progress';
                                     const isChecked = orderSelected.has(item.id);
                                     const highlightClass = isChecked
                                       ? isEnRouteContext
                                         ? 'bg-amber-50/40'
                                         : isArrivedContext
                                           ? 'bg-sky-50/40'
-                                          : 'bg-green-50/40'
+                                          : isVerifyContext
+                                            ? 'bg-blue-50/40'
+                                            : 'bg-green-50/40'
                                       : '';
                                     return (
                                       <tr
                                         key={item.id}
                                         className={`hover:bg-gray-50 ${highlightClass}`}
                                       >
-                                        {(showFinishedButton || showEnRouteButton || showArrivedButton) && (
+                                        {(showFinishedButton || showEnRouteButton || showArrivedButton || showVerifyButton) && (
                                           <td className="px-3 py-2">
                                             {isSelectable && (
                                               <input
                                                 type="checkbox"
                                                 checked={isChecked}
                                                 onChange={(e) => { e.stopPropagation(); toggleSelectItem(order.id, item.id); }}
-                                                className={`rounded border-gray-300 ${isEnRouteContext ? 'accent-amber-600' : isArrivedContext ? 'accent-sky-600' : 'accent-green-600'}`}
+                                                className={`rounded border-gray-300 ${isEnRouteContext ? 'accent-amber-600' : isArrivedContext ? 'accent-sky-600' : isVerifyContext ? 'accent-blue-600' : 'accent-green-600'}`}
                                               />
                                             )}
                                           </td>
@@ -1612,7 +1654,7 @@ function ProductionItemSection({
                                         <td className="px-3 py-2">
                                           <ItemStatusBadge status={item.production_status} />
                                         </td>
-                                        {(showEnRouteButton || showArrivedButton || showBulkEnRouteButton || showBulkArriveButton) && (
+                                        {(showEnRouteButton || showArrivedButton || showVerifyButton || showBulkEnRouteButton || showBulkArriveButton || showBulkVerifyButton) && (
                                           <td className="px-3 py-2">
                                             <EnRouteStatusBadge status={item.en_route_status} />
                                           </td>
@@ -1674,6 +1716,15 @@ function ProductionItemSection({
                                                 className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
                                               >
                                                 {updatingItemId === item.id ? 'Saving...' : '📦 Arrived'}
+                                              </button>
+                                            )}
+                                            {showVerifyButton && item.en_route_status === 'arrived' && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); onItemVerify?.(order); }}
+                                                className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                ✓ Verify
                                               </button>
                                             )}
                                           </div>
@@ -3400,6 +3451,10 @@ export default function ProductionPage() {
         onRetry={() => mutateEnRouteStage()}
         emptyText="No orders awaiting arrival verification"
         itemFilter={(item) => item.en_route_status === 'arrived'}
+        showVerifyButton={true}
+        showBulkVerifyButton={true}
+        onItemVerify={(order) => handleProceedInventoryVerification(order)}
+        onBulkVerify={(order) => handleProceedInventoryVerification(order)}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
