@@ -130,8 +130,6 @@ export interface DeliveryItemSectionProps {
   onRescheduleAll?: (order: Order) => void;
   /** Cancel schedule callback — moves order back to Delivery Pending */
   onCancelSchedule?: (order: Order) => void;
-  /** Advance to Delivered — manually progress delivery_scheduled orders with partial delivery to delivered stage */
-  onAdvanceToDelivered?: (order: Order) => void;
   schedulingOrderId?: string | null;
   scheduleDate?: string;
   scheduleRemarks?: string;
@@ -157,7 +155,6 @@ export default function DeliveryItemSection({
   onScheduleDelivery, onScheduleSelected, onScheduleAll,
   onRescheduleDelivery, onRescheduleSelected, onRescheduleAll,
   onCancelSchedule,
-  onAdvanceToDelivered,
   schedulingOrderId, scheduleDate, scheduleRemarks,
   onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
   onViewFiles, onEdit, onDelete, onRevert, onCompleteOrder,
@@ -285,16 +282,6 @@ export default function DeliveryItemSection({
                         title="Manually complete this order"
                       >
                         {actionLoading === order.id ? '…' : 'Complete Order'}
-                      </button>
-                    )}
-                    {onAdvanceToDelivered && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onAdvanceToDelivered(order); }}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
-                        title="Advance this order to Delivered stage (remaining items will be tracked)"
-                      >
-                        {actionLoading === order.id ? '…' : '→ Delivered'}
                       </button>
                     )}
                     <div className="flex items-center gap-1">

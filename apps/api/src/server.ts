@@ -4939,8 +4939,20 @@ app.post('/orders/:id/partial-delivery', async (request, reply) => {
   for (const item of items) {
     const verified = Number(item.verified_qty ?? 0);
     const alreadyDelivered = Number(item.delivered_qty ?? 0);
-    // If verified_qty is 0 (e.g. items added after inventory verification), fall back to full quantity
-    const deliverableQty = verified > 0 ? verified : Number(item.quantity ?? 0);
+    const arrived = Number(item.arrived_qty ?? 0);
+    // Item must have arrived or been verified before delivery is allowed
+    if (arrived <= 0 && verified <= 0) {
+      deliveryResults.push({
+        item_id: item.id,
+        item_name: item.name,
+        quantity_delivered: 0,
+        quantity_remaining: Number(item.quantity ?? 0) - alreadyDelivered,
+        fully_delivered: alreadyDelivered >= Number(item.quantity ?? 0),
+      });
+      continue;
+    }
+    // If verified_qty is 0 (e.g. items added after inventory verification), fall back to arrived_qty
+    const deliverableQty = verified > 0 ? verified : arrived;
     const maxDeliverable = Math.max(0, deliverableQty - alreadyDelivered);
 
     if (maxDeliverable <= 0) {

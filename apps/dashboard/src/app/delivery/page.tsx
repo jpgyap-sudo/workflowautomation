@@ -1068,17 +1068,6 @@ export default function DeliveryPage() {
     });
   }
 
-  /** Advance delivery_scheduled → delivered (for orders with partial delivery) */
-  function handleAdvanceToDelivered(order: Order) {
-    (window as any).__pendingActionOrder = order;
-    setConfirmModal({
-      open: true,
-      title: 'Advance to Delivered',
-      description: `Manually advance order ${order.quotation_number ?? '—'} (${order.client_name ?? 'Unknown'}) from delivery_scheduled to delivered? Delivered items will be marked as delivered and remaining items will continue to be tracked.`,
-      pendingAction: 'advance_to_delivered',
-    });
-  }
-
   async function executeCancelSchedule(order: Order, actionToken: string) {
     setActionLoading(order.id);
     try {
@@ -1093,26 +1082,6 @@ export default function DeliveryPage() {
       mutatePending();
     } catch (err: any) {
       alert('Failed to cancel schedule: ' + (err.message ?? 'Unknown error'));
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  /** Advance delivery_scheduled → delivered (for orders with partial delivery) */
-  async function executeAdvanceToDelivered(order: Order, actionToken: string) {
-    setActionLoading(order.id);
-    try {
-      await recordStageUpdate({
-        quotation_number: order.quotation_number ?? '',
-        stage: 'delivered',
-        status: 'auto_advanced',
-        remarks: 'Manually advanced to delivered from delivery_scheduled (partial delivery completed)',
-        action_token: actionToken,
-      });
-      mutateScheduled();
-      mutateDelivered();
-    } catch (err: any) {
-      alert('Failed to advance to delivered: ' + (err.message ?? 'Unknown error'));
     } finally {
       setActionLoading(null);
     }
@@ -1340,7 +1309,6 @@ export default function DeliveryPage() {
       else if (confirmModal.pendingAction === 'partial_delivery') { handlePartialDeliveryOtp(actionToken); }
       else if (confirmModal.pendingAction === 'complete_inventory_verification_partial') { handleCompleteInventoryVerificationPartialOtp(actionToken); }
       else if (confirmModal.pendingAction === 'payment_counter' && order) { executePaymentCounter(order, actionToken); }
-      else if (confirmModal.pendingAction === 'advance_to_delivered' && order) { executeAdvanceToDelivered(order, actionToken); }
 
       setConfirmModal((prev) => ({ ...prev, open: false }));
       (window as any).__pendingActionOrder = null;
@@ -2327,7 +2295,6 @@ export default function DeliveryPage() {
         onRescheduleSelected={handleScheduleSelected}
         onRescheduleAll={handleScheduleAll}
         onCancelSchedule={handleCancelSchedule}
-        onAdvanceToDelivered={handleAdvanceToDelivered}
         schedulingOrderId={schedulingOrder?.id ?? null}
         scheduleDate={scheduleDate}
         scheduleRemarks={scheduleRemarks}
