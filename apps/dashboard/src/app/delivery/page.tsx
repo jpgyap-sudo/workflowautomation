@@ -1331,8 +1331,8 @@ export default function DeliveryPage() {
           data.items
             .filter((item) => {
               if (item.fully_delivered) return false;
-              // Items with verified_qty=0 (e.g. added after inventory verification) are still deliverable
-              return item.verified_qty > 0 || Number(item.quantity) > 0;
+              // Item must have physically arrived (arrived_qty > 0) or been verified (verified_qty > 0) to be deliverable
+              return item.verified_qty > 0 || (item.arrived_qty ?? 0) > 0;
             })
             .map((item) => item.id)
         ),
