@@ -2309,6 +2309,22 @@ export default function ProductionPage() {
   const { data: inventoryArrivedOrders = [], isLoading: loadingInventoryArrived, error: errorInventoryArrived, mutate: mutateInventoryArrived } =
     useOrdersByStage('inventory_arrived');
 
+  // ── Later-stage fetches (for orders partially advanced with remaining production items) ──
+  const { data: balanceDueOrders = [], isLoading: loadingBalanceDue, error: errorBalanceDue, mutate: mutateBalanceDue } =
+    useOrdersByStage('balance_due');
+  const { data: deliveryPendingOrders = [], isLoading: loadingDeliveryPending, error: errorDeliveryPending, mutate: mutateDeliveryPending } =
+    useOrdersByStage('delivery_pending');
+  const { data: deliveryScheduledOrders = [], isLoading: loadingDeliveryScheduled, error: errorDeliveryScheduled, mutate: mutateDeliveryScheduled } =
+    useOrdersByStage('delivery_scheduled');
+  const { data: deliveredOrders = [], isLoading: loadingDelivered, error: errorDelivered, mutate: mutateDelivered } =
+    useOrdersByStage('delivered');
+  const { data: paymentReceivedOrders = [], isLoading: loadingPaymentReceived, error: errorPaymentReceived, mutate: mutatePaymentReceived } =
+    useOrdersByStage('payment_received');
+  const { data: paymentConfirmedOrders = [], isLoading: loadingPaymentConfirmed, error: errorPaymentConfirmed, mutate: mutatePaymentConfirmed } =
+    useOrdersByStage('payment_confirmed');
+  const { data: completedOrders = [], isLoading: loadingCompleted, error: errorCompleted, mutate: mutateCompleted } =
+    useOrdersByStage('completed');
+
   // ── Client filter ──────────────────────────────────────────────────────
   const [clientFilter, setClientFilter] = useState('');
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
@@ -2405,6 +2421,13 @@ export default function ProductionPage() {
     ...enRouteVerificationStageOrders,
     ...inventoryVerificationOrders,
     ...inventoryArrivedOrders,
+    ...balanceDueOrders,
+    ...deliveryPendingOrders,
+    ...deliveryScheduledOrders,
+    ...deliveredOrders,
+    ...paymentReceivedOrders,
+    ...paymentConfirmedOrders,
+    ...completedOrders,
   ]);
   const productionFinishedCandidateKey = productionFinishedCandidateOrders.map((o) => o.id).sort().join('|');
   const [productionFinishedSummaries, setProductionFinishedSummaries] = useState<Record<string, ProductionFinishedSummary>>({});
@@ -2447,8 +2470,18 @@ export default function ProductionPage() {
     const summary = productionFinishedSummaries[order.id];
     return summary?.hasFinishedProduction && !['en_route_verification', 'inventory_verification', 'inventory_arrived', 'balance_due', 'delivery_pending', 'delivery_scheduled', 'delivered', 'payment_received', 'payment_confirmed', 'completed'].includes(order.current_stage);
   });
-  const loadingFinished = loadingPartial || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived;
-  const errorFinished = errorPartial || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived;
+
+  // Orders in later stages that still have items in production (not yet finished)
+  const laterStageOrdersWithRemainingProduction = productionFinishedCandidateOrders.filter((order) => {
+    if (['production_pending', 'production_in_progress', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived'].includes(order.current_stage)) return false;
+    const summary = productionFinishedSummaries[order.id];
+    if (!summary) return false;
+    // Has at least one item still in production (not finished)
+    return summary.finishedCount < summary.totalCount;
+  });
+
+  const loadingFinished = loadingPartial || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived || loadingBalanceDue || loadingDeliveryPending || loadingDeliveryScheduled || loadingDelivered || loadingPaymentReceived || loadingPaymentConfirmed || loadingCompleted;
+  const errorFinished = errorPartial || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived || errorBalanceDue || errorDeliveryPending || errorDeliveryScheduled || errorDelivered || errorPaymentReceived || errorPaymentConfirmed || errorCompleted;
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2492,7 +2525,7 @@ export default function ProductionPage() {
   // Per-item production action state
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
-  function refresh() { mutatePending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); }
+  function refresh() { mutatePending(); mutatePartial(); mutateEnRoute(); mutateEnRouteStage(); mutateInventoryVerification(); mutateInventoryArrived(); mutateInProgress(); mutateBalanceDue(); mutateDeliveryPending(); mutateDeliveryScheduled(); mutateDelivered(); mutatePaymentReceived(); mutatePaymentConfirmed(); mutateCompleted(); }
 
   async function handleEditVerified(actionToken: string) {
     const pending = (window as any).__pendingEditData;
@@ -3322,7 +3355,7 @@ export default function ProductionPage() {
   // and Production In Progress (started/finished items)
   const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
 
-  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length;
+  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length + laterStageOrdersWithRemainingProduction.length;
 
   // ── Apply client filter ──────────────────────────────────────────────
   const filteredPendingOrders = filterByClient(pendingOrders);
@@ -3355,6 +3388,7 @@ export default function ProductionPage() {
   const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
   const filteredInProgressMergedOrders = dedupeOrders([...filteredInProgressStageOrders, ...filteredPartialOrders]);
+  const filteredLaterStageRemainingProduction = filterByClient(laterStageOrdersWithRemainingProduction);
 
   return (
     <div className="space-y-6">
@@ -3588,6 +3622,36 @@ export default function ProductionPage() {
         onDelete={handleDeleteClick}
         updatingItemId={updatingItemId}
       />
+
+      {/* Remaining Production Items — orders in later stages that still have items in production */}
+      {filteredLaterStageRemainingProduction.length > 0 && (
+        <ProductionItemSection
+          icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
+          title="Remaining Production Items"
+          count={filteredLaterStageRemainingProduction.length}
+          countBg="bg-orange-100" countText="text-orange-700"
+          orders={filteredLaterStageRemainingProduction}
+          isLoading={loadingBalanceDue || loadingDeliveryPending || loadingDeliveryScheduled || loadingDelivered || loadingPaymentReceived || loadingPaymentConfirmed || loadingCompleted}
+          error={errorBalanceDue || errorDeliveryPending || errorDeliveryScheduled || errorDelivered || errorPaymentReceived || errorPaymentConfirmed || errorCompleted}
+          onRetry={refresh}
+          emptyText="No orders with remaining production items"
+          itemFilter={(item) => item.production_status !== 'finished'}
+          showStartButton={true}
+          showFinishedButton={true}
+          showDelayedButton={true}
+          showBulkFinishButton={true}
+          onItemStartConfirm={handleItemStartConfirm}
+          onItemFinished={handleItemFinish}
+          onItemDelayed={handleItemDelayed}
+          onBulkFinish={handleBulkFinish}
+          onBulkFinishSelected={handleBulkFinishSelected}
+          onViewFiles={handleViewFiles}
+          onEdit={handleEdit}
+          onDelete={handleDeleteClick}
+          updatingItemId={updatingItemId}
+          onFinishProduction={handleFinishProduction}
+        />
+      )}
 
       {/* Production Days Modal */}
       {prodDaysModal.open && prodDaysModal.order && (
