@@ -6740,7 +6740,7 @@ app.post('/stage-updates', async (request, reply) => {
     deposit_verification:      ['purchasing_pending', 'stock_preparation'],
     purchasing_pending:        ['production_pending'],
     production_pending:        ['production_in_progress', 'partial_production'],
-    production_in_progress:    ['en_route', 'partial_production'],
+    production_in_progress:    ['en_route', 'partial_production', 'en_route_verification', 'inventory_verification'],
     partial_production:        ['production_in_progress', 'en_route'],
     stock_preparation:         ['balance_due'],
     en_route:                  ['en_route_verification', 'inventory_verification', 'inventory_arrived'],
