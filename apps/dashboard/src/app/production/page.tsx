@@ -2517,7 +2517,7 @@ export default function ProductionPage() {
   // Orders in later stages (beyond inventory_arrived) that have items with production_status = 'pending'
   // These should persist in the Partial Production section until ALL items have started production
   const laterStageOrdersWithPendingItems = productionFinishedCandidateOrders.filter((order) => {
-    if (['production_pending', 'production_in_progress', 'partial_production', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived'].includes(order.current_stage)) return false;
+    if (['production_pending', 'production_in_progress', 'partial_production', 'en_route', 'en_route_verification', 'inventory_verification'].includes(order.current_stage)) return false;
     const summary = productionFinishedSummaries[order.id];
     if (!summary) return false;
     // Has at least one item still pending (not started production)
@@ -2527,7 +2527,7 @@ export default function ProductionPage() {
   // Orders in later stages (beyond inventory_arrived) that have items with production_status = 'in_progress'
   // These should persist in the Production In Progress section until ALL items have finished production
   const laterStageOrdersWithInProgressItems = productionFinishedCandidateOrders.filter((order) => {
-    if (['production_pending', 'production_in_progress', 'partial_production', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived'].includes(order.current_stage)) return false;
+    if (['production_pending', 'production_in_progress', 'partial_production', 'en_route', 'en_route_verification', 'inventory_verification'].includes(order.current_stage)) return false;
     const summary = productionFinishedSummaries[order.id];
     if (!summary) return false;
     // Has at least one item still in progress (started but not finished)
