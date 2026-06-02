@@ -85,6 +85,7 @@ When you **finish**:
 | 2026-06-02 19:22 | Roo (Code) | Fix: add partial_production to inventory-verify-item allowedStages (was missing in deployed code), add Finished At and Verified At columns to production item table showing production_finished_at and inventory_verified_at dates. Commit `43a740d`. Git pulled on VPS, rebuilt API + dashboard containers. All 7 containers healthy. | ✅ Done |
 | 2026-06-02 20:13 | Roo (Code) | Fix: add partial_production to complete-inventory-verification-partial allowedStages and show Complete Partial Verification button for partial_production orders. Commit `111510e`. Deployed via deploy-agent. All 7 containers healthy. | ✅ Done |
 | 2026-06-02 20:22 | Roo (Code) | Fix: remove inventory_arrived from Remaining Production Items exclusion so orders at inventory_arrived with unfinished items (like Glasszilla) still appear in the section. Commit `f3afbc9`. Deployed via deploy-agent. All 7 containers healthy. | ✅ Done |
+| 2026-06-02 20:40 | Roo (Code) | Fix: Delivery tab — added expandable item breakdown with verification dates in Inventory Verification and Inventory Arrived sections. Click order row to expand item table showing name, qty, production status, finished at, en route, verified qty, verified at, delivered qty. Commit `9188437`. | 🔴 Active |
 
 ---
 
