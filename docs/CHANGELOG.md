@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `6125e6e` | Roo Code | fix: prioritize OpenRouter as primary vision provider with google/gemini-2.5-flash — swapped Tier 1/2 in callGemini() so OpenRouter is tried first, updated VPS .env with user's OpenRouter key and gemini-2.5-flash model | ✅ |
 | `0c1bcbd` | Roo Code | fix: change reminder scheduling from 4:00 PM to 3:00 PM PHT for all bot reminders — updated nextPhtReminderTime() in agentRunner.ts, reminderScheduler.ts, and nextPhtReminderTimeAfterDays() in server.ts | ✅ |
 | `00c6ebe` | Roo Code | fix: add Remaining Production Items section for orders partially advanced past inventory_arrived — added fetches for later-stage orders (balance_due through completed), added to productionFinishedCandidateOrders, created new section showing items still in production from advanced orders. Updated refresh(), totalActive, loadingFinished/errorFinished. | ✅ |
 | `77931c9` | Roo Code | feat: add Verify Arrived button on Arrival Verification — item-level verification via inventory-verify-item (no stage change). Added production_in_progress to allowed stages. Added onItemVerifyArrived/onBulkVerifyArrived props with teal buttons. Added Quick Verify All Arrived in Inventory tab. | ✅ |
