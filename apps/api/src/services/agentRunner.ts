@@ -216,8 +216,8 @@ export function nextPhtReminderTime(): Date {
 
   if (phtHour < 10) {
     target.setUTCHours(10);
-  } else if (phtHour < 16) {
-    target.setUTCHours(16);
+  } else if (phtHour < 15) {
+    target.setUTCHours(15);
   } else {
     target.setUTCDate(target.getUTCDate() + 1);
     target.setUTCHours(10);

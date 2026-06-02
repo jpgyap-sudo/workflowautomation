@@ -4,8 +4,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 /**
- * Returns the next reminder fire time: 10:00 AM or 4:00 PM PHT (UTC+8).
- * If current PHT time is already past 4 PM, returns tomorrow 10 AM PHT.
+ * Returns the next reminder fire time: 10:00 AM or 3:00 PM PHT (UTC+8).
+ * If current PHT time is already past 3 PM, returns tomorrow 10 AM PHT.
  */
 function nextPhtReminderTime(): Date {
   const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -17,8 +17,8 @@ function nextPhtReminderTime(): Date {
 
   if (phtHour < 10) {
     target.setUTCHours(10);
-  } else if (phtHour < 16) {
-    target.setUTCHours(16);
+  } else if (phtHour < 15) {
+    target.setUTCHours(15);
   } else {
     target.setUTCDate(target.getUTCDate() + 1);
     target.setUTCHours(10);

@@ -3701,8 +3701,8 @@ function nextPhtReminderTimeAfterDays(days: number): Date {
   const phtHour = phtTarget.getUTCHours();
   if (phtHour < 10) {
     phtTarget.setUTCHours(10);
-  } else if (phtHour < 16) {
-    phtTarget.setUTCHours(16);
+  } else if (phtHour < 15) {
+    phtTarget.setUTCHours(15);
   } else {
     phtTarget.setUTCDate(phtTarget.getUTCDate() + 1);
     phtTarget.setUTCHours(10);

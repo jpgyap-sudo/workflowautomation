@@ -15883,3 +15883,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: add Remaining Production Items section for orders partially advanced past inventory_arrived
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 00c6ebe10664e61b211fdaacb35f0e9d80dcd622
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 00c6ebe10664e61b211fdaacb35f0e9d80dcd622
+**Files:** apps/dashboard/src/app/production/page.tsx,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+A missing "Remaining Production Items" section in the production dashboard for orders that were partially advanced past the `inventory_arrived` status.
+
+**Why it broke:**  
+The UI assumed that once an order passed `inventory_arrived`, all its items were fully processed. It did not account for partial advancement, where some items remain in production while others move forward.
+
+**Reusable takeaway:**  
+When modeling order or workflow state transitions, never assume a status change applies uniformly to all sub-items. Always check for partial fulfillment or mixed states, and ensure the UI renders fallback sections (e.g., "Remaining Items") for any items still in earlier stages. This prevents silent data loss or user confusion.
+
+---
+*Original commit message: fix: add Remaining Production Items section for orders partially advanced past inventory_arrived*
+
+#### Lesson Learned
+
+**What was fixed:**  
+A missing "Remaining Production Items" section in the production dashboard for orders that were partially advanced past the `inventory_arrived` status.
+
+**Why it broke:**  
+The UI assumed that once an order passed `inventory_arrived`, all its items were fully processed. It did not account for partial advancement, where some items remain in production while others move forward.
+
+**Reusable takeaway:**  
+When modeling order or workflow state transitions, never assume a status change applies uniformly to all sub-items. Always check for partial fulfillment or mixed states, and ensure the UI renders fallback sections (e.g., "Remaining Items") for any items still in earlier stages. This prevents silent data loss or user confusion.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
