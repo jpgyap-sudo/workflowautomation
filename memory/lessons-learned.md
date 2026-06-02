@@ -15693,3 +15693,147 @@ Never hardcode boolean flags for stage-dependent UI visibility. Instead, derive 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: QTN-MN not showing in Arrival Verification on Production/Inventory tabs
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 32426981b74d8f63e4cdc38d05dce11dc2714494
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 32426981b74d8f63e4cdc38d05dce11dc2714494
+**Files:** apps/dashboard/src/app/inventory/page.tsx,apps/dashboard/src/app/production/page.tsx,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+QTN-MN (quotation-to-manufacturing number) was missing from Arrival Verification views in both Production and Inventory tabs.
+
+**Why it broke:**  
+The QTN-MN field was not included in the data-fetching queries or UI rendering logic for these two specific views, likely due to a schema mismatch or oversight when the field was added to other parts of the system.
+
+**Reusable takeaway:**  
+When adding a new field to a data model, audit all dependent views and components to ensure the field is included in both backend queries and frontend rendering. Use a centralized field list or type definition to prevent such omissions.
+
+---
+*Original commit message: fix: QTN-MN not showing in Arrival Verification on Production/Inventory tabs*
+
+#### Lesson Learned
+
+**What was fixed:**  
+QTN-MN (quotation-to-manufacturing number) was missing from Arrival Verification views in both Production and Inventory tabs.
+
+**Why it broke:**  
+The QTN-MN field was not included in the data-fetching queries or UI rendering logic for these two specific views, likely due to a schema mismatch or oversight when the field was added to other parts of the system.
+
+**Reusable takeaway:**  
+When adding a new field to a data model, audit all dependent views and components to ensure the field is included in both backend queries and frontend rendering. Use a centralized field list or type definition to prevent such omissions.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] chore: update UPDATE_LOG to reflect deployment of QTN-MN fix (commit 3242698)
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 294b28b515539e974be4fff6cdf4c2026c6a4e84
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 294b28b515539e974be4fff6cdf4c2026c6a4e84
+**Files:** docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+The `UPDATE_LOG.md` was updated to document the deployment of a fix for the QTN-MN system.
+
+**Why it broke:**  
+The commit message does not detail the root cause, but the fix likely addressed a bug or regression in the QTN-MN module that was previously deployed without proper logging.
+
+**Reusable takeaway:**  
+Always update deployment logs immediately after applying a fix, not before or during. This ensures traceability and prevents confusion about which version of a fix is live. A clear, timestamped log entry helps teams audit changes and roll back if needed.
+
+---
+*Original commit message: chore: update UPDATE_LOG to reflect deployment of QTN-MN fix (commit 3242698)*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The `UPDATE_LOG.md` was updated to document the deployment of a fix for the QTN-MN system.
+
+**Why it broke:**  
+The commit message does not detail the root cause, but the fix likely addressed a bug or regression in the QTN-MN module that was previously deployed without proper logging.
+
+**Reusable takeaway:**  
+Always update deployment logs immediately after applying a fix, not before or during. This ensures traceability and prevents confusion about which version of a fix is live. A clear, timestamped log entry helps teams audit changes and roll back if needed.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add en_route_verification and inventory_verification to production_in_progress VALID_TRANSITIONS
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f94e886855f29d08f838d94a189fd58198c71691
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f94e886855f29d08f838d94a189fd58198c71691
+**Files:** apps/api/src/server.ts,docs/UPDATE_LOG.md
+
+**Summary:**
+**What was fixed:**  
+Added `en_route_verification` and `inventory_verification` to the `VALID_TRANSITIONS` list for `production_in_progress` status in a workflow automation system.
+
+**Why it broke:**  
+These two transition states were missing from the allowed transitions, causing the system to reject valid status changes when moving from `production_in_progress` to verification steps. The validation logic blocked these transitions because they weren't explicitly permitted.
+
+**Reusable takeaway:**  
+When defining state machine transitions, always audit all possible next states for each status, especially when adding new workflow steps. Missing a single transition in a validation list can silently block entire process flows. Use exhaustive transition maps and test all valid paths during development to catch omissions early.
+
+---
+*Original commit message: fix: add en_route_verification and inventory_verification to production_in_progress VALID_TRANSITIONS*
+
+#### Lesson Learned
+
+**What was fixed:**  
+Added `en_route_verification` and `inventory_verification` to the `VALID_TRANSITIONS` list for `production_in_progress` status in a workflow automation system.
+
+**Why it broke:**  
+These two transition states were missing from the allowed transitions, causing the system to reject valid status changes when moving from `production_in_progress` to verification steps. The validation logic blocked these transitions because they weren't explicitly permitted.
+
+**Reusable takeaway:**  
+When defining state machine transitions, always audit all possible next states for each status, especially when adding new workflow steps. Missing a single transition in a validation list can silently block entire process flows. Use exhaustive transition maps and test all valid paths during development to catch omissions early.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

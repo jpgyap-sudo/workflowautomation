@@ -1262,6 +1262,8 @@ interface ProductionItemSectionProps {
   updatingItemId?: string | null;
   /** Callback when Finish Production is clicked for an order (order-level) */
   onFinishProduction?: (order: Order) => void;
+  /** Per-order filter: if provided, Verify button only shows for orders where this returns true */
+  showVerifyButtonForOrder?: (order: Order) => boolean;
  }
 
 function ProductionItemSection({
@@ -1275,6 +1277,7 @@ function ProductionItemSection({
   onViewFiles, onEdit, onDelete,
   updatingItemId,
   onFinishProduction,
+  showVerifyButtonForOrder,
  }: ProductionItemSectionProps) {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({});
@@ -1559,7 +1562,8 @@ function ProductionItemSection({
                               </div>
                             )}
                             {/* Toolbar: Verify Selected + Verify All */}
-                            {(showBulkVerifyButton || (showVerifyButton && onBulkVerify)) && (
+                            {/* Only show verify toolbar for orders where showVerifyButtonForOrder allows it */}
+                            {(showBulkVerifyButton || (showVerifyButton && onBulkVerify)) && (!showVerifyButtonForOrder || showVerifyButtonForOrder(order)) && (
                               <div className="mb-2 flex items-center justify-end gap-2">
                                 {showVerifyButton && onBulkVerify && orderSelected.size > 0 && (
                                   <button
@@ -1718,7 +1722,7 @@ function ProductionItemSection({
                                                 {updatingItemId === item.id ? 'Saving...' : '📦 Arrived'}
                                               </button>
                                             )}
-                                            {showVerifyButton && item.en_route_status === 'arrived' && (
+                                            {showVerifyButton && item.en_route_status === 'arrived' && (!showVerifyButtonForOrder || showVerifyButtonForOrder(order)) && (
                                               <button
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); onItemVerify?.(order); }}
@@ -3440,6 +3444,10 @@ export default function ProductionPage() {
       />
 
       {/* Arrival Verification — items arrived, awaiting inventory verification */}
+      {/* Verify button only shows for orders in en_route_verification stage.
+          Orders in other stages (e.g. production_in_progress) with arrived items
+          are shown for visibility but cannot be advanced to inventory_verification
+          until all items are done. */}
       <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-blue-500" />}
         title="Arrival Verification"
@@ -3453,6 +3461,7 @@ export default function ProductionPage() {
         itemFilter={(item) => item.en_route_status === 'arrived'}
         showVerifyButton={true}
         showBulkVerifyButton={true}
+        showVerifyButtonForOrder={(order) => order.current_stage === 'en_route_verification'}
         onItemVerify={(order) => handleProceedInventoryVerification(order)}
         onBulkVerify={(order) => handleProceedInventoryVerification(order)}
         onViewFiles={handleViewFiles}
