@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-06-02
+
+| Commit | Extension | Description | Deployed |
+|--------|-----------|-------------|----------|
+| `d493575` | Roo Code | fix: Verify button in Arrival Verification only shows for en_route_verification orders — added showVerifyButtonForOrder prop to ProductionItemSection, hides Verify button for production_in_progress orders with arrived items. Reverted VALID_TRANSITIONS change. | ✅ |
+
 ## 2026-06-01
 
 | Commit | Extension | Description | Deployed |

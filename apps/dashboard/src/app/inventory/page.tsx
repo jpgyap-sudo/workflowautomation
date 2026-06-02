@@ -1389,6 +1389,7 @@ function InventoryVerificationSection() {
   const [inProgressOrdersWithArrived, setInProgressOrdersWithArrived] = useState<Order[]>([]);
   const [loadingEnRouteItems, setLoadingEnRouteItems] = useState(false);
   const [loadingInProgressItems, setLoadingInProgressItems] = useState(false);
+  const [verifyingOrderId, setVerifyingOrderId] = useState<string | null>(null);
 
   // Merge all orders: inventory_verification + en_route_verification orders that have arrived items
   // + production_in_progress orders that have arrived items
@@ -1504,6 +1505,38 @@ function InventoryVerificationSection() {
     return () => { cancelled = true; };
   }, [orders.map((order) => order.id).sort().join('|')]);
 
+  // Quick-verify all arrived items for a production_in_progress order (item-level, no stage change)
+  async function handleQuickVerifyArrived(order: Order) {
+    if (!order.quotation_number) { alert('Cannot verify: this order has no quotation number.'); return; }
+    setVerifyingOrderId(order.id);
+    try {
+      // Fetch items to find which ones have arrived
+      const res = await getOrderItems(order.id);
+      const arrivedItems = (res.items ?? []).filter((item: OrderItem) => item.en_route_status === 'arrived');
+      if (arrivedItems.length === 0) { alert('No arrived items to verify for this order.'); setVerifyingOrderId(null); return; }
+      if (!window.confirm(`Quick-verify ${arrivedItems.length} arrived item(s) for order "${order.quotation_number}"? This marks items as inventory-verified without changing the order stage.`)) { setVerifyingOrderId(null); return; }
+      const tokenResult = await generateActionToken('system', 'dashboard');
+      if (!tokenResult.ok || !tokenResult.actionToken) { alert('Failed to generate action token.'); setVerifyingOrderId(null); return; }
+      // Verify each arrived item individually
+      for (const item of arrivedItems) {
+        await inventoryVerifyItem(order.id, {
+          item_id: item.id,
+          action: 'all',
+          action_token: tokenResult.actionToken,
+        });
+      }
+      // Refresh data
+      invMutate();
+      enRouteMutate();
+      partialMutate();
+      mutateInProgress();
+    } catch (err: any) {
+      alert('Failed to verify arrived items: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setVerifyingOrderId(null);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
@@ -1572,6 +1605,20 @@ function InventoryVerificationSection() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {order.current_stage === 'production_in_progress' && (
+                  <button
+                    type="button"
+                    disabled={verifyingOrderId === order.id}
+                    onClick={() => handleQuickVerifyArrived(order)}
+                    className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-teal-700 disabled:opacity-50"
+                  >
+                    {verifyingOrderId === order.id ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Verifying…</>
+                    ) : (
+                      <><CheckCircle className="h-3 w-3" /> Quick Verify All Arrived</>
+                    )}
+                  </button>
+                )}
                 <Link href={verificationUrl} className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-teal-700">
                   <ExternalLink className="h-3 w-3" /> Open Verification Link
                 </Link>

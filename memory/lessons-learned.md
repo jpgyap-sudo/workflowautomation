@@ -15837,3 +15837,49 @@ When defining state machine transitions, always audit all possible next states f
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: Verify button in Arrival Verification only shows for en_route_verification orders — added showVerifyButtonForOrder 
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit d4935756a0e4a407c50c1db4af993d4fd86bccc9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** d4935756a0e4a407c50c1db4af993d4fd86bccc9
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**Lesson: Conditional UI visibility based on order state**
+
+**What was fixed:** The "Verify" button in Arrival Verification was incorrectly appearing for `production_in_progress` orders that already had arrived items. It should only show for `en_route_verification` orders.
+
+**Root cause:** The `VALID_TRANSITIONS` change allowed the button to render for the wrong order state. The UI component lacked a prop to conditionally hide the button based on order type.
+
+**Reusable takeaway:** When adding UI actions tied to specific workflow states, always pass explicit state-based props (e.g., `showVerifyButtonForOrder`) rather than relying solely on transition logic. This decouples visual rendering from state machine transitions, preventing mismatches between allowed actions and visible controls.
+
+---
+*Original commit message: fix: Verify button in Arrival Verification only shows for en_route_verification orders — added showVerifyButtonForOrder prop to ProductionItemSection, hides Verify button for production_in_progress orders with arrived items. Reverted VALID_TRANSITIONS change.*
+
+#### Lesson Learned
+
+**Lesson: Conditional UI visibility based on order state**
+
+**What was fixed:** The "Verify" button in Arrival Verification was incorrectly appearing for `production_in_progress` orders that already had arrived items. It should only show for `en_route_verification` orders.
+
+**Root cause:** The `VALID_TRANSITIONS` change allowed the button to render for the wrong order state. The UI component lacked a prop to conditionally hide the button based on order type.
+
+**Reusable takeaway:** When adding UI actions tied to specific workflow states, always pass explicit state-based props (e.g., `showVerifyButtonForOrder`) rather than relying solely on transition logic. This decouples visual rendering from state machine transitions, preventing mismatches between allowed actions and visible controls.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

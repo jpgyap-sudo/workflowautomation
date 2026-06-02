@@ -21,6 +21,8 @@ import {
   completeProductionPartial,
   completeDispatchPartial,
   completeArrivalPartial,
+  inventoryVerifyItem,
+  bulkInventoryVerify,
 } from '@/lib/api';
 import StageBadge from '@/components/StageBadge';
 import OtpModal from '@/components/OtpModal';
@@ -1240,8 +1242,10 @@ interface ProductionItemSectionProps {
   onItemEnRoute?: (order: Order, item: OrderItem) => void;
   /** Callback when Arrived is clicked for an item */
   onItemArrived?: (order: Order, item: OrderItem) => void;
-  /** Callback when Verify is clicked for an arrived item */
+  /** Callback when Verify is clicked for an arrived item (stage change — moves entire order) */
   onItemVerify?: (order: Order) => void;
+  /** Callback when Verify Arrived is clicked for an individual arrived item (item-level, no stage change) */
+  onItemVerifyArrived?: (order: Order, item: OrderItem) => void;
   /** Callback when bulk En Route All is clicked for an order */
   onBulkEnRoute?: (order: Order, items: OrderItem[], refreshCallback?: () => void) => void;
   /** Callback when bulk En Route Selected is clicked */
@@ -1250,8 +1254,10 @@ interface ProductionItemSectionProps {
   onBulkArriveAll?: (order: Order, refreshCallback?: () => void) => void;
   /** Callback when bulk Arrive Selected is clicked */
   onBulkArriveSelected?: (order: Order, itemIds: string[], refreshCallback?: () => void) => void;
-  /** Callback when bulk Verify is clicked for an order */
+  /** Callback when bulk Verify is clicked for an order (stage change — moves entire order) */
   onBulkVerify?: (order: Order) => void;
+  /** Callback when bulk Verify Arrived is clicked for all arrived items (item-level, no stage change) */
+  onBulkVerifyArrived?: (order: Order, itemIds: string[]) => void;
   /** Callback to view files */
   onViewFiles?: (o: Order) => void;
   /** Callback to edit */
@@ -1273,7 +1279,7 @@ function ProductionItemSection({
   showStartButton, showFinishedButton, showDelayedButton, showBulkFinishButton,
   showEnRouteButton, showArrivedButton, showVerifyButton, showBulkEnRouteButton, showBulkArriveButton, showBulkVerifyButton,
   onItemStart, onItemStartConfirm, onItemFinished, onItemDelayed, onBulkFinish, onBulkFinishSelected,
-  onItemEnRoute, onItemArrived, onItemVerify, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected, onBulkVerify,
+  onItemEnRoute, onItemArrived, onItemVerify, onItemVerifyArrived, onBulkEnRoute, onBulkEnRouteSelected, onBulkArriveAll, onBulkArriveSelected, onBulkVerify, onBulkVerifyArrived,
   onViewFiles, onEdit, onDelete,
   updatingItemId,
   onFinishProduction,
@@ -1587,9 +1593,36 @@ function ProductionItemSection({
                                     </button>
                                   );
                                 })()}
-                              </div>
-                            )}
-                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                            </div>
+                          )}
+                          {/* Toolbar: Verify Arrived Selected + Verify Arrived All (item-level, no stage change) */}
+                          {onBulkVerifyArrived && (
+                            <div className="mb-2 flex items-center justify-end gap-2">
+                              {onBulkVerifyArrived && orderSelected.size > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onBulkVerifyArrived(order, Array.from(orderSelected)); }}
+                                  className="rounded-md border border-teal-300 bg-teal-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-teal-700 transition-colors"
+                                >
+                                  ✓ Verify Arrived Selected ({orderSelected.size})
+                                </button>
+                              )}
+                              {(() => {
+                                const notYetVerified = filteredItems.filter((i) => i.en_route_status === 'arrived');
+                                if (notYetVerified.length === 0) return null;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onBulkVerifyArrived(order, notYetVerified.map((i) => i.id)); }}
+                                    className="rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 transition-colors"
+                                  >
+                                    ✓ Verify Arrived All ({notYetVerified.length})
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          <div className="overflow-x-auto rounded-lg border border-gray-200">
                               <table className="w-full text-left text-xs">
                                 <thead>
                                   <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -1729,6 +1762,16 @@ function ProductionItemSection({
                                                 className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors"
                                               >
                                                 ✓ Verify
+                                              </button>
+                                            )}
+                                            {onItemVerifyArrived && item.en_route_status === 'arrived' && (
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={(e) => { e.stopPropagation(); onItemVerifyArrived(order, item); }}
+                                                className="rounded-md border border-teal-200 bg-teal-50 px-3 py-1 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50 transition-colors"
+                                              >
+                                                {updatingItemId === item.id ? 'Verifying...' : '✓ Verify Arrived'}
                                               </button>
                                             )}
                                           </div>
@@ -2752,6 +2795,42 @@ export default function ProductionPage() {
     (window as any).__pendingProceedInventoryVerificationData = { orderId: order.id, quotationNumber: order.quotation_number };
   }
 
+  // ── Item-level Verify Arrived (no stage change) ──────────────────────
+  async function handleItemVerifyArrived(order: Order, item: OrderItem) {
+    if (!order.quotation_number) { alert('Cannot verify: this order has no quotation number.'); return; }
+    if (!window.confirm(`Verify arrived item "${item.name}" for order "${order.quotation_number}"? This marks the item as inventory-verified without changing the order stage.`)) return;
+    try {
+      const tokenResult = await generateActionToken(user?.email ?? '', user?.name ?? undefined);
+      if (!tokenResult.ok || !tokenResult.actionToken) { alert('Failed to generate action token. Please try again.'); return; }
+      await inventoryVerifyItem(order.id, {
+        item_id: item.id,
+        action: 'all',
+        action_token: tokenResult.actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to verify arrived item: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
+  async function handleBulkVerifyArrived(order: Order, itemIds: string[]) {
+    if (!order.quotation_number) { alert('Cannot verify: this order has no quotation number.'); return; }
+    if (itemIds.length === 0) { alert('No items selected for verification.'); return; }
+    if (!window.confirm(`Verify ${itemIds.length} arrived item(s) for order "${order.quotation_number}"? This marks items as inventory-verified without changing the order stage.`)) return;
+    try {
+      const tokenResult = await generateActionToken(user?.email ?? '', user?.name ?? undefined);
+      if (!tokenResult.ok || !tokenResult.actionToken) { alert('Failed to generate action token. Please try again.'); return; }
+      await bulkInventoryVerify(order.id, {
+        item_ids: itemIds,
+        action: 'all',
+        action_token: tokenResult.actionToken,
+      });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to bulk verify arrived items: ' + (err.message ?? 'Unknown error'));
+    }
+  }
+
   async function handleGrantException(order: Order) {
     const notes = window.prompt('Reason for production exception (why is production starting without downpayment)?');
     if (!notes) return;
@@ -3444,10 +3523,9 @@ export default function ProductionPage() {
       />
 
       {/* Arrival Verification — items arrived, awaiting inventory verification */}
-      {/* Verify button only shows for orders in en_route_verification stage.
-          Orders in other stages (e.g. production_in_progress) with arrived items
-          are shown for visibility but cannot be advanced to inventory_verification
-          until all items are done. */}
+      {/* Two types of verification:
+          1. Stage-change Verify (blue) — for en_route_verification orders, moves entire order to inventory_verification
+          2. Item-level Verify Arrived (teal) — for any order with arrived items, marks items as verified without stage change */}
       <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-blue-500" />}
         title="Arrival Verification"
@@ -3464,6 +3542,8 @@ export default function ProductionPage() {
         showVerifyButtonForOrder={(order) => order.current_stage === 'en_route_verification'}
         onItemVerify={(order) => handleProceedInventoryVerification(order)}
         onBulkVerify={(order) => handleProceedInventoryVerification(order)}
+        onItemVerifyArrived={handleItemVerifyArrived}
+        onBulkVerifyArrived={handleBulkVerifyArrived}
         onViewFiles={handleViewFiles}
         onEdit={handleEdit}
         onDelete={handleDeleteClick}
