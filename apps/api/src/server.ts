@@ -3970,7 +3970,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   const orderRows = await query(`SELECT current_stage, quotation_number, client_name, partial_delivery FROM orders WHERE id = $1`, [id]);
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
 
-  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress'];
+  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress', 'partial_production'];
   const partialDeliveryAllowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
   const isAllowed = allowedStages.includes(orderRows[0].current_stage)
     || (orderRows[0].partial_delivery === true && partialDeliveryAllowedStages.includes(orderRows[0].current_stage));
@@ -4176,7 +4176,7 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
   );
   if (!orderRows[0]) return reply.code(404).send({ error: 'Order not found' });
 
-  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress'];
+  const allowedStages = ['inventory_verification', 'en_route_verification', 'production_in_progress', 'partial_production'];
   const partialDeliveryAllowedStages = ['inventory_arrived', 'balance_due', 'balance_verification', 'delivery_pending', 'delivery_scheduled'];
   const isAllowed = allowedStages.includes(orderRows[0].current_stage)
     || (orderRows[0].partial_delivery === true && partialDeliveryAllowedStages.includes(orderRows[0].current_stage));

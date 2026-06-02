@@ -1659,6 +1659,8 @@ function ProductionItemSection({
                                       <th className="px-3 py-2">En Route Status</th>
                                     )}
                                     <th className="px-3 py-2">Est. Finish Date</th>
+                                    <th className="px-3 py-2">Finished At</th>
+                                    <th className="px-3 py-2">Verified At</th>
                                     <th className="px-3 py-2">Actions</th>
                                   </tr>
                                 </thead>
@@ -1712,6 +1714,20 @@ function ProductionItemSection({
                                         <td className="px-3 py-2 text-gray-600">
                                           {estFinishDate ? (
                                             <span className="text-[11px]">{formatDate(estFinishDate)}</span>
+                                          ) : (
+                                            <span className="text-[11px] text-gray-400">—</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-600">
+                                          {item.production_finished_at ? (
+                                            <span className="text-[11px] text-green-600">{formatDate(new Date(item.production_finished_at))}</span>
+                                          ) : (
+                                            <span className="text-[11px] text-gray-400">—</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-600">
+                                          {item.inventory_verified_at ? (
+                                            <span className="text-[11px] text-teal-600">{formatDate(new Date(item.inventory_verified_at))}</span>
                                           ) : (
                                             <span className="text-[11px] text-gray-400">—</span>
                                           )}
