@@ -162,6 +162,34 @@ export default function DeliveryPage() {
 
   const [inProgressOrdersWithVerifiedItems, setInProgressOrdersWithVerifiedItems] = useState<Order[]>([]);
 
+  // ── Expandable item breakdown ────────────────────────────────────────
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+  const [orderItemsMap, setOrderItemsMap] = useState<Record<string, OrderItem[]>>({});
+  const [loadingItemsForOrder, setLoadingItemsForOrder] = useState<string | null>(null);
+
+  async function toggleOrderExpand(order: Order) {
+    if (expandedOrderIds.has(order.id)) {
+      expandedOrderIds.delete(order.id);
+      setExpandedOrderIds(new Set(expandedOrderIds));
+      return;
+    }
+    setExpandedOrderIds(new Set([...expandedOrderIds, order.id]));
+    if (!orderItemsMap[order.id]) {
+      setLoadingItemsForOrder(order.id);
+      try {
+        const res = await getOrderItems(order.id);
+        setOrderItemsMap((prev) => ({ ...prev, [order.id]: res.items ?? [] }));
+      } catch { /* ignore */ }
+      setLoadingItemsForOrder(null);
+    }
+  }
+
+  function formatDate(value: string | null | undefined): string {
+    if (!value) return '—';
+    try { return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+    catch { return value; }
+  }
+
   // Fetch items for production_in_progress orders to find those with verified items
   useEffect(() => {
     if (!productionInProgressOrders.length) { setInProgressOrdersWithVerifiedItems([]); return; }
@@ -1611,52 +1639,15 @@ export default function DeliveryPage() {
               const balance = totalAmount - depositAmount;
               return (
                 <div key={order.id}>
-                  <div className="flex items-center justify-between px-6 py-4">
+                  <div
+                    className="flex cursor-pointer items-center justify-between px-6 py-4 hover:bg-gray-50/50"
+                    onClick={() => toggleOrderExpand(order)}
+                  >
                     <div>
                       <div className="flex items-center gap-2">
                         <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                      </div>
-                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
-                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
-                      {order.total_amount != null && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Total: ₱{totalAmount.toLocaleString()}
-                        </p>
-                      )}
-                      <DeliveryInfo order={order} />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={order.current_stage} />
-                      <button
-                        onClick={() => handleCompleteInventoryVerificationPartial(order)}
-                        disabled={actionLoading === order.id}
-                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
-                        title="Complete partial verification and advance to Inventory Arrived"
-                      >
-                        {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
-                      </button>
-                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
-                    </div>
-                  </div>
-                  {editingOrder?.id === order.id && (
-                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
-                  )}
-                </div>
-              );
-            })}
-            {/* Production in progress orders with verified items — can advance to inventory_arrived with partial delivery */}
-            {inProgressOrdersWithVerifiedItems.map((order) => {
-              const totalAmount = Number(order.total_amount ?? 0);
-              const depositAmount = Number(order.deposit_amount ?? 0);
-              const balance = totalAmount - depositAmount;
-              return (
-                <div key={order.id}>
-                  <div className="flex items-center justify-between px-6 py-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                          <Package className="h-3 w-3" />Partial Arrival
+                        <span className="text-[10px] text-gray-400">
+                          {expandedOrderIds.has(order.id) ? '▲' : '▼'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
@@ -1671,7 +1662,133 @@ export default function DeliveryPage() {
                     <div className="flex items-center gap-3">
                       <StageBadge stage={order.current_stage} />
                       <button
-                        onClick={() => handleCompleteInventoryVerificationPartial(order)}
+                        onClick={(e) => { e.stopPropagation(); handleCompleteInventoryVerificationPartial(order); }}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+                        title="Complete partial verification and advance to Inventory Arrived"
+                      >
+                        {actionLoading === order.id ? '…' : 'Complete Partial Verification →'}
+                      </button>
+                      <RowActions order={order} onEdit={setEditingOrder} onDelete={handleDeleteClick} onRevert={handleRevertClick} />
+                    </div>
+                  </div>
+                  {editingOrder?.id === order.id && (
+                    <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                  {expandedOrderIds.has(order.id) && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
+                      {loadingItemsForOrder === order.id ? (
+                        <div className="flex items-center justify-center py-3">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                <th className="px-3 py-2">Item</th>
+                                <th className="px-3 py-2">Qty</th>
+                                <th className="px-3 py-2">Production</th>
+                                <th className="px-3 py-2">Finished At</th>
+                                <th className="px-3 py-2">En Route</th>
+                                <th className="px-3 py-2">Verified Qty</th>
+                                <th className="px-3 py-2">Verified At</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {(orderItemsMap[order.id] ?? []).map((item) => {
+                                const isVerified = Number(item.verified_qty) > 0;
+                                return (
+                                  <tr key={item.id} className={`hover:bg-gray-50 ${isVerified ? 'bg-teal-50/40' : ''}`}>
+                                    <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                    <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        item.production_status === 'finished' ? 'bg-green-100 text-green-700' :
+                                        item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {item.production_status === 'finished' ? 'Finished' :
+                                         item.production_status === 'in_progress' ? 'Started' : 'Pending'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.production_finished_at ? (
+                                        <span className="text-green-600">{formatDate(item.production_finished_at)}</span>
+                                      ) : (
+                                        <span className="text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' :
+                                        item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {item.en_route_status === 'arrived' ? 'Arrived' :
+                                         item.en_route_status === 'en_route' ? 'En Route' : 'Not Yet'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {isVerified ? (
+                                        <span className="font-semibold text-teal-600">{item.verified_qty}</span>
+                                      ) : (
+                                        <span className="text-gray-400">0</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.inventory_verified_at ? (
+                                        <span className="text-teal-600">{formatDate(item.inventory_verified_at)}</span>
+                                      ) : (
+                                        <span className="text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* Production in progress orders with verified items — can advance to inventory_arrived with partial delivery */}
+            {inProgressOrdersWithVerifiedItems.map((order) => {
+              const totalAmount = Number(order.total_amount ?? 0);
+              const depositAmount = Number(order.deposit_amount ?? 0);
+              const balance = totalAmount - depositAmount;
+              return (
+                <div key={order.id}>
+                  <div
+                    className="flex cursor-pointer items-center justify-between px-6 py-4 hover:bg-gray-50/50"
+                    onClick={() => toggleOrderExpand(order)}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                          <Package className="h-3 w-3" />Partial Arrival
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {expandedOrderIds.has(order.id) ? '▲' : '▼'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
+                      {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
+                      {order.total_amount != null && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          Total: ₱{totalAmount.toLocaleString()}
+                        </p>
+                      )}
+                      <DeliveryInfo order={order} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={order.current_stage} />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCompleteInventoryVerificationPartial(order); }}
                         disabled={actionLoading === order.id}
                         className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
                         title="Some items have been verified as arrived. Advance to Inventory Arrived with partial delivery enabled."
@@ -1683,6 +1800,83 @@ export default function DeliveryPage() {
                   </div>
                   {editingOrder?.id === order.id && (
                     <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                  {expandedOrderIds.has(order.id) && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
+                      {loadingItemsForOrder === order.id ? (
+                        <div className="flex items-center justify-center py-3">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                <th className="px-3 py-2">Item</th>
+                                <th className="px-3 py-2">Qty</th>
+                                <th className="px-3 py-2">Production</th>
+                                <th className="px-3 py-2">Finished At</th>
+                                <th className="px-3 py-2">En Route</th>
+                                <th className="px-3 py-2">Verified Qty</th>
+                                <th className="px-3 py-2">Verified At</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {(orderItemsMap[order.id] ?? []).map((item) => {
+                                const isVerified = Number(item.verified_qty) > 0;
+                                return (
+                                  <tr key={item.id} className={`hover:bg-gray-50 ${isVerified ? 'bg-teal-50/40' : ''}`}>
+                                    <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                    <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        item.production_status === 'finished' ? 'bg-green-100 text-green-700' :
+                                        item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {item.production_status === 'finished' ? 'Finished' :
+                                         item.production_status === 'in_progress' ? 'Started' : 'Pending'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.production_finished_at ? (
+                                        <span className="text-green-600">{formatDate(item.production_finished_at)}</span>
+                                      ) : (
+                                        <span className="text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' :
+                                        item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {item.en_route_status === 'arrived' ? 'Arrived' :
+                                         item.en_route_status === 'en_route' ? 'En Route' : 'Not Yet'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {isVerified ? (
+                                        <span className="font-semibold text-teal-600">{item.verified_qty}</span>
+                                      ) : (
+                                        <span className="text-gray-400">0</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.inventory_verified_at ? (
+                                        <span className="text-teal-600">{formatDate(item.inventory_verified_at)}</span>
+                                      ) : (
+                                        <span className="text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );
@@ -1711,7 +1905,10 @@ export default function DeliveryPage() {
               const hasException = order.delivery_exception === true;
               return (
                 <div key={order.id}>
-                  <div className="flex items-center justify-between px-6 py-4">
+                  <div
+                    className="flex cursor-pointer items-center justify-between px-6 py-4 hover:bg-gray-50/50"
+                    onClick={() => toggleOrderExpand(order)}
+                  >
                     <div>
                       <div className="flex items-center gap-2">
                         <QuotationNumberCell order={order} onViewFiles={handleViewFiles} />
@@ -1720,6 +1917,9 @@ export default function DeliveryPage() {
                             <ShieldAlert className="h-3 w-3" />Special Case
                           </span>
                         )}
+                        <span className="text-[10px] text-gray-400">
+                          {expandedOrderIds.has(order.id) ? '▲' : '▼'}
+                        </span>
                       </div>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'Unknown client'}</p>
                       {order.sales_agent && <p className="text-[11px] text-gray-400">{order.sales_agent}</p>}
@@ -1743,7 +1943,7 @@ export default function DeliveryPage() {
                       )}
                       {!order.deposit_paid && (
                         <button
-                          onClick={() => handleRecordDeposit(order)}
+                          onClick={(e) => { e.stopPropagation(); handleRecordDeposit(order); }}
                           disabled={actionLoading === order.id}
                           className="rounded-lg bg-pink-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-pink-600 disabled:opacity-40"
                           title="Record downpayment"
@@ -1752,7 +1952,7 @@ export default function DeliveryPage() {
                         </button>
                       )}
                       <button
-                        onClick={() => handleAdvanceBalanceDue(order)}
+                        onClick={(e) => { e.stopPropagation(); handleAdvanceBalanceDue(order); }}
                         disabled={actionLoading === order.id}
                         className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
                         title="Advance to Balance Due"
@@ -1764,6 +1964,91 @@ export default function DeliveryPage() {
                   </div>
                   {editingOrder?.id === order.id && (
                     <EditForm order={order} onSave={handleEditSave} onCancel={() => setEditingOrder(null)} saving={saving} />
+                  )}
+                  {expandedOrderIds.has(order.id) && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
+                      {loadingItemsForOrder === order.id ? (
+                        <div className="flex items-center justify-center py-3">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                                <th className="px-3 py-2">Item</th>
+                                <th className="px-3 py-2">Qty</th>
+                                <th className="px-3 py-2">Production</th>
+                                <th className="px-3 py-2">Finished At</th>
+                                <th className="px-3 py-2">En Route</th>
+                                <th className="px-3 py-2">Verified Qty</th>
+                                <th className="px-3 py-2">Verified At</th>
+                                <th className="px-3 py-2">Delivered Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {(orderItemsMap[order.id] ?? []).map((item) => {
+                                const isVerified = Number(item.verified_qty) > 0;
+                                return (
+                                  <tr key={item.id} className={`hover:bg-gray-50 ${isVerified ? 'bg-teal-50/40' : ''}`}>
+                                    <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
+                                    <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        item.production_status === 'finished' ? 'bg-green-100 text-green-700' :
+                                        item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {item.production_status === 'finished' ? 'Finished' :
+                                         item.production_status === 'in_progress' ? 'Started' : 'Pending'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.production_finished_at ? (
+                                        <span className="text-green-600">{formatDate(item.production_finished_at)}</span>
+                                      ) : (
+                                        <span className="text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        item.en_route_status === 'arrived' ? 'bg-green-100 text-green-700' :
+                                        item.en_route_status === 'en_route' ? 'bg-sky-100 text-sky-700' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {item.en_route_status === 'arrived' ? 'Arrived' :
+                                         item.en_route_status === 'en_route' ? 'En Route' : 'Not Yet'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {isVerified ? (
+                                        <span className="font-semibold text-teal-600">{item.verified_qty}</span>
+                                      ) : (
+                                        <span className="text-gray-400">0</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.inventory_verified_at ? (
+                                        <span className="text-teal-600">{formatDate(item.inventory_verified_at)}</span>
+                                      ) : (
+                                        <span className="text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      {item.delivered_qty > 0 ? (
+                                        <span className="font-semibold text-purple-600">{item.delivered_qty}</span>
+                                      ) : (
+                                        <span className="text-gray-400">0</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );
