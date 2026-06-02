@@ -15931,3 +15931,45 @@ When modeling order or workflow state transitions, never assume a status change 
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: change reminder scheduling from 4:00 PM to 3:00 PM PHT for all bot reminders
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 0c1bcbd4417925fcaed19ae43302d2e57f5ea3a3
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 0c1bcbd4417925fcaed19ae43302d2e57f5ea3a3
+**Files:** apps/api/src/server.ts,apps/api/src/services/agentRunner.ts,apps/api/src/services/reminderScheduler.ts,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:** Reminder scheduling was corrected from 4:00 PM to 3:00 PM PHT across all bot reminders.
+
+**Why it broke:** The original 4:00 PM time was likely set without considering the actual business requirement or user expectation, causing reminders to fire one hour late relative to the intended schedule.
+
+**Reusable takeaway:** Always validate time-based configurations against explicit business rules or user requirements before deployment. When scheduling recurring events, confirm the exact intended time with stakeholders and test the trigger behavior in the target timezone. Document the rationale for time choices in the code or commit message to prevent future drift.
+
+---
+*Original commit message: fix: change reminder scheduling from 4:00 PM to 3:00 PM PHT for all bot reminders*
+
+#### Lesson Learned
+
+**What was fixed:** Reminder scheduling was corrected from 4:00 PM to 3:00 PM PHT across all bot reminders.
+
+**Why it broke:** The original 4:00 PM time was likely set without considering the actual business requirement or user expectation, causing reminders to fire one hour late relative to the intended schedule.
+
+**Reusable takeaway:** Always validate time-based configurations against explicit business rules or user requirements before deployment. When scheduling recurring events, confirm the exact intended time with stakeholders and test the trigger behavior in the target timezone. Document the rationale for time choices in the code or commit message to prevent future drift.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
