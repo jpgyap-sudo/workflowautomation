@@ -1761,6 +1761,7 @@ function ProductionItemSection({
 interface ProductionFinishedSummary {
   hasFinishedProduction: boolean;
   hasEnRouteItems: boolean;
+  hasArrivedItems: boolean;
   finishedCount: number;
   totalCount: number;
 }
@@ -2312,10 +2313,12 @@ export default function ProductionPage() {
             const items = res.items ?? [];
             const finishedCount = items.filter((item) => item.production_status === 'finished').length;
             const hasEnRouteItems = items.some((item) => item.en_route_status === 'en_route');
+            const hasArrivedItems = items.some((item) => item.en_route_status === 'arrived');
             if (!cancelled) {
               map[order.id] = {
                 hasFinishedProduction: finishedCount > 0,
                 hasEnRouteItems,
+                hasArrivedItems,
                 finishedCount,
                 totalCount: items.length,
               };
@@ -3168,6 +3171,15 @@ export default function ProductionPage() {
   const filteredEnRouteInTransitOrders = filterByClient(
     [...new Map([...enRouteVerificationOrders, ...enRouteTrackingOrders, ...nonEnRouteStageOrdersWithEnRouteItems].map((o) => [o.id, o])).values()]
   );
+  // Arrival Verification must also include orders from non-en_route_verification stages
+  // (e.g. production_in_progress) that have at least one item marked arrived
+  const nonEnRouteStageOrdersWithArrivedItems = productionFinishedCandidateOrders.filter((o) => {
+    if (o.current_stage === 'en_route_verification') return false;
+    return productionFinishedSummaries[o.id]?.hasArrivedItems === true;
+  });
+  const filteredArrivalVerificationOrders = filterByClient(
+    [...new Map([...enRouteVerificationStageOrders, ...nonEnRouteStageOrdersWithArrivedItems].map((o) => [o.id, o])).values()]
+  );
   const filteredInventoryVerificationOrders = filterByClient(inventoryVerificationOrders);
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
   const filteredInProgressMergedOrders = dedupeOrders([...filteredInProgressStageOrders, ...filteredPartialOrders]);
@@ -3380,9 +3392,9 @@ export default function ProductionPage() {
       <ProductionItemSection
         icon={<Truck className="h-4 w-4 text-blue-500" />}
         title="Arrival Verification"
-        count={filteredEnRouteVerificationStageOrders.length}
+        count={filteredArrivalVerificationOrders.length}
         countBg="bg-blue-100" countText="text-blue-700"
-        orders={filteredEnRouteVerificationStageOrders}
+        orders={filteredArrivalVerificationOrders}
         isLoading={loadingEnRouteStage}
         error={errorEnRouteStage}
         onRetry={() => mutateEnRouteStage()}

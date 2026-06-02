@@ -15645,3 +15645,51 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: en-route/arrival buttons should not show before en_route stage — isEnRoute/isArrivalTracking changed from hardcoded
+
+Date: 2026-06-01
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit bc1d1aaeb05fa9c2aa61d20df98f90e986eeb345
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** bc1d1aaeb05fa9c2aa61d20df98f90e986eeb345
+**Files:** apps/dashboard/src/app/production/page.tsx,docs/UPDATE_LOG.md,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+**What was fixed:**  
+En-route and arrival tracking buttons were incorrectly visible before the en-route stage.
+
+**Why it broke:**  
+The visibility guards used a hardcoded `true` for `isEnRoute` and `isArrivalTracking`, and the button display logic only excluded the `production_pending` stage. This meant buttons appeared prematurely for any stage after pending, regardless of whether the workflow had actually reached en-route.
+
+**Reusable takeaway:**  
+Never hardcode boolean flags for stage-dependent UI visibility. Instead, derive visibility from an explicit array of allowed stages (e.g., `['en_route', 'arrival']`) and check the current stage against it. This prevents premature UI exposure and keeps stage logic centralized and testable.
+
+---
+*Original commit message: fix: en-route/arrival buttons should not show before en_route stage — isEnRoute/isArrivalTracking changed from hardcoded true to stage-dependent array check; en-route/arrival button guards updated from '!== production_pending' to same stage array*
+
+#### Lesson Learned
+
+**What was fixed:**  
+En-route and arrival tracking buttons were incorrectly visible before the en-route stage.
+
+**Why it broke:**  
+The visibility guards used a hardcoded `true` for `isEnRoute` and `isArrivalTracking`, and the button display logic only excluded the `production_pending` stage. This meant buttons appeared prematurely for any stage after pending, regardless of whether the workflow had actually reached en-route.
+
+**Reusable takeaway:**  
+Never hardcode boolean flags for stage-dependent UI visibility. Instead, derive visibility from an explicit array of allowed stages (e.g., `['en_route', 'arrival']`) and check the current stage against it. This prevents premature UI exposure and keeps stage logic centralized and testable.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

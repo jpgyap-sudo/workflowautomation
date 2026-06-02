@@ -1383,14 +1383,18 @@ function InventoryVerificationSection() {
   const { data: invVerifOrders = [], isLoading: invLoading, mutate: invMutate } = useOrdersByStage('inventory_verification');
   const { data: enRouteVerifOrders = [], isLoading: enRouteLoading, mutate: enRouteMutate } = useOrdersByStage('en_route_verification');
   const { data: partialDeliveryOrders = [], isLoading: partialLoading, mutate: partialMutate } = usePartialDeliveryVerificationOrders();
+  const { data: inProgressOrders = [], isLoading: inProgressLoading, mutate: mutateInProgress } = useOrdersByStage('production_in_progress');
   const [itemSummaryMap, setItemSummaryMap] = useState<Record<string, { verified: number; total: number; totalQty: number; verifiedQty: number }>>({});
   const [enRouteOrdersWithArrived, setEnRouteOrdersWithArrived] = useState<Order[]>([]);
+  const [inProgressOrdersWithArrived, setInProgressOrdersWithArrived] = useState<Order[]>([]);
   const [loadingEnRouteItems, setLoadingEnRouteItems] = useState(false);
+  const [loadingInProgressItems, setLoadingInProgressItems] = useState(false);
 
   // Merge all orders: inventory_verification + en_route_verification orders that have arrived items
+  // + production_in_progress orders that have arrived items
   // + partial-delivery orders at later stages that still need verification
-  const orders = [...invVerifOrders, ...enRouteOrdersWithArrived, ...partialDeliveryOrders];
-  const isLoading = invLoading || enRouteLoading || loadingEnRouteItems || partialLoading;
+  const orders = [...invVerifOrders, ...enRouteOrdersWithArrived, ...inProgressOrdersWithArrived, ...partialDeliveryOrders];
+  const isLoading = invLoading || enRouteLoading || loadingEnRouteItems || loadingInProgressItems || partialLoading || inProgressLoading;
 
   // Listen for SSE events to revalidate data
   useEffect(() => {
@@ -1399,6 +1403,7 @@ function InventoryVerificationSection() {
       invMutate();
       enRouteMutate();
       partialMutate();
+      mutateInProgress();
     };
     eventSource.addEventListener('order_updated', handleUpdate);
     eventSource.addEventListener('invalidate', handleUpdate);
@@ -1407,7 +1412,7 @@ function InventoryVerificationSection() {
       eventSource.removeEventListener('invalidate', handleUpdate);
       eventSource.close();
     };
-  }, [invMutate, enRouteMutate, partialMutate]);
+  }, [invMutate, enRouteMutate, partialMutate, mutateInProgress]);
 
   // Filter en_route_verification orders to only those with arrived items
   useEffect(() => {
@@ -1439,6 +1444,37 @@ function InventoryVerificationSection() {
     fetchEnRouteItems();
     return () => { cancelled = true; };
   }, [enRouteVerifOrders]);
+
+  // Filter production_in_progress orders to only those with arrived items
+  useEffect(() => {
+    if (inProgressOrders.length === 0) {
+      setInProgressOrdersWithArrived([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingInProgressItems(true);
+    async function fetchInProgressItems() {
+      const result: Order[] = [];
+      await Promise.all(inProgressOrders.map(async (order) => {
+        try {
+          const res = await getOrderItems(order.id);
+          const items = res.items ?? [];
+          const hasArrivedItems = items.some((item) => item.en_route_status === 'arrived');
+          if (hasArrivedItems) {
+            result.push(order);
+          }
+        } catch {
+          // Silently skip orders we can't fetch items for
+        }
+      }));
+      if (!cancelled) {
+        setInProgressOrdersWithArrived(result);
+        setLoadingInProgressItems(false);
+      }
+    }
+    fetchInProgressItems();
+    return () => { cancelled = true; };
+  }, [inProgressOrders]);
 
   useEffect(() => {
     if (orders.length === 0) {
