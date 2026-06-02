@@ -121,7 +121,20 @@ async function callGemini(
 ): Promise<string> {
   const errors: string[] = [];
 
-  // Tier 1: Direct Gemini API keys
+  // Tier 1: OpenRouter (primary — user's preferred provider with Gemini models)
+  if (isOpenRouterConfigured()) {
+    try {
+      return await openRouterVision(imageBase64, mimeType, prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`openrouter: ${message}`);
+      console.warn('[vision] OpenRouter failed:', message);
+    }
+  } else {
+    errors.push('OPENROUTER_API_KEY not configured');
+  }
+
+  // Tier 2: Direct Gemini API keys
   for (const [i, key] of GEMINI_KEYS.entries()) {
     try {
       return await callGeminiDirect(imageBase64, mimeType, prompt, key);
@@ -136,23 +149,9 @@ async function callGemini(
     errors.push('No GEMINI_API_KEY configured');
   }
 
-  // Tier 2: OpenRouter (Gemini via OpenRouter)
-  if (isOpenRouterConfigured()) {
-    try {
-      console.warn('[vision] All Gemini keys exhausted; falling back to OpenRouter');
-      return await openRouterVision(imageBase64, mimeType, prompt);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      errors.push(`openrouter: ${message}`);
-      console.warn('[vision] OpenRouter fallback failed:', message);
-    }
-  } else {
-    errors.push('OPENROUTER_API_KEY not configured');
-  }
-
   // Tier 3: OpenAI / ChatGPT (final fallback)
   if (isOpenAiConfigured()) {
-    console.warn('[vision] OpenRouter also failed; falling back to OpenAI (ChatGPT)');
+    console.warn('[vision] OpenRouter & Gemini keys exhausted; falling back to OpenAI (ChatGPT)');
     try {
       return await openAiVision(imageBase64, mimeType, prompt);
     } catch (error) {
