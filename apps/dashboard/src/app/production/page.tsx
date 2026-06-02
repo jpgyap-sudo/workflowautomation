@@ -2514,6 +2514,26 @@ export default function ProductionPage() {
     return summary.finishedCount < summary.totalCount;
   });
 
+  // Orders in later stages (beyond inventory_arrived) that have items with production_status = 'pending'
+  // These should persist in the Partial Production section until ALL items have started production
+  const laterStageOrdersWithPendingItems = productionFinishedCandidateOrders.filter((order) => {
+    if (['production_pending', 'production_in_progress', 'partial_production', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived'].includes(order.current_stage)) return false;
+    const summary = productionFinishedSummaries[order.id];
+    if (!summary) return false;
+    // Has at least one item still pending (not started production)
+    return summary.finishedCount < summary.totalCount;
+  });
+
+  // Orders in later stages (beyond inventory_arrived) that have items with production_status = 'in_progress'
+  // These should persist in the Production In Progress section until ALL items have finished production
+  const laterStageOrdersWithInProgressItems = productionFinishedCandidateOrders.filter((order) => {
+    if (['production_pending', 'production_in_progress', 'partial_production', 'en_route', 'en_route_verification', 'inventory_verification', 'inventory_arrived'].includes(order.current_stage)) return false;
+    const summary = productionFinishedSummaries[order.id];
+    if (!summary) return false;
+    // Has at least one item still in progress (started but not finished)
+    return summary.finishedCount < summary.totalCount;
+  });
+
   const loadingFinished = loadingPartial || loadingInProgress || loadingEnRoute || loadingEnRouteStage || loadingInventoryVerification || loadingInventoryArrived || loadingBalanceDue || loadingDeliveryPending || loadingDeliveryScheduled || loadingDelivered || loadingPaymentReceived || loadingPaymentConfirmed || loadingCompleted;
   const errorFinished = errorPartial || errorInProgress || errorEnRoute || errorEnRouteStage || errorInventoryVerification || errorInventoryArrived || errorBalanceDue || errorDeliveryPending || errorDeliveryScheduled || errorDelivered || errorPaymentReceived || errorPaymentConfirmed || errorCompleted;
 
@@ -3389,7 +3409,12 @@ export default function ProductionPage() {
   // and Production In Progress (started/finished items)
   const inProgressMergedOrders = dedupeOrders([...inProgressStageOrders, ...partialOrders]);
 
-  const totalActive = pendingOrders.length + partialOrders.length + inProgressStageOrders.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length + laterStageOrdersWithRemainingProduction.length;
+  // Merge later-stage orders with pending items into Partial Production
+  const partialOrdersWithLaterStage = dedupeOrders([...partialOrders, ...laterStageOrdersWithPendingItems]);
+  // Merge later-stage orders with in-progress items into Production In Progress
+  const inProgressMergedWithLaterStage = dedupeOrders([...inProgressMergedOrders, ...laterStageOrdersWithInProgressItems]);
+
+  const totalActive = pendingOrders.length + partialOrdersWithLaterStage.length + inProgressMergedWithLaterStage.length + finishedOrders.length + enRouteOrders.length + enRouteVerificationStageOrders.length + inventoryVerificationOrders.length + inventoryArrivedOrders.length + laterStageOrdersWithRemainingProduction.length;
 
   // ── Apply client filter ──────────────────────────────────────────────
   const filteredPendingOrders = filterByClient(pendingOrders);
@@ -3426,6 +3451,9 @@ export default function ProductionPage() {
   const filteredInventoryArrivedOrders = filterByClient(inventoryArrivedOrders);
   const filteredInProgressMergedOrders = dedupeOrders([...filteredInProgressStageOrders, ...filteredPartialOrders]);
   const filteredLaterStageRemainingProduction = filterByClient(laterStageOrdersWithRemainingProduction);
+  // Apply client filter to later-stage merged orders
+  const filteredPartialOrdersWithLaterStage = filterByClient(partialOrdersWithLaterStage);
+  const filteredInProgressMergedWithLaterStage = filterByClient(inProgressMergedWithLaterStage);
 
   return (
     <div className="space-y-6">
@@ -3524,12 +3552,13 @@ export default function ProductionPage() {
       </OrderSection>
 
       {/* Partial Production — shows only items that are still pending (not started) */}
+      {/* Also includes orders from later stages (e.g. delivery_scheduled) that still have pending items */}
       <ProductionItemSection
         icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
         title="Partial Production"
-        count={filteredPartialOrders.length}
+        count={filteredPartialOrdersWithLaterStage.length}
         countBg="bg-amber-100" countText="text-amber-700"
-        orders={filteredPartialOrders}
+        orders={filteredPartialOrdersWithLaterStage}
         isLoading={loadingPartial}
         error={errorPartial}
         onRetry={() => mutatePartial()}
@@ -3547,12 +3576,13 @@ export default function ProductionPage() {
       />
 
       {/* Production In Progress — shows only started/finished items from both production_in_progress AND partial_production stages */}
+      {/* Also includes orders from later stages (e.g. delivery_scheduled) that still have in-progress items */}
       <ProductionItemSection
         icon={<Factory className="h-4 w-4 text-indigo-500" />}
         title="Production In Progress"
-        count={filteredInProgressMergedOrders.length}
+        count={filteredInProgressMergedWithLaterStage.length}
         countBg="bg-indigo-100" countText="text-indigo-700"
-        orders={filteredInProgressMergedOrders}
+        orders={filteredInProgressMergedWithLaterStage}
         isLoading={loadingInProgress || loadingPartial}
         error={errorInProgress || errorPartial}
         onRetry={() => { mutateInProgress(); mutatePartial(); }}
