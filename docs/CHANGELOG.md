@@ -9,6 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
+| `1f61832` | Roo Code | feat: itemized delivery — fully delivered items shown in separate 'Delivered Items' section while order stays in Scheduled Deliveries. Added showOnlyUndelivered/showOnlyDelivered props to DeliveryItemSection. Scheduled Deliveries now filters out fully delivered items. New 'Delivered Items' section shows orders with partial_delivery=TRUE that have fully delivered items. | 🔴 |
 | `a938798` | Roo Code | fix: comprehensive delivery tab gap fixes — (1) Partial Delivery Modal canDeliver logic fix (arrived_qty instead of quantity), (2) removed deliver buttons from Delivered section, (3) added "Advance to Delivered" button for delivery_scheduled orders with partial delivery, (4) added delivery progress summary in DeliveryItemSection header for partial_delivery orders | ✅ |
 | `9188437` | Roo Code | feat: add expandable item breakdown with verification dates in Delivery tab — Inventory Verification and Inventory Arrived sections now show clickable order rows with item-level table (name, qty, production status, finished at, en route, verified qty, verified at, delivered qty) | ✅ |
 | `047f640` | Roo Code | fix: prevent Deliver button for items that haven't arrived yet — use arrived_qty instead of quantity fallback in canDeliver logic (DeliveryItemSection + handleOpenPartialDelivery) so items must have arrived_qty>0 or verified_qty>0 before Deliver is enabled | ✅ |

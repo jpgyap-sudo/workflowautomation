@@ -21,6 +21,10 @@ When you **finish**:
 
 ---
 
+| Date | Extension | Activity | Status |
+|------|-----------|----------|--------|
+| 2026-06-02 21:35 | Roo Code | feat: itemized delivery — fully delivered items shown in separate 'Delivered Items' section while order stays in Scheduled Deliveries | 🔴 Active |
+
 | Timestamp | Extension | Description | Status |
 |-----------|-----------|-------------|--------|
 | 2026-05-25 15:00 | Roo (Code) | Initial setup: item-level production tracking, partial production, item-level en-route/arrival, inventory verification, item-level delivery, delivery progress tracking, stock replenishment, production reminders, Gantt chart, production board, calendar schedules, dashboard accounts, order amount adjustments, stock matching, excess arrival stock, knowledge base, special case payment counter, projected lead time. | ✅ Done |
