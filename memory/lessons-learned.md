@@ -15973,3 +15973,231 @@ Tags:
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: prioritize OpenRouter as primary vision provider, use google/gemini-2.5-flash
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 6125e6e859e81620033de4000248036061752d92
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 6125e6e859e81620033de4000248036061752d92
+**Files:** apps/api/src/services/geminiVision.ts
+
+**Summary:**
+**What was fixed:**  
+The vision provider for image analysis was switched from a generic Gemini model to OpenRouter’s `google/gemini-2.5-flash`, making OpenRouter the primary provider.
+
+**Why it broke:**  
+The original implementation used a direct Gemini API call, which likely had inconsistent availability, rate limits, or lacked the optimized performance of OpenRouter’s routed endpoint. This caused failures or degraded image analysis in production.
+
+**Reusable takeaway:**  
+When relying on third-party AI APIs, route through a unified provider (like OpenRouter) to gain fallback, load balancing, and model selection flexibility. This decouples your code from a single vendor’s endpoint, improving reliability and allowing easy model swaps without changing core logic. Always prefer a proxy layer for external AI services.
+
+---
+*Original commit message: fix: prioritize OpenRouter as primary vision provider, use google/gemini-2.5-flash*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The vision provider for image analysis was switched from a generic Gemini model to OpenRouter’s `google/gemini-2.5-flash`, making OpenRouter the primary provider.
+
+**Why it broke:**  
+The original implementation used a direct Gemini API call, which likely had inconsistent availability, rate limits, or lacked the optimized performance of OpenRouter’s routed endpoint. This caused failures or degraded image analysis in production.
+
+**Reusable takeaway:**  
+When relying on third-party AI APIs, route through a unified provider (like OpenRouter) to gain fallback, load balancing, and model selection flexibility. This decouples your code from a single vendor’s endpoint, improving reliability and allowing easy model swaps without changing core logic. Always prefer a proxy layer for external AI services.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add partial_production to inventory-verify-item allowedStages, add Finished At/Verified At columns to production ta
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 43a740d882d92184110006ffb582ef7f30a6322b
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 43a740d882d92184110006ffb582ef7f30a6322b
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**What was fixed:**  
+The inventory-verify-item stage was missing `partial_production` from its allowed stages, causing it to reject valid partial production entries. Also, the production table lacked "Finished At" and "Verified At" columns, making it impossible to track completion timestamps.
+
+**Why it broke:**  
+The `partial_production` stage was not included in the whitelist of allowed stages for the inventory-verify-item workflow step. This was likely an oversight when the partial production feature was added, as the validation logic strictly checked against a predefined list.
+
+**Reusable takeaway:**  
+When adding new workflow stages or states, always update all validation whitelists and UI components that reference them. A stage added to the backend logic but missing from frontend filters or validation lists will silently break workflows. Use a single source of truth (e.g., a shared enum or config file) for allowed stages to prevent such mismatches.
+
+---
+*Original commit message: fix: add partial_production to inventory-verify-item allowedStages, add Finished At/Verified At columns to production table*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The inventory-verify-item stage was missing `partial_production` from its allowed stages, causing it to reject valid partial production entries. Also, the production table lacked "Finished At" and "Verified At" columns, making it impossible to track completion timestamps.
+
+**Why it broke:**  
+The `partial_production` stage was not included in the whitelist of allowed stages for the inventory-verify-item workflow step. This was likely an oversight when the partial production feature was added, as the validation logic strictly checked against a predefined list.
+
+**Reusable takeaway:**  
+When adding new workflow stages or states, always update all validation whitelists and UI components that reference them. A stage added to the backend logic but missing from frontend filters or validation lists will silently break workflows. Use a single source of truth (e.g., a shared enum or config file) for allowed stages to prevent such mismatches.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: add partial_production to complete-inventory-verification-partial allowedStages and show Complete Partial Verificat
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 111510ee69711f1a1cc8689d7843c2f1ac3823fa
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 111510ee69711f1a1cc8689d7843c2f1ac3823fa
+**Files:** apps/api/src/server.ts,apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**What was fixed:**  
+The "Complete Partial Verification" button was missing for orders in `partial_production` status. Added `partial_production` to the `allowedStages` list in the inventory verification logic and updated the dashboard UI to show the button for that stage.
+
+**Why it broke:**  
+The `allowedStages` array only included `production` and `partial`, omitting `partial_production`. This caused the UI to hide the button and the API to reject verification requests for that stage.
+
+**Reusable takeaway:**  
+When defining stage-based permissions or UI visibility, ensure all relevant intermediate or compound states are explicitly included. A missing stage in an allowlist can silently block workflows. Use a centralized stage configuration to avoid duplication across API and UI.
+
+---
+*Original commit message: fix: add partial_production to complete-inventory-verification-partial allowedStages and show Complete Partial Verification button for partial_production orders*
+
+#### Lesson Learned
+
+**What was fixed:**  
+The "Complete Partial Verification" button was missing for orders in `partial_production` status. Added `partial_production` to the `allowedStages` list in the inventory verification logic and updated the dashboard UI to show the button for that stage.
+
+**Why it broke:**  
+The `allowedStages` array only included `production` and `partial`, omitting `partial_production`. This caused the UI to hide the button and the API to reject verification requests for that stage.
+
+**Reusable takeaway:**  
+When defining stage-based permissions or UI visibility, ensure all relevant intermediate or compound states are explicitly included. A missing stage in an allowlist can silently block workflows. Use a centralized stage configuration to avoid duplication across API and UI.
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove inventory_arrived from Remaining Production Items exclusion so orders at inventory_arrived with unfinished i
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit f3afbc917ec927411e4f6cbeb98590c0f0c437e9
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** f3afbc917ec927411e4f6cbeb98590c0f0c437e9
+**Files:** apps/dashboard/src/app/production/page.tsx
+
+**Summary:**
+**What was fixed:** Orders at `inventory_arrived` status with unfinished items were incorrectly excluded from the "Remaining Production Items" view.
+
+**Why it broke:** The filter logic included `inventory_arrived` in the exclusion list for remaining production items. This caused orders that had arrived but still had unfinished sub-items to be hidden, even though they still required production attention.
+
+**Reusable takeaway:** When filtering for "remaining" or "incomplete" items, exclude only terminal statuses that guarantee all sub-items are complete (e.g., `completed`, `shipped`). Do not exclude intermediate statuses like `inventory_arrived` unless you also verify that all child items are finished. A safer pattern: filter by "not in terminal states" rather than "not in a broad exclusion list."
+
+---
+*Original commit message: fix: remove inventory_arrived from Remaining Production Items exclusion so orders at inventory_arrived with unfinished items still appear*
+
+#### Lesson Learned
+
+**What was fixed:** Orders at `inventory_arrived` status with unfinished items were incorrectly excluded from the "Remaining Production Items" view.
+
+**Why it broke:** The filter logic included `inventory_arrived` in the exclusion list for remaining production items. This caused orders that had arrived but still had unfinished sub-items to be hidden, even though they still required production attention.
+
+**Reusable takeaway:** When filtering for "remaining" or "incomplete" items, exclude only terminal statuses that guarantee all sub-items are complete (e.g., `completed`, `shipped`). Do not exclude intermediate statuses like `inventory_arrived` unless you also verify that all child items are finished. A safer pattern: filter by "not in terminal states" rather than "not in a broad exclusion list."
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: prevent Deliver button for items that haven't arrived yet — use arrived_qty instead of quantity fallback
+
+Date: 2026-06-02
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 047f64012741accb5cc504795b0992881123627f
+
+**Project:** workflowautomation
+**Author:** jpgyap-sudo
+**Commit:** 047f64012741accb5cc504795b0992881123627f
+**Files:** apps/dashboard/src/app/delivery/page.tsx,apps/dashboard/src/components/DeliveryItemSection.tsx
+
+**Summary:**
+**What was fixed:** The "Deliver" button was incorrectly enabled for items that had not yet arrived, allowing premature delivery actions.
+
+**Why it broke:** The code used `quantity` as a fallback when `arrived_qty` was unavailable. This caused the system to treat all ordered items as already arrived, bypassing the actual arrival status check.
+
+**Reusable takeaway:** Never fall back to ordered quantity when checking arrival status. Always use the actual arrived quantity (`arrived_qty`) to determine if an item is ready for delivery. If arrival data is missing, default to zero (not the ordered quantity) to prevent false positives. This ensures delivery actions are gated on physical receipt, not planned orders.
+
+---
+*Original commit message: fix: prevent Deliver button for items that haven't arrived yet — use arrived_qty instead of quantity fallback*
+
+#### Lesson Learned
+
+**What was fixed:** The "Deliver" button was incorrectly enabled for items that had not yet arrived, allowing premature delivery actions.
+
+**Why it broke:** The code used `quantity` as a fallback when `arrived_qty` was unavailable. This caused the system to treat all ordered items as already arrived, bypassing the actual arrival status check.
+
+**Reusable takeaway:** Never fall back to ordered quantity when checking arrival status. Always use the actual arrived quantity (`arrived_qty`) to determine if an item is ready for delivery. If arrival data is missing, default to zero (not the ordered quantity) to prevent false positives. This ensures delivery actions are gated on physical receipt, not planned orders.
+
+#### Tags
+
+cross-project, local-fallback
+
+---

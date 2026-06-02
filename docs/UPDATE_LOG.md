@@ -86,7 +86,7 @@ When you **finish**:
 | 2026-06-02 20:13 | Roo (Code) | Fix: add partial_production to complete-inventory-verification-partial allowedStages and show Complete Partial Verification button for partial_production orders. Commit `111510e`. Deployed via deploy-agent. All 7 containers healthy. | ✅ Done |
 | 2026-06-02 20:22 | Roo (Code) | Fix: remove inventory_arrived from Remaining Production Items exclusion so orders at inventory_arrived with unfinished items (like Glasszilla) still appear in the section. Commit `f3afbc9`. Deployed via deploy-agent. All 7 containers healthy. | ✅ Done |
 | 2026-06-02 20:40 | Roo (Code) | Fix: Delivery tab — added expandable item breakdown with verification dates in Inventory Verification and Inventory Arrived sections. Click order row to expand item table showing name, qty, production status, finished at, en route, verified qty, verified at, delivered qty. Commit `9188437`. | ✅ Done |
-| 2026-06-02 20:55 | Roo (Code) | Fix: prevent Deliver button for items that haven't arrived yet — changed canDeliver logic from `verified_qty > 0 || quantity > 0` to `verified_qty > 0 || arrived_qty > 0` in DeliveryItemSection (deliverableItems filter + per-item canDeliver) and handleOpenPartialDelivery (pre-selected items filter). Commit `047f640`. | 🔴 Active |
+| 2026-06-02 20:55 | Roo (Code) | Fix: prevent Deliver button for items that haven't arrived yet — changed canDeliver logic from `verified_qty > 0 || quantity > 0` to `verified_qty > 0 || arrived_qty > 0` in DeliveryItemSection (deliverableItems filter + per-item canDeliver) and handleOpenPartialDelivery (pre-selected items filter). Commit `047f640`. | ✅ Done |
 
 ---
 

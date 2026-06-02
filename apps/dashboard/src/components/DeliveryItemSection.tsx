@@ -130,6 +130,8 @@ export interface DeliveryItemSectionProps {
   onRescheduleAll?: (order: Order) => void;
   /** Cancel schedule callback — moves order back to Delivery Pending */
   onCancelSchedule?: (order: Order) => void;
+  /** Advance to Delivered — manually progress delivery_scheduled orders with partial delivery to delivered stage */
+  onAdvanceToDelivered?: (order: Order) => void;
   schedulingOrderId?: string | null;
   scheduleDate?: string;
   scheduleRemarks?: string;
@@ -155,6 +157,7 @@ export default function DeliveryItemSection({
   onScheduleDelivery, onScheduleSelected, onScheduleAll,
   onRescheduleDelivery, onRescheduleSelected, onRescheduleAll,
   onCancelSchedule,
+  onAdvanceToDelivered,
   schedulingOrderId, scheduleDate, scheduleRemarks,
   onScheduleDateChange, onScheduleRemarksChange, onScheduleSubmit, onScheduleCancel, scheduleSaving,
   onViewFiles, onEdit, onDelete, onRevert, onCompleteOrder,
@@ -252,6 +255,15 @@ export default function DeliveryItemSection({
                       </p>
                     )}
                     <DeliveryInfo order={order} />
+                    {/* Show partial delivery summary */}
+                    {order.partial_delivery === true && orderItems.length > 0 && (
+                      <p className="mt-1 text-[11px] text-amber-600">
+                        📦 Partial delivery: {orderItems.filter(i => i.fully_delivered).length}/{orderItems.length} items delivered
+                        {' — '}
+                        {orderItems.filter(i => !i.fully_delivered && i.delivered_qty > 0).length} partially delivered,
+                        {orderItems.filter(i => i.delivered_qty === 0).length} pending
+                      </p>
+                    )}
                     {/* Show scheduled delivery date in the header row */}
                     {order.delivery_date && (onDeliverSelected || onDeliverAll) && (
                       <p className="mt-1 text-[11px] text-purple-600">
@@ -273,6 +285,16 @@ export default function DeliveryItemSection({
                         title="Manually complete this order"
                       >
                         {actionLoading === order.id ? '…' : 'Complete Order'}
+                      </button>
+                    )}
+                    {onAdvanceToDelivered && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAdvanceToDelivered(order); }}
+                        disabled={actionLoading === order.id}
+                        className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-40"
+                        title="Advance this order to Delivered stage (remaining items will be tracked)"
+                      >
+                        {actionLoading === order.id ? '…' : '→ Delivered'}
                       </button>
                     )}
                     <div className="flex items-center gap-1">
