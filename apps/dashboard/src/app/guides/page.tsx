@@ -333,12 +333,12 @@ const SECTIONS: Section[] = [
       {
         title: 'Understanding the Sections',
         description:
-          'The Purchasing page is organized into workflow sections that orders move through:',
+          'The Purchasing page is organized into workflow sections that orders move through. Before purchasing begins, deposit stages must be completed:',
 
         details: [
-          'Purchasing Pending — Orders waiting for purchasing to begin. Each order shows its items with action buttons',
+          'Deposit for Verification — Orders where a downpayment was recorded and needs confirmation before purchasing can start (deposit stages come before purchasing in the workflow)',
+          'Purchasing Pending — Orders waiting for purchasing to begin (deposit is verified). Each order shows its items with action buttons',
           'Purchasing In Progress — Orders currently being purchased. Items can be marked as in_progress or finished',
-          'Deposit for Verification — Orders where a deposit has been recorded but not yet verified',
         ],
         links: [{ label: 'Open Purchasing →', href: '/purchasing' }],
       },
@@ -781,11 +781,14 @@ const SECTIONS: Section[] = [
         description:
           'The default flow. Items are manufactured or sourced externally, then dispatched.',
         details: [
-          'Flow: Order Confirmation → Math Verified → Purchasing → Production → En Route → Inventory → Delivery → Collection → Completed',
-          'Production stage is mandatory',
-          'En route and inventory verification track physical arrival of goods',
+          'Flow: Order Confirmation → Math Verified → Downpayment → Purchasing → Production (Partial / In Progress) → En Route → Inventory → Balance → Delivery → Collection → Completed',
+          'Downpayment (Pending → Verified) stages occur after math verification and before purchasing can begin',
+          'Production supports partial production — individual items can start before others finish',
+          'En route, en route verification, and inventory verification track physical arrival of goods',
+          'Balance Due and Balance Verification stages handle the remaining payment before delivery',
+          'Stock Preparation is used for from-stock orders instead of the production & en-route chain',
         ],
-        tip: 'Most orders follow this path.',
+        tip: 'Most orders follow this path. The actual stage order has 21 stages in total — the Workflow page shows their exact exit conditions.',
       },
       {
         title: 'From-Stock Orders',
@@ -1084,12 +1087,13 @@ const SECTIONS: Section[] = [
 
 function GuideStageBadge({ stage }: { stage: string }) {
   const config = {
-    order_confirmation_received: { label: 'Order Confirmation', color: '#2490ef', bg: '#eff6ff' },
+    order_confirmation_received: { label: 'Order Confirmation Received', color: '#2490ef', bg: '#eff6ff' },
     math_verified: { label: 'Math Verified', color: '#14b8a6', bg: '#f0fdfa' },
     purchasing_pending: { label: 'Purchasing Pending', color: '#f97316', bg: '#fff7ed' },
     deposit_pending: { label: 'Downpayment Pending', color: '#ec4899', bg: '#fdf2f8' },
     deposit_verification: { label: 'Deposit Verification', color: '#e11d48', bg: '#fff1f2' },
     production_pending: { label: 'Production Pending', color: '#eab308', bg: '#fefce8' },
+    partial_production: { label: 'Partial Production', color: '#84cc16', bg: '#f7fee7' },
     production_in_progress: { label: 'Production In Progress', color: '#6366f1', bg: '#eef2ff' },
     en_route: { label: 'En Route', color: '#0ea5e9', bg: '#f0f9ff' },
     en_route_verification: { label: 'En Route Verification', color: '#3b82f6', bg: '#eff6ff' },

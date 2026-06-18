@@ -1205,6 +1205,7 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; icon: 
   math_verified:         { label: 'Math Verified',         color: 'bg-teal-100 text-teal-800',       icon: '✅' },
   purchasing_pending:    { label: 'Purchasing Pending',    color: 'bg-amber-100 text-amber-800',     icon: '🛒' },
   production_pending:    { label: 'Production Pending',    color: 'bg-yellow-100 text-yellow-800',   icon: '🏗️' },
+  partial_production:    { label: 'Partial Production',    color: 'bg-lime-100 text-lime-800',       icon: '🔨' },
   production_in_progress:  { label: 'Production In Progress',  color: 'bg-indigo-100 text-indigo-800',   icon: '🏭' },
   deposit_pending:       { label: 'Downpayment Pending',   color: 'bg-pink-100 text-pink-800',       icon: '💳' },
   deposit_verification:  { label: 'Deposit Verification',  color: 'bg-rose-100 text-rose-800',       icon: '🔍' },
