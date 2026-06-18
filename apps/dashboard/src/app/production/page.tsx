@@ -2,7 +2,6 @@
 
 import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useOrdersByStage, usePartialProductionOrders } from '@/lib/useApi';
 import { useAuth } from '@/lib/auth';
 import type { Order, OrderItem, ItemCompletion, Client } from '@/lib/api';
@@ -2311,15 +2310,8 @@ function ProductionFinishedTrackingSection({
 
 export default function ProductionPage() {
   const { user } = useAuth();
-  const router = useRouter();
 
-  useEffect(() => {
-    if (user && user.role !== 'admin') {
-      router.replace('/');
-    }
-  }, [user, router]);
-
-  if (!user || user.role !== 'admin') {
+  if (!user) {
     return (
       <div className="flex h-64 items-center justify-center">
         <p className="text-sm text-gray-400">Loading...</p>
