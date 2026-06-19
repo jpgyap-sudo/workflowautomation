@@ -16643,3 +16643,41 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: replace QTN-only trySmartOrderQuery with OpenClaw universal query engine
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 0c945e8a4c078b6b467b8ee13d4ad594cffe0510
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** 0c945e8a4c078b6b467b8ee13d4ad594cffe0510
+**Files:** apps/telegram-bot/src/bot.ts
+
+**Summary:**
+Commit: fix: replace QTN-only trySmartOrderQuery with OpenClaw universal query engine
+Files: apps/telegram-bot/src/bot.ts
+Project: workflowautomation
+
+---
+*Original commit message: fix: replace QTN-only trySmartOrderQuery with OpenClaw universal query engine*
+
+#### Lesson Learned
+
+Commit: fix: replace QTN-only trySmartOrderQuery with OpenClaw universal query engine
+Files: apps/telegram-bot/src/bot.ts
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

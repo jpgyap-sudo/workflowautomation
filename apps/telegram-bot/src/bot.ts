@@ -2050,7 +2050,8 @@ bot.on(message('text'), async (ctx) => {
       const handled = await handleProdQuickAction(ctx, text, chatId);
       if (handled) return;
 
-      const hasKeyword = /\b(done|finished|produced|complete|shipped|en.?route|dispatched|status|progress|pending|delayed|ready|how.?long|when|still|all|items?)\b/i.test(text);
+      // Action keywords only — route status queries to OpenClaw for richer responses
+      const hasKeyword = /\b(done|finished|produced|complete|shipped|en.?route|dispatched|pending|delayed|ready|all|items?)\b/i.test(text);
 
       if (mentionsBot || hasQtn || hasKeyword) {
         try {
