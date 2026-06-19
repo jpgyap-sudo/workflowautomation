@@ -74,9 +74,8 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     setClientSuggestions([]);
   }
 
-  // File upload states
+  // File upload state
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
-  const [orderConfirmFile, setOrderConfirmFile] = useState<File | null>(null);
 
   // Multi-slip deposit state
   const [depositEntries, setDepositEntries] = useState<{ file: File | null; amount: string; date: string; extracting: boolean; paymentType: 'deposit' | 'full' }[]>([
@@ -94,7 +93,6 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [extractResult, setExtractResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const quotationFileRef = useRef<HTMLInputElement>(null);
-  const orderConfirmFileRef = useRef<HTMLInputElement>(null);
 
   function fileToBase64(f: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -221,20 +219,13 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       await createOrder(data);
       results.push('✅ Order created');
 
-      // 2. Upload files
+      // 2. Upload quotation/order file
       if (quotationFile) {
         try {
           const base64 = await fileToBase64(quotationFile);
           await uploadOrderFile({ quotation_number: qn.trim(), file_type: 'quotation', original_filename: quotationFile.name, mime_type: quotationFile.type, file_data: base64 });
-          results.push('✅ Quotation file uploaded');
-        } catch (err: any) { results.push(`⚠️ Quotation upload failed: ${err.message}`); }
-      }
-      if (orderConfirmFile) {
-        try {
-          const base64 = await fileToBase64(orderConfirmFile);
-          await uploadOrderFile({ quotation_number: qn.trim(), file_type: 'order_confirmation', original_filename: orderConfirmFile.name, mime_type: orderConfirmFile.type, file_data: base64 });
-          results.push('✅ Order confirmation uploaded');
-        } catch (err: any) { results.push(`⚠️ Order confirmation upload failed: ${err.message}`); }
+          results.push('✅ Quotation/order file uploaded');
+        } catch (err: any) { results.push(`⚠️ File upload failed: ${err.message}`); }
       }
       // 3. Record each payment slip
       const validDeposits = depositEntries.filter(e => {
