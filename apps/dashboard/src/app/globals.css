@@ -1,5 +1,29 @@
 @import "tailwindcss";
 
+/* ── Animated Arrow Utility ──────────────────────────────────── */
+/* Used by ChevronDown/ChevronUp/ChevronRight in data tables.
+   Bigger size (h-6 w-6 = 24px), thicker stroke, cycling gradient animation. */
+.arrow-animated {
+  stroke-width: 5 !important;
+  filter: drop-shadow(0 0 3px rgba(36, 144, 239, 0.4));
+  transition: transform 0.2s ease, filter 0.3s ease;
+  animation: arrowColorCycle 3s ease-in-out infinite;
+}
+
+.arrow-animated:hover {
+  transform: scale(1.25);
+  filter: drop-shadow(0 0 6px rgba(36, 144, 239, 0.6));
+  animation-duration: 0.8s;
+}
+
+@keyframes arrowColorCycle {
+  0%   { color: #2490ef; }
+  25%  { color: #6366f1; }
+  50%  { color: #06b6d4; }
+  75%  { color: #2490ef; }
+  100% { color: #3b82f6; }
+}
+
 :root {
   --sidebar-width: 240px;
   --header-height: 56px;
