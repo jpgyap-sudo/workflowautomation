@@ -82,6 +82,8 @@ services:
       STAGE_TRANSITION_GROUP_CHAT_ID: ${STAGE_TRANSITION_GROUP_CHAT_ID}
       # File-store for Hermes agent quotation text reference
       FILE_STORE_URL: http://file-store:8090
+      # CentralBrain — Ollama for local embeddings
+      OLLAMA_BASE_URL: http://ollama:11434
       # Telegram webhook proxy
       TELEGRAM_BOT_WEBHOOK_HOST: telegram-bot
       TELEGRAM_BOT_WEBHOOK_PORT: 8443
@@ -246,6 +248,28 @@ services:
     stop_grace_period: 10s
     stop_signal: SIGTERM
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: qas_ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
   postgres_data:
   file_store_data:
+  ollama_data:

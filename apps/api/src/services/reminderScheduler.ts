@@ -4,8 +4,9 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 /**
- * Returns the next reminder fire time: 10:00 AM or 3:00 PM PHT (UTC+8).
- * If current PHT time is already past 3 PM, returns tomorrow 10 AM PHT.
+ * Returns the next reminder fire time: 8:00 AM or 4:00 PM PHT (UTC+8).
+ * If current PHT time is already past 4 PM, returns tomorrow 8 AM PHT.
+ * All reminders gate through this function — no spam, only twice daily.
  */
 function nextPhtReminderTime(): Date {
   const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -15,13 +16,13 @@ function nextPhtReminderTime(): Date {
   const target = new Date(phtNow.getTime());
   target.setUTCMinutes(0, 0, 0);
 
-  if (phtHour < 10) {
-    target.setUTCHours(10);
-  } else if (phtHour < 15) {
-    target.setUTCHours(15);
+  if (phtHour < 8) {
+    target.setUTCHours(8);
+  } else if (phtHour < 16) {
+    target.setUTCHours(16);
   } else {
     target.setUTCDate(target.getUTCDate() + 1);
-    target.setUTCHours(10);
+    target.setUTCHours(8);
   }
 
   return new Date(target.getTime() - PHT_OFFSET_MS);
@@ -210,7 +211,7 @@ let lastScheduleBroadcastDate = '';
 
 /**
  * Broadcast today's active schedules to the schedule group chat.
- * Runs once per day on the first reminder tick after midnight PHT.
+ * Runs once per day at or after 8:00 AM PHT — never at midnight.
  */
 async function broadcastTodaySchedules(): Promise<void> {
   const scheduleGroupChatId = process.env.SCHEDULE_GROUP_CHAT_ID;
@@ -221,6 +222,10 @@ async function broadcastTodaySchedules(): Promise<void> {
   const phtOffset = 8 * 60; // UTC+8 in minutes
   const phtDate = new Date(now.getTime() + phtOffset * 60 * 1000);
   const todayStr = phtDate.toISOString().slice(0, 10);
+  const phtHour = phtDate.getUTCHours();
+
+  // Don't broadcast before 8 AM PHT — wait until morning
+  if (phtHour < 8) return;
 
   // Only broadcast once per calendar day (PHT)
   if (lastScheduleBroadcastDate === todayStr) return;

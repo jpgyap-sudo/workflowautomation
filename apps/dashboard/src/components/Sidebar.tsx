@@ -30,6 +30,7 @@ import {
   Bug,
   BookOpen,
   History,
+  BrainCircuit,
 } from 'lucide-react';
 import { useState, type ComponentType } from 'react';
 import { getAllowedTabsForUser, useAuth, type TabRoute } from '@/lib/auth';
@@ -65,6 +66,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: '/vision', label: 'Vision Upload', icon: ScanEye },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/update-logs', label: 'Update Logs', icon: History },
+  { href: '/brain', label: 'CentralBrain', icon: BrainCircuit },
 ];
 
 function useFilteredNavItems() {

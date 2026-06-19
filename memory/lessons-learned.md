@@ -16567,3 +16567,79 @@ When defining exclusion lists for status-based filters, ensure each excluded sta
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove admin-only gate from Production and Purchasing pages
+
+Date: 2026-06-18
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 644f377564173671e1968c86b11165939379de0b
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 644f377564173671e1968c86b11165939379de0b
+**Files:** 
+
+**Summary:**
+Commit: fix: remove admin-only gate from Production and Purchasing pages
+Files: 
+Project: workflowautomation
+
+---
+*Original commit message: fix: remove admin-only gate from Production and Purchasing pages*
+
+#### Lesson Learned
+
+Commit: fix: remove admin-only gate from Production and Purchasing pages
+Files: 
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: sync Guides page and STAGE_CONFIG with actual 22-stage workflow
+
+Date: 2026-06-18
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 1c7ea309a61dcf67d0a7ce7b7ca54caee9649db8
+
+**Project:** workflowautomation
+**Author:** unknown
+**Commit:** 1c7ea309a61dcf67d0a7ce7b7ca54caee9649db8
+**Files:** 
+
+**Summary:**
+Commit: fix: sync Guides page and STAGE_CONFIG with actual 22-stage workflow
+Files: 
+Project: workflowautomation
+
+---
+*Original commit message: fix: sync Guides page and STAGE_CONFIG with actual 22-stage workflow*
+
+#### Lesson Learned
+
+Commit: fix: sync Guides page and STAGE_CONFIG with actual 22-stage workflow
+Files: 
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

@@ -825,6 +825,273 @@ function escapeMarkdown(value: unknown): string {
   return String(value ?? '').replace(/([_*`[\]\\])/g, '\\$1');
 }
 
+// ── Gantt-Linked Smart Status Summary ──────────────────────────────────
+// Mirrors the dashboard GanttChart logic so the bot can answer order status
+// queries with rich timeline context: stage pipeline, dates, days remaining,
+// delay warnings, and delivery info.
+
+const STAGE_ORDER_BOT = [
+  'order_confirmation_received',
+  'math_verified',
+  'deposit_pending',
+  'deposit_verification',
+  'purchasing_pending',
+  'production_pending',
+  'partial_production',
+  'production_in_progress',
+  'en_route',
+  'en_route_verification',
+  'inventory_verification',
+  'inventory_arrived',
+  'stock_preparation',
+  'balance_due',
+  'balance_verification',
+  'delivery_pending',
+  'delivery_scheduled',
+  'delivered',
+  'countered',
+  'payment_received',
+  'payment_confirmed',
+  'completed',
+];
+
+const STAGE_LABELS_BOT: Record<string, string> = {
+  order_confirmation_received: '📄 Order Confirmed',
+  math_verified:             '✅ Math Verified',
+  purchasing_pending:        '🛒 Purchasing',
+  production_pending:        '🏗️ Prod. Pending',
+  partial_production:        '🔨 Partial Prod.',
+  production_in_progress:    '🏭 In Production',
+  deposit_pending:           '💳 Downpayment Pending',
+  deposit_verification:      '🔍 Deposit Verified',
+  en_route:                  '🚚 En Route',
+  en_route_verification:     '🔎 En Route Verified',
+  inventory_verification:    '📋 Inventory Check',
+  inventory_arrived:         '📦 Stock Arrived',
+  stock_preparation:         '📦 Stock Prep',
+  balance_due:               '⚖️ Balance Due',
+  balance_verification:      '🔍 Balance Verified',
+  delivery_pending:          '⏳ Delivery Pending',
+  delivery_scheduled:        '📅 Delivery Scheduled',
+  delivered:                 '🚚 Delivered',
+  countered:                 '📋 Countered',
+  payment_received:          '💰 Payment Received',
+  payment_confirmed:         '✅ Payment Confirmed',
+  completed:                 '🏁 Completed',
+};
+
+interface GanttStatusSummary {
+  text: string;            // Full formatted Markdown message
+  isDelayed: boolean;
+  daysRemaining: number;
+  currentStageIndex: number;
+  totalStages: number;
+  stageBreakdown: string;  // Stage pipeline lines
+}
+
+function fmtBotDate(d: Date): string {
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtBotDateShort(d: Date): string {
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+}
+
+function buildGanttStatusSummary(order: any, clientInfo: string): GanttStatusSummary {
+  const projectedLeadTime = order.projected_lead_time as number | null;
+  const now = new Date();
+
+  // Start date: deposit_paid_at > order_confirmed_at > created_at
+  // Bug 2A fix: guard against all dates being null
+  const startedAt = order.deposit_paid_at ?? order.order_confirmed_at ?? order.created_at;
+  if (!startedAt) {
+    const text = `📋 *${escapeMarkdown(order.quotation_number || 'Unknown Order')}*\n\n⚠️ No start date available for timeline computation.`;
+    return { text, isDelayed: false, daysRemaining: 0, currentStageIndex: -1, totalStages: STAGE_ORDER_BOT.length, stageBreakdown: '' };
+  }
+  const startDate = new Date(startedAt as string);
+
+  // Bug 2A guard: if startDate is Invalid Date
+  if (isNaN(startDate.getTime())) {
+    const text = `📋 *${escapeMarkdown(order.quotation_number || 'Unknown Order')}*\n\n⚠️ Invalid start date — cannot compute timeline.`;
+    return { text, isDelayed: false, daysRemaining: 0, currentStageIndex: -1, totalStages: STAGE_ORDER_BOT.length, stageBreakdown: '' };
+  }
+
+  // Current stage info
+  const currentStage = order.current_stage as string;
+  const currentStageIndex = STAGE_ORDER_BOT.indexOf(currentStage);
+  const totalStages = STAGE_ORDER_BOT.length;
+
+  // Bug 2B fix: unknown stage → fall back to basic summary
+  if (currentStageIndex < 0) {
+    const stageLabel = currentStage || 'Unknown';
+    let text = `📋 *${escapeMarkdown(order.quotation_number)}*\n\n`;
+    text += `🏷️ Stage: *${escapeMarkdown(stageLabel)}*\n`;
+    text += `📊 Status: ${escapeMarkdown(order.status ?? '—')}\n`;
+    text += `💰 Total: ₱${Number(order.total_amount ?? 0).toLocaleString()}\n`;
+    if (order.deposit_paid) text += `💳 Downpayment: ✅ ₱${Number(order.deposit_amount ?? 0).toLocaleString()}\n`;
+    else text += `💳 Downpayment: ⏳ Pending\n`;
+    if (clientInfo) text += `\n${clientInfo}`;
+    return { text, isDelayed: false, daysRemaining: 0, currentStageIndex: -1, totalStages, stageBreakdown: '' };
+  }
+
+  // If no projected lead time, return a basic summary
+  if (!projectedLeadTime || projectedLeadTime <= 0) {
+    const stageLabel = STAGE_LABELS_BOT[currentStage] ?? currentStage;
+    let text = `📋 *${escapeMarkdown(order.quotation_number)}*\n\n`;
+    text += `🏷️ Stage: *${stageLabel}*\n`;
+    text += `📊 Status: ${escapeMarkdown(order.status ?? '—')}\n`;
+    if (order.math_status) text += `🧮 Math: ${escapeMarkdown(order.math_status)}\n`;
+    text += `💰 Total: ₱${Number(order.total_amount ?? 0).toLocaleString()}\n`;
+    if (order.deposit_paid) {
+      text += `💳 Downpayment: ✅ ₱${Number(order.deposit_amount ?? 0).toLocaleString()}`;
+      if (order.deposit_paid_at) text += ` (${fmtBotDateShort(new Date(order.deposit_paid_at))})`;
+      text += `\n`;
+    } else {
+      text += `💳 Downpayment: ⏳ Pending\n`;
+    }
+    if (clientInfo) text += `\n${clientInfo}`;
+    text += `\n\n💡 _Set a projected lead time to enable Gantt timeline tracking._`;
+    return { text, isDelayed: false, daysRemaining: 0, currentStageIndex, totalStages, stageBreakdown: '' };
+  }
+
+  // Compute Gantt timeline
+  const deadlineMs = projectedLeadTime * 86_400_000;
+  const deadlineDate = new Date(startDate.getTime() + deadlineMs);
+  const elapsedMs = now.getTime() - startDate.getTime();
+  const totalPct = Math.min(elapsedMs / deadlineMs, 1);
+  const remainingMs = Math.max(deadlineMs - elapsedMs, 0);
+  const remainingDays = Math.ceil(remainingMs / 86_400_000);
+  const isDelayed = elapsedMs > deadlineMs;
+  const delayDays = isDelayed ? Math.ceil((elapsedMs - deadlineMs) / 86_400_000) : 0;
+  const stageDurationMs = deadlineMs / totalStages;
+
+  // Build header
+  // Bug 2C fix: use deposit_paid flag, not deposit_paid_at, for label accuracy
+  const startLabel = order.deposit_paid ? 'Deposit paid' : order.order_confirmed_at ? 'Order confirmed' : 'Created';
+  // Bug 2D fix: handle 0d remaining edge case
+  const remainingLabel = isDelayed
+    ? `DELAYED by ${delayDays}d`
+    : remainingDays === 0
+      ? 'Due today'
+      : `${remainingDays}d remaining`;
+  const header = isDelayed
+    ? `🔴 *${escapeMarkdown(order.quotation_number)}* — ${remainingLabel}`
+    : remainingDays <= Math.ceil(projectedLeadTime * 0.15)
+      ? `🟡 *${escapeMarkdown(order.quotation_number)}* — ${remainingLabel}`
+      : `🟢 *${escapeMarkdown(order.quotation_number)}* — ${remainingLabel}`;
+
+  // Stage pipeline — show each stage with status markers and approximate dates
+  const stageLines: string[] = [];
+  for (let i = 0; i < STAGE_ORDER_BOT.length; i++) {
+    const stage = STAGE_ORDER_BOT[i];
+    const label = STAGE_LABELS_BOT[stage] ?? stage;
+    const segStartMs = i * stageDurationMs;
+    const segEndMs = (i + 1) * stageDurationMs;
+    const approxStart = new Date(startDate.getTime() + segStartMs);
+    const approxEnd = new Date(startDate.getTime() + segEndMs);
+
+    let marker: string;
+    if (i < currentStageIndex) {
+      marker = '✅';
+    } else if (i === currentStageIndex) {
+      marker = '◉';
+    } else {
+      marker = '○';
+    }
+    const dateRange = `${fmtBotDateShort(approxStart)}–${fmtBotDateShort(approxEnd)}`;
+    stageLines.push(`${marker} ${label}  _${dateRange}_`);
+  }
+
+  // Days in current stage — from the stage_update created_at for the current stage
+  let daysInStage = 0;
+  const currentStageUpdate = (order.stage_updates as any[] | undefined)
+    ?.find((u: any) => u.stage === currentStage);
+  if (currentStageUpdate?.created_at) {
+    daysInStage = Math.floor((now.getTime() - new Date(currentStageUpdate.created_at).getTime()) / 86_400_000);
+  } else if (order.updated_at) {
+    daysInStage = Math.floor((now.getTime() - new Date(order.updated_at).getTime()) / 86_400_000);
+  }
+
+  // Build full message
+  let text = `${header}\n\n`;
+  text += `📊 Stage: *${STAGE_LABELS_BOT[currentStage] ?? currentStage}*`;
+  if (daysInStage > 0) text += ` (${daysInStage}d in stage)`;
+  text += `\n`;
+  text += `📅 ${startLabel}: *${fmtBotDate(startDate)}*\n`;
+  text += `🎯 Due: *${fmtBotDate(deadlineDate)}*\n`;
+  text += `📈 Progress: ${Math.round(totalPct * 100)}%  —  ${currentStageIndex + 1}/${totalStages} stages\n`;
+
+  if (isDelayed) {
+    text += `\n⚠️ *Overdue by ${delayDays} day${delayDays !== 1 ? 's' : ''}*\n`;
+  } else if (remainingDays <= Math.ceil(projectedLeadTime * 0.15)) {
+    text += `\n⚡ *Only ${remainingDays} day${remainingDays !== 1 ? 's' : ''} left — at risk!*\n`;
+  }
+
+  // Financial summary
+  const totalAmount = Number(order.total_amount ?? 0);
+  const depositAmount = Number(order.deposit_amount ?? 0);
+  text += `\n💰 Total: *₱${totalAmount.toLocaleString()}*\n`;
+  if (order.deposit_paid) {
+    text += `💳 Downpayment: ✅ ₱${depositAmount.toLocaleString()}`;
+    if (order.deposit_paid_at) text += ` (${fmtBotDateShort(new Date(order.deposit_paid_at))})`;
+    text += `\n`;
+  } else {
+    text += `💳 Downpayment: ⏳ Pending\n`;
+  }
+
+  if (clientInfo) text += `\n${clientInfo}`;
+
+  // Stage pipeline (collapsed view)
+  const activeStages = stageLines.filter((_, i) => {
+    // Show only nearby stages: 1 before, current, 2 after
+    return i >= Math.max(0, currentStageIndex - 1) && i <= Math.min(totalStages - 1, currentStageIndex + 3);
+  });
+  if (currentStageIndex > 1) activeStages.unshift('   ...');
+  if (currentStageIndex < totalStages - 4) activeStages.push('   ...');
+
+  text += `\n\n📋 *Pipeline:*\n${activeStages.join('\n')}`;
+
+  return { text, isDelayed, daysRemaining: remainingDays, currentStageIndex, totalStages, stageBreakdown: stageLines.join('\n') };
+}
+
+// ── Smart Order Query — natural language detection ─────────────────────
+// Detects order numbers in free-text messages and auto-responds with status.
+async function trySmartOrderQuery(chatId: string, text: string): Promise<string | null> {
+  // Match QTN patterns: QTN-2026-001, QTN 2026-001, qtn2026001
+  const qtnMatch = text.match(/\b(qtn[-\s]?\d{4}[-\s]?\d+)\b/i);
+  if (!qtnMatch) return null;
+
+  const raw = qtnMatch[1];
+  // Normalize to QTN-YYYY-NNN
+  const normalized = raw
+    .replace(/\s+/g, '-')
+    .replace(/^qtn/i, 'QTN')
+    .replace(/(\d{4})-(\d+)/, '$1-$2');
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(normalized)}`);
+    if (!res.ok) return null;
+    const order = await res.json();
+
+    // Build client delivery info (Gap 1A fix: add section header)
+    let clientInfo = '';
+    const client = order.client_name ? await lookupClient(order.client_name).catch(() => null) : null;
+    if (client) {
+      const info = formatClientInfo(client);
+      if (info) clientInfo = `🚚 *Delivery Info:*\n${info}`;
+    } else if (order.delivery_address) {
+      clientInfo = `🚚 *Delivery Info:*\n📍 ${escapeMarkdown(order.delivery_address)}`;
+      if (order.contact_number) clientInfo += `\n📞 ${escapeMarkdown(order.contact_number)}`;
+      if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${escapeMarkdown(order.authorized_receiver_name)}`;
+    }
+
+    const summary = buildGanttStatusSummary(order, clientInfo);
+    return summary.text;
+  } catch {
+    return null;
+  }
+}
+
 // ── Order Picker Helpers ───────────────────────────────────────────────
 
 async function getOrdersForAction(action: string): Promise<{ id: string; quotation_number: string; client_name: string | null }[]> {
@@ -1416,36 +1683,23 @@ bot.action(/^pick:([^:]+):(.+)$/, async (ctx) => {
           return;
         }
         const order: any = await res.json();
-        const totalAmount = Number(order.total_amount ?? 0);
-        const depositAmount = Number(order.deposit_amount ?? 0);
-        // Fetch actual remaining balance for accurate display
-        let remainingBalance = Math.max(totalAmount - depositAmount, 0);
-        let balancePaidSoFar = 0;
-        try {
-          const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
-          if (paymentsRes.ok) {
-            const paymentsData = await paymentsRes.json();
-            remainingBalance = paymentsData.totals?.remaining_balance ?? remainingBalance;
-            balancePaidSoFar = paymentsData.totals?.balance ?? 0;
-          }
-        } catch { /* use computed fallback */ }
-        let msg =
-          `📋 *${order.quotation_number}*\n` +
-          `Stage: ${order.current_stage}\nStatus: ${order.status}\nMath: ${order.math_status}\n` +
-          `Total: ₱${totalAmount.toLocaleString()}\n` +
-          `Downpayment: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
-          `Balance: ${order.balance_paid ? '✅ Paid' : (balancePaidSoFar > 0 ? `⏳ ₱${remainingBalance.toLocaleString()} remaining (paid ₱${balancePaidSoFar.toLocaleString()})` : `⏳ ₱${remainingBalance.toLocaleString()}`)}`;
-        const client = order.client_name ? await lookupClient(order.client_name) : null;
-        if (client || order.delivery_address) {
-          msg += `\n\n🚚 *Delivery Info:*`;
-          if (client) { const info = formatClientInfo(client); if (info) msg += `\n${info}`; }
-          else {
-            if (order.delivery_address) msg += `\n📍 *Address:* ${order.delivery_address}`;
-            if (order.contact_number) msg += `\n📞 *Contact:* ${order.contact_number}`;
-          }
+
+        // Build client delivery info
+        let clientInfo = '';
+        const client = order.client_name ? await lookupClient(order.client_name).catch(() => null) : null;
+        if (client) {
+          const info = formatClientInfo(client);
+          if (info) clientInfo = `🚚 *Delivery Info:*\n${info}`;
+        } else if (order.delivery_address) {
+          clientInfo = `🚚 *Delivery Info:*\n📍 ${escapeMarkdown(order.delivery_address)}`;
+          if (order.contact_number) clientInfo += `\n📞 ${escapeMarkdown(order.contact_number)}`;
+          if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${escapeMarkdown(order.authorized_receiver_name)}`;
         }
+
+        // Use Gantt-powered smart status summary
+        const summary = buildGanttStatusSummary(order, clientInfo);
         resetStep(chatId);
-        await ctx.editMessageText(msg, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+        await safeReply(ctx, summary.text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
       } catch {
         resetStep(chatId);
         await ctx.editMessageText(`❌ Error fetching order *${quotationNumber}*.`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
@@ -1782,20 +2036,27 @@ bot.on(message('text'), async (ctx) => {
     return;
   }
 
-  // ── Idle: production assistant (group) or main menu (DM) ────────────
+  // ── OpenClaw Intelligent Routing — Handle ALL idle text messages ──
+  // Instead of routing each group separately, OpenClaw routes to the right
+  // handler (production assistant, schedule parser, or general query)
+  // via the single /openclaw/query endpoint.
   if (session.step.action === 'idle') {
+    const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
+    const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
+    const hasQtn = /qtn[-\s]?\w+/i.test(text);
+
+    // ── Determine which chat type this is ───────────────────────────
     const PRODUCTION_CHAT_ID = process.env.PRODUCTION_GROUP_CHAT_ID ?? process.env.PRODUCTION_GROUP_ID ?? '';
     const isProductionChat = PRODUCTION_CHAT_ID && chatId === PRODUCTION_CHAT_ID;
+    const SCHEDULE_CHAT_ID = process.env.SCHEDULE_GROUP_CHAT_ID ?? process.env.SCHEDULE_GROUP_ID ?? '';
+    const isScheduleChat = SCHEDULE_CHAT_ID && chatId === SCHEDULE_CHAT_ID;
 
+    // ── Production chat: production assistant first ─────────────
+    // Issue 4A fix: run specialized handlers BEFORE generic smart order query
     if (isProductionChat) {
-      // Handle reply-keyboard quick actions first
       const handled = await handleProdQuickAction(ctx, text, chatId);
       if (handled) return;
 
-      // Try AI production assistant first for keyword messages
-      const botUsername = (bot.botInfo?.username ?? '').toLowerCase();
-      const mentionsBot = botUsername && text.toLowerCase().includes(`@${botUsername}`);
-      const hasQtn = /qtn[-\s]?\w+/i.test(text);
       const hasKeyword = /\b(done|finished|produced|complete|shipped|en.?route|dispatched|status|progress|pending|delayed|ready|how.?long|when|still|all|items?)\b/i.test(text);
 
       if (mentionsBot || hasQtn || hasKeyword) {
@@ -1859,20 +2120,25 @@ bot.on(message('text'), async (ctx) => {
         }
       }
 
+      // Issue 4A+4B fix: Smart order query as fallback in production chat
+      // Only fires if there's an explicit QTN and the production assistant didn't handle it
+      if (hasQtn) {
+        const smartReply = await trySmartOrderQuery(chatId, text);
+        if (smartReply) {
+          await safeReply(ctx, smartReply, { parse_mode: 'Markdown', disable_web_page_preview: true });
+          // Still refresh the production panel (Issue 4B fix)
+          await showOrUpdatePanel(ctx, chatId);
+          return;
+        }
+      }
+
       // Always show/update the persistent control panel after any message in the production chat
       await showOrUpdatePanel(ctx, chatId);
       return;
     }
 
     // ── Schedule group chat ──────────────────────────────────────────
-    // When a user sends a message to the schedule group while idle,
-    // treat it as a potential schedule entry. Use Hermes AI to parse
-    // natural language into a structured schedule, then ask for confirmation.
-    const SCHEDULE_CHAT_ID = process.env.SCHEDULE_GROUP_CHAT_ID ?? process.env.SCHEDULE_GROUP_ID ?? '';
-    const isScheduleChat = SCHEDULE_CHAT_ID && chatId === SCHEDULE_CHAT_ID;
-
     if (isScheduleChat) {
-      // Try AI schedule parsing first
       try {
         const res = await fetch(`${apiBaseUrl}/agents/run/schedule-parser`, {
           method: 'POST',
@@ -2008,7 +2274,17 @@ Is this correct?`,
         }
       }
 
-      // No date detected — ask user for the date
+      // No date detected — try smart order query if QTN present before asking for date
+      // Issue 4A fix: schedule chat may contain order-related messages too
+      if (hasQtn) {
+        const smartReply = await trySmartOrderQuery(chatId, text);
+        if (smartReply) {
+          await safeReply(ctx, smartReply, { parse_mode: 'Markdown', disable_web_page_preview: true });
+          return;
+        }
+      }
+
+      // No date AND no order — ask user for the date
       setStep(chatId, {
         action: 'awaiting_schedule_date',
         scheduleText: text,
@@ -2022,6 +2298,16 @@ I'll save this as a schedule. What date should this be on?
         { parse_mode: 'Markdown', ...cancelButton() }
       );
       return;
+    }
+
+    // ── Smart Order Query: auto-detect QTN in DM / non-specialized groups ──
+    // Issue 4A fix: smart query runs here only for non-production, non-schedule chats
+    if (mentionsBot || hasQtn) {
+      const smartReply = await trySmartOrderQuery(chatId, text);
+      if (smartReply) {
+        await safeReply(ctx, smartReply, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        return;
+      }
     }
 
     // DM or non-production group: show main menu
@@ -2094,44 +2380,23 @@ I'll save this as a schedule. What date should this be on?
           return;
         }
         const order: any = await res.json();
-        const totalAmount = Number(order.total_amount ?? 0);
-        const depositAmount = Number(order.deposit_amount ?? 0);
-        // Fetch actual remaining balance for accurate display
-        let remainingBalance = Math.max(totalAmount - depositAmount, 0);
-        let balancePaidSoFar = 0;
-        try {
-          const paymentsRes = await fetch(`${apiBaseUrl}/orders/${order.id}/payments`);
-          if (paymentsRes.ok) {
-            const paymentsData = await paymentsRes.json();
-            remainingBalance = paymentsData.totals?.remaining_balance ?? remainingBalance;
-            balancePaidSoFar = paymentsData.totals?.balance ?? 0;
-          }
-        } catch { /* use computed fallback */ }
-        let msg =
-          `📋 *${order.quotation_number}*\n` +
-          `Stage: ${order.current_stage}\n` +
-          `Status: ${order.status}\n` +
-          `Math: ${order.math_status}\n` +
-          `Total: ₱${totalAmount.toLocaleString()}\n` +
-          `Downpayment: ${order.deposit_paid ? `✅ ₱${depositAmount.toLocaleString()}` : '⏳ Pending'}\n` +
-          `Balance: ${order.balance_paid ? '✅ Paid' : (balancePaidSoFar > 0 ? `⏳ ₱${remainingBalance.toLocaleString()} remaining (paid ₱${balancePaidSoFar.toLocaleString()})` : `⏳ ₱${remainingBalance.toLocaleString()}`)}`;
 
-        // Auto-detect client delivery info
-        const client = order.client_name ? await lookupClient(order.client_name) : null;
-        if (client || order.delivery_address || order.contact_number) {
-          msg += `\n\n🚚 *Delivery Info:*`;
-          if (client) {
-            const info = formatClientInfo(client);
-            if (info) msg += `\n${info}`;
-          } else {
-            if (order.delivery_address) msg += `\n📍 *Address:* ${order.delivery_address}`;
-            if (order.contact_number) msg += `\n📞 *Contact:* ${order.contact_number}`;
-            if (order.authorized_receiver_name) msg += `\n👤 *Auth. Receiver:* ${order.authorized_receiver_name}${order.authorized_receiver_contact ? ` (${order.authorized_receiver_contact})` : ''}`;
-          }
+        // Build client delivery info
+        let clientInfo = '';
+        const client = order.client_name ? await lookupClient(order.client_name).catch(() => null) : null;
+        if (client) {
+          const info = formatClientInfo(client);
+          if (info) clientInfo = `🚚 *Delivery Info:*\n${info}`;
+        } else if (order.delivery_address) {
+          clientInfo = `🚚 *Delivery Info:*\n📍 ${escapeMarkdown(order.delivery_address)}`;
+          if (order.contact_number) clientInfo += `\n📞 ${escapeMarkdown(order.contact_number)}`;
+          if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${escapeMarkdown(order.authorized_receiver_name)}`;
         }
 
+        // Use Gantt-powered smart status summary
+        const summary = buildGanttStatusSummary(order, clientInfo);
         resetStep(chatId);
-        await safeReply(ctx, msg, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
+        await safeReply(ctx, summary.text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
       } catch {
         await ctx.reply(`❌ Error fetching order *${quotationNumber}*.`, {
           parse_mode: 'Markdown',
@@ -9602,7 +9867,9 @@ bot.command('commands', async (ctx) => {
     '/start — Show main menu\n' +
     '/commands — Show this feature list\n' +
     '/help — Detailed guide for each feature\n' +
-    '/unlink — Clear linked order for uploads\n\n' +
+    '/unlink — Clear linked order for uploads\n' +
+    '/brain — Query the CentralBrain AI knowledge base\n' +
+    '/ask — Ask anything about orders, production, delivery, payments\n\n' +
     '*Main Menu Features:*\n' +
     '1️⃣ 📋 Check Order Status — View stage, deposit, balance, delivery\n' +
     '2️⃣ 🛒 Purchasing / Production — Mark production started/partial/not yet\n' +
@@ -9693,10 +9960,192 @@ bot.command('help', async (ctx) => {
     '/start — Show main menu\n' +
     '/commands — List all features\n' +
     '/help — Show this detailed guide\n' +
+    '/brain — Query the CentralBrain AI knowledge base\n' +
+    '/ask — Ask anything about orders, production, delivery, payments\n' +
     '/bug — Report a bug to the development team\n' +
     '/unlink — Clear linked order for uploads';
 
   await safeReply(ctx, text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
+});
+
+// ── CentralBrain /brain Command ────────────────────────────────────────
+// Queries the persistent lesson database for relevant knowledge.
+// Usage: /brain <question> — e.g. "/brain how to handle delivery exception"
+bot.command('brain', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  resetStep(chatId);
+  botLog({ chatId, userId, username, messageType: 'command', content: '/brain', direction: 'incoming' });
+
+  // Check if there's text after /brain
+  const text = ctx.message?.text?.trim() ?? '';
+  const query = text.replace(/^\/brain(@\w+)?\s*/, '').trim();
+
+  if (!query) {
+    await safeReply(
+      ctx,
+      '🧠 *CentralBrain Knowledge Base*\n\n' +
+      'Search the AI learning layer for lessons, fixes, and best practices.\n\n' +
+      'Usage:\n' +
+      '`/brain <your question>` — e.g.\n' +
+      '• `/brain how to handle delivery exception`\n' +
+      '• `/brain production tracking issues`\n' +
+      '• `/brain telegram 409 error`\n' +
+      '• `/brain docker memory`\n\n' +
+      '_Results include confidence level, related files, and source._',
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  await safeReply(ctx, '🔍 *Searching CentralBrain…*', { parse_mode: 'Markdown' });
+
+  try {
+    const encoded = encodeURIComponent(query);
+    const res = await fetch(`${apiBaseUrl}/brain/search?q=${encoded}&limit=5`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[bot] /brain search failed (${res.status}): ${errBody}`);
+      await safeReply(ctx, '❌ Brain search failed. Try again later.');
+      return;
+    }
+
+    const data = await res.json() as {
+      lessons: Array<{
+        title: string;
+        summary: string | null;
+        content: string;
+        tags: string[];
+        confidence: string;
+        source: string;
+        source_ref: string | null;
+        related_files: string[];
+        similarity?: number;
+        created_at: string;
+      }>;
+      total: number;
+      search_time_ms: number;
+    };
+
+    if (!data.lessons || data.lessons.length === 0) {
+      await safeReply(
+        ctx,
+        `🤷 *No lessons found* for "${query}".\n\n` +
+        `Try different keywords or check the dashboard Brain tab to add knowledge.`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    // Format results
+    let response = `🧠 *CentralBrain Results* (${data.total} found, ${data.search_time_ms}ms)\n\n`;
+    response += `Query: _${query}_\n\n`;
+
+    for (let i = 0; i < Math.min(data.lessons.length, 5); i++) {
+      const l = data.lessons[i];
+      const sim = l.similarity != null ? ` (${Math.round(l.similarity * 100)}% match)` : '';
+      const confIcon = l.confidence === 'high' ? '🟢' : l.confidence === 'medium' ? '🟡' : '🔴';
+      const tags = l.tags?.length > 0 ? l.tags.slice(0, 3).join(', ') : '';
+      const files = l.related_files?.slice(0, 2).join(', ') || '—';
+
+      response += `${i + 1}. ${confIcon} *${l.title}*${sim}\n`;
+      if (l.summary) response += `   📝 ${l.summary}\n`;
+      response += `   🏷️ ${tags || '—'}\n`;
+      response += `   📁 ${files}\n\n`;
+    }
+
+    // Truncate if too long (Telegram max 4096)
+    if (response.length > 3900) {
+      response = response.substring(0, 3850) + '\n\n_…truncated. Be more specific._';
+    }
+
+    await safeReply(ctx, response, { parse_mode: 'Markdown' });
+  } catch (err: any) {
+    console.error('[bot] /brain error:', err);
+    await safeReply(ctx, '❌ Brain search failed. Is the API server running?');
+  }
+});
+
+// ── OpenClaw /ask Command — Universal Order Intelligence ───────────────
+// Ask anything about orders, production, delivery, payments, clients.
+// Routes through OpenClaw which queries live data + CentralBrain + AI.
+// Usage: /ask what's the status of QTN-2026-001
+//        /ask when will discovery chairs be delivered
+//        /ask show me delayed orders
+bot.command('ask', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  resetStep(chatId);
+  botLog({ chatId, userId, username, messageType: 'command', content: '/ask', direction: 'incoming' });
+
+  const text = ctx.message?.text?.trim() ?? '';
+  const query = text.replace(/^\/ask(@\w+)?\s*/, '').trim();
+
+  if (!query) {
+    await safeReply(
+      ctx,
+      '🤖 *OpenClaw Order Intelligence*\n\n' +
+      'Ask me anything about your orders:\n\n' +
+      '• `/ask status of QTN-2026-001` — Full order status with ETA\n' +
+      '• `/ask what\'s up with discovery chairs` — Search by order name\n' +
+      '• `/ask when will QTN-2026-005 arrive` — Delivery ETA\n' +
+      '• `/ask show delayed orders` — List overdue orders\n' +
+      '• `/ask how many in production` — Production pipeline\n' +
+      '• `/ask all about Juan dela Cruz` — Client info + orders\n\n' +
+      '_I\'ll search live data and the CentralBrain knowledge base._',
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  await safeReply(ctx, '🔍 *Thinking…*', { parse_mode: 'Markdown' });
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/openclaw/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text: query,
+        username: username ?? null,
+        chat_type: ctx.chat?.type ?? 'private',
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[bot] /ask failed (${res.status}): ${errBody}`);
+      await safeReply(ctx, '❌ Query failed. Try again later.');
+      return;
+    }
+
+    const result = await res.json() as {
+      reply: string;
+      formatted_reply?: string;
+      order_id?: string;
+      quotation_number?: string;
+      suggested_actions?: Array<{ label: string; callback_data: string }>;
+      confidence: string;
+      data_source: string;
+    };
+
+    let keyboard;
+    if (result.suggested_actions && result.suggested_actions.length > 0) {
+      keyboard = Markup.inlineKeyboard(
+        result.suggested_actions.map((a) => [Markup.button.callback(a.label, a.callback_data)])
+      );
+    }
+
+    await safeReply(ctx, result.formatted_reply ?? result.reply, {
+      parse_mode: 'HTML',
+      ...(keyboard ? keyboard : {}),
+    });
+  } catch (err: any) {
+    console.error('[bot] /ask error:', err);
+    await safeReply(ctx, '❌ OpenClaw query failed. Is the API server running?');
+  }
 });
 
 // ── Bug Report Command ─────────────────────────────────────────────────
@@ -9766,6 +10215,54 @@ bot.command('unlink', async (ctx) => {
     direction: 'incoming',
   });
   await ctx.reply('🔗 Order context cleared. Files will not be linked to any order.', mainMenuKeyboard());
+});
+
+// ── Status Command — Quick order status with Gantt intelligence ────────
+bot.command('status', async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  resetStep(chatId);
+  botLog({ chatId, userId, username, messageType: 'command', content: '/status', direction: 'incoming' });
+
+  const text = ctx.message?.text?.trim() ?? '';
+  const args = text.replace(/^\/status(@\w+)?\s*/, '').trim();
+
+  if (!args) {
+    await ctx.reply(
+      '📋 *Check Order Status*\n\nUsage: `/status QTN-2026-001`\n\nOr just type the quotation number in any group chat.',
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+    return;
+  }
+
+  // Normalize quotation number
+  const qtn = args.replace(/\s+/g, '-').replace(/^qtn/i, 'QTN').replace(/(\d{4})-(\d+)/, '$1-$2');
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(qtn)}`);
+    if (!res.ok) {
+      await ctx.reply(`❌ Order *${qtn}* not found.`, { parse_mode: 'Markdown', ...mainMenuKeyboard() });
+      return;
+    }
+    const order = await res.json();
+
+    let clientInfo = '';
+    const client = order.client_name ? await lookupClient(order.client_name).catch(() => null) : null;
+    if (client) {
+      const info = formatClientInfo(client);
+      if (info) clientInfo = `🚚 *Delivery Info:*\n${info}`;
+    } else if (order.delivery_address) {
+      clientInfo = `🚚 *Delivery Info:*\n📍 ${escapeMarkdown(order.delivery_address)}`;
+      if (order.contact_number) clientInfo += `\n📞 ${escapeMarkdown(order.contact_number)}`;
+      if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${escapeMarkdown(order.authorized_receiver_name)}`;
+    }
+
+    const summary = buildGanttStatusSummary(order, clientInfo);
+    await safeReply(ctx, summary.text, { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard().reply_markup });
+  } catch (err: any) {
+    await ctx.reply(`❌ Error: ${escapeMarkdown(err.message)}`, { parse_mode: 'Markdown', ...cancelButton() });
+  }
 });
 
 // ── Start ─────────────────────────────────────────────────────────────

@@ -1,25 +1,34 @@
 'use client';
 
 import { STAGE_ORDER, STAGE_CONFIG, type OrderDetail } from '@/lib/api';
-import { AlertTriangle, Clock, Calendar } from 'lucide-react';
+import { AlertTriangle, Clock, Calendar, Banknote } from 'lucide-react';
 
 interface GanttChartProps {
   order: OrderDetail;
 }
 
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtDateShort(d: Date): string {
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+}
+
 /**
  * GanttChart — Visual timeline showing stage progress vs projected lead time.
  *
- * - If `projected_lead_time` is set, the chart shows the expected deadline
- *   and highlights whether the order is on track or delayed.
- * - Each completed stage is rendered as a horizontal bar proportional to
- *   the total timeline.
+ * - Timeline starts from the **balance deposit date** (`deposit_paid_at`)
+ *   because production only begins after payment is confirmed.
+ * - Falls back to `order_confirmed_at` then `created_at` if no deposit date.
+ * - Each stage is rendered as a horizontal bar with approximate date labels.
  * - A "Today" marker shows current position relative to the deadline.
  * - If the order is projected to be delayed, a warning banner appears.
  */
 export default function GanttChart({ order }: GanttChartProps) {
   const projectedLeadTime = order.projected_lead_time;
-  const startedAt = order.projected_lead_time_started_at ?? order.created_at;
+  // Base the Gantt start on the balance deposit date — production starts after payment
+  const startedAt = order.deposit_paid_at ?? order.order_confirmed_at ?? order.created_at;
   const startDate = new Date(startedAt);
   const now = new Date();
 
@@ -51,7 +60,10 @@ export default function GanttChart({ order }: GanttChartProps) {
   const currentStageIndex = STAGE_ORDER.indexOf(order.current_stage);
   const totalStages = STAGE_ORDER.length;
 
-  // Build stage timeline data
+  // Duration per stage in ms (equal distribution)
+  const stageDurationMs = deadlineMs / totalStages;
+
+  // Build stage timeline data with approximate dates
   // We map each stage to a segment of the total timeline.
   // Completed stages get filled bars; the current stage gets a partial fill.
   const stageSegments = STAGE_ORDER.map((stage, index) => {
@@ -64,6 +76,12 @@ export default function GanttChart({ order }: GanttChartProps) {
     const stageStartPct = index / totalStages;
     const stageEndPct = (index + 1) / totalStages;
 
+    // Approximate date range for this stage
+    const segmentStartMs = index * stageDurationMs;
+    const segmentEndMs = (index + 1) * stageDurationMs;
+    const approxStart = new Date(startDate.getTime() + segmentStartMs);
+    const approxEnd = new Date(startDate.getTime() + segmentEndMs);
+
     return {
       stage,
       label: config?.label ?? stage,
@@ -74,6 +92,8 @@ export default function GanttChart({ order }: GanttChartProps) {
       stageUpdate,
       stageStartPct,
       stageEndPct,
+      approxStart,
+      approxEnd,
     };
   });
 
@@ -82,11 +102,18 @@ export default function GanttChart({ order }: GanttChartProps) {
   let warningMessage = '';
   if (isDelayed) {
     warningLevel = 'delayed';
-    warningMessage = `⚠️ Order is behind schedule by ${delayDays} day${delayDays !== 1 ? 's' : ''}. Expected delivery was ${deadlineDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}.`;
+    warningMessage = `⚠️ Order is behind schedule by ${delayDays} day${delayDays !== 1 ? 's' : ''}. Expected delivery was ${fmtDate(deadlineDate)}.`;
   } else if (remainingDays <= Math.ceil(projectedLeadTime * 0.15)) {
     warningLevel = 'warning';
-    warningMessage = `⚠️ Only ${remainingDays} day${remainingDays !== 1 ? 's' : ''} remaining before the projected deadline of ${deadlineDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}.`;
+    warningMessage = `⚠️ Only ${remainingDays} day${remainingDays !== 1 ? 's' : ''} remaining before the projected deadline of ${fmtDate(deadlineDate)}.`;
   }
+
+  // Determine the start-date label based on which date is used
+  const startLabel = order.deposit_paid_at
+    ? 'Deposit paid'
+    : order.order_confirmed_at
+      ? 'Order confirmed'
+      : 'Created';
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
@@ -98,12 +125,12 @@ export default function GanttChart({ order }: GanttChartProps) {
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Started: {startDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+            <Banknote className="h-3 w-3" />
+            {startLabel}: {fmtDateShort(startDate)}
           </span>
           <span className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
-            Due: {deadlineDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+            Due: {fmtDate(deadlineDate)}
           </span>
         </div>
       </div>
@@ -143,18 +170,18 @@ export default function GanttChart({ order }: GanttChartProps) {
           />
         </div>
         <div className="mt-1 flex justify-between text-[10px] text-gray-400">
-          <span>{startDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span>
+          <span>{fmtDateShort(startDate)}</span>
           <span className="font-medium text-gray-500">
             {isDelayed
               ? `Overdue by ${delayDays}d`
               : `${remainingDays}d remaining`}
           </span>
-          <span>{deadlineDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span>
+          <span>{fmtDateShort(deadlineDate)}</span>
         </div>
       </div>
 
       {/* Stage-by-stage Gantt bars */}
-      <div className="space-y-1.5">
+      <div className="space-y-0.5">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Stage Timeline</p>
         {stageSegments.map((seg) => {
           const leftPct = seg.stageStartPct * 100;
@@ -162,8 +189,8 @@ export default function GanttChart({ order }: GanttChartProps) {
 
           return (
             <div key={seg.stage} className="flex items-center gap-2">
-              {/* Stage label */}
-              <div className="w-36 shrink-0 text-right">
+              {/* Stage label + date range */}
+              <div className="w-40 shrink-0 text-right">
                 <span
                   className={`text-[10px] leading-tight ${
                     seg.isCompleted || seg.isCurrent ? 'text-gray-700 font-medium' : 'text-gray-400'
@@ -171,10 +198,13 @@ export default function GanttChart({ order }: GanttChartProps) {
                 >
                   {seg.icon} {seg.label}
                 </span>
+                <div className="text-[9px] text-gray-300 leading-tight">
+                  {fmtDateShort(seg.approxStart)} – {fmtDateShort(seg.approxEnd)}
+                </div>
               </div>
 
               {/* Bar track */}
-              <div className="relative flex-1 h-5">
+              <div className="relative flex-1 h-6">
                 {/* Background track */}
                 <div className="absolute inset-0 rounded bg-gray-50 ring-1 ring-inset ring-gray-100" />
 

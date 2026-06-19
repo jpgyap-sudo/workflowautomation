@@ -1,5 +1,30 @@
 # Quotation Automation System — Agent Instructions
 
+## 🧠 CentralBrain PostgreSQL Learning Layer (NEW)
+
+This project now uses **CentralBrain** — a PostgreSQL + pgvector persistent learning layer stored in your existing database.
+
+### What changed
+- Lessons are now stored in the `brain_lessons` table with 768-dim embeddings
+- Semantic search via `GET /brain/search?q=...`
+- Telegram command: `/brain <your question>`
+- Dashboard page: `/brain`
+- Migration: `database/migrations/047_brain_lessons.sql`
+
+### How to use
+```bash
+# Query the brain (from Telegram or any chat)
+/brain how to handle production delays
+
+# Import existing lessons from the flat file
+node scripts/import-brain-lessons.mjs
+
+# Init Ollama for embeddings (do this once after deployment)
+sh scripts/init-ollama-brain.sh
+```
+
+See [docs/centralbrain-architecture.md](docs/centralbrain-architecture.md) for full details.
+
 ## Learning Layer (Mandatory)
 
 This project uses the SuperRoo cross-project learning layer. Lessons from ALL SuperRoo projects are searchable.

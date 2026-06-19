@@ -509,6 +509,70 @@ async function advanceToInventoryVerificationIfAllArrived(
   return { advanced: true, order: updatedOrder };
 }
 
+// ── OpenClaw — Universal Order Intelligence ─────────────────────────
+import { handleOpenClawQuery } from './services/openClawService.js';
+
+/**
+ * POST /openclaw/query — Ask ANY question about the business
+ * Returns structured order info, lessons, or general assistance.
+ */
+app.post('/openclaw/query', async (request, reply) => {
+  const body = z.object({
+    text: z.string().min(1).max(500),
+    username: z.string().nullable().optional(),
+    chat_type: z.string().optional(),
+    current_group_stage: z.string().nullable().optional(),
+  }).parse(request.body);
+
+  try {
+    const result = await handleOpenClawQuery(body.text, {
+      username: body.username ?? null,
+      chatType: body.chat_type,
+      currentGroupStage: body.current_group_stage ?? null,
+    });
+    return result;
+  } catch (err: any) {
+    console.error('[openclaw] Error:', err);
+    return reply.status(500).send({ error: err.message ?? 'OpenClaw query failed' });
+  }
+});
+
+/**
+ * GET /openclaw/stage-map — Returns stage metadata for UI rendering
+ */
+app.get('/openclaw/stage-map', async () => {
+  const { STAGE_LABELS } = await import('./services/agentRunner.js');
+  return {
+    stages: Object.entries(STAGE_LABELS).map(([key, label]) => ({
+      key,
+      label,
+      emoji: key === 'order_confirmation_received' ? '📋'
+        : key === 'quotation_received' ? '📄'
+        : key === 'math_verified' ? '✅'
+        : key === 'deposit_pending' ? '💳'
+        : key === 'deposit_verification' ? '🔍'
+        : key === 'purchasing_pending' ? '🛒'
+        : key === 'production_pending' ? '🏭'
+        : key === 'production_in_progress' ? '⚙️'
+        : key === 'partial_production' ? '🔧'
+        : key === 'en_route' ? '🚚'
+        : key === 'en_route_verification' ? '📦'
+        : key === 'inventory_verification' ? '📋'
+        : key === 'inventory_arrived' ? '📥'
+        : key === 'balance_due' ? '💰'
+        : key === 'balance_verification' ? '🔍'
+        : key === 'delivery_pending' ? '🚛'
+        : key === 'delivery_scheduled' ? '📅'
+        : key === 'delivered' ? '✅'
+        : key === 'payment_received' ? '💵'
+        : key === 'payment_confirmed' ? '✅'
+        : key === 'completed' ? '🎉'
+        : key === 'countered' ? '🔄'
+        : '📌',
+    })),
+  };
+});
+
 // ── Email (OTP) ──────────────────────────────────────────────────────
 const smtpTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -11745,6 +11809,155 @@ app.get('/calendar/events', async () => {
   return allEvents;
 });
 
+// ── Brain / CentralBrain Learning Layer ─────────────────────────────
+import {
+  createLesson,
+  searchLessons,
+  getLesson,
+  updateLesson,
+  deleteLesson,
+  listLessons,
+  getStats,
+  reembedMissing,
+  findSimilar,
+} from './services/brainService.js';
+
+/**
+ * GET /brain/stats — Brain statistics
+ */
+app.get('/brain/stats', async () => {
+  return getStats();
+});
+
+/**
+ * GET /brain — List lessons with pagination + filters
+ */
+app.get('/brain', async (request) => {
+  const q = request.query as Record<string, string>;
+  return listLessons({
+    limit: q.limit ? parseInt(q.limit, 10) : 50,
+    offset: q.offset ? parseInt(q.offset, 10) : 0,
+    agent: q.agent,
+    project_id: q.project_id,
+    confidence: q.confidence,
+    tag: q.tag,
+    sort: (q.sort ?? 'created_at') as any,
+    order: (q.order ?? 'desc') as any,
+  });
+});
+
+/**
+ * GET /brain/search — Semantic search across lessons
+ */
+app.get('/brain/search', async (request, reply) => {
+  const q = z.object({ q: z.string().min(1).max(500) }).parse(request.query);
+  try {
+    return searchLessons(q.q, {
+      limit: Number((request.query as any).limit ?? 10),
+      offset: Number((request.query as any).offset ?? 0),
+      tags: (request.query as any).tags ? (request.query as any).tags.split(',') : undefined,
+      agent: (request.query as any).agent,
+      project_id: (request.query as any).project_id,
+      min_confidence: (request.query as any).min_confidence,
+      related_file: (request.query as any).related_file,
+    });
+  } catch (err: any) {
+    reply.status(500).send({ error: err.message ?? 'Search failed' });
+  }
+});
+
+/**
+ * GET /brain/:id — Get a single lesson
+ */
+app.get('/brain/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const lesson = await getLesson(params.id);
+  if (!lesson) return reply.code(404).send({ error: 'Lesson not found' });
+  return lesson;
+});
+
+/**
+ * GET /brain/:id/similar — Find similar lessons
+ */
+app.get('/brain/:id/similar', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const limit = Number((request.query as any).limit ?? 5);
+  return findSimilar(params.id, limit);
+});
+
+/**
+ * POST /brain — Create a new lesson (auto-embeds)
+ */
+app.post('/brain', async (request, reply) => {
+  const body = z.object({
+    title: z.string().min(1).max(500),
+    content: z.string().min(1),
+    summary: z.string().max(500).optional(),
+    tags: z.array(z.string()).optional(),
+    agent: z.string().optional(),
+    project_id: z.string().optional(),
+    confidence: z.enum(['high', 'medium', 'low']).optional(),
+    related_files: z.array(z.string()).optional(),
+    source: z.string().optional(),
+    source_ref: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(),
+  }).parse(request.body);
+
+  try {
+    const lesson = await createLesson(body);
+    return reply.code(201).send(lesson);
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message ?? 'Failed to create lesson' });
+  }
+});
+
+/**
+ * PATCH /brain/:id — Update a lesson (re-embeds if title/content changes)
+ */
+app.patch('/brain/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    title: z.string().min(1).max(500).optional(),
+    content: z.string().min(1).optional(),
+    summary: z.string().max(500).optional(),
+    tags: z.array(z.string()).optional(),
+    agent: z.string().optional(),
+    project_id: z.string().optional(),
+    confidence: z.enum(['high', 'medium', 'low']).optional(),
+    related_files: z.array(z.string()).optional(),
+    source: z.string().optional(),
+    source_ref: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(),
+  }).parse(request.body);
+
+  const lesson = await updateLesson(params.id, body);
+  if (!lesson) return reply.code(404).send({ error: 'Lesson not found' });
+  return lesson;
+});
+
+/**
+ * DELETE /brain/:id — Delete a lesson
+ */
+app.delete('/brain/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const deleted = await deleteLesson(params.id);
+  if (!deleted) return reply.code(404).send({ error: 'Lesson not found' });
+  return reply.send({ ok: true });
+});
+
+/**
+ * POST /brain/reembed — Re-embed lessons missing embeddings
+ */
+app.post('/brain/reembed', async (request, reply) => {
+  const limit = Number((request.body as any)?.limit ?? 50);
+  try {
+    const result = await reembedMissing(limit);
+    return reply.send(result);
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message ?? 'Re-embed failed' });
+  }
+});
+
 // ── Search ──────────────────────────────────────────────────────────
 app.get('/search', async (request) => {
   const query_params = z.object({ q: z.string().min(1).max(100) }).parse(request.query);
@@ -13650,8 +13863,8 @@ const port = Number(process.env.PORT ?? 8080);
 
     const defaults = [
       { email: 'jpgyap@gmail.com', name: 'Admin', role: 'admin', allowed_tabs: null, sub_users: null },
-      { email: 'maiquocquynh2506@gmail.com', name: 'Quynh Mai', role: 'editor', allowed_tabs: JSON.stringify(['/', '/orders', '/actions', '/clients', '/purchasing', '/production', '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow', '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram', '/backup', '/vision', '/settings']), sub_users: null },
-      { email: 'sales.homeu@gmail.com', name: 'Sales Team', role: 'editor', allowed_tabs: JSON.stringify(['/', '/orders', '/actions', '/clients', '/purchasing', '/production', '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow', '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram', '/backup', '/vision', '/settings']), sub_users: JSON.stringify([{ code: '777', name: 'Mariella Ignaco' }, { code: '888', name: 'Cathlyn Roma' }]) },
+      { email: 'maiquocquynh2506@gmail.com', name: 'Quynh Mai', role: 'editor', allowed_tabs: JSON.stringify(['/', '/orders', '/actions', '/clients', '/purchasing', '/production', '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow', '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram', '/backup', '/vision', '/settings', '/brain']), sub_users: null },
+      { email: 'sales.homeu@gmail.com', name: 'Sales Team', role: 'editor', allowed_tabs: JSON.stringify(['/', '/orders', '/actions', '/clients', '/purchasing', '/production', '/inventory', '/stock-prep', '/delivery', '/sales', '/collection', '/stages', '/workflow', '/calendar', '/agents', '/logs', '/bot-logs', '/bugs', '/telegram', '/backup', '/vision', '/settings', '/brain']), sub_users: JSON.stringify([{ code: '777', name: 'Mariella Ignaco' }, { code: '888', name: 'Cathlyn Roma' }]) },
     ];
 
     for (const d of defaults) {

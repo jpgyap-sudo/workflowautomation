@@ -2114,6 +2114,45 @@ export async function getKnowledgeBaseStatus(): Promise<KnowledgeBaseStatus> {
   return fetchJson<KnowledgeBaseStatus>('/knowledge/status');
 }
 
+// ── CentralBrain API ──────────────────────────────────────────────────────
+
+export interface BrainLesson {
+  id: string;
+  title: string;
+  content: string;
+  summary: string | null;
+  tags: string[];
+  agent: string;
+  project_id: string;
+  confidence: 'high' | 'medium' | 'low';
+  related_files: string[];
+  source: string;
+  source_ref: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  similarity?: number;
+}
+
+export interface BrainSearchResult {
+  lessons: BrainLesson[];
+  total: number;
+  query_embedding_time_ms: number;
+  search_time_ms: number;
+}
+
+export interface BrainStats {
+  total_lessons: number;
+  by_agent: Record<string, number>;
+  by_confidence: Record<string, number>;
+  by_source: Record<string, number>;
+  by_tag: Record<string, number>;
+  latest_lesson: BrainLesson | null;
+  oldest_lesson: BrainLesson | null;
+  has_embeddings: number;
+  needs_embeddings: number;
+}
+
 // ── Update Logs API ─────────────────────────────────────────────────────
 
 export interface UpdateLogEntry {
