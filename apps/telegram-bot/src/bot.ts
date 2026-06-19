@@ -626,7 +626,9 @@ type UserStep =
   | { action: 'awaiting_order_number_for_produce'; status: string }
   | { action: 'awaiting_produce_status'; quotationNumber: string }
   | { action: 'awaiting_produce_remarks'; quotationNumber: string; status: string }
-  | { action: 'awaiting_produce_custom_days'; quotationNumber: string; orderId?: string }
+  | { action: 'awaiting_produce_date'; quotationNumber: string; orderId?: string }
+  | { action: 'awaiting_produce_custom_days'; quotationNumber: string; orderId?: string; startedAt?: string }
+  | { action: 'awaiting_produce_custom_date_text'; quotationNumber: string; orderId?: string }
   | { action: 'awaiting_order_number_for_deposit' }
   | { action: 'awaiting_deposit_amount'; quotationNumber: string; paymentType?: 'deposit' | 'full' }
   | { action: 'awaiting_order_number_for_paybalance' }
@@ -2476,10 +2478,13 @@ I'll save this as a schedule. What date should this be on?
 
       try {
         const order = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
-        await postJson(`/orders/${order.id}/set-production`, {
+        const payload: any = {
           production_started: true,
           estimated_production_days: estimatedDays,
-        });
+        };
+        const startedAt = (session.step as any).startedAt;
+        if (startedAt) payload.started_at = startedAt;
+        await postJson(`/orders/${order.id}/set-production`, payload);
 
         // Also mark all order items as in_progress so they appear in Production In Progress
         try {
@@ -2505,6 +2510,62 @@ I'll save this as a schedule. What date should this be on?
       } catch (err: any) {
         await ctx.reply(`❌ Error: ${err.message}`, { parse_mode: 'Markdown', ...cancelButton() });
       }
+      break;
+    }
+
+    // ── Awaiting Custom Date Text (user typed a date) ──────────────────
+    case 'awaiting_produce_custom_date_text': {
+      const { quotationNumber, orderId } = session.step;
+      // Try to parse the date text
+      const parsedDate = new Date(text);
+      let startedAt: string | undefined;
+      if (!isNaN(parsedDate.getTime())) {
+        startedAt = parsedDate.toISOString();
+      } else {
+        // Try common date formats: "June 15", "Jun 15", "06/15", "15/06"
+        const formats = [
+          /^(\d{4})-(\d{2})-(\d{2})$/,                         // 2026-06-15
+          /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,                    // 06/15/2026
+          /^([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?$/,          // June 15
+          /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)$/,          // 15 June
+        ];
+        for (const fmt of formats) {
+          const m = text.match(fmt);
+          if (m) {
+            if (fmt === formats[0]) {
+              startedAt = new Date(`${m[1]}-${m[2]}-${m[3]}T08:00:00+08:00`).toISOString();
+            } else if (fmt === formats[1]) {
+              startedAt = new Date(`${m[3]}-${m[1]}-${m[2]}T08:00:00+08:00`).toISOString();
+            } else if (fmt === formats[2]) {
+              startedAt = new Date(`${m[1]} ${m[2]}, ${new Date().getFullYear()}T08:00:00+08:00`).toISOString();
+            } else if (fmt === formats[3]) {
+              startedAt = new Date(`${m[2]} ${m[1]}, ${new Date().getFullYear()}T08:00:00+08:00`).toISOString();
+            }
+            break;
+          }
+        }
+      }
+
+      if (!startedAt) {
+        await ctx.reply(
+          `Could not parse "${text}". Try a format like \`Jun 15\`, \`2026-06-15\`, or \`15 June\`.`,
+          { parse_mode: 'Markdown', ...cancelButton() }
+        );
+        return;
+      }
+
+      setStep(chatId, { action: 'awaiting_produce_custom_days', quotationNumber, orderId, startedAt });
+      await ctx.reply(
+        `📅 Date set to: *${new Date(startedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}*\n\nHow long is production?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📅 28 days (standard)', `produce:days:28:${orderId?.slice(0, 8) ?? ''}:${quotationNumber}`)],
+            [Markup.button.callback('✏️ Enter custom days', `produce:custom:${orderId?.slice(0, 8) ?? ''}:${quotationNumber}`)],
+            [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          ]),
+        }
+      );
       break;
     }
 
@@ -4493,17 +4554,19 @@ bot.action(/^produce:(yes|no):(.+)$/, async (ctx) => {
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
     );
   } else {
-    // Ask how long production is — offer 28-day standard or custom entry
-    setStep(chatId, { action: 'awaiting_produce_custom_days', quotationNumber, orderId });
+    // Ask when production actually started — calendar date picker (optional)
     const orderIdPart = orderId ? orderId.slice(0, 8) : '';
+    setStep(chatId, { action: 'awaiting_produce_date', quotationNumber, orderId });
     await ctx.editMessageText(
-      `🏭 *Production Started* — ${quotationNumber}\n\nHow long is production?`,
+      `📅 *When did production start?* — ${quotationNumber}\n\nChoose a date or skip to use the current time.`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('📅 28 days (standard)', `produce:days:28:${orderIdPart}:${quotationNumber}`)],
-          [Markup.button.callback('✏️ Enter custom days', `produce:custom:${orderIdPart}:${quotationNumber}`)],
-          [Markup.button.callback('❌ Cancel', 'action:cancel')],
+          [Markup.button.callback('📅 Today', `produce:date:today:${orderIdPart}:${quotationNumber}`)],
+          [Markup.button.callback('📅 Yesterday', `produce:date:yesterday:${orderIdPart}:${quotationNumber}`)],
+          [Markup.button.callback('📅 Monday', `produce:date:monday:${orderIdPart}:${quotationNumber}`)],
+          [Markup.button.callback('✏️ Custom date', `produce:date:custom:${orderIdPart}:${quotationNumber}`)],
+          [Markup.button.callback('⏭️ Skip (use now)', `produce:date:skip:${orderIdPart}:${quotationNumber}`)],
         ]),
       }
     );
@@ -4574,6 +4637,62 @@ bot.action(/^advance:production_pending:no:(.+)$/, async (ctx) => {
   );
 });
 
+// ── produce:date — Date picker for when production actually started ──
+// Called after user taps "Yes, started" — asks when it actually began.
+// Callback: produce:date:{today|yesterday|monday|custom|skip}:{orderId}:{quotationNumber}
+bot.action(/^produce:date:(today|yesterday|monday|custom|skip):([^:]*):(.+)$/, async (ctx) => {
+  const chatId = String(ctx.chat!.id);
+  const dateType = ctx.match[1];
+  const orderIdPart = ctx.match[2] || undefined;
+  const quotationNumber = ctx.match[3];
+  const userId = String(ctx.from?.id ?? '');
+  const username = ctx.from?.username;
+  const session = getSession(chatId);
+
+  botLog({ chatId, userId, username, messageType: 'callback_query', content: `produce:date:${dateType}:${orderIdPart}:${quotationNumber}`, direction: 'incoming' });
+
+  let startedAt: string | undefined;
+
+  if (dateType === 'skip') {
+    // No date — API will use NOW()
+    startedAt = undefined;
+  } else if (dateType === 'today') {
+    startedAt = new Date().toISOString();
+  } else if (dateType === 'yesterday') {
+    startedAt = new Date(Date.now() - 86_400_000).toISOString();
+  } else if (dateType === 'monday') {
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun, 1=Mon
+    const diff = day === 0 ? -6 : 1 - day;
+    startedAt = new Date(now.getTime() + diff * 86_400_000).toISOString();
+  } else if (dateType === 'custom') {
+    setStep(chatId, { action: 'awaiting_produce_custom_date_text', quotationNumber, orderId: orderIdPart });
+    await ctx.editMessageText(
+      `📅 Enter the date production started for *${quotationNumber}*\n\nExamples:\`Jun 15\` \`June 15\` \`2026-06-15\``,
+      { parse_mode: 'Markdown', ...cancelButton() }
+    );
+    return;
+  }
+
+  // Proceed to ask for production duration
+  setStep(chatId, { action: 'awaiting_produce_custom_days', quotationNumber, orderId: orderIdPart, startedAt });
+  const orderIdPrefx = orderIdPart ? orderIdPart.slice(0, 8) : '';
+  const startLabel = startedAt
+    ? `Started: ${new Date(startedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}\n\n`
+    : '';
+  await ctx.editMessageText(
+    `🏭 *Production Timeline* — ${quotationNumber}\n\n${startLabel}How long is production?`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback(`📅 28 days ${startedAt ? '(standard)' : ''}`, `produce:days:28:${orderIdPrefx}:${quotationNumber}`)],
+        [Markup.button.callback('✏️ Enter custom days/date', `produce:custom:${orderIdPrefx}:${quotationNumber}`)],
+        [Markup.button.callback('❌ Cancel', 'action:cancel')],
+      ]),
+    }
+  );
+});
+
 // ── produce:days — Standard / quick production days selection ────────
 // Callback: produce:days:{days}:{orderIdPrefix}:{quotationNumber}
 bot.action(/^produce:days:(\d+):([^:]*):(.+)$/, async (ctx) => {
@@ -4589,12 +4708,22 @@ bot.action(/^produce:days:(\d+):([^:]*):(.+)$/, async (ctx) => {
   resetStep(chatId);
   await ctx.editMessageText(`⏳ Recording production start (${days} days)...`, { parse_mode: 'Markdown' });
 
+  // Check if user provided a start date
+  const session = getSession(chatId);
+  const startedAt = session.step?.action === 'awaiting_produce_custom_days'
+    ? (session.step as any).startedAt
+    : undefined;
+  // Clean up session after reading
+  if (startedAt) delete (session.step as any).startedAt;
+
   try {
     const order: any = await getJson(`/orders/${encodeURIComponent(quotationNumber)}`);
-    await postJson(`/orders/${order.id}/set-production`, {
+    const payload: any = {
       production_started: true,
       estimated_production_days: days,
-    });
+    };
+    if (startedAt) payload.started_at = startedAt;
+    await postJson(`/orders/${order.id}/set-production`, payload);
 
     // Also mark all order items as in_progress so they appear in Production In Progress
     try {

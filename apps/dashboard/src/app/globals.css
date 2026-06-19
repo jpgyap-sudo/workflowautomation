@@ -3,17 +3,39 @@
 :root {
   --sidebar-width: 240px;
   --header-height: 56px;
-  --primary: #2490ef;
-  --primary-light: #e8f4fd;
-  --bg-main: #f4f5f7;
+
+  /* Primary — Emerald Green */
+  --primary: #059669;
+  --primary-dark: #047857;
+  --primary-light: #ecfdf5;
+  --primary-muted: #d1fae5;
+
+  /* Sidebar — Sage Green */
+  --sidebar-bg: #f0f7ee;
+  --sidebar-border: #dce6d8;
+  --sidebar-hover: #e2ede0;
+  --sidebar-active: #059669;
+  --sidebar-text: #1f2937;
+  --sidebar-text-muted: #4b5563;
+
+  /* Layout */
+  --bg-main: #f7f8fa;
   --bg-card: #ffffff;
-  --text-primary: #1c1c1c;
-  --text-secondary: #6c6c6c;
-  --border-color: #e2e4e7;
-  --success: #28a745;
-  --warning: #ffc107;
-  --danger: #dc3545;
-  --info: #17a2b8;
+  --text-primary: #0f172a;
+  --text-secondary: #4b5563;
+  --border-color: #e2e8f0;
+
+  /* Utility */
+  --success: #059669;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #0ea5e9;
+
+  /* Shadows — layered for depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
 }
 
 body {
@@ -23,6 +45,8 @@ body {
   min-height: 100dvh;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -43,7 +67,7 @@ html {
   }
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling — refined for premium look */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -52,15 +76,15 @@ html {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c1c7cd;
+  background: #cbd5e1;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #a0a6ad;
+  background: #94a3b8;
 }
 
 /* Stage badge colors */
-.stage-order_confirmation_received { @apply bg-blue-100 text-blue-800; }
+.stage-order_confirmation_received { @apply bg-emerald-100 text-emerald-800; }
 .stage-math_verified { @apply bg-teal-100 text-teal-800; }
 .stage-purchasing_pending { @apply bg-amber-100 text-amber-800; }
 .stage-production_in_progress { @apply bg-indigo-100 text-indigo-800; }

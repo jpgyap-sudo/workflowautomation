@@ -158,7 +158,7 @@ export default function GanttChart({ order }: GanttChartProps) {
         <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              isDelayed ? 'bg-red-500' : totalPct > 0.75 ? 'bg-amber-500' : 'bg-[#2490ef]'
+              isDelayed ? 'bg-red-500' : totalPct > 0.75 ? 'bg-amber-500' : 'bg-[var(--primary)]'
             }`}
             style={{ width: `${Math.min(totalPct * 100, 100)}%` }}
           />
@@ -219,7 +219,7 @@ export default function GanttChart({ order }: GanttChartProps) {
                 {/* Current stage highlight */}
                 {seg.isCurrent && (
                   <div
-                    className="absolute inset-y-0 rounded bg-[#2490ef] opacity-60"
+                    className="absolute inset-y-0 rounded bg-[var(--primary)] opacity-60"
                     style={{ width: `${widthPct}%`, left: `${leftPct}%` }}
                   />
                 )}
@@ -234,7 +234,7 @@ export default function GanttChart({ order }: GanttChartProps) {
               {/* Status indicator */}
               <div className="w-16 shrink-0 text-[10px] text-gray-400">
                 {seg.isCompleted && <span className="text-green-600">✅ Done</span>}
-                {seg.isCurrent && <span className="text-blue-600 font-medium">◉ Now</span>}
+                {seg.isCurrent && <span className="text-emerald-600 font-medium">◉ Now</span>}
               </div>
             </div>
           );
@@ -247,7 +247,7 @@ export default function GanttChart({ order }: GanttChartProps) {
           <span className="inline-block h-2.5 w-2.5 rounded bg-green-400" /> Completed
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded bg-[#2490ef] opacity-60" /> Current
+          <span className="inline-block h-2.5 w-2.5 rounded bg-[var(--primary)] opacity-60" /> Current
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-2.5 w-0.5 bg-gray-800" /> Today

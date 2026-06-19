@@ -166,7 +166,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onStartProductionWorkflow
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(order); }}
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
               title="Edit order"
             >
               <Pencil className="h-4 w-4" />
@@ -189,7 +189,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onStartProductionWorkflow
             <div className="px-6 py-3">
               {loadingItems && items.length === 0 ? (
                 <div className="flex items-center justify-center py-4">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                 </div>
               ) : items.length > 0 ? (
                 <div className="mb-3">
@@ -216,7 +216,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onStartProductionWorkflow
                                   item.production_status === 'finished'
                                     ? 'bg-green-100 text-green-700'
                                     : item.production_status === 'in_progress'
-                                      ? 'bg-blue-100 text-blue-700'
+                                      ? 'bg-emerald-100 text-emerald-700'
                                       : 'bg-amber-100 text-amber-700'
                                 }`}>
                                   {item.production_status === 'finished' ? '✓ Produced' : item.production_status === 'in_progress' ? '⟳ In Progress' : '○ Pending'}
@@ -235,7 +235,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onStartProductionWorkflow
                                             : s === 'finished'
                                               ? 'bg-green-50 text-green-600 hover:bg-green-100'
                                               : s === 'in_progress'
-                                                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                                ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
                                                 : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
                                         }`}
                                         title={`Mark as ${s.replace('_', ' ')}`}
@@ -602,17 +602,17 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-blue-50/50">
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-emerald-50/50">
       <input value={quotationNumber} onChange={(e) => setQuotationNumber(e.target.value)} placeholder="Quotation #"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={salesAgent} onChange={(e) => setSalesAgent(e.target.value)} placeholder="Sales agent"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={totalAmount} onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount"
-        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <button type="submit" disabled={saving}
-        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50" title="Save">
+        className="rounded-lg bg-[var(--primary)] p-1.5 text-white hover:bg-[var(--primary-dark)] disabled:opacity-50" title="Save">
         <Check className="h-4 w-4" />
       </button>
       <button type="button" onClick={onCancel}
@@ -639,7 +639,7 @@ function OrderSection({
       </div>
       {isLoading && orders.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-12">
@@ -647,7 +647,7 @@ function OrderSection({
           <p className="text-sm text-red-500">Failed to load: {error.message}</p>
           {onRetry && (
             <button onClick={onRetry}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9]">
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-medium text-white hover:bg-[var(--primary-dark)]">
               <RefreshCw className="h-3.5 w-3.5" /> Retry
             </button>
           )}

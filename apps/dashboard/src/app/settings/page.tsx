@@ -58,7 +58,7 @@ function InputField({ label, id, type, value, onChange, placeholder, error }: {
         id={id} type={type ?? 'text'} value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`block w-full rounded-lg border px-3 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20 ${
+        className={`block w-full rounded-lg border px-3 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20 ${
           error ? 'border-red-300' : 'border-gray-300'
         }`}
       />
@@ -71,7 +71,7 @@ function InputField({ label, id, type, value, onChange, placeholder, error }: {
 function RoleBadge({ role }: { role: string }) {
   const styles: Record<string, string> = {
     admin: 'bg-purple-100 text-purple-700',
-    editor: 'bg-blue-100 text-blue-700',
+    editor: 'bg-emerald-100 text-emerald-700',
     viewer: 'bg-gray-100 text-gray-600',
   };
   return (
@@ -338,7 +338,7 @@ export default function SettingsPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-[#2490ef] text-white shadow-sm'
+                  ? 'bg-[var(--primary)] text-white shadow-sm'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
@@ -365,7 +365,7 @@ export default function SettingsPage() {
               )}
               <button
                 type="submit" disabled={profileSaving}
-                className="flex items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1a7ad9] disabled:opacity-60"
+                className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-dark)] disabled:opacity-60"
               >
                 <Save className="h-4 w-4" />
                 {profileSaving ? 'Saving…' : 'Save Changes'}
@@ -397,7 +397,7 @@ export default function SettingsPage() {
               )}
               <button
                 type="submit" disabled={pwSaving}
-                className="flex items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1a7ad9] disabled:opacity-60"
+                className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-dark)] disabled:opacity-60"
               >
                 <Key className="h-4 w-4" />
                 {pwSaving ? 'Updating…' : 'Update Password'}
@@ -425,7 +425,7 @@ export default function SettingsPage() {
                     id="newRole"
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value as 'editor' | 'viewer')}
-                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                   >
                     <option value="editor">Editor — can modify orders and data</option>
                     <option value="viewer">Viewer — read-only access</option>
@@ -470,13 +470,13 @@ export default function SettingsPage() {
                       <input
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef]"
+                        className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--primary)]"
                         placeholder="Name"
                       />
                       <select
                         value={editRole}
                         onChange={(e) => setEditRole(e.target.value as Account['role'])}
-                        className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef]"
+                        className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--primary)]"
                       >
                         <option value="admin">Admin</option>
                         <option value="editor">Editor</option>
@@ -492,7 +492,7 @@ export default function SettingsPage() {
                   ) : (
                     /* Display mode */
                     <div className="flex flex-1 items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f4fd] text-sm font-medium text-[#2490ef]">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary-light)] text-sm font-medium text-[var(--primary)]">
                         {acct.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
@@ -516,7 +516,7 @@ export default function SettingsPage() {
                       {acct.role !== 'admin' && (
                         <button
                           onClick={() => openTabAccess(acct)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                           title="Configure tab access"
                         >
                           <Lock className="h-4 w-4" />
@@ -524,7 +524,7 @@ export default function SettingsPage() {
                       )}
                       <button
                         onClick={() => openSubUsers(acct)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                         title="Manage sub-users (entry codes)"
                       >
                         <Users className="h-4 w-4" />
@@ -537,14 +537,14 @@ export default function SettingsPage() {
                             value={newAcctPw}
                             onChange={(e) => setNewAcctPw(e.target.value)}
                             placeholder="New password"
-                            className="w-32 rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef]"
+                            className="w-32 rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
                             onKeyDown={(e) => e.key === 'Enter' && handleSetPassword(acct.email)}
                             autoFocus
                           />
                           <button
                             onClick={() => handleSetPassword(acct.email)}
                             disabled={settingAcctPw || !newAcctPw}
-                            className="rounded-lg bg-[#2490ef] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                            className="rounded-lg bg-[var(--primary)] px-2.5 py-1 text-xs font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
                           >
                             {settingAcctPw ? '…' : acctPwMsg === 'Password updated' ? '✓' : 'Save'}
                           </button>
@@ -563,7 +563,7 @@ export default function SettingsPage() {
                       ) : (
                         <button
                           onClick={() => { setPwTarget(acct.email); setDeleteTarget(null); setNewAcctPw(''); setAcctPwMsg(''); }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-[#2490ef]"
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-emerald-50 hover:text-[var(--primary)]"
                           title="Change password"
                         >
                           <Key className="h-4 w-4" />
@@ -627,7 +627,7 @@ export default function SettingsPage() {
                         key={route}
                         className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
                           tabAccessTabs.includes(route)
-                            ? 'border-[#2490ef] bg-[#e8f4fd] text-gray-800'
+                            ? 'border-[var(--primary)] bg-[var(--primary-light)] text-gray-800'
                             : 'border-gray-200 text-gray-500 hover:bg-gray-50'
                         }`}
                       >
@@ -635,7 +635,7 @@ export default function SettingsPage() {
                           type="checkbox"
                           checked={tabAccessTabs.includes(route)}
                           onChange={() => toggleTabAccessTab(route)}
-                          className="rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                          className="rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                         />
                         {TAB_LABELS[route] ?? route}
                       </label>
@@ -659,7 +659,7 @@ export default function SettingsPage() {
                   <button
                     onClick={saveTabAccess}
                     disabled={tabAccessSaving}
-                    className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
                     {tabAccessSaving ? 'Saving...' : 'Save Access'}
@@ -696,14 +696,14 @@ export default function SettingsPage() {
                       value={newSubUserCode}
                       onChange={(e) => setNewSubUserCode(e.target.value)}
                       placeholder="Code (e.g. 777)"
-                      className="w-24 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef]"
+                      className="w-24 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--primary)]"
                       onKeyDown={(e) => e.key === 'Enter' && addSubUser()}
                     />
                     <input
                       value={newSubUserName}
                       onChange={(e) => setNewSubUserName(e.target.value)}
                       placeholder="Name (e.g. Mariella)"
-                      className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef]"
+                      className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--primary)]"
                       onKeyDown={(e) => e.key === 'Enter' && addSubUser()}
                     />
                     <button
@@ -736,14 +736,14 @@ export default function SettingsPage() {
                               <input
                                 value={editSubUserCode}
                                 onChange={(e) => setEditSubUserCode(e.target.value)}
-                                className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[#2490ef]"
+                                className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[var(--primary)]"
                                 placeholder="Code"
                                 autoFocus
                               />
                               <input
                                 value={editSubUserName}
                                 onChange={(e) => setEditSubUserName(e.target.value)}
-                                className="flex-1 rounded-lg border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[#2490ef]"
+                                className="flex-1 rounded-lg border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[var(--primary)]"
                                 placeholder="Name"
                               />
                               <button
@@ -762,7 +762,7 @@ export default function SettingsPage() {
                           ) : (
                             <>
                               <div className="flex items-center gap-3">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#e8f4fd] text-xs font-bold text-[#2490ef]">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary-light)] text-xs font-bold text-[var(--primary)]">
                                   {su.code}
                                 </span>
                                 <span className="text-sm font-medium text-gray-800">{su.name}</span>
@@ -800,7 +800,7 @@ export default function SettingsPage() {
                   </button>
                   <button
                     onClick={saveSubUsers}
-                    className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
+                    className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
                   >
                     <Save className="h-3.5 w-3.5" />
                     Save Changes
@@ -850,7 +850,7 @@ export default function SettingsPage() {
               { id: 'system_alerts', label: 'System Alerts', desc: 'Agent errors or system warnings' },
             ].map((item) => (
               <label key={item.id} className="flex items-start gap-3 rounded-lg border border-gray-200 px-4 py-3">
-                <input type="checkbox" defaultChecked className="mt-0.5 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]" />
+                <input type="checkbox" defaultChecked className="mt-0.5 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]" />
                 <div>
                   <p className="text-sm font-medium text-gray-800">{item.label}</p>
                   <p className="text-xs text-gray-500">{item.desc}</p>
@@ -871,8 +871,8 @@ export default function SettingsPage() {
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Color Scheme</label>
                 <div className="flex gap-3">
                   {['Light', 'Dark', 'System'].map((theme) => (
-                    <label key={theme} className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 has-checked:border-[#2490ef] has-checked:bg-[#e8f4fd]">
-                      <input type="radio" name="theme" defaultChecked={theme === 'Light'} className="text-[#2490ef] focus:ring-[#2490ef]" />
+                    <label key={theme} className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 has-checked:border-[var(--primary)] has-checked:bg-[var(--primary-light)]">
+                      <input type="radio" name="theme" defaultChecked={theme === 'Light'} className="text-[var(--primary)] focus:ring-[var(--primary)]" />
                       {theme}
                     </label>
                   ))}
@@ -881,7 +881,7 @@ export default function SettingsPage() {
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Sidebar Collapsed by Default</label>
                 <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input type="checkbox" className="rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]" />
+                  <input type="checkbox" className="rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]" />
                   Start with sidebar collapsed
                 </label>
               </div>
@@ -894,11 +894,11 @@ export default function SettingsPage() {
       {/* ── Tab: System ── */}
       {activeTab === 'system' && (
         <div className="space-y-6">
-          <SectionCard title="System Information" desc="About this Quotation Automation System">
+          <SectionCard title="System Information" desc="About this Workflow Automation System">
             <div className="space-y-3">
               <div className="flex justify-between border-b border-gray-100 pb-2 text-sm">
                 <span className="text-gray-500">Application</span>
-                <span className="font-medium text-gray-800">Quotation Automation System</span>
+                <span className="font-medium text-gray-800">Workflow Automation System</span>
               </div>
               <div className="flex justify-between border-b border-gray-100 pb-2 text-sm">
                 <span className="text-gray-500">Version</span>

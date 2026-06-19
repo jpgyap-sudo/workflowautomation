@@ -2142,6 +2142,7 @@ app.post('/orders/bulk-delete', async (request, reply) => {
 const setProductionSchema = z.object({
   production_started: z.boolean(),
   estimated_production_days: z.number().int().positive().optional(),
+  started_at: z.string().datetime().optional(),
   action_token: z.string().optional(),
 });
 
@@ -2189,7 +2190,12 @@ app.post('/orders/:id/set-production', async (request, reply) => {
   let idx = 2;
 
   if (body.production_started) {
-    setClauses.push(`production_started_at = COALESCE(production_started_at, NOW())`);
+    if (body.started_at) {
+      setClauses.push(`production_started_at = $${idx++}`);
+      values.push(body.started_at);
+    } else {
+      setClauses.push(`production_started_at = COALESCE(production_started_at, NOW())`);
+    }
     setClauses.push(`current_stage = 'production_in_progress'`);
   }
 
@@ -2647,6 +2653,7 @@ app.post('/production/chat', async (request, reply) => {
 
 const finishProductionSchema = z.object({
   delivery_estimated_days: z.number().int().positive(),
+  finished_at: z.string().datetime().optional(),
   updated_by: z.string().optional(),
   action_token: z.string().optional(),
 });
@@ -2691,13 +2698,17 @@ app.post('/orders/:id/finish-production', async (request, reply) => {
   // en_route_verification via advanceFromEnRouteToVerificationIfAllDispatched
   // (called from start-en-route-tracking) once all items are confirmed dispatched.
   // For legacy orders (no items), advance to en_route immediately as well.
+  const finishIdx = body.finished_at ? 3 : 2;
   const rows = await query(
-    `UPDATE orders SET production_finished = TRUE, production_finished_at = NOW(),
+    `UPDATE orders SET production_finished = TRUE,
+     production_finished_at = ${body.finished_at ? `$${finishIdx}` : 'NOW()'},
      delivery_estimated_days = $1,
      current_stage = 'en_route',
      updated_at = NOW()
      WHERE id = $2 RETURNING *`,
-    [body.delivery_estimated_days, id]
+    body.finished_at
+      ? [body.delivery_estimated_days, id, body.finished_at]
+      : [body.delivery_estimated_days, id]
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -3253,6 +3264,7 @@ app.post('/orders/:id/bulk-arrive-selected', async (request, reply) => {
 // to 'inventory_verification' once all items are confirmed arrived.
 const confirmEnRouteSchema = z.object({
   estimated_arrival_days: z.number().int().positive(),
+  confirmed_at: z.string().datetime().optional(),
   updated_by: z.string().optional(),
   action_token: z.string().optional(),
 });
@@ -3274,11 +3286,15 @@ app.post('/orders/:id/confirm-en-route', async (request, reply) => {
   const tokenPayload = JSON.parse(tokenData);
   const userEmail: string | null = tokenPayload.name ?? tokenPayload.email ?? null;
 
+  const enRouteIdx = body.confirmed_at ? 3 : 2;
   const rows = await query(
-    `UPDATE orders SET en_route_confirmed = TRUE, en_route_confirmed_at = NOW(),
+    `UPDATE orders SET en_route_confirmed = TRUE,
+     en_route_confirmed_at = ${body.confirmed_at ? `$${enRouteIdx}` : 'NOW()'},
      estimated_arrival_days = $1, current_stage = 'en_route_verification', updated_at = NOW()
      WHERE id = $2 RETURNING *`,
-    [body.estimated_arrival_days, id]
+    body.confirmed_at
+      ? [body.estimated_arrival_days, id, body.confirmed_at]
+      : [body.estimated_arrival_days, id]
   );
 
   if (!rows[0]) return reply.code(404).send({ error: 'Order not found' });
@@ -13735,6 +13751,106 @@ app.patch('/bug-reports/:id', async (request, reply) => {
   broadcastSSE('bug_report_updated', { id: params.id });
 
   return reply.send({ ok: true, report: rows[0] });
+});
+
+// ── Monitor & Error Ingestion ──────────────────────────────────────────
+
+const ingestErrorSchema = z.object({
+  error_type: z.string().min(1).max(100),
+  message: z.string().min(1).max(2000),
+  stack: z.string().max(10000).optional(),
+  source_url: z.string().max(500).optional(),
+  component: z.string().max(200).optional(),
+  metadata: z.record(z.unknown()).optional(),
+  severity: z.enum(['info', 'warning', 'error', 'critical']).optional().default('error'),
+});
+
+app.post('/monitor/ingest', async (request, reply) => {
+  const body = ingestErrorSchema.parse(request.body);
+  const ua = request.headers['user-agent'] ?? null;
+  const rows = await query(
+    `INSERT INTO monitor_errors (error_type, message, stack, source_url, component, metadata, user_agent, severity)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [
+      body.error_type,
+      body.message,
+      body.stack ?? null,
+      body.source_url ?? null,
+      body.component ?? null,
+      body.metadata ? JSON.stringify(body.metadata) : '{}',
+      ua,
+      body.severity,
+    ]
+  );
+
+  // If 10+ errors of same type in last hour, auto-create a bug report
+  const clusterCount = await query<{ cnt: number }>(
+    `SELECT COUNT(*)::INT AS cnt FROM monitor_errors
+     WHERE error_type = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+    [body.error_type]
+  );
+  if (clusterCount[0]?.cnt === 10) {
+    // Threshold crossed — create bug report
+    await query(
+      `INSERT INTO bug_reports (title, description, source, reporter_name)
+       VALUES ($1, $2, 'monitor', 'Auto-Monitor')`,
+      [
+        `⚠️ Error cluster detected: "${body.error_type}" × 10+ in 1 hour`,
+        `Auto-detected by System Monitor.\n\nError type "${body.error_type}" reached 10 occurrences in the last hour.\n\nLatest: ${body.message}\n\nComponent: ${body.component ?? 'N/A'}\nURL: ${body.source_url ?? 'N/A'}`,
+      ]
+    );
+    await invalidateCache(['bug-reports:*']);
+    broadcastSSE('bug_report_created', {});
+  }
+
+  return reply.code(201).send({ ok: true, id: rows[0].id });
+});
+
+app.get('/monitor/errors', async (request) => {
+  const query_params = z.object({
+    limit: z.coerce.number().int().min(1).max(500).optional().default(100),
+    severity: z.enum(['info', 'warning', 'error', 'critical']).optional(),
+    since: z.string().optional(),
+  }).parse(request.query);
+
+  let sql = `SELECT * FROM monitor_errors WHERE 1=1`;
+  const params: any[] = [];
+
+  if (query_params.severity) {
+    params.push(query_params.severity);
+    sql += ` AND severity = $${params.length}`;
+  }
+  if (query_params.since) {
+    params.push(query_params.since);
+    sql += ` AND created_at > $${params.length}::TIMESTAMPTZ`;
+  }
+
+  sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+  params.push(query_params.limit);
+
+  const rows = await query(sql, params);
+  return { ok: true, errors: rows };
+});
+
+app.get('/monitor/snapshots', async (request) => {
+  const query_params = z.object({
+    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
+  }).parse(request.query);
+
+  const rows = await query(
+    `SELECT * FROM monitor_snapshots ORDER BY created_at DESC LIMIT $1`,
+    [query_params.limit]
+  );
+  return { ok: true, snapshots: rows };
+});
+
+app.get('/monitor/health', async () => {
+  try {
+    await query('SELECT 1');
+    return { ok: true, status: 'healthy', agents: getAgentHealth() };
+  } catch {
+    return { ok: false, status: 'unhealthy', agents: [] };
+  }
 });
 
 // SSE Endpoint

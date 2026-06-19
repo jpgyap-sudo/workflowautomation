@@ -31,7 +31,7 @@ const AGENT_ICONS: Record<string, typeof Bot> = {
 };
 
 const AGENT_COLORS: Record<string, string> = {
-  'quotation-checker': 'border-blue-200 bg-blue-50',
+  'quotation-checker': 'border-emerald-200 bg-emerald-50',
   'purchasing-agent': 'border-amber-200 bg-amber-50',
   'inventory-agent': 'border-cyan-200 bg-cyan-50',
   'delivery-agent': 'border-purple-200 bg-purple-50',
@@ -40,7 +40,7 @@ const AGENT_COLORS: Record<string, string> = {
 };
 
 const AGENT_HEADING_COLORS: Record<string, string> = {
-  'quotation-checker': 'text-blue-700',
+  'quotation-checker': 'text-emerald-700',
   'purchasing-agent': 'text-amber-700',
   'inventory-agent': 'text-cyan-700',
   'delivery-agent': 'text-purple-700',
@@ -212,7 +212,7 @@ export default function AgentsPage() {
   if (agentsLoading && !agents) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }

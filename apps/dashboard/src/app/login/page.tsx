@@ -138,19 +138,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f4f5f7] p-4">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--bg-main)] p-4">
       <div className="w-full max-w-md">
         {/* Logo / Branding */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#2490ef] p-2.5 shadow-lg shadow-[#2490ef]/20">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--primary)] p-2.5 shadow-lg shadow-[var(--primary)]/20">
             <img src="/icons/icon.svg" alt="Logo" className="h-full w-full" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">Quotation Automation System</h1>
+          <h1 className="text-xl font-bold text-gray-900">Workflow Automation System</h1>
           <p className="mt-1 text-sm text-gray-500">Sign in to access the dashboard</p>
         </div>
 
         {/* Card */}
-        <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+        <div className="rounded-xl border border-[var(--border-color)] bg-white p-8 shadow-[var(--shadow-md)]">
           {step === 'credentials' && (
             <form onSubmit={handleCredentials} className="space-y-5">
               <div>
@@ -166,7 +166,7 @@ export default function LoginPage() {
                   required
                   autoFocus
                   autoComplete="email"
-                  className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                  className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                 />
               </div>
 
@@ -183,7 +183,7 @@ export default function LoginPage() {
                     placeholder="Enter your password"
                     required
                     autoComplete="current-password"
-                    className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                    className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                   />
                   <button
                     type="button"
@@ -203,7 +203,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -218,8 +218,8 @@ export default function LoginPage() {
           {step === 'otp' && (
             <form onSubmit={handleOtpSubmit} className="space-y-5">
               <div className="text-center">
-                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
-                  <Mail className="h-5 w-5 text-[#2490ef]" />
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary-light)]">
+                  <Mail className="h-5 w-5 text-[var(--primary)]" />
                 </div>
                 <p className="text-sm font-medium text-gray-900">Check your email</p>
                 <p className="mt-1 text-sm text-gray-500">
@@ -238,7 +238,7 @@ export default function LoginPage() {
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold text-gray-900 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                    className="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold text-gray-900 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                   />
                 ))}
               </div>
@@ -250,7 +250,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -272,7 +272,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleResend}
                   disabled={resendCooldown > 0 || loading}
-                  className="flex items-center gap-1 text-[#2490ef] hover:text-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-1 text-[var(--primary)] hover:text-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
@@ -307,7 +307,7 @@ export default function LoginPage() {
                   placeholder="e.g. 777"
                   required
                   autoComplete="off"
-                  className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-center text-2xl font-bold tracking-widest text-gray-900 placeholder-gray-300 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                  className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-center text-2xl font-bold tracking-widest text-gray-900 placeholder-gray-300 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                 />
               </div>
 
@@ -318,7 +318,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

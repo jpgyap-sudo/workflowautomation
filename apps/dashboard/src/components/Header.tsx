@@ -89,7 +89,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-gray-200 bg-white px-3 sm:px-4 lg:px-6">
+    <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-[var(--border-color)] bg-white/95 backdrop-blur-sm px-3 sm:px-4 lg:px-6 shadow-[var(--shadow-sm)]">
       <div className="flex min-w-0 items-center gap-2 sm:gap-4">
         <button
           type="button"
@@ -107,7 +107,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
           <button
             onClick={() => setSearchOpen(!searchOpen)}
             className={`rounded-lg p-2 transition-colors ${
-              searchOpen ? 'bg-[#e8f4fd] text-[#2490ef]' : 'text-gray-500 hover:bg-gray-100'
+              searchOpen ? 'bg-[var(--primary-light)] text-[var(--primary)]' : 'text-gray-500 hover:bg-gray-100'
             }`}
             title="Search orders"
           >
@@ -127,7 +127,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
                   className="w-full bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
                 />
                 {searching && (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                 )}
               </div>
 
@@ -181,7 +181,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
         </button>
         <div className="hidden h-6 w-px bg-gray-200 sm:block" />
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2490ef] text-xs font-medium text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-medium text-white">
             {initials}
           </div>
           <span className="hidden max-w-[10rem] truncate text-sm text-gray-600 sm:inline">{displayName}</span>

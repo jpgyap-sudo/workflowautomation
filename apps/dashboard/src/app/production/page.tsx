@@ -471,7 +471,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                           item.production_status === 'finished'
                             ? 'bg-green-100 text-green-700'
                             : item.production_status === 'in_progress'
-                              ? 'bg-blue-100 text-blue-700'
+                              ? 'bg-emerald-100 text-emerald-700'
                               : 'bg-gray-100 text-gray-500'
                         }`}
                       >
@@ -528,7 +528,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
                                   : status === 'finished'
                                     ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
                                     : status === 'in_progress'
-                                      ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                       : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                               }`}
                             >
@@ -646,7 +646,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
       )}
       {loadingItems && items.length === 0 && (
         <div className="mb-3 flex items-center justify-center py-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
         </div>
       )}
 
@@ -680,7 +680,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
           {finishDate && !order.production_finished && (
             <div className="rounded-lg bg-white p-2.5 shadow-sm">
               <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                <Calendar className="h-3 w-3 text-blue-500" /> Est. Finish
+                <Calendar className="h-3 w-3 text-emerald-500" /> Est. Finish
               </span>
               <p className="mt-1 font-semibold text-gray-800">{formatDate(finishDate)}</p>
             </div>
@@ -754,7 +754,7 @@ function ProductionInfoCards({ order, onItemProductionStatus, onItemEnRouteStatu
       )}
       {loadingCompletion && !completion && (
         <div className="mt-3 flex items-center justify-center py-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
         </div>
       )}
 
@@ -937,7 +937,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onViewFiles, onStartProdu
               </button>
             )}
             <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]" title="Edit order">
               <Pencil className="h-4 w-4" />
             </button>
             <button onClick={(e) => { e.stopPropagation(); onDelete(order); }}
@@ -1055,17 +1055,17 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 bg-blue-50/50 px-6 py-3">
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 bg-emerald-50/50 px-6 py-3">
       <input value={quotationNumber} onChange={(e) => setQuotationNumber(e.target.value)} placeholder="Quotation #"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={salesAgent} onChange={(e) => setSalesAgent(e.target.value)} placeholder="Sales agent"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={totalAmount} onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount"
-        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <button type="submit" disabled={saving}
-        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50" title="Save">
+        className="rounded-lg bg-[var(--primary)] p-1.5 text-white hover:bg-[var(--primary-dark)] disabled:opacity-50" title="Save">
         <Check className="h-4 w-4" />
       </button>
       <button type="button" onClick={onCancel}
@@ -1094,7 +1094,7 @@ function OrderSection({
       </div>
       {isLoading && orders.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-12">
@@ -1102,7 +1102,7 @@ function OrderSection({
           <p className="text-sm text-red-500">Failed to load: {error.message}</p>
           {onRetry && (
             <button onClick={onRetry}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9]">
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-medium text-white hover:bg-[var(--primary-dark)]">
               <RefreshCw className="h-3.5 w-3.5" /> Retry
             </button>
           )}
@@ -1130,7 +1130,7 @@ function ItemStatusBadge({ status }: { status: string | null | undefined }) {
   }
   if (status === 'in_progress') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
         <Factory className="h-3 w-3" /> Production Started
       </span>
     );
@@ -1398,7 +1398,7 @@ function ProductionItemSection({
       </div>
       {isLoading && orders.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-12">
@@ -1406,7 +1406,7 @@ function ProductionItemSection({
           <p className="text-sm text-red-500">Failed to load: {error.message}</p>
           {onRetry && (
             <button onClick={onRetry}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9]">
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-medium text-white hover:bg-[var(--primary-dark)]">
               <RefreshCw className="h-3.5 w-3.5" /> Retry
             </button>
           )}
@@ -1445,7 +1445,7 @@ function ProductionItemSection({
                     <div className="flex items-center gap-1">
                       {onEdit && (
                         <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]" title="Edit order">
                           <Pencil className="h-4 w-4" />
                         </button>
                       )}
@@ -1482,7 +1482,7 @@ function ProductionItemSection({
                   <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
                     {loadingItemsForOrder === order.id ? (
                       <div className="flex items-center justify-center py-4">
-                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                       </div>
                     ) : !hasRelevantItems ? (
                       <p className="py-2 text-center text-xs text-gray-400">
@@ -1594,7 +1594,7 @@ function ProductionItemSection({
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); onBulkVerify(order); }}
-                                    className="rounded-md border border-blue-300 bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700 transition-colors"
+                                    className="rounded-md border border-emerald-300 bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 transition-colors"
                                   >
                                     ✓ Verify Selected ({orderSelected.size})
                                   </button>
@@ -1606,7 +1606,7 @@ function ProductionItemSection({
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); onBulkVerify?.(order); }}
-                                      className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                                      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
                                     >
                                       ✓ Verify All ({notYetVerified.length})
                                     </button>
@@ -1687,7 +1687,7 @@ function ProductionItemSection({
                                         : isArrivedContext
                                           ? 'bg-sky-50/40'
                                           : isVerifyContext
-                                            ? 'bg-blue-50/40'
+                                            ? 'bg-emerald-50/40'
                                             : 'bg-green-50/40'
                                       : '';
                                     return (
@@ -1794,7 +1794,7 @@ function ProductionItemSection({
                                               <button
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); onItemVerify?.(order); }}
-                                                className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-colors"
+                                                className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
                                               >
                                                 ✓ Verify
                                               </button>
@@ -2025,7 +2025,7 @@ function ProductionFinishedTrackingSection({
           <h2 className="font-semibold text-gray-800">Production Finished</h2>
           <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">{orders.length}</span>
         </div>
-        <button onClick={onRetry} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]">
+        <button onClick={onRetry} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]">
           <RefreshCw className="h-4 w-4" />
         </button>
       </div>
@@ -2033,7 +2033,7 @@ function ProductionFinishedTrackingSection({
       {error ? (
         <div className="px-6 py-8 text-center">
           <p className="text-sm text-red-500">Failed to load orders</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-[#2490ef] hover:underline">Retry</button>
+          <button onClick={onRetry} className="mt-2 text-xs text-[var(--primary)] hover:underline">Retry</button>
         </div>
       ) : isLoading ? (
         <div className="space-y-3 p-6">
@@ -2086,7 +2086,7 @@ function ProductionFinishedTrackingSection({
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enRouteVerified ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enRouteVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                           {getEnRouteVerificationText(order, orderItems)}
                         </span>
                       </td>
@@ -2114,7 +2114,7 @@ function ProductionFinishedTrackingSection({
                               loadNotes(order.id);
                               if (!isExpanded) toggleOrderItems(order);
                             }}
-                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                             title="View notes"
                           >
                             <MessageSquare className="h-3.5 w-3.5" />
@@ -2143,14 +2143,14 @@ function ProductionFinishedTrackingSection({
                                   }
                                 }}
                                 placeholder="Add a note about this order..."
-                                className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                                className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                                 disabled={isSaving}
                                 onClick={(e) => e.stopPropagation()}
                               />
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleAddNote(order.id); }}
                                 disabled={isSaving || !noteValue.trim()}
-                                className="rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                                className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
                               >
                                 {isSaving ? 'Saving...' : 'Add'}
                               </button>
@@ -2255,7 +2255,7 @@ function ProductionFinishedTrackingSection({
                                         <td className="px-3 py-2 font-medium text-gray-800">{item.name}</td>
                                         <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
                                         <td className="px-3 py-2">
-                                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.production_status === 'finished' ? 'bg-green-100 text-green-700' : item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.production_status === 'finished' ? 'bg-green-100 text-green-700' : item.production_status === 'in_progress' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
                                             {formatStatusLabel(item.production_status)}
                                           </span>
                                         </td>
@@ -3703,10 +3703,10 @@ export default function ProductionPage() {
           1. Stage-change Verify (blue) — for en_route_verification orders, moves entire order to inventory_verification
           2. Item-level Verify Arrived (teal) — for any order with arrived items, marks items as verified without stage change */}
       <ProductionItemSection
-        icon={<Truck className="h-4 w-4 text-blue-500" />}
+        icon={<Truck className="h-4 w-4 text-emerald-500" />}
         title="Arrival Verification"
         count={filteredArrivalVerificationOrders.length}
-        countBg="bg-blue-100" countText="text-blue-700"
+        countBg="bg-emerald-100" countText="text-emerald-700"
         orders={filteredArrivalVerificationOrders}
         isLoading={loadingEnRouteStage}
         error={errorEnRouteStage}

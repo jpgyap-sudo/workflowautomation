@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const MESSAGE_TYPE_COLORS: Record<string, string> = {
-  text: 'bg-blue-50 text-blue-700 border-blue-200',
+  text: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   photo: 'bg-purple-50 text-purple-700 border-purple-200',
   document: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   upload: 'bg-green-50 text-green-700 border-green-200',
@@ -142,14 +142,14 @@ export default function BotLogsPage() {
             placeholder="Search logs..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
           />
         </div>
 
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef]"
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
         >
           <option value="all">All Types</option>
           {messageTypes.map((t) => (
@@ -160,7 +160,7 @@ export default function BotLogsPage() {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef]"
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
         >
           <option value="all">All Statuses</option>
           <option value="success">Success</option>
@@ -171,7 +171,7 @@ export default function BotLogsPage() {
         <select
           value={filterDirection}
           onChange={(e) => setFilterDirection(e.target.value)}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef]"
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
         >
           <option value="all">All Directions</option>
           {directions.map((d) => (
@@ -256,7 +256,7 @@ export default function BotLogsPage() {
                     <td className="px-4 py-3">
                       <span className={`inline-block rounded px-2 py-0.5 text-[10px] font-medium ${
                         log.direction === 'incoming'
-                          ? 'bg-blue-50 text-blue-600'
+                          ? 'bg-emerald-50 text-emerald-600'
                           : log.direction === 'outgoing'
                           ? 'bg-green-50 text-green-600'
                           : 'bg-gray-50 text-gray-500'

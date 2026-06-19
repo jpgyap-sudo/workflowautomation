@@ -80,7 +80,7 @@ function RowActions({ order, onEdit, onDelete, onRevert }: RowActionsProps) {
         </button>
       )}
       <button onClick={() => onEdit(order)}
-        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]" title="Edit order">
         <Pencil className="h-4 w-4" />
       </button>
       <button onClick={() => onDelete(order)}
@@ -116,25 +116,25 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-blue-50/50">
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-emerald-50/50">
       <input value={quotationNumber} onChange={(e) => setQuotationNumber(e.target.value)} placeholder="Quotation #"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={salesAgent} onChange={(e) => setSalesAgent(e.target.value)} placeholder="Sales agent"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={totalAmount} onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount"
-        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Delivery address"
-        className="min-w-0 flex-[2] rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-[2] rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} placeholder="Contact #"
-        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={authorizedReceiverName} onChange={(e) => setAuthorizedReceiverName(e.target.value)} placeholder="Receiver name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <input value={authorizedReceiverContact} onChange={(e) => setAuthorizedReceiverContact(e.target.value)} placeholder="Receiver contact"
-        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20" />
+        className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20" />
       <button type="submit" disabled={saving}
-        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50" title="Save">
+        className="rounded-lg bg-[var(--primary)] p-1.5 text-white hover:bg-[var(--primary-dark)] disabled:opacity-50" title="Save">
         <Check className="h-4 w-4" />
       </button>
       <button type="button" onClick={onCancel}
@@ -1481,7 +1481,7 @@ export default function DeliveryPage() {
   if (loading && inventoryVerificationOrders.length === 0 && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && balanceVerificationOrders.length === 0 && pendingOrders.length === 0 && scheduledOrders.length === 0 && deliveredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -1700,7 +1700,7 @@ export default function DeliveryPage() {
                     <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
                       {loadingItemsForOrder === order.id ? (
                         <div className="flex items-center justify-center py-3">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                         </div>
                       ) : (
                         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -1726,7 +1726,7 @@ export default function DeliveryPage() {
                                     <td className="px-3 py-2">
                                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                         item.production_status === 'finished' ? 'bg-green-100 text-green-700' :
-                                        item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        item.production_status === 'in_progress' ? 'bg-emerald-100 text-emerald-700' :
                                         'bg-gray-100 text-gray-500'
                                       }`}>
                                         {item.production_status === 'finished' ? 'Finished' :
@@ -1826,7 +1826,7 @@ export default function DeliveryPage() {
                     <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
                       {loadingItemsForOrder === order.id ? (
                         <div className="flex items-center justify-center py-3">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                         </div>
                       ) : (
                         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -1852,7 +1852,7 @@ export default function DeliveryPage() {
                                     <td className="px-3 py-2">
                                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                         item.production_status === 'finished' ? 'bg-green-100 text-green-700' :
-                                        item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        item.production_status === 'in_progress' ? 'bg-emerald-100 text-emerald-700' :
                                         'bg-gray-100 text-gray-500'
                                       }`}>
                                         {item.production_status === 'finished' ? 'Finished' :
@@ -1990,7 +1990,7 @@ export default function DeliveryPage() {
                     <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
                       {loadingItemsForOrder === order.id ? (
                         <div className="flex items-center justify-center py-3">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                         </div>
                       ) : (
                         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -2017,7 +2017,7 @@ export default function DeliveryPage() {
                                     <td className="px-3 py-2">
                                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                         item.production_status === 'finished' ? 'bg-green-100 text-green-700' :
-                                        item.production_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                        item.production_status === 'in_progress' ? 'bg-emerald-100 text-emerald-700' :
                                         'bg-gray-100 text-gray-500'
                                       }`}>
                                         {item.production_status === 'finished' ? 'Finished' :
@@ -2414,7 +2414,7 @@ export default function DeliveryPage() {
                       <button
                         onClick={() => handleMarkPaymentReceived(order)}
                         disabled={actionLoading === order.id}
-                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
                         title="Mark payment received and advance to Payment Received stage"
                       >
                         <CreditCard className="h-3.5 w-3.5 inline mr-1" />Mark Payment Received
@@ -2453,9 +2453,9 @@ export default function DeliveryPage() {
       {/* ── Payment Received ────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-          <CreditCard className="h-4 w-4 text-blue-500" />
+          <CreditCard className="h-4 w-4 text-emerald-500" />
           <h2 className="text-base font-semibold text-gray-800">Payment Received</h2>
-          <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+          <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
             {filteredPaymentReceivedOrders.length}
           </span>
         </div>
@@ -2486,7 +2486,7 @@ export default function DeliveryPage() {
                       <button
                         onClick={() => handleAdvancePaymentReceived(order)}
                         disabled={actionLoading === order.id}
-                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
                         title="Advance to Payment Confirmed"
                       >
                         {actionLoading === order.id ? '…' : 'Confirm Payment →'}
@@ -2568,7 +2568,7 @@ export default function DeliveryPage() {
               <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                 {filteredCompletedOrders.length}
               </span>
-              <span className="text-[11px] text-[#2490ef] hover:underline">View all →</span>
+              <span className="text-[11px] text-[var(--primary)] hover:underline">View all →</span>
             </span>
           </div>
         </Link>
@@ -2751,7 +2751,7 @@ export default function DeliveryPage() {
 
                       {/* Extracting indicator */}
                       {slip.extracting && (
-                        <div className="mb-2 flex items-center gap-2 text-xs text-blue-600">
+                        <div className="mb-2 flex items-center gap-2 text-xs text-emerald-600">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           AI extracting payment details…
                         </div>
@@ -2759,7 +2759,7 @@ export default function DeliveryPage() {
 
                       {/* Extracted note */}
                       {slip.extractedNote && (
-                        <div className="mb-2 rounded bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
+                        <div className="mb-2 rounded bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
                           {slip.extractedNote}
                         </div>
                       )}
@@ -2806,7 +2806,7 @@ export default function DeliveryPage() {
                 </button>
                 <button
                   onClick={handlePaymentReceivedConfirm}
-                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Payment
                 </button>
@@ -2912,7 +2912,7 @@ export default function DeliveryPage() {
 
                         {/* Extracting indicator */}
                         {slip.extracting && (
-                          <div className="mb-2 flex items-center gap-2 text-xs text-blue-600">
+                          <div className="mb-2 flex items-center gap-2 text-xs text-emerald-600">
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             AI extracting payment details…
                           </div>
@@ -2920,7 +2920,7 @@ export default function DeliveryPage() {
 
                         {/* Extracted note */}
                         {slip.extractedNote && (
-                          <div className="mb-2 rounded bg-blue-50 px-2 py-1 text-[11px] text-blue-700">
+                          <div className="mb-2 rounded bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
                             {slip.extractedNote}
                           </div>
                         )}

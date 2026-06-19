@@ -676,7 +676,7 @@ export default function InventoryPage() {
           </button>
           <button
             onClick={() => setModal('add')}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9]"
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-dark)]"
           >
             <Plus className="h-4 w-4" />
             Add Item
@@ -699,13 +699,13 @@ export default function InventoryPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search inventory..."
-            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+            className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
           />
         </div>
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
         >
           <option value="">All Categories</option>
           {FURNITURE_CATEGORIES.map((cat) => (
@@ -745,7 +745,7 @@ export default function InventoryPage() {
         )}
         {itemsLoading && items.length === 0 ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-[#2490ef]" />
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="py-12 text-center text-sm text-gray-400">
@@ -759,7 +759,7 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 w-10">
                     <button onClick={toggleAllItems} className="text-gray-400 hover:text-gray-600">
                       {selectedItems.size === filteredItems.length && filteredItems.length > 0 ? (
-                        <CheckSquare className="h-5 w-5 text-[#2490ef]" />
+                        <CheckSquare className="h-5 w-5 text-[var(--primary)]" />
                       ) : (
                         <Square className="h-5 w-5" />
                       )}
@@ -779,7 +779,7 @@ export default function InventoryPage() {
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <button onClick={() => toggleItemSelect(item.id)} className="text-gray-400 hover:text-gray-600">
-                        {selectedItems.has(item.id) ? <CheckSquare className="h-5 w-5 text-[#2490ef]" /> : <Square className="h-5 w-5" />}
+                        {selectedItems.has(item.id) ? <CheckSquare className="h-5 w-5 text-[var(--primary)]" /> : <Square className="h-5 w-5" />}
                       </button>
                     </td>
                     <td className="px-4 py-3">
@@ -838,7 +838,7 @@ export default function InventoryPage() {
                           list="furniture-categories"
                         />
                       ) : item.category ? (
-                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                           {item.category}
                         </span>
                       ) : (
@@ -925,7 +925,7 @@ export default function InventoryPage() {
               <label className="mb-1 block text-xs font-medium text-gray-600">Product Image</label>
               <div
                 onClick={() => addFileRef.current?.click()}
-                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-8 transition-colors hover:border-[#2490ef] hover:bg-blue-50/50"
+                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-8 transition-colors hover:border-[var(--primary)] hover:bg-emerald-50/50"
               >
                 {addPreview ? (
                   <img src={addPreview} alt="Preview" className="max-h-32 rounded-lg object-contain" />
@@ -960,7 +960,7 @@ export default function InventoryPage() {
                   value={addForm.product_name}
                   onChange={(e) => setAddForm((f) => ({ ...f, product_name: e.target.value }))}
                   placeholder="e.g. Ceramic Vase"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
               <div>
@@ -970,7 +970,7 @@ export default function InventoryPage() {
                   onChange={(e) => setAddForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="e.g. Hand-painted blue ceramic vase"
                   rows={2}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
               <div>
@@ -979,7 +979,7 @@ export default function InventoryPage() {
                   value={addForm.category}
                   onChange={(e) => setAddForm((f) => ({ ...f, category: e.target.value }))}
                   placeholder="e.g. Sofa, Dining Table, Armchair"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   list="furniture-categories"
                 />
               </div>
@@ -990,7 +990,7 @@ export default function InventoryPage() {
                     value={addForm.dimension}
                     onChange={(e) => setAddForm((f) => ({ ...f, dimension: e.target.value }))}
                     placeholder="e.g. 20x15 cm"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   />
                 </div>
                 <div>
@@ -999,7 +999,7 @@ export default function InventoryPage() {
                     type="number"
                     value={addForm.quantity}
                     onChange={(e) => setAddForm((f) => ({ ...f, quantity: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   />
                 </div>
               </div>
@@ -1016,7 +1016,7 @@ export default function InventoryPage() {
               <button
                 onClick={handleCreateItem}
                 disabled={saving}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9] disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-dark)] disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                 {saving ? 'Saving...' : 'Save Item'}
@@ -1042,7 +1042,7 @@ export default function InventoryPage() {
 
             <div
               onClick={() => bulkFileRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-10 transition-colors hover:border-[#2490ef] hover:bg-blue-50/50"
+              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-10 transition-colors hover:border-[var(--primary)] hover:bg-emerald-50/50"
             >
               {bulkPreview ? (
                 <img src={bulkPreview} alt="Preview" className="max-h-40 rounded-lg object-contain" />
@@ -1079,7 +1079,7 @@ export default function InventoryPage() {
               <button
                 onClick={handleBulkUpload}
                 disabled={!bulkFile || bulkUploading}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9] disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-dark)] disabled:opacity-50"
               >
                 {bulkUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanEye className="h-4 w-4" />}
                 {bulkUploading ? 'Processing...' : 'Upload & Extract'}
@@ -1120,7 +1120,7 @@ export default function InventoryPage() {
             <div className="flex-1 overflow-auto p-6">
               {draftsLoading && drafts.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#2490ef]" />
+                  <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
                 </div>
               ) : drafts.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-400">No pending drafts</div>
@@ -1146,7 +1146,7 @@ export default function InventoryPage() {
                     <button
                       onClick={handleApproveAll}
                       disabled={approving}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
                     >
                       Approve All
                     </button>
@@ -1202,7 +1202,7 @@ export default function InventoryPage() {
                             <tr key={draft.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2">
                                 <button onClick={() => toggleDraftSelect(draft.id)} className="text-gray-400 hover:text-gray-600">
-                                  {selectedDrafts.has(draft.id) ? <CheckSquare className="h-5 w-5 text-[#2490ef]" /> : <Square className="h-5 w-5" />}
+                                  {selectedDrafts.has(draft.id) ? <CheckSquare className="h-5 w-5 text-[var(--primary)]" /> : <Square className="h-5 w-5" />}
                                 </button>
                               </td>
                               <td className="px-3 py-2">

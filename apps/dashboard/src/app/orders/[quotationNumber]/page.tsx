@@ -113,7 +113,7 @@ export default function OrderDetailPage() {
   if (isLoading && !order) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -122,7 +122,7 @@ export default function OrderDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <p className="text-lg text-gray-500">Order not found</p>
-        <Link href="/orders" className="mt-2 text-sm text-[#2490ef] hover:underline">
+        <Link href="/orders" className="mt-2 text-sm text-[var(--primary)] hover:underline">
           Back to orders
         </Link>
       </div>
@@ -414,7 +414,7 @@ export default function OrderDetailPage() {
                       href={payment.image_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ml-2 text-xs text-[#2490ef] hover:underline"
+                      className="ml-2 text-xs text-[var(--primary)] hover:underline"
                     >
                       View slip
                     </a>
@@ -589,7 +589,7 @@ export default function OrderDetailPage() {
                     className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
                       isCompleted
                         ? isCurrent
-                          ? 'bg-[#2490ef] text-white'
+                          ? 'bg-[var(--primary)] text-white'
                           : 'bg-green-500 text-white'
                         : 'bg-gray-200 text-gray-400'
                     }`}
@@ -614,7 +614,7 @@ export default function OrderDetailPage() {
                       {config?.icon} {config?.label ?? stage}
                     </span>
                     {isCurrent && (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
                         Current
                       </span>
                     )}
@@ -776,7 +776,7 @@ export default function OrderDetailPage() {
           <h2 className="text-base font-semibold text-gray-800">Files</h2>
           <button
             onClick={() => handleViewFiles(order)}
-            className="rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9]"
+            className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--primary-dark)]"
           >
             View / Upload Files
           </button>
@@ -1503,15 +1503,15 @@ function ItemTrackingSection({
     mode: 'add' | 'edit';
   }) {
     return (
-      <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+      <div className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50/60 p-3">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold text-blue-900">
+          <p className="text-xs font-semibold text-emerald-900">
             {mode === 'add' ? 'Manual Item Tracking' : 'Edit Item Tracking'}
           </p>
           <button
             type="button"
             onClick={onCancel}
-            className="rounded p-1 text-blue-500 hover:bg-blue-100"
+            className="rounded p-1 text-emerald-500 hover:bg-emerald-100"
             aria-label="Cancel item tracking form"
           >
             <X className="h-3.5 w-3.5" />
@@ -1519,30 +1519,30 @@ function ItemTrackingSection({
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
           <label className="md:col-span-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Item</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Item</span>
             <input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300"
               placeholder="Item name"
             />
           </label>
           <label>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Qty</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Qty</span>
             <input
               type="number"
               min="1"
               value={form.quantity}
               onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300"
             />
           </label>
           <label>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Production</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Production</span>
             <select
               value={form.production_status}
               onChange={(e) => setForm({ ...form, production_status: e.target.value as OrderItem['production_status'] })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300"
             >
               <option value="pending">Pending</option>
               <option value="in_progress">In Progress</option>
@@ -1550,11 +1550,11 @@ function ItemTrackingSection({
             </select>
           </label>
           <label>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">En Route</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">En Route</span>
             <select
               value={form.en_route_status}
               onChange={(e) => setForm({ ...form, en_route_status: e.target.value as OrderItem['en_route_status'] })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300"
             >
               <option value="not_yet">Not Yet</option>
               <option value="en_route">En Route</option>
@@ -1562,36 +1562,36 @@ function ItemTrackingSection({
             </select>
           </label>
           <label>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Arrival Est.</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Arrival Est.</span>
             <input
               type="number"
               min="1"
               value={form.estimated_arrival_days}
               onChange={(e) => setForm({ ...form, estimated_arrival_days: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300"
               placeholder="days"
             />
           </label>
           <label>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">Prod. Est.</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Prod. Est.</span>
             <input
               type="number"
               min="1"
               value={form.estimated_production_days}
               onChange={(e) => setForm({ ...form, estimated_production_days: e.target.value })}
               disabled={form.production_status === 'pending'}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="days"
             />
           </label>
           <label className="md:col-span-5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
               Reason {mode === 'edit' ? 'for edit' : 'for manual addition'}
             </span>
             <input
               value={form.reason}
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-blue-300"
+              className="mt-1 w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-gray-800 outline-none focus:border-emerald-300"
               placeholder={mode === 'edit' ? 'Example: client changed item quantity' : 'Example: missing item from quotation extraction'}
             />
           </label>
@@ -1600,7 +1600,7 @@ function ItemTrackingSection({
               type="button"
               onClick={onSave}
               disabled={saving || !form.name.trim() || !form.reason.trim()}
-              className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {saving ? 'Saving...' : mode === 'add' ? 'Add Item' : 'Save Edit'}
             </button>
@@ -1614,7 +1614,7 @@ function ItemTrackingSection({
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-6">
         <div className="flex items-center justify-center py-8">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
         </div>
       </div>
     );
@@ -1673,7 +1673,7 @@ function ItemTrackingSection({
             </label>
             <button
               onClick={() => setShowManualItemForm((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-4 py-2 text-xs font-medium text-blue-700 shadow-sm hover:bg-blue-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
             >
               <Plus className="h-3.5 w-3.5" />
               Add Item Manually
@@ -1705,7 +1705,7 @@ function ItemTrackingSection({
         )}
         <button
           onClick={() => setShowManualItemForm((prev) => !prev)}
-          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
         >
           <Plus className="h-3.5 w-3.5" />
           Add Item
@@ -1799,9 +1799,9 @@ function ItemTrackingSection({
       {currentStage === 'en_route_verification' && items.length > 0 && (() => {
         const notArrivedCount = items.filter(i => i.en_route_status !== 'arrived').length;
         return notArrivedCount > 0 ? (
-          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
-            <p className="text-xs font-semibold text-blue-800">🔎 Arrival Verification — {notArrivedCount} item{notArrivedCount !== 1 ? 's' : ''} not yet arrived</p>
-            <p className="mt-1 text-[11px] text-blue-700">
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-xs font-semibold text-emerald-800">🔎 Arrival Verification — {notArrivedCount} item{notArrivedCount !== 1 ? 's' : ''} not yet arrived</p>
+            <p className="mt-1 text-[11px] text-emerald-700">
               Mark items as <strong>Arrived</strong> (✓ button in the En Route column) as they come in.
               Once all items arrive, the order advances to <strong>Inventory Verification</strong> automatically.
             </p>
@@ -2017,7 +2017,7 @@ function ItemTrackingSection({
                       <button
                         type="button"
                         onClick={() => startEditItem(item)}
-                        className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
+                        className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
                         title="Edit item tracking"
                       >
                         <Pencil className="h-3 w-3" />
@@ -2028,7 +2028,7 @@ function ItemTrackingSection({
                 </tr>
                 {editingItemId === item.id && (
                   <tr key={`${item.id}-edit`}>
-                    <td colSpan={8} className="bg-blue-50/40 px-2 py-3">
+                    <td colSpan={8} className="bg-emerald-50/40 px-2 py-3">
                       {renderItemTrackingForm({
                         form: editItemForm,
                         setForm: setEditItemForm,
@@ -2172,7 +2172,7 @@ function AgentNotesSection({ orderId, quotationNumber, order }: { orderId: strin
   const AGENT_COLORS: Record<string, string> = {
     'hermes': 'border-purple-200 bg-purple-50',
     'collection-agent': 'border-emerald-200 bg-emerald-50',
-    'delivery-agent': 'border-blue-200 bg-blue-50',
+    'delivery-agent': 'border-emerald-200 bg-emerald-50',
     'production-agent': 'border-amber-200 bg-amber-50',
     'inventory-agent': 'border-cyan-200 bg-cyan-50',
     'purchasing-agent': 'border-orange-200 bg-orange-50',
@@ -2243,7 +2243,7 @@ function AgentNotesSection({ orderId, quotationNumber, order }: { orderId: strin
           <select
             value={agentName}
             onChange={(e) => setAgentName(e.target.value)}
-            className="rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef]"
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
           >
             <option value="dashboard">Dashboard</option>
             <option value="hermes">Hermes</option>
@@ -2262,12 +2262,12 @@ function AgentNotesSection({ orderId, quotationNumber, order }: { orderId: strin
             onChange={(e) => setNewNote(e.target.value)}
             placeholder="Add a note for this order... Agents can read and write notes for cross-agent communication."
             rows={2}
-            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
           <button
             onClick={handlePostNote}
             disabled={posting || !newNote.trim() || !agentName.trim()}
-            className="inline-flex items-center gap-1 rounded-lg bg-[#2490ef] px-3 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
           >
             {posting ? (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -2282,7 +2282,7 @@ function AgentNotesSection({ orderId, quotationNumber, order }: { orderId: strin
       {/* Notes list */}
       {loading ? (
         <div className="flex items-center justify-center py-8">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
         </div>
       ) : notes.length === 0 ? (
         <div className="py-8 text-center text-sm text-gray-400">
@@ -2437,19 +2437,19 @@ function DepositUploadSection({
 
   return (
     <>
-      <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
-        <p className="text-xs font-semibold text-blue-800">📥 Record Downpayment</p>
+      <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <p className="text-xs font-semibold text-emerald-800">📥 Record Downpayment</p>
 
         {/* File upload */}
         <div>
-          <label className="text-xs font-medium text-blue-700">Deposit Slip (JPEG/PDF) — optional</label>
+          <label className="text-xs font-medium text-emerald-700">Deposit Slip (JPEG/PDF) — optional</label>
           <div className="mt-1 flex items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*,application/pdf"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-blue-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-blue-700 hover:file:bg-blue-200"
+              className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-emerald-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-emerald-700 hover:file:bg-emerald-200"
             />
             {file && (
               <button
@@ -2470,24 +2470,24 @@ function DepositUploadSection({
 
         {/* Amount */}
         <div>
-          <label className="text-xs font-medium text-blue-700">Amount (₱)</label>
+          <label className="text-xs font-medium text-emerald-700">Amount (₱)</label>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="e.g. 5000"
-            className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded border border-emerald-200 px-3 py-1.5 text-sm focus:border-emerald-500 focus:outline-none"
           />
         </div>
 
         {/* Payment date */}
         <div>
-          <label className="text-xs font-medium text-blue-700">Payment Date (optional)</label>
+          <label className="text-xs font-medium text-emerald-700">Payment Date (optional)</label>
           <input
             type="date"
             value={paymentDate}
             onChange={(e) => setPaymentDate(e.target.value)}
-            className="mt-1 block w-full rounded border border-blue-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            className="mt-1 block w-full rounded border border-emerald-200 px-3 py-1.5 text-sm focus:border-emerald-500 focus:outline-none"
           />
         </div>
 
@@ -2495,7 +2495,7 @@ function DepositUploadSection({
         <button
           onClick={handleRecordDepositClick}
           disabled={recording || !amount}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
         >
           {recording ? (
             <Loader2 className="h-4 w-4 animate-spin" />

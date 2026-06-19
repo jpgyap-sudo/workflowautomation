@@ -141,7 +141,7 @@ export function FileViewerModal({
                   setUploadError(null);
                   setUploadSuccess(null);
                 }}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9]"
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)]"
               >
                 <Upload className="h-4 w-4" />
                 Upload File
@@ -279,7 +279,7 @@ export function FileViewerModal({
           {/* Uploading state when no files yet */}
           {uploading && files.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-[#2490ef]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
               <p className="text-sm text-gray-500">Uploading file…</p>
             </div>
           )}
@@ -361,7 +361,7 @@ export function QuotationNumberCell({
           e.stopPropagation();
           onViewFiles(order);
         }}
-        className="font-medium text-[#2490ef] hover:underline"
+        className="font-medium text-[var(--primary)] hover:underline"
         title="View order files"
       >
         {order.quotation_number ?? '—'}

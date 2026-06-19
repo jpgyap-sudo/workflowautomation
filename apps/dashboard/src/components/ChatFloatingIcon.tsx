@@ -150,7 +150,7 @@ function renderInline(text: string): React.ReactNode {
               href={linkMatch[2]}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#2490ef] hover:underline"
+              className="text-[var(--primary)] hover:underline"
             >
               {linkMatch[1]}
             </a>
@@ -173,7 +173,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
           isUser
             ? 'bg-gray-200'
-            : 'bg-gradient-to-br from-[#2490ef] to-[#6366f1]'
+            : 'bg-gradient-to-br from-[#059669] to-[#10b981]'
         }`}
       >
         {isUser ? (
@@ -186,7 +186,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <div
           className={`rounded-2xl px-4 py-2.5 ${
             isUser
-              ? 'bg-[#2490ef] text-white'
+              ? 'bg-[var(--primary)] text-white'
               : 'bg-white shadow-sm border border-gray-100'
           }`}
         >
@@ -203,7 +203,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             {message.sources.map((source, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-600"
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-600"
               >
                 <ExternalLink className="h-2.5 w-2.5" />
                 {source.title}
@@ -218,7 +218,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             {message.suggestions.map((suggestion, i) => (
               <span
                 key={i}
-                className="cursor-pointer rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] text-gray-500 transition-colors hover:border-[#2490ef] hover:text-[#2490ef]"
+                className="cursor-pointer rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] text-gray-500 transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]"
               >
                 {suggestion}
               </span>
@@ -266,7 +266,7 @@ function ChatInput({
   }
 
   return (
-    <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm transition-shadow focus-within:border-[#2490ef] focus-within:shadow-md">
+    <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm transition-shadow focus-within:border-[var(--primary)] focus-within:shadow-md">
       <textarea
         ref={textareaRef}
         value={text}
@@ -280,7 +280,7 @@ function ChatInput({
       <button
         onClick={handleSubmit}
         disabled={!text.trim() || disabled}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#2490ef] text-white transition-all hover:bg-[#1a7ad9] disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-white transition-all hover:bg-[var(--primary-dark)] disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {disabled ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -315,7 +315,7 @@ function ConversationList({
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Conversations</span>
         <button
           onClick={onNew}
-          className="flex items-center gap-1 rounded-lg bg-[#2490ef] px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-[#1a7ad9]"
+          className="flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-[var(--primary-dark)]"
         >
           <Plus className="h-3 w-3" />
           New
@@ -338,7 +338,7 @@ function ConversationList({
                 key={conv.id}
                 className={`group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                   conv.id === activeId
-                    ? 'bg-blue-50 text-[#2490ef]'
+                    ? 'bg-[var(--primary-light)] text-[var(--primary)]'
                     : 'text-gray-600 hover:bg-gray-50'
                 }`}
                 onClick={() => onSelect(conv.id)}
@@ -377,12 +377,12 @@ function WelcomeScreen({ onSuggestedQuestion }: { onSuggestedQuestion: (q: strin
 
   return (
     <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#2490ef] to-[#6366f1] shadow-lg">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#059669] to-[#10b981] shadow-lg">
         <Bot className="h-6 w-6 text-white" />
       </div>
-      <h2 className="mb-1 text-base font-bold text-gray-900">QAS Tutorial Assistant</h2>
-      <p className="mb-6 max-w-sm text-xs text-gray-500">
-        Ask me anything about using the Quotation Automation System.
+      <h2 className="mb-1 text-base font-bold text-gray-900">Workflow Assistant</h2>
+        <p className="mb-6 max-w-sm text-xs text-gray-500">
+          Ask me anything about using the Workflow Automation System.
       </p>
 
       <div className="grid w-full max-w-sm grid-cols-1 gap-1.5">
@@ -390,9 +390,9 @@ function WelcomeScreen({ onSuggestedQuestion }: { onSuggestedQuestion: (q: strin
           <button
             key={i}
             onClick={() => onSuggestedQuestion(q)}
-            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs text-gray-600 transition-all hover:border-[#2490ef] hover:bg-blue-50 hover:text-[#2490ef]"
+            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs text-gray-600 transition-all hover:border-[var(--primary)] hover:bg-[var(--primary-light)] hover:text-[var(--primary)]"
           >
-            <Sparkles className="h-3 w-3 shrink-0 text-[#2490ef]" />
+            <Sparkles className="h-3 w-3 shrink-0 text-[var(--primary)]" />
             <span>{q}</span>
           </button>
         ))}
@@ -692,12 +692,12 @@ export default function ChatFloatingIcon() {
           {/* Header */}
           <div
             ref={headerRef}
-            className="flex cursor-default items-center justify-between border-b border-gray-200 bg-gradient-to-r from-[#2490ef] to-[#6366f1] px-4 py-3 select-none"
+            className="flex cursor-default items-center justify-between border-b border-gray-200 bg-gradient-to-r from-[#059669] to-[#10b981] px-4 py-3 select-none"
           >
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-white" />
               <div>
-                <h3 className="text-sm font-semibold text-white">QAS Assistant</h3>
+                <h3 className="text-sm font-semibold text-white">Assistant</h3>
                 <p className="text-[10px] text-white/70">Ask me anything</p>
               </div>
             </div>
@@ -755,14 +755,14 @@ export default function ChatFloatingIcon() {
                     ))}
                     {sending && (
                       <div className="flex items-center gap-2 pl-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#2490ef] to-[#6366f1]">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#059669] to-[#10b981]">
                           <Bot className="h-3 w-3 text-white" />
                         </div>
                         <div className="flex items-center gap-1 rounded-2xl bg-white px-3 py-2 shadow-sm">
                           <div className="flex gap-1">
-                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#2490ef]" style={{ animationDelay: '0ms' }} />
-                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#2490ef]" style={{ animationDelay: '150ms' }} />
-                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#2490ef]" style={{ animationDelay: '300ms' }} />
+                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: '0ms' }} />
+                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: '150ms' }} />
+                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: '300ms' }} />
                           </div>
                         </div>
                       </div>
@@ -791,7 +791,7 @@ export default function ChatFloatingIcon() {
           if (dragRef.current.isDragging) return;
           setIsOpen(!isOpen);
         }}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#2490ef] to-[#6366f1] text-white shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
+        className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#059669] to-[#10b981] text-white shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
       >
         {isOpen ? (
           <X className="h-6 w-6" />

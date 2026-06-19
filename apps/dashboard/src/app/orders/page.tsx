@@ -285,7 +285,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     }
   }
 
-  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20';
+  const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -334,7 +334,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                     key={c.id}
                     type="button"
                     onClick={() => handleClientSelect(c)}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-blue-50/50 first:rounded-t-lg last:rounded-b-lg"
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-emerald-50/50 first:rounded-t-lg last:rounded-b-lg"
                   >
                     <span className="font-medium text-gray-800">{c.client_name}</span>
                     <span className="text-gray-400">
@@ -369,7 +369,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                 onChange={e => setProjectedLeadTime(e.target.value.replace(/\D/g, ''))}
               />
               {projectedLeadTime && parseInt(projectedLeadTime) > 0 && (
-                <div className="flex items-center rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 whitespace-nowrap">
+                <div className="flex items-center rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 whitespace-nowrap">
                   Due: {new Date(Date.now() + parseInt(projectedLeadTime) * 86_400_000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               )}
@@ -439,7 +439,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                     </button>
                   </div>
                 ))}
-                <button type="button" onClick={handleAddItem} className="flex items-center gap-1 text-[10px] font-medium text-[#2490ef] hover:underline">
+                <button type="button" onClick={handleAddItem} className="flex items-center gap-1 text-[10px] font-medium text-[var(--primary)] hover:underline">
                   <Plus className="h-3 w-3" /> Add item
                 </button>
               </div>
@@ -476,7 +476,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                     onClick={() => updateDepositPaymentType(idx, 'deposit')}
                     className={`rounded-lg border px-3 py-2 text-xs font-medium ${
                       entry.paymentType === 'deposit'
-                        ? 'border-blue-400 bg-blue-50 text-blue-700'
+                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
                         : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
                     }`}
                   >
@@ -524,7 +524,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                 </div>
               </div>
             ))}
-            <button type="button" onClick={addDepositEntry} className="flex items-center gap-1 text-xs font-medium text-[#2490ef] hover:underline">
+            <button type="button" onClick={addDepositEntry} className="flex items-center gap-1 text-xs font-medium text-[var(--primary)] hover:underline">
               <Plus className="h-3 w-3" /> Add another slip
             </button>
           </div>
@@ -533,7 +533,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50">
+            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Create Order
             </button>
@@ -582,42 +582,42 @@ function EditForm({ order, onSave, onCancel, saving }: {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-blue-50/50">
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-emerald-50/50">
       <input
         value={quotationNumber}
         onChange={(e) => setQuotationNumber(e.target.value)}
         placeholder="Quotation #"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={clientName}
         onChange={(e) => setClientName(e.target.value)}
         placeholder="Client name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={salesAgent}
         onChange={(e) => setSalesAgent(e.target.value)}
         placeholder="Sales agent"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={totalAmount}
         onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))}
         placeholder="Amount"
-        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={projectedLeadTime}
         onChange={(e) => setProjectedLeadTime(e.target.value.replace(/\D/g, ''))}
         placeholder="Lead time (days)"
         title="Projected lead time in days"
-        className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <button
         type="submit"
         disabled={saving}
-        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+        className="rounded-lg bg-[var(--primary)] p-1.5 text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
         title="Save"
       >
         <Check className="h-4 w-4" />
@@ -970,7 +970,7 @@ export default function OrdersPage() {
   if (isLoading && orders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -982,7 +982,7 @@ export default function OrdersPage() {
         <button
           onClick={() => setFilter('all')}
           className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            filter === 'all' ? 'bg-[#2490ef] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+            filter === 'all' ? 'bg-[var(--primary)] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
           }`}
         >
           All ({orders.length})
@@ -990,7 +990,7 @@ export default function OrdersPage() {
         <button
           onClick={() => setFilter('active')}
           className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            filter === 'active' ? 'bg-[#2490ef] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+            filter === 'active' ? 'bg-[var(--primary)] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
           }`}
         >
           Active ({orders.filter((o) => o.status === 'active').length})
@@ -998,7 +998,7 @@ export default function OrdersPage() {
         <button
           onClick={() => setFilter('completed')}
           className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            filter === 'completed' ? 'bg-[#2490ef] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+            filter === 'completed' ? 'bg-[var(--primary)] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
           }`}
         >
           Completed ({orders.filter((o) => o.current_stage === 'completed').length})
@@ -1029,7 +1029,7 @@ export default function OrdersPage() {
             <span className="text-xs text-gray-400">{filtered.length} orders</span>
             <button
               onClick={() => setShowNewOrder(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9]"
+              className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--primary-dark)]"
             >
               <Plus className="h-3.5 w-3.5" />
               New Order
@@ -1137,7 +1137,7 @@ export default function OrdersPage() {
                     type="file"
                     accept="image/*,application/pdf"
                     onChange={(e) => setDepositFile(e.target.files?.[0] ?? null)}
-                    className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-blue-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-blue-700 hover:file:bg-blue-200"
+                    className="block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-emerald-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-emerald-700 hover:file:bg-emerald-200"
                   />
                   {depositFile && (
                     <button
@@ -1164,7 +1164,7 @@ export default function OrdersPage() {
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
                   placeholder="e.g. 5000"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                 />
               </div>
 
@@ -1186,7 +1186,7 @@ export default function OrdersPage() {
                 <button
                   onClick={handleDepositSubmit}
                   disabled={depositRecording || !depositAmount}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
                 >
                   {depositRecording ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

@@ -34,35 +34,35 @@ function EditForm({ order, onSave, onCancel, saving }: EditFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-blue-50/50">
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-6 py-3 bg-emerald-50/50">
       <input
         value={quotationNumber}
         onChange={(e) => setQuotationNumber(e.target.value)}
         placeholder="Quotation #"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={clientName}
         onChange={(e) => setClientName(e.target.value)}
         placeholder="Client name"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={salesAgent}
         onChange={(e) => setSalesAgent(e.target.value)}
         placeholder="Sales agent"
-        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <input
         value={totalAmount}
         onChange={(e) => setTotalAmount(e.target.value.replace(/[^0-9.]/g, ''))}
         placeholder="Amount"
-        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+        className="w-28 rounded-lg border border-gray-300 px-3 py-1.5 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
       />
       <button
         type="submit"
         disabled={saving}
-        className="rounded-lg bg-[#2490ef] p-1.5 text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+        className="rounded-lg bg-[var(--primary)] p-1.5 text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
         title="Save"
       >
         <Check className="h-4 w-4" />
@@ -200,7 +200,7 @@ function CollectionSummary({
                   <td className="whitespace-nowrap px-6 py-3 font-medium text-gray-800">
                     {order.client_name ?? 'Unknown client'}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-3 text-[#2490ef]">
+                  <td className="whitespace-nowrap px-6 py-3 text-[var(--primary)]">
                     {order.quotation_number ?? order.id.slice(0, 8)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-3 text-gray-600">
@@ -209,7 +209,7 @@ function CollectionSummary({
                       defaultValue={toDateInputValue(order.deposit_paid_at)}
                       disabled={savingKey === `${order.id}:deposit_paid_at`}
                       onChange={(e) => onDateEdit(order, 'deposit_paid_at', e.target.value)}
-                      className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50"
+                      className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] disabled:opacity-50"
                       title="Edit downpayment date"
                     />
                   </td>
@@ -226,7 +226,7 @@ function CollectionSummary({
                       defaultValue={toDateInputValue(order.balance_paid_at)}
                       disabled={savingKey === `${order.id}:balance_paid_at`}
                       onChange={(e) => onDateEdit(order, 'balance_paid_at', e.target.value)}
-                      className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50"
+                      className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] disabled:opacity-50"
                       title="Edit balance payment date"
                     />
                   </td>
@@ -296,7 +296,7 @@ function AcknowledgementReceiptsSection({
               {receipts.map((receipt) => (
                 <tr key={receipt.payment_id} className={`hover:bg-indigo-50/30 ${!receipt.verified ? 'opacity-60' : ''}`}>
                   <td className="whitespace-nowrap px-6 py-3 font-medium text-gray-800">{receipt.receipt_number}</td>
-                  <td className="whitespace-nowrap px-6 py-3 text-[#2490ef]">{receipt.quotation_number ?? receipt.order_id.slice(0, 8)}</td>
+                  <td className="whitespace-nowrap px-6 py-3 text-[var(--primary)]">{receipt.quotation_number ?? receipt.order_id.slice(0, 8)}</td>
                   <td className="whitespace-nowrap px-6 py-3 text-gray-600">{receipt.client_name ?? 'Unknown client'}</td>
                   <td className="whitespace-nowrap px-6 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -1214,7 +1214,7 @@ export default function CollectionPage() {
   if (loading && inventoryArrivedOrders.length === 0 && balanceDueOrders.length === 0 && deliveredOrders.length === 0 && counteredOrders.length === 0 && paymentReceivedOrders.length === 0 && paymentConfirmedOrders.length === 0 && completedOrders.length === 0 && unsyncedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -1339,7 +1339,7 @@ export default function CollectionPage() {
                       pendingAction: 'markPaymentReceived',
                     });
                   }}
-                  className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                  className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
                   title="Advance to Payment Received"
                 >
                   <CreditCard className="h-4 w-4" />
@@ -1411,7 +1411,7 @@ export default function CollectionPage() {
               )}
               <button
                 onClick={() => handleEdit(order)}
-                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                 title="Edit order"
               >
                 <Pencil className="h-4 w-4" />
@@ -1654,11 +1654,11 @@ export default function CollectionPage() {
       </div>
 
       {/* Delivered */}
-      <div className="rounded-xl border border-blue-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-blue-200 px-6 py-4">
-          <ArrowRight className="h-4 w-4 text-blue-500" />
+      <div className="rounded-xl border border-emerald-200 bg-white">
+        <div className="flex items-center gap-2 border-b border-emerald-200 px-6 py-4">
+          <ArrowRight className="h-4 w-4 text-emerald-500" />
           <h2 className="text-base font-semibold text-gray-800">Delivered</h2>
-          <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+          <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
             {filteredDeliveredOrders.length}
           </span>
         </div>
@@ -1961,7 +1961,7 @@ export default function CollectionPage() {
                       </div>
 
                       {slip.extracting && (
-                        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-600">
+                        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-600">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           AI extracting...
                         </div>
@@ -2048,7 +2048,7 @@ export default function CollectionPage() {
                 onChange={(e) => setExceptionModal((prev) => ({ ...prev, notes: e.target.value }))}
                 placeholder="e.g. Long-time client, payment guaranteed within 7 days"
                 rows={3}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
               />
             </div>
             <div className="flex justify-end gap-2">

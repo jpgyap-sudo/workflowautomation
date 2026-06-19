@@ -98,7 +98,7 @@ export default function AgentLogsPage() {
             placeholder="Search logs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
 
@@ -107,7 +107,7 @@ export default function AgentLogsPage() {
           <select
             value={filterAgent}
             onChange={(e) => setFilterAgent(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef]"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
           >
             <option value="all">All Agents</option>
             {agents.map((a) => (
@@ -120,7 +120,7 @@ export default function AgentLogsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef]"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
           >
             <option value="all">All Status</option>
             <option value="success">Success</option>

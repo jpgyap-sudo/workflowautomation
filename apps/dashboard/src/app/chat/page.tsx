@@ -90,7 +90,7 @@ function renderMessageContent(content: string): React.ReactNode[] {
     if (line.startsWith('> ')) {
       flushList();
       elements.push(
-        <blockquote key={`bq-${i}`} className="mb-2 border-l-4 border-[#2490ef] bg-blue-50 py-2 pl-3 pr-2 text-sm text-gray-700 italic">
+        <blockquote key={`bq-${i}`} className="mb-2 border-l-4 border-[var(--primary)] bg-emerald-50 py-2 pl-3 pr-2 text-sm text-gray-700 italic">
           {renderInline(line.slice(2))}
         </blockquote>
       );
@@ -102,7 +102,7 @@ function renderMessageContent(content: string): React.ReactNode[] {
       inList = true;
       listItems.push(
         <li key={`li-${i}`} className="flex items-start gap-2 text-sm text-gray-700">
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#2490ef]" />
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary)]" />
           <span>{renderInline(line.slice(2))}</span>
         </li>
       );
@@ -115,7 +115,7 @@ function renderMessageContent(content: string): React.ReactNode[] {
       flushList();
       elements.push(
         <div key={`ol-${i}`} className="mb-2 flex items-start gap-2 text-sm text-gray-700">
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#2490ef] text-xs font-medium text-white">
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-medium text-white">
             {orderedMatch[1].charAt(0)}
           </span>
           <span>{renderInline(orderedMatch[1])}</span>
@@ -155,7 +155,7 @@ function renderInline(text: string): React.ReactNode {
     return codeParts.map((cp, j) => {
       if (cp.startsWith('`') && cp.endsWith('`')) {
         return (
-          <code key={`${i}-${j}`} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-[#2490ef]">
+          <code key={`${i}-${j}`} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-[var(--primary)]">
             {cp.slice(1, -1)}
           </code>
         );
@@ -171,7 +171,7 @@ function renderInline(text: string): React.ReactNode {
               href={linkMatch[2]}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-0.5 font-medium text-[#2490ef] hover:underline"
+              className="inline-flex items-center gap-0.5 font-medium text-[var(--primary)] hover:underline"
             >
               {linkMatch[1]}
               <ExternalLink className="h-3 w-3" />
@@ -196,9 +196,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       <div
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
           isUser
-            ? 'bg-[#2490ef] text-white'
+            ? 'bg-[var(--primary)] text-white'
             : isAssistant
-            ? 'bg-gradient-to-br from-[#2490ef] to-[#6366f1] text-white'
+            ? 'bg-gradient-to-br from-[var(--primary)] to-[#6366f1] text-white'
             : 'bg-gray-200 text-gray-500'
         }`}
       >
@@ -214,7 +214,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <div
           className={`rounded-2xl px-4 py-3 ${
             isUser
-              ? 'bg-[#2490ef] text-white rounded-tr-md'
+              ? 'bg-[var(--primary)] text-white rounded-tr-md'
               : isAssistant
               ? 'bg-white border border-gray-200 rounded-tl-md shadow-sm'
               : 'bg-gray-100 text-gray-600 rounded-tl-md'
@@ -235,7 +235,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             {message.sources.map((source, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600"
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600"
               >
                 <BookOpen className="h-2.5 w-2.5" />
                 {source.title}
@@ -303,7 +303,7 @@ function ChatInput({
   }
 
   return (
-    <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm transition-shadow focus-within:border-[#2490ef] focus-within:shadow-md">
+    <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm transition-shadow focus-within:border-[var(--primary)] focus-within:shadow-md">
       <textarea
         ref={inputRef}
         value={input}
@@ -317,7 +317,7 @@ function ChatInput({
       <button
         onClick={handleSubmit}
         disabled={disabled || !input.trim()}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#2490ef] text-white transition-all hover:bg-[#1a7ad9] disabled:opacity-40 disabled:hover:bg-[#2490ef]"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-white transition-all hover:bg-[var(--primary-dark)] disabled:opacity-40 disabled:hover:bg-[var(--primary)]"
       >
         {disabled ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -352,7 +352,7 @@ function ConversationList({
         <h2 className="text-sm font-semibold text-gray-800">Conversations</h2>
         <button
           onClick={onNew}
-          className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1a7ad9] transition-colors"
+          className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--primary-dark)] transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           New
@@ -377,7 +377,7 @@ function ConversationList({
                   onClick={() => onSelect(conv.id)}
                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                     activeId === conv.id
-                      ? 'bg-[#e8f4fd] text-[#2490ef] font-medium'
+                      ? 'bg-[var(--primary-light)] text-[var(--primary)] font-medium'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
@@ -417,12 +417,12 @@ function WelcomeScreen({ onSuggestedQuestion }: { onSuggestedQuestion: (q: strin
 
   return (
     <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#2490ef] to-[#6366f1] shadow-lg">
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[#6366f1] shadow-lg">
         <Bot className="h-8 w-8 text-white" />
       </div>
-      <h1 className="mb-2 text-xl font-bold text-gray-900">QAS Tutorial Assistant</h1>
+      <h1 className="mb-2 text-xl font-bold text-gray-900">Workflow Assistant</h1>
       <p className="mb-8 max-w-md text-sm text-gray-500">
-        Ask me anything about using the Quotation Automation System. I can guide you through
+        Ask me anything about using the Workflow Automation System. I can guide you through
         every feature step by step.
       </p>
 
@@ -431,9 +431,9 @@ function WelcomeScreen({ onSuggestedQuestion }: { onSuggestedQuestion: (q: strin
           <button
             key={i}
             onClick={() => onSuggestedQuestion(q)}
-            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-all hover:border-[#2490ef] hover:bg-blue-50 hover:text-[#2490ef]"
+            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-600 transition-all hover:border-[var(--primary)] hover:bg-emerald-50 hover:text-[var(--primary)]"
           >
-            <Sparkles className="h-4 w-4 shrink-0 text-[#2490ef]" />
+            <Sparkles className="h-4 w-4 shrink-0 text-[var(--primary)]" />
             <span>{q}</span>
           </button>
         ))}
@@ -714,14 +714,14 @@ export default function ChatPage() {
               ))}
               {sending && (
                 <div className="flex items-center gap-2 pl-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#2490ef] to-[#6366f1]">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[#6366f1]">
                     <Bot className="h-4 w-4 text-white" />
                   </div>
                   <div className="flex items-center gap-1 rounded-2xl bg-white px-4 py-3 shadow-sm">
                     <div className="flex gap-1">
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-[#2490ef]" style={{ animationDelay: '0ms' }} />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-[#2490ef]" style={{ animationDelay: '150ms' }} />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-[#2490ef]" style={{ animationDelay: '300ms' }} />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: '0ms' }} />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: '150ms' }} />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: '300ms' }} />
                     </div>
                   </div>
                 </div>

@@ -675,7 +675,7 @@ function VisionPageContent() {
       {/* Loading shared data */}
       {loadingShare && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-12">
-          <Loader2 className="mb-3 h-8 w-8 animate-spin text-[#2490ef]" />
+          <Loader2 className="mb-3 h-8 w-8 animate-spin text-[var(--primary)]" />
           <p className="text-sm font-medium text-gray-700">Loading extracted data from Telegram...</p>
         </div>
       )}
@@ -688,7 +688,7 @@ function VisionPageContent() {
             <div className="space-y-4">
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-6 py-16 transition-colors hover:border-[#2490ef] hover:bg-blue-50/50"
+                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-6 py-16 transition-colors hover:border-[var(--primary)] hover:bg-emerald-50/50"
               >
                 <Upload className="mb-4 h-10 w-10 text-gray-400" />
                 <p className="text-sm font-medium text-gray-700">Click to upload a screenshot</p>
@@ -710,7 +710,7 @@ function VisionPageContent() {
                     <button
                       type="button"
                       onClick={handleExtract}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9]"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-dark)]"
                     >
                       <ScanEye className="h-4 w-4" />
                       Analyze image
@@ -787,7 +787,7 @@ function VisionPageContent() {
       {/* Extracting Spinner */}
       {step === 'extracting' && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-12">
-          <Loader2 className="mb-3 h-8 w-8 animate-spin text-[#2490ef]" />
+          <Loader2 className="mb-3 h-8 w-8 animate-spin text-[var(--primary)]" />
           <p className="text-sm font-medium text-gray-700">AI is analyzing the image...</p>
           <p className="mt-1 text-xs text-gray-400">Extracting quotation details with Gemini Vision</p>
         </div>
@@ -817,7 +817,7 @@ function VisionPageContent() {
                   value={quotationNumber}
                   onChange={(e) => setQuotationNumber(e.target.value)}
                   placeholder="e.g. QTN-2026-0001"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
               <div>
@@ -829,7 +829,7 @@ function VisionPageContent() {
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   placeholder="e.g. Juan Dela Cruz"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
               <div>
@@ -841,7 +841,7 @@ function VisionPageContent() {
                   value={salesAgent}
                   onChange={(e) => setSalesAgent(e.target.value)}
                   placeholder="e.g. Maria Santos"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
               <div>
@@ -853,7 +853,7 @@ function VisionPageContent() {
                   value={totalAmount}
                   onChange={(e) => setTotalAmount(e.target.value)}
                   placeholder="e.g. 15000"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
               <div>
@@ -864,7 +864,7 @@ function VisionPageContent() {
                   type="date"
                   value={orderDate}
                   onChange={(e) => setOrderDate(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
             </div>
@@ -884,7 +884,7 @@ function VisionPageContent() {
                     value={paymentQuotationNumber}
                     onChange={(e) => setPaymentQuotationNumber(e.target.value)}
                     placeholder="e.g. qtn-julia"
-                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -893,7 +893,7 @@ function VisionPageContent() {
                     <select
                       value={paymentType}
                       onChange={(e) => setPaymentType(e.target.value as 'deposit' | 'balance' | 'full' | 'unknown')}
-                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                     >
                       <option value="unknown">Choose type...</option>
                       <option value="deposit">Downpayment / Deposit</option>
@@ -908,7 +908,7 @@ function VisionPageContent() {
                       value={paymentAmount}
                       onChange={(e) => setPaymentAmount(e.target.value)}
                       placeholder="e.g. 170000"
-                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                     />
                   </div>
                 </div>
@@ -919,7 +919,7 @@ function VisionPageContent() {
                       type="date"
                       value={paymentDate}
                       onChange={(e) => setPaymentDate(e.target.value)}
-                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                     />
                   </div>
                   <div>
@@ -929,7 +929,7 @@ function VisionPageContent() {
                       value={paymentReference}
                       onChange={(e) => setPaymentReference(e.target.value)}
                       placeholder="Optional"
-                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                     />
                   </div>
                 </div>
@@ -940,7 +940,7 @@ function VisionPageContent() {
                     value={paymentPaidBy}
                     onChange={(e) => setPaymentPaidBy(e.target.value)}
                     placeholder="Optional"
-                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   />
                 </div>
               </div>
@@ -967,7 +967,7 @@ function VisionPageContent() {
                         setItems(updated);
                       }}
                       placeholder="Product name"
-                      className="min-w-0 flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                      className="min-w-0 flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                     />
                     <input
                       type="number"
@@ -978,7 +978,7 @@ function VisionPageContent() {
                         updated[index] = { ...updated[index], quantity: Math.max(1, parseInt(e.target.value) || 1) };
                         setItems(updated);
                       }}
-                      className="w-16 rounded-md border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                      className="w-16 rounded-md border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                     />
                     <button
                       type="button"
@@ -997,7 +997,7 @@ function VisionPageContent() {
             <button
               type="button"
               onClick={() => setItems([...items, { product_name: '', quantity: 1 }])}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-[#2490ef] hover:text-[#2490ef]"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]"
             >
               + Add item
             </button>
@@ -1013,15 +1013,15 @@ function VisionPageContent() {
 
           {/* Existing Order Sync Banner */}
           {existingOrder && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <h4 className="mb-1 text-sm font-semibold text-blue-800">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <h4 className="mb-1 text-sm font-semibold text-emerald-800">
                 🔄 Sync Mode — Existing Order
               </h4>
-              <p className="text-xs text-blue-600">
+              <p className="text-xs text-emerald-600">
                 Quotation: <span className="font-medium">{existingOrder.quotation_number ?? '—'}</span> ·
                 Client: <span className="font-medium">{existingOrder.client_name ?? '—'}</span>
               </p>
-              <p className="mt-1 text-xs text-blue-500">
+              <p className="mt-1 text-xs text-emerald-500">
                 Only empty fields/new items will be filled in. Payment slips can also be synced here, including full payment before production.
               </p>
             </div>
@@ -1033,7 +1033,7 @@ function VisionPageContent() {
               <button
                 onClick={handleSyncToOrder}
                 disabled={!paymentAmount || paymentType === 'unknown' || syncing}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                 {syncing ? 'Syncing?' : 'Sync Payment to This Order'}
@@ -1052,7 +1052,7 @@ function VisionPageContent() {
                 <button
                   onClick={handleSyncToOrder}
                   disabled={syncing}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                   {syncing ? 'Syncing…' : 'Sync to This Order'}
@@ -1069,7 +1069,7 @@ function VisionPageContent() {
               <button
                 onClick={handleCreateOrder}
                 disabled={!quotationNumber && !clientName}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a7ad9] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle className="h-4 w-4" />
                 Create Order
@@ -1088,7 +1088,7 @@ function VisionPageContent() {
       {/* Creating / Syncing Spinner */}
       {step === 'creating' && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-12">
-          <Loader2 className="mb-3 h-8 w-8 animate-spin text-[#2490ef]" />
+          <Loader2 className="mb-3 h-8 w-8 animate-spin text-[var(--primary)]" />
           <p className="text-sm font-medium text-gray-700">
             {existingOrder ? 'Syncing extracted data to existing order...' : 'Creating order and uploading to Drive...'}
           </p>

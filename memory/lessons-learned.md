@@ -16757,3 +16757,41 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: three critical fixes — Telegram '?' chars, reminder spam cap, Gantt deadline in status
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 569b4669ce376bdff49c64c9e51370a2ccf6e6eb
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** 569b4669ce376bdff49c64c9e51370a2ccf6e6eb
+**Files:** apps/api/src/services/openClawService.ts,apps/api/src/services/reminderScheduler.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+Commit: fix: three critical fixes — Telegram '?' chars, reminder spam cap, Gantt deadline in status
+Files: apps/api/src/services/openClawService.ts,apps/api/src/services/reminderScheduler.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+Project: workflowautomation
+
+---
+*Original commit message: fix: three critical fixes — Telegram '?' chars, reminder spam cap, Gantt deadline in status*
+
+#### Lesson Learned
+
+Commit: fix: three critical fixes — Telegram '?' chars, reminder spam cap, Gantt deadline in status
+Files: apps/api/src/services/openClawService.ts,apps/api/src/services/reminderScheduler.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

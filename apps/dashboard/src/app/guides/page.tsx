@@ -53,12 +53,12 @@ function OrderLifecycleDiagram() {
     <svg viewBox="0 0 920 120" className="w-full max-w-3xl" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="orderGrad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#2490ef" />
+          <stop offset="0%" stopColor="var(--primary)" />
           <stop offset="100%" stopColor="#6366f1" />
         </linearGradient>
       </defs>
       {[
-        { x: 20, label: 'Created', color: '#2490ef' },
+        { x: 20, label: 'Created', color: 'var(--primary)' },
         { x: 140, label: 'Purchasing', color: '#f97316' },
         { x: 270, label: 'Production', color: '#6366f1' },
         { x: 400, label: 'En Route', color: '#14b8a6' },
@@ -190,7 +190,7 @@ const SECTIONS: Section[] = [
   {
     id: 'orders',
     icon: FileText,
-    color: 'bg-blue-50 text-blue-600',
+    color: 'bg-emerald-50 text-emerald-600',
     title: '📋 All Orders',
     href: '/orders',
     summary:
@@ -928,7 +928,7 @@ const SECTIONS: Section[] = [
   {
     id: 'telegram',
     icon: MessageSquare,
-    color: 'bg-blue-50 text-blue-600',
+    color: 'bg-emerald-50 text-emerald-600',
     title: '🤖 Telegram Bot Quick Reference',
     href: '/telegram',
     summary:
@@ -1087,7 +1087,7 @@ const SECTIONS: Section[] = [
 
 function GuideStageBadge({ stage }: { stage: string }) {
   const config = {
-    order_confirmation_received: { label: 'Order Confirmation Received', color: '#2490ef', bg: '#eff6ff' },
+    order_confirmation_received: { label: 'Order Confirmation Received', color: 'var(--primary)', bg: '#eff6ff' },
     math_verified: { label: 'Math Verified', color: '#14b8a6', bg: '#f0fdfa' },
     purchasing_pending: { label: 'Purchasing Pending', color: '#f97316', bg: '#fff7ed' },
     deposit_pending: { label: 'Downpayment Pending', color: '#ec4899', bg: '#fdf2f8' },
@@ -1184,7 +1184,7 @@ export default function GuidesPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Guides & Tutorials</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Step-by-step guides for every feature in the Quotation Automation System
+              Step-by-step guides for every feature in the Workflow Automation System
             </p>
           </div>
         </div>

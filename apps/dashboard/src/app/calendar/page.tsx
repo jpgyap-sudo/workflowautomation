@@ -107,7 +107,7 @@ const TYPE_LABELS: Record<string, string> = {
   schedule: 'Schedule',
 };
 
-const NOTE_COLORS = ['#2490ef', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const NOTE_COLORS = ['var(--primary)', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 export default function CalendarPage() {
   const router = useRouter();
@@ -121,7 +121,7 @@ export default function CalendarPage() {
   const [editingNote, setEditingNote] = useState<CalendarNote | null>(null);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
-  const [noteColor, setNoteColor] = useState('#2490ef');
+  const [noteColor, setNoteColor] = useState('var(--primary)');
   const [savingNote, setSavingNote] = useState(false);
   const [otpModal, setOtpModal] = useState<{
     open: boolean; title: string; description: string; pendingAction: 'save' | 'delete';
@@ -221,7 +221,7 @@ export default function CalendarPage() {
     setEditingNote(null);
     setNoteTitle('');
     setNoteContent('');
-    setNoteColor('#2490ef');
+    setNoteColor('var(--primary)');
     setShowNoteEditor(true);
   }
 
@@ -564,7 +564,7 @@ export default function CalendarPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5 text-[#2490ef]" />
+            <CalendarIcon className="h-5 w-5 text-[var(--primary)]" />
             System Calendar
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -594,7 +594,7 @@ export default function CalendarPage() {
               setCurrentMonth(new Date());
               setSelectedDate(new Date());
             }}
-            className="ml-2 rounded-lg bg-[#2490ef] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1c7ad4]"
+            className="ml-2 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1c7ad4]"
           >
             Today
           </button>
@@ -637,12 +637,12 @@ export default function CalendarPage() {
                     onClick={() => setSelectedDate(date)}
                     className={`relative flex flex-col items-start border-b border-r border-gray-100 p-2 transition-colors ${
                       inMonth ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 text-gray-400'
-                    } ${isSelected ? 'ring-1 ring-inset ring-[#2490ef]' : ''}`}
+                    } ${isSelected ? 'ring-1 ring-inset ring-[var(--primary)]' : ''}`}
                   >
                     <span
                       className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                         isToday
-                          ? 'bg-[#2490ef] text-white'
+                          ? 'bg-[var(--primary)] text-white'
                           : inMonth
                             ? 'text-gray-700'
                             : 'text-gray-400'
@@ -731,7 +731,7 @@ export default function CalendarPage() {
                     </button>
                     <button
                       onClick={openNewNote}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                       title="Add note"
                     >
                       <Plus className="h-4 w-4" />
@@ -749,7 +749,7 @@ export default function CalendarPage() {
                   {selectedDate && (
                     <button
                       onClick={openNewNote}
-                      className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
+                      className="mt-3 flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4]"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add a note
@@ -915,7 +915,7 @@ export default function CalendarPage() {
                                   e.stopPropagation();
                                   handleStageAdvance(event, action.stage, action.label);
                                 }}
-                                className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[10px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-[#2490ef] hover:text-white hover:ring-[#2490ef] transition-colors"
+                                className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[10px] font-medium text-gray-600 shadow-sm ring-1 ring-gray-200 hover:bg-[var(--primary)] hover:text-white hover:ring-[var(--primary)] transition-colors"
                               >
                                 {action.icon}
                                 {action.label}
@@ -1011,7 +1011,7 @@ export default function CalendarPage() {
                   value={noteTitle}
                   onChange={(e) => setNoteTitle(e.target.value)}
                   placeholder="e.g., Client follow-up"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   maxLength={200}
                 />
               </div>
@@ -1025,7 +1025,7 @@ export default function CalendarPage() {
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
                   placeholder="Add details about this note..."
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] resize-none"
                   rows={3}
                   maxLength={2000}
                 />
@@ -1071,7 +1071,7 @@ export default function CalendarPage() {
                 <button
                   onClick={handleSaveNote}
                   disabled={!noteTitle.trim() || savingNote}
-                  className="rounded-lg bg-[#2490ef] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#1c7ad4] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingNote ? 'Saving…' : editingNote ? 'Update' : 'Save'}
                 </button>
@@ -1108,7 +1108,7 @@ export default function CalendarPage() {
                   value={scheduleTitle}
                   onChange={(e) => setScheduleTitle(e.target.value)}
                   placeholder="e.g., Team meeting"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   maxLength={200}
                 />
               </div>
@@ -1122,7 +1122,7 @@ export default function CalendarPage() {
                   value={scheduleDescription}
                   onChange={(e) => setScheduleDescription(e.target.value)}
                   placeholder="Add details about this schedule..."
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] resize-none"
                   rows={2}
                   maxLength={2000}
                 />
@@ -1138,7 +1138,7 @@ export default function CalendarPage() {
                     type="date"
                     value={scheduleDate}
                     onChange={(e) => setScheduleDate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                   />
                 </div>
                 <div>
@@ -1151,7 +1151,7 @@ export default function CalendarPage() {
                     value={scheduleTime}
                     onChange={(e) => setScheduleTime(e.target.value)}
                     disabled={scheduleIsAllDay}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -1167,7 +1167,7 @@ export default function CalendarPage() {
                     value={scheduleEndTime}
                     onChange={(e) => setScheduleEndTime(e.target.value)}
                     disabled={scheduleIsAllDay}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="flex items-end pb-2">
@@ -1176,7 +1176,7 @@ export default function CalendarPage() {
                       type="checkbox"
                       checked={scheduleIsAllDay}
                       onChange={(e) => setScheduleIsAllDay(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                      className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                     />
                     <span className="text-xs font-medium text-gray-600">All day</span>
                   </label>
@@ -1266,7 +1266,7 @@ export default function CalendarPage() {
                   value={telegramMessage}
                   onChange={(e) => setTelegramMessage(e.target.value)}
                   placeholder="Type the notification message to send to the escalation group..."
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] resize-none"
                   rows={4}
                   maxLength={2000}
                 />
@@ -1326,7 +1326,7 @@ export default function CalendarPage() {
                   value={reminderStage}
                   onChange={(e) => setReminderStage(e.target.value)}
                   placeholder="e.g., delivery_pending"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 />
               </div>
 
@@ -1339,7 +1339,7 @@ export default function CalendarPage() {
                   value={reminderMessage}
                   onChange={(e) => setReminderMessage(e.target.value)}
                   placeholder="What should the reminder say?"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef] resize-none"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] resize-none"
                   rows={2}
                   maxLength={500}
                 />
@@ -1353,7 +1353,7 @@ export default function CalendarPage() {
                   id="reminder-freq"
                   value={reminderFrequency}
                   onChange={(e) => setReminderFrequency(e.target.value as 'hourly' | 'daily' | 'once')}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#2490ef] focus:ring-1 focus:ring-[#2490ef]"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                 >
                   <option value="daily">Daily</option>
                   <option value="hourly">Hourly</option>

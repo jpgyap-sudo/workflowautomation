@@ -245,7 +245,7 @@ function StockPrepCard({ order, onUpdated, onViewFiles, onEdit, onDelete, onReve
           {onEdit && (
             <button
               onClick={() => { setPendingAction('edit'); setShowOtp(true); }}
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
               title="Edit order"
             >
               <Pencil className="h-4 w-4" />

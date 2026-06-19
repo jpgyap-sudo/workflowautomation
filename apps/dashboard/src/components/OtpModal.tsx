@@ -235,15 +235,15 @@ export default function OtpModal({ open, title, description, onVerified, onClose
 
             {sending ? (
               <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#2490ef]" />
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[var(--primary)]" />
                 {channel === 'telegram' ? 'Sending code to Telegram…' : 'Sending code to email…'}
               </div>
             ) : (
               <>
                 {/* Channel indicator */}
                 {!isAdminMode && channel === 'telegram' ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-                    <Send className="h-4 w-4 shrink-0 text-[#2490ef]" />
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                    <Send className="h-4 w-4 shrink-0 text-[var(--primary)]" />
                     <p className="text-xs text-gray-600">
                       {codeSent ? 'A 4-digit code was sent to Telegram.' : 'Sending a 4-digit code to Telegram…'}
                     </p>
@@ -272,7 +272,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                       onChange={(e) => handleDigitChange(i, e.target.value)}
                       onKeyDown={(e) => handleKeyDown(i, e)}
                       onPaste={i === 0 ? handlePaste : undefined}
-                      className="h-14 w-11 rounded-xl border-2 border-gray-200 text-center text-xl font-bold text-gray-900 outline-none transition-colors focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                      className="h-14 w-11 rounded-xl border-2 border-gray-200 text-center text-xl font-bold text-gray-900 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
                     />
                   ))}
                 </div>
@@ -285,7 +285,7 @@ export default function OtpModal({ open, title, description, onVerified, onClose
                   <button
                     type="submit"
                     disabled={loading || !codeSent || digits.join('').length < digitCount}
-                    className="flex-1 rounded-lg bg-[#2490ef] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+                    className="flex-1 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
                   >
                     {loading ? 'Verifying…' : 'Verify Code'}
                   </button>

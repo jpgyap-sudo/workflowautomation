@@ -36,7 +36,7 @@ function StatsCards({ stats }: { stats: BrainStats | null }) {
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
       <div className="rounded-lg border border-gray-200 bg-white p-3">
-        <div className="text-2xl font-bold text-[#2490ef]">{stats.total_lessons}</div>
+        <div className="text-2xl font-bold text-[var(--primary)]">{stats.total_lessons}</div>
         <div className="text-xs text-gray-500">Total Lessons</div>
       </div>
       <div className="rounded-lg border border-gray-200 bg-white p-3">
@@ -98,7 +98,7 @@ function LessonCard({
               {lesson.confidence}
             </span>
             {sim && (
-              <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                 {sim} match
               </span>
             )}
@@ -238,7 +238,7 @@ function NewLessonModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="Lesson title"
               maxLength={500}
               required
@@ -249,7 +249,7 @@ function NewLessonModal({
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="Full lesson content"
               rows={6}
               required
@@ -261,7 +261,7 @@ function NewLessonModal({
               type="text"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="Short one-line summary"
               maxLength={500}
             />
@@ -273,7 +273,7 @@ function NewLessonModal({
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                 placeholder="docker, deployment, telegram"
               />
             </div>
@@ -282,7 +282,7 @@ function NewLessonModal({
               <select
                 value={confidence}
                 onChange={(e) => setConfidence(e.target.value as 'high' | 'medium' | 'low')}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               >
                 <option value="high">🟢 High</option>
                 <option value="medium">🟡 Medium</option>
@@ -296,7 +296,7 @@ function NewLessonModal({
               type="text"
               value={relatedFiles}
               onChange={(e) => setRelatedFiles(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="apps/api/src/server.ts, apps/telegram-bot/src/bot.ts"
             />
           </div>
@@ -306,7 +306,7 @@ function NewLessonModal({
               <select
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               >
                 <option value="manual">Manual</option>
                 <option value="commit">Commit</option>
@@ -319,7 +319,7 @@ function NewLessonModal({
                 type="text"
                 value={sourceRef}
                 onChange={(e) => setSourceRef(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                 placeholder="Commit hash or reference"
               />
             </div>
@@ -335,7 +335,7 @@ function NewLessonModal({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-[#2490ef] px-4 py-2 text-sm text-white hover:bg-[#1a7cd6] disabled:opacity-50"
+              className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
             >
               {submitting ? 'Saving...' : 'Save Lesson'}
             </button>
@@ -438,7 +438,7 @@ export default function BrainPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <BrainCircuit className="h-7 w-7 text-[#2490ef]" />
+            <BrainCircuit className="h-7 w-7 text-[var(--primary)]" />
             CentralBrain
           </h1>
           <p className="text-sm text-gray-500">AI Learning Layer — Persistent knowledge base with semantic search</p>
@@ -456,7 +456,7 @@ export default function BrainPage() {
           <button
             type="button"
             onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-1 rounded-lg bg-[#2490ef] px-4 py-2 text-sm text-white hover:bg-[#1a7cd6]"
+            className="flex items-center gap-1 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-dark)]"
           >
             <Plus className="h-4 w-4" />
             New Lesson
@@ -475,13 +475,13 @@ export default function BrainPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
             placeholder="Search lessons (semantic AI search)..."
           />
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-[#2490ef] px-4 py-2 text-sm text-white hover:bg-[#1a7cd6]"
+          className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-dark)]"
         >
           Search
         </button>
@@ -502,14 +502,14 @@ export default function BrainPage() {
           type="text"
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
-          className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-[#2490ef] focus:outline-none"
+          className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-[var(--primary)] focus:outline-none"
           placeholder="Filter by tag"
         />
         <input
           type="text"
           value={agentFilter}
           onChange={(e) => setAgentFilter(e.target.value)}
-          className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-[#2490ef] focus:outline-none"
+          className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-[var(--primary)] focus:outline-none"
           placeholder="Filter by agent"
         />
         <span className="self-center text-xs text-gray-400">

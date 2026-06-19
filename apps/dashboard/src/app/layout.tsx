@@ -6,13 +6,13 @@ import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 
 export const metadata: Metadata = {
-  title: 'Quotation Automation System',
+  title: 'Workflow Automation System',
   description: 'Dashboard for quotation to purchasing to inventory to delivery to collection workflow',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Quotation System',
+    title: 'Workflow Automation',
   },
   icons: {
     icon: [
@@ -28,7 +28,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#2490ef',
+  themeColor: '#059669',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

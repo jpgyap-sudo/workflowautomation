@@ -84,7 +84,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20';
+const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20';
 
 /** Convert a File to base64 string (without data-URL prefix). */
 async function fileToBase64(file: File): Promise<string> {
@@ -171,7 +171,7 @@ function OrderInfoPreview({ quotationNumber }: { quotationNumber: string }) {
       {loading && <p className="text-xs text-gray-400">Looking up order...</p>}
       {error && <p className="text-xs text-red-500">{error}</p>}
       {order && (
-        <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 text-sm space-y-1">
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2.5 text-sm space-y-1">
           <p className="text-gray-600">
             Client: <span className="font-semibold text-gray-800">{order.client_name ?? '—'}</span>
           </p>
@@ -295,7 +295,7 @@ function DepositForm({ onResult }: { onResult: (r: ActionResult) => void }) {
         <button
           type="submit"
           disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Record Downpayment
@@ -637,7 +637,7 @@ function MarkStockReadyForm({ onResult }: { onResult: (r: ActionResult) => void 
             type="checkbox"
             checked={deductInventory}
             onChange={e => setDeductInventory(e.target.checked)}
-            className="rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]/20"
+            className="rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]/20"
           />
           <span className="text-xs text-gray-600">Deduct inventory quantities</span>
         </label>

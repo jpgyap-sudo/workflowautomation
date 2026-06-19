@@ -56,7 +56,7 @@ export default function PWAInstallPrompt() {
   return (
     <div className="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl sm:left-auto sm:right-4 sm:w-96">
       <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-[#e8f4fd] p-2 text-[#2490ef]">
+        <div className="rounded-xl bg-[var(--primary-light)] p-2 text-[var(--primary)]">
           <Download className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -75,7 +75,7 @@ export default function PWAInstallPrompt() {
         <button
           type="button"
           onClick={install}
-          className="mt-3 min-h-11 w-full rounded-xl bg-[#2490ef] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1f7fd1]"
+          className="mt-3 min-h-11 w-full rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)] transition-colors"
         >
           Install app
         </button>

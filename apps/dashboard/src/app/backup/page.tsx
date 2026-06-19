@@ -153,7 +153,7 @@ export default function BackupPage() {
       {/* Loading */}
       {isLoading && !data && (
         <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
         </div>
       )}
 
@@ -173,7 +173,7 @@ export default function BackupPage() {
               label="Total Backups"
               value={files.length}
               sub="In Supabase Storage"
-              color="text-blue-700"
+              color="text-emerald-700"
             />
             <StatCard
               icon={HardDrive}
@@ -312,7 +312,7 @@ export default function BackupPage() {
                   href="https://supabase.com/dashboard/project/zetmxacmioodgxxmursa/storage/buckets"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[#2490ef] hover:underline"
+                  className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline"
                 >
                   Supabase Dashboard
                   <ExternalLink className="h-3 w-3" />

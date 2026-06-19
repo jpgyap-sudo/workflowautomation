@@ -93,7 +93,7 @@ function NewBugModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="Brief summary of the bug"
               maxLength={200}
               required
@@ -104,7 +104,7 @@ function NewBugModal({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="What happened? What did you expect?"
               rows={4}
               maxLength={5000}
@@ -118,7 +118,7 @@ function NewBugModal({
                 type="text"
                 value={reporterName}
                 onChange={(e) => setReporterName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                 placeholder="Optional"
                 maxLength={200}
               />
@@ -129,7 +129,7 @@ function NewBugModal({
                 type="text"
                 value={reporterContact}
                 onChange={(e) => setReporterContact(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                 placeholder="Phone or email"
                 maxLength={200}
               />
@@ -141,7 +141,7 @@ function NewBugModal({
               type="text"
               value={orderReference}
               onChange={(e) => setOrderReference(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               placeholder="Quotation number (optional)"
               maxLength={100}
             />
@@ -157,7 +157,7 @@ function NewBugModal({
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+              className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
             >
               {submitting ? 'Submitting...' : 'Submit Report'}
             </button>
@@ -296,7 +296,7 @@ export default function BugsPage() {
         </div>
         <button
           onClick={() => setShowNewModal(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9]"
+          className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)]"
         >
           <Plus className="h-4 w-4" />
           Report a Bug
@@ -317,7 +317,7 @@ export default function BugsPage() {
             onClick={() => setStatusFilter(stat.label === 'All' ? 'all' : stat.label.toLowerCase().replace(' ', '_'))}
             className={`rounded-xl border p-4 text-left transition-colors ${
               (statusFilter === 'all' && stat.label === 'All') || statusFilter === stat.label.toLowerCase().replace(' ', '_')
-                ? 'border-[#2490ef] ring-1 ring-[#2490ef]'
+                ? 'border-[var(--primary)] ring-1 ring-[var(--primary)]'
                 : 'border-gray-200 hover:border-gray-300'
             } ${stat.bg}`}
           >
@@ -336,7 +336,7 @@ export default function BugsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by title, description, reporter, or order..."
-            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
           />
         </div>
         <button
@@ -378,7 +378,7 @@ export default function BugsPage() {
                       <h3 className="truncate text-sm font-semibold text-gray-900">{report.title}</h3>
                       <StatusBadge status={report.status} />
                       {report.source === 'telegram' && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
                           <MessageSquare className="h-2.5 w-2.5" />
                           Telegram
                         </span>
@@ -403,7 +403,7 @@ export default function BugsPage() {
                       value={report.status}
                       onChange={(e) => handleStatusChange(report.id, e.target.value as any)}
                       disabled={isUpdating}
-                      className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef] disabled:opacity-50"
+                      className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] disabled:opacity-50"
                     >
                       {STATUS_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>

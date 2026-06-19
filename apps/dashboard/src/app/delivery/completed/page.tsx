@@ -120,7 +120,7 @@ export default function CompletedOrdersPage() {
           <ArrowLeftIcon className="h-4 w-4" />
         </button>
         <button onClick={() => handleEditClick(order)}
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]" title="Edit order">
           <Pencil className="h-4 w-4" />
         </button>
         <button onClick={() => handleDeleteClick(order)}
@@ -295,7 +295,7 @@ export default function CompletedOrdersPage() {
           placeholder="Search by quotation number, client name, or sales agent..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:border-[#2490ef] focus:outline-none focus:ring-1 focus:ring-[#2490ef]"
+          className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
         />
         {searchQuery && (
           <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -322,7 +322,7 @@ export default function CompletedOrdersPage() {
           <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-3">
             <button onClick={toggleSelectAll} className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700">
               {selectedIds.size === filteredOrders.length ? (
-                <CheckSquare className="h-4 w-4 text-[#2490ef]" />
+                <CheckSquare className="h-4 w-4 text-[var(--primary)]" />
               ) : (
                 <Square className="h-4 w-4" />
               )}
@@ -339,7 +339,7 @@ export default function CompletedOrdersPage() {
               const balance = totalAmount - depositAmount;
               const isSelected = selectedIds.has(order.id);
               return (
-                <div key={order.id} className={`transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
+                <div key={order.id} className={`transition-colors ${isSelected ? 'bg-emerald-50' : ''}`}>
                   <div className="flex items-center justify-between px-6 py-4">
                     {/* Checkbox */}
                     <button
@@ -348,7 +348,7 @@ export default function CompletedOrdersPage() {
                       title={isSelected ? 'Deselect' : 'Select'}
                     >
                       {isSelected ? (
-                        <CheckSquare className="h-4 w-4 text-[#2490ef]" />
+                        <CheckSquare className="h-4 w-4 text-[var(--primary)]" />
                       ) : (
                         <Square className="h-4 w-4 text-gray-300 hover:text-gray-500" />
                       )}
@@ -384,7 +384,7 @@ export default function CompletedOrdersPage() {
                             type="text"
                             value={editForm.client_name}
                             onChange={(e) => setEditForm(prev => ({ ...prev, client_name: e.target.value }))}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
                           />
                         </div>
                         <div>
@@ -393,7 +393,7 @@ export default function CompletedOrdersPage() {
                             type="text"
                             value={editForm.sales_agent}
                             onChange={(e) => setEditForm(prev => ({ ...prev, sales_agent: e.target.value }))}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
                           />
                         </div>
                         <div>
@@ -402,7 +402,7 @@ export default function CompletedOrdersPage() {
                             type="number"
                             value={editForm.total_amount}
                             onChange={(e) => setEditForm(prev => ({ ...prev, total_amount: e.target.value }))}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
                           />
                         </div>
                         <div>
@@ -411,7 +411,7 @@ export default function CompletedOrdersPage() {
                             type="text"
                             value={editForm.quotation_number}
                             onChange={(e) => setEditForm(prev => ({ ...prev, quotation_number: e.target.value }))}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2490ef] focus:outline-none"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
                           />
                         </div>
                       </div>
@@ -425,7 +425,7 @@ export default function CompletedOrdersPage() {
                         <button
                           onClick={handleEditSave}
                           disabled={saving}
-                          className="rounded-lg bg-[#2490ef] px-4 py-2 text-xs font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-40"
+                          className="rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-40"
                         >
                           {saving ? 'Saving...' : 'Save'}
                         </button>

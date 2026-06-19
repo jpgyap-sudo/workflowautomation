@@ -54,7 +54,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   if (!ready) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#f4f5f7]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -70,7 +70,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   if (!isAuthenticated) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#f4f5f7]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -80,7 +80,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   if (hasNoAllowedTabs) {
     return (
-      <div className="flex min-h-dvh w-full overflow-x-hidden bg-[#f4f5f7]">
+      <div className="flex min-h-dvh w-full overflow-x-hidden bg-[var(--bg-main)]">
         <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
@@ -99,7 +99,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="flex min-h-dvh w-full overflow-x-hidden bg-[#f4f5f7]">
+      <div className="flex min-h-dvh w-full overflow-x-hidden bg-[var(--bg-main)]">
         <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onMenuClick={() => setMobileMenuOpen(true)} />

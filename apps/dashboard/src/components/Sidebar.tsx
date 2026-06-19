@@ -86,24 +86,24 @@ interface SidebarProps {
 
 function SidebarBrand({ collapsed = false, onClose }: { collapsed?: boolean; onClose?: () => void }) {
   return (
-    <div className="flex h-14 items-center justify-between border-b border-gray-200 px-4">
-      <div className="flex items-center gap-2 overflow-hidden">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2490ef] p-1">
+    <div className="flex h-14 items-center justify-between border-b border-[var(--sidebar-border)] px-4">
+      <div className="flex items-center gap-2.5 overflow-hidden">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[--primary] p-1 shadow-sm">
           <img src="/icons/icon.svg" alt="Logo" className="h-full w-full" />
         </div>
         <span
-          className={`whitespace-nowrap text-sm font-semibold text-gray-800 transition-opacity ${
+          className={`whitespace-nowrap text-sm font-semibold text-[var(--sidebar-text)] transition-opacity ${
             collapsed ? 'w-0 opacity-0' : 'opacity-100'
           }`}
         >
-          Quotation System
+          Workflow Automation
         </span>
       </div>
       {onClose && (
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+          className="rounded-lg p-2 text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-hover)] transition-colors"
           aria-label="Close menu"
         >
           <X className="h-5 w-5" />
@@ -119,7 +119,7 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
 
   return (
     <nav className="flex-1 overflow-y-auto p-2">
-      <ul className="space-y-1">
+      <ul className="space-y-0.5">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -128,14 +128,14 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
               <Link
                 href={item.href}
                 onClick={onNavigate}
-                className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${
                   isActive
-                    ? 'bg-[#e8f4fd] font-medium text-[#2490ef]'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? 'bg-[--sidebar-active] font-medium text-white shadow-sm'
+                    : 'text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]'
                 }`}
                 title={collapsed ? item.label : undefined}
               >
-                <Icon className="h-5 w-5 shrink-0" />
+                <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-[var(--sidebar-text-muted)]'}`} />
                 <span
                   className={`whitespace-nowrap transition-opacity ${
                     collapsed ? 'w-0 opacity-0' : 'opacity-100'
@@ -158,17 +158,17 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   return (
     <>
       <aside
-        className={`hidden shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-200 lg:flex ${
+        className={`hidden shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] transition-all duration-200 lg:flex ${
           collapsed ? 'w-16' : 'w-60'
         }`}
       >
         <SidebarBrand collapsed={collapsed} />
         <SidebarNav collapsed={collapsed} />
-        <div className="border-t border-gray-200 p-2">
+        <div className="border-t border-[var(--sidebar-border)] p-2">
           <button
             type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100"
+            className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--sidebar-text-muted)] transition-colors hover:bg-[var(--sidebar-hover)]"
           >
             {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
             <span className={collapsed ? 'hidden' : ''}>Collapse</span>
@@ -187,7 +187,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           className={`absolute inset-0 bg-black/40 transition-opacity ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
         />
         <aside
-          className={`absolute inset-y-0 left-0 flex w-[min(20rem,86vw)] flex-col border-r border-gray-200 bg-white shadow-xl transition-transform duration-200 ${
+          className={`absolute inset-y-0 left-0 flex w-[min(20rem,86vw)] flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] shadow-xl transition-transform duration-200 ${
             mobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >

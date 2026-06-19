@@ -12,7 +12,7 @@ interface TelegramGroup {
   name: string; envVar: string; agents: string[]; stages: string[]; color: string; icon: typeof MessageSquare;
 }
 const TELEGRAM_GROUPS: TelegramGroup[] = [
-  { name: 'Quotation Group', envVar: 'QUOTATION_GROUP_CHAT_ID', agents: ['quotation-checker'], stages: ['order_confirmation_received', 'math_verified'], color: 'border-blue-200 bg-blue-50', icon: Search },
+  { name: 'Quotation Group', envVar: 'QUOTATION_GROUP_CHAT_ID', agents: ['quotation-checker'], stages: ['order_confirmation_received', 'math_verified'], color: 'border-emerald-200 bg-emerald-50', icon: Search },
   { name: 'Purchasing Group', envVar: 'PURCHASING_GROUP_CHAT_ID', agents: ['purchasing-agent'], stages: ['purchasing_pending'], color: 'border-amber-200 bg-amber-50', icon: ShoppingCart },
   { name: 'Production Group', envVar: 'PRODUCTION_GROUP_CHAT_ID', agents: ['purchasing-agent', 'production-agent'], stages: ['production_pending', 'partial_production', 'production_in_progress', 'en_route', 'en_route_verification'], color: 'border-indigo-200 bg-indigo-50', icon: Factory },
   { name: 'Inventory Group', envVar: 'INVENTORY_GROUP_CHAT_ID', agents: ['inventory-agent'], stages: ['inventory_verification', 'inventory_arrived'], color: 'border-cyan-200 bg-cyan-50', icon: Package },
@@ -127,7 +127,7 @@ function TelegramGroupCard({ group, stageCounts }: { group: TelegramGroup; stage
             <span className="rounded-md bg-white/80 px-2 py-0.5 text-[9px] font-medium text-gray-700">🌐 All non-terminal stages</span>
           ) : group.stages.map((s) => {
             const cfg = STAGE_CONFIG[s]; const cnt = stageCounts[s] ?? 0;
-            return <span key={s} className={`rounded-md px-2 py-0.5 text-[9px] font-medium ${cnt > 0 ? 'bg-white text-gray-800 ring-1 ring-inset ring-gray-200' : 'bg-white/50 text-gray-400'}`}>{cfg?.icon} {cfg?.label ?? s}{cnt > 0 && <span className="ml-1 rounded-full bg-blue-100 px-1 text-[8px] font-bold text-blue-700">{cnt}</span>}</span>;
+            return <span key={s} className={`rounded-md px-2 py-0.5 text-[9px] font-medium ${cnt > 0 ? 'bg-white text-gray-800 ring-1 ring-inset ring-gray-200' : 'bg-white/50 text-gray-400'}`}>{cfg?.icon} {cfg?.label ?? s}{cnt > 0 && <span className="ml-1 rounded-full bg-emerald-100 px-1 text-[8px] font-bold text-emerald-700">{cnt}</span>}</span>;
           })}
         </div>
       </div>
@@ -145,7 +145,7 @@ function InlineKeyboardCard({ mapping, stageCount }: { mapping: InlineKeyboardMa
           <div><p className="text-xs font-semibold text-gray-800">{config?.label ?? mapping.stage}</p><p className="text-[9px] text-gray-400">{mapping.description}</p></div>
         </div>
         <div className="flex items-center gap-1">
-          {stageCount > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">{stageCount}</span>}
+          {stageCount > 0 && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">{stageCount}</span>}
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[8px] font-medium text-gray-500">{mapping.frequency}</span>
         </div>
       </div>
@@ -153,7 +153,7 @@ function InlineKeyboardCard({ mapping, stageCount }: { mapping: InlineKeyboardMa
         <p className="mb-1.5 text-[8px] font-medium text-gray-400 uppercase tracking-wider">Inline Keyboard</p>
         <div className="flex flex-wrap gap-1">
           {mapping.buttons.map((btn, i) => (
-            <span key={i} className={`rounded-md px-2 py-1 text-[9px] font-medium ${btn.text.includes('✅') || btn.text.includes('💰') ? 'bg-green-100 text-green-700' : btn.text.includes('⚠️') || btn.text.includes('❌') || btn.text.includes('⏳') ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{btn.text}</span>
+            <span key={i} className={`rounded-md px-2 py-1 text-[9px] font-medium ${btn.text.includes('✅') || btn.text.includes('💰') ? 'bg-green-100 text-green-700' : btn.text.includes('⚠️') || btn.text.includes('❌') || btn.text.includes('⏳') ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{btn.text}</span>
           ))}
         </div>
       </div>
@@ -236,7 +236,7 @@ export default function TelegramPage() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-blue-500" /><p className="text-xs text-gray-500">Telegram Groups</p></div>
+          <div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-emerald-500" /><p className="text-xs text-gray-500">Telegram Groups</p></div>
           <p className="mt-1 text-2xl font-bold text-gray-900">{TELEGRAM_GROUPS.length}</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -292,7 +292,7 @@ export default function TelegramPage() {
                             {m.stages.includes('*') ? <span className="text-gray-500">All non-terminal stages</span>
                             : m.stages.map((s) => {
                               const cfg = STAGE_CONFIG[s]; const cnt = stageCounts[s] ?? 0;
-                              return <span key={s} className={`rounded-md px-1.5 py-0.5 text-[9px] ${cnt > 0 ? 'bg-blue-50 text-blue-700' : 'text-gray-400'}`}>{cfg?.icon} {cfg?.label ?? s}{cnt > 0 && <span className="ml-0.5 font-bold">({cnt})</span>}</span>;
+                              return <span key={s} className={`rounded-md px-1.5 py-0.5 text-[9px] ${cnt > 0 ? 'bg-emerald-50 text-emerald-700' : 'text-gray-400'}`}>{cfg?.icon} {cfg?.label ?? s}{cnt > 0 && <span className="ml-0.5 font-bold">({cnt})</span>}</span>;
                             })}
                           </div>
                         </td>

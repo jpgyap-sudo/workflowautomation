@@ -64,7 +64,7 @@ export default function SalesPage() {
   if (monthlyLoading && !monthlyData) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-[#2490ef]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
       </div>
     );
   }
@@ -91,7 +91,7 @@ export default function SalesPage() {
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Total Computed Amount</p>
-          <p className="mt-1 text-2xl font-bold text-blue-600">{formatCurrency(totalComputed)}</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-600">{formatCurrency(totalComputed)}</p>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ export default function SalesPage() {
                   <td className="px-6 py-3 text-right font-medium text-emerald-600">
                     {formatCurrency(Number(row.total_sales))}
                   </td>
-                  <td className="px-6 py-3 text-right text-blue-600">
+                  <td className="px-6 py-3 text-right text-emerald-600">
                     {formatCurrency(Number(row.computed_sales))}
                   </td>
                   <td className="px-6 py-3 text-right">
@@ -239,9 +239,9 @@ export default function SalesPage() {
         {/* By Client */}
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center gap-2 border-b border-gray-200 px-6 py-4">
-            <Users className="h-4 w-4 text-blue-500" />
+            <Users className="h-4 w-4 text-emerald-500" />
             <h2 className="text-base font-semibold text-gray-800">Top Clients</h2>
-            <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+            <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
               {clientData.length}
             </span>
           </div>

@@ -1,14 +1,14 @@
 {
-  "name": "Quotation Automation System",
-  "short_name": "Quotation",
+  "name": "Workflow Automation System",
+  "short_name": "Workflow",
   "description": "Mobile dashboard for quotation, purchasing, inventory, delivery, and collection tracking.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#f4f5f7",
-  "theme_color": "#2490ef",
+  "background_color": "#f7f8fa",
+  "theme_color": "#059669",
   "categories": [
     "business",
     "productivity"

@@ -216,7 +216,7 @@ export default function DeliveryItemSection({
       </div>
       {isLoading && orders.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
         </div>
       ) : orders.length === 0 ? (
         <div className="py-12 text-center text-sm text-gray-400">{emptyText}</div>
@@ -305,7 +305,7 @@ export default function DeliveryItemSection({
                       )}
                       {onEdit && (
                         <button onClick={(e) => { e.stopPropagation(); onEdit(order); }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]" title="Edit order">
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]" title="Edit order">
                           <Pencil className="h-4 w-4" />
                         </button>
                       )}
@@ -325,7 +325,7 @@ export default function DeliveryItemSection({
                   <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-3">
                     {loadingItemsForOrder === order.id ? (
                       <div className="flex items-center justify-center py-4">
-                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#2490ef]" />
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[var(--primary)]" />
                       </div>
                     ) : displayItems.length === 0 ? (
                       <p className="py-2 text-center text-xs text-gray-400">No items found for this order.</p>

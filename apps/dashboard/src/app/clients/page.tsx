@@ -63,7 +63,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             onChange={(e) => setClientName(e.target.value)}
             placeholder="e.g. ABC Corporation"
             required
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
         <div className="sm:col-span-2">
@@ -72,7 +72,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             value={deliveryAddress}
             onChange={(e) => setDeliveryAddress(e.target.value)}
             placeholder="Full delivery address"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
         <div>
@@ -81,7 +81,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             value={contactNumber}
             onChange={(e) => setContactNumber(e.target.value)}
             placeholder="e.g. 0917-123-4567"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
         <div>
@@ -90,7 +90,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             value={authReceiverName}
             onChange={(e) => setAuthReceiverName(e.target.value)}
             placeholder="If different from client"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
         <div>
@@ -99,7 +99,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             value={authReceiverContact}
             onChange={(e) => setAuthReceiverContact(e.target.value)}
             placeholder="Receiver's contact number"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
         <div className="sm:col-span-2">
@@ -109,7 +109,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Any special delivery instructions..."
             rows={3}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           />
         </div>
       </div>
@@ -125,7 +125,7 @@ function ClientForm({ client, onSave, onCancel, saving }: ClientFormProps) {
         <button
           type="submit"
           disabled={saving || !clientName.trim()}
-          className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9] disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)] disabled:opacity-50"
         >
           <Check className="h-4 w-4" />
           {saving ? 'Saving...' : client ? 'Update Client' : 'Add Client'}
@@ -370,7 +370,7 @@ export default function ClientsPage() {
   if (isLoading && clients.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -380,7 +380,7 @@ export default function ClientsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-[#2490ef]" />
+          <Users className="h-5 w-5 text-[var(--primary)]" />
           <h1 className="text-lg font-semibold text-gray-900">Client Database</h1>
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
             {searchResults ? filtered.length : clients.length}
@@ -394,7 +394,7 @@ export default function ClientsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search clients..."
-              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20 sm:w-64"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20 sm:w-64"
             />
           </div>
           <button
@@ -402,7 +402,7 @@ export default function ClientsPage() {
               setEditingClient(null);
               setShowForm(true);
             }}
-            className="flex items-center gap-1.5 rounded-lg bg-[#2490ef] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7ad9]"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--primary-dark)]"
           >
             <Plus className="h-4 w-4" />
             Add Client
@@ -473,7 +473,7 @@ export default function ClientsPage() {
                         if (el) el.indeterminate = someSelected;
                       }}
                       onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                      className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                       aria-label="Select all visible clients"
                     />
                   </th>
@@ -489,13 +489,13 @@ export default function ClientsPage() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((client) => (
                   <Fragment key={client.id}>
-                    <tr className={selectedIds.has(client.id) ? 'bg-blue-50/40 hover:bg-blue-50' : 'hover:bg-gray-50'}>
+                    <tr className={selectedIds.has(client.id) ? 'bg-emerald-50/40 hover:bg-emerald-50' : 'hover:bg-gray-50'}>
                       <td className="px-4 py-4">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(client.id)}
                           onChange={(e) => handleSelectClient(client.id, e.target.checked)}
-                          className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                          className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                           aria-label={`Select ${client.client_name}`}
                         />
                       </td>
@@ -553,7 +553,7 @@ export default function ClientsPage() {
                               setShowForm(false);
                               setEditingClient(client);
                             }}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                             title="Edit client"
                           >
                             <Pencil className="h-4 w-4" />
@@ -596,10 +596,10 @@ export default function ClientsPage() {
                                     <Link
                                       key={order.id}
                                       href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`}
-                                      className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs last:border-0 hover:bg-blue-50/40 transition-colors"
+                                      className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs last:border-0 hover:bg-emerald-50/40 transition-colors"
                                     >
                                       <div className="min-w-0 flex-1">
-                                        <p className="flex items-center gap-1 font-medium text-[#2490ef] hover:underline">
+                                        <p className="flex items-center gap-1 font-medium text-[var(--primary)] hover:underline">
                                           {order.quotation_number ?? '-'}
                                           <ExternalLink className="h-3 w-3 shrink-0" />
                                         </p>

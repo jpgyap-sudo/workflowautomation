@@ -139,7 +139,7 @@ function AmountCell({
         <textarea
           value={reasonDraft}
           onChange={(e) => onReasonChange(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+          className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
           rows={2}
           placeholder="Reason required, e.g. due to change order of item"
         />
@@ -285,13 +285,13 @@ export default function OrderTable({
                       type="checkbox"
                       checked={isSelected}
                       onChange={(e) => onSelect?.(order.id, e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                      className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                     />
                   )}
                   <div className="min-w-0">
                     <Link
                       href={detailHref}
-                      className="truncate text-sm font-semibold text-[#2490ef] hover:underline"
+                      className="truncate text-sm font-semibold text-[var(--primary)] hover:underline"
                     >
                       {order.quotation_number ?? '—'}
                     </Link>
@@ -460,7 +460,7 @@ export default function OrderTable({
                 {onViewFiles && (
                   <button
                     onClick={() => onViewFiles(order)}
-                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-[#2490ef]"
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-[var(--primary)]"
                     title="View order files"
                   >
                     <FileText className="h-4 w-4" />
@@ -477,14 +477,14 @@ export default function OrderTable({
                 )}
                 <Link
                   href={detailHref}
-                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-[#2490ef] px-3 py-2 text-sm font-medium text-[#2490ef]"
+                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary)]"
                 >
                   View details
                 </Link>
                 {onEdit && (
                   <button
                     onClick={() => onEdit(order)}
-                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-[#2490ef]"
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-[var(--primary)]"
                     title="Edit order"
                   >
                     <Pencil className="h-4 w-4" />
@@ -519,7 +519,7 @@ export default function OrderTable({
                       if (el) el.indeterminate = someSelected;
                     }}
                     onChange={(e) => onSelectAll?.(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                    className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                   />
                 </th>
               )}
@@ -546,21 +546,21 @@ export default function OrderTable({
             {orders.map((order) => {
               const isSelected = selectedIds.has(order.id);
               return (
-                <tr key={order.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-blue-50/40' : ''}`}>
+                <tr key={order.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-emerald-50/40' : ''}`}>
                   {selectable && (
                     <td className="px-3 py-3">
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={(e) => onSelect?.(order.id, e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-[#2490ef] focus:ring-[#2490ef]"
+                        className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
                       />
                     </td>
                   )}
                   <td className="px-4 py-3 font-medium">
                     <Link
                       href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`}
-                      className="text-[#2490ef] hover:underline"
+                      className="text-[var(--primary)] hover:underline"
                     >
                       {order.quotation_number ?? '—'}
                     </Link>
@@ -685,7 +685,7 @@ export default function OrderTable({
                       {onViewFiles && (
                         <button
                           onClick={() => onViewFiles(order)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                           title="View order files"
                         >
                           <FileText className="h-4 w-4" />
@@ -700,13 +700,13 @@ export default function OrderTable({
                           <DollarSign className="h-4 w-4" />
                         </button>
                       )}
-                      <Link href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`} className="text-xs font-medium text-[#2490ef] hover:underline">
+                      <Link href={`/orders/${encodeURIComponent(order.quotation_number ?? order.id)}`} className="text-xs font-medium text-[var(--primary)] hover:underline">
                         View
                       </Link>
                       {onEdit && (
                         <button
                           onClick={() => onEdit(order)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2490ef]"
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--primary)]"
                           title="Edit order"
                         >
                           <Pencil className="h-4 w-4" />

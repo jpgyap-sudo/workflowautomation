@@ -1854,6 +1854,73 @@ export async function postAgentNote(orderId: string, data: {
   });
 }
 
+// ── Monitor & Error Ingestion ──────────────────────────────────────────
+
+export interface MonitorError {
+  id: string;
+  error_type: string;
+  message: string;
+  stack: string | null;
+  source_url: string | null;
+  component: string | null;
+  metadata: Record<string, unknown> | null;
+  user_agent: string | null;
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  acknowledged: boolean;
+  created_at: string;
+}
+
+export interface MonitorSnapshot {
+  id: string;
+  snapshot_type: string;
+  summary: string;
+  details: Record<string, unknown>;
+  health_score: number;
+  agent_error_count: number;
+  slow_query_count: number;
+  stuck_order_count: number;
+  bug_report_count: number;
+  error_count: number;
+  warnings: string[];
+  created_at: string;
+}
+
+export async function ingestMonitorError(data: {
+  error_type: string;
+  message: string;
+  stack?: string;
+  source_url?: string;
+  component?: string;
+  metadata?: Record<string, unknown>;
+  severity?: 'info' | 'warning' | 'error' | 'critical';
+}): Promise<{ ok: boolean; id: string }> {
+  return fetchJson<{ ok: boolean; id: string }>('/monitor/ingest', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getMonitorErrors(query_params?: {
+  limit?: number;
+  severity?: string;
+  since?: string;
+}): Promise<{ ok: boolean; errors: MonitorError[] }> {
+  const params = new URLSearchParams();
+  if (query_params?.limit) params.set('limit', String(query_params.limit));
+  if (query_params?.severity) params.set('severity', query_params.severity);
+  if (query_params?.since) params.set('since', query_params.since);
+  const qs = params.toString();
+  return fetchJson<{ ok: boolean; errors: MonitorError[] }>(`/monitor/errors${qs ? `?${qs}` : ''}`);
+}
+
+export async function getMonitorSnapshots(limit = 10): Promise<{ ok: boolean; snapshots: MonitorSnapshot[] }> {
+  return fetchJson<{ ok: boolean; snapshots: MonitorSnapshot[] }>(`/monitor/snapshots?limit=${limit}`);
+}
+
+export async function getMonitorHealth(): Promise<{ ok: boolean; status: string }> {
+  return fetchJson<{ ok: boolean; status: string }>('/monitor/health');
+}
+
 export async function getOrderNotes(orderId: string): Promise<{ id: string; order_id: string; agent_name: string; note: string; created_at: string }[]> {
   return fetchJson(`/orders/${encodeURIComponent(orderId)}/notes`);
 }

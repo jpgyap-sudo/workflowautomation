@@ -52,7 +52,7 @@ export default function DashboardPage() {
   if (isLoading && !stats) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
       </div>
     );
   }
@@ -82,7 +82,7 @@ export default function DashboardPage() {
           title="Total Orders"
           value={stats?.total_orders ?? 0}
           icon={FileText}
-          color="bg-blue-100 text-blue-600"
+          color="bg-emerald-100 text-emerald-600"
         />
         <StatCard
           title="Active Orders"

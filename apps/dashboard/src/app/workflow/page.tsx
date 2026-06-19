@@ -42,8 +42,8 @@ const AGENT_MAPPINGS: AgentMapping[] = [
   {
     name: 'quotation-checker',
     icon: Search,
-    color: 'border-blue-200 bg-blue-50',
-    headingColor: 'text-blue-700',
+    color: 'border-emerald-200 bg-emerald-50',
+    headingColor: 'text-emerald-700',
     description: 'Verifies quotation math and checks for discrepancies',
     monitors: ['order_confirmation_received'],
     triggers: [
@@ -143,7 +143,7 @@ const AGENT_ICONS: Record<string, typeof Bot> = {
 };
 
 const AGENT_COLORS: Record<string, string> = {
-  'quotation-checker': 'border-blue-200 bg-blue-50',
+  'quotation-checker': 'border-emerald-200 bg-emerald-50',
   'purchasing-agent': 'border-amber-200 bg-amber-50',
   'production-agent': 'border-indigo-200 bg-indigo-50',
   'inventory-agent': 'border-cyan-200 bg-cyan-50',
@@ -153,7 +153,7 @@ const AGENT_COLORS: Record<string, string> = {
 };
 
 const AGENT_HEADING_COLORS: Record<string, string> = {
-  'quotation-checker': 'text-blue-700',
+  'quotation-checker': 'text-emerald-700',
   'purchasing-agent': 'text-amber-700',
   'inventory-agent': 'text-cyan-700',
   'delivery-agent': 'text-purple-700',
@@ -349,7 +349,7 @@ function StageNode({
       <button
         onClick={() => onJump(stage)}
         className={`min-w-[180px] flex-1 rounded-xl border-2 p-4 text-left transition-shadow hover:shadow-md ${
-          count > 0 ? 'cursor-pointer hover:border-[#2490ef]/40' : 'cursor-default'
+          count > 0 ? 'cursor-pointer hover:border-[var(--primary)]/40' : 'cursor-default'
         } ${info?.autoAdvance ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}
         title={count > 0 ? `View ${count} order(s) at this stage` : 'No orders here'}
       >
@@ -363,7 +363,7 @@ function StageNode({
               </p>
             </div>
           </div>
-          <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+          <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${count > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
             {count}
           </span>
         </div>
@@ -450,7 +450,7 @@ function AgentMappingCard({
               >
                 {STAGE_CONFIG[s]?.icon} {STAGE_CONFIG[s]?.label ?? s}
                 {cnt > 0 && (
-                  <span className="ml-1 rounded-full bg-blue-100 px-1 text-[8px] font-bold text-blue-700">
+                  <span className="ml-1 rounded-full bg-emerald-100 px-1 text-[8px] font-bold text-emerald-700">
                     {cnt}
                   </span>
                 )}
@@ -673,7 +673,7 @@ function ProcurementFlowDiagram() {
 
   const legend = (
     <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
-      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-blue-100 ring-1 ring-blue-300" /> Stage</span>
+      <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-emerald-100 ring-1 ring-emerald-300" /> Stage</span>
       <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-purple-100 ring-1 ring-purple-300" /> Agent action</span>
       <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded bg-emerald-100 ring-1 ring-emerald-300" /> Auto/system step</span>
       <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rotate-45 bg-amber-100 ring-1 ring-amber-300" /> Decision</span>
@@ -870,7 +870,7 @@ export default function WorkflowPage() {
                 <span className="inline-block h-3 w-3 rounded border-2 border-gray-200 bg-white" />
                 Manual (team action required)
               </span>
-              <span className="flex items-center gap-1 text-[#2490ef]">
+              <span className="flex items-center gap-1 text-[var(--primary)]">
                 Click any stage node to jump to its orders â†’
               </span>
             </div>
@@ -924,7 +924,7 @@ export default function WorkflowPage() {
                           )}
                         </td>
                         <td className="py-2.5 pr-4">
-                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${count > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${count > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
                             {count}
                           </span>
                         </td>
@@ -1027,7 +1027,7 @@ export default function WorkflowPage() {
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-xs text-gray-500">Active</p>
-                <p className="text-2xl font-bold text-blue-600">{activeOrders.length}</p>
+                <p className="text-2xl font-bold text-emerald-600">{activeOrders.length}</p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-xs text-gray-500">Completed</p>
@@ -1040,7 +1040,7 @@ export default function WorkflowPage() {
                 placeholder="Search ordersâ€¦"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setStageFilter(null); }}
-                className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#2490ef] focus:ring-2 focus:ring-[#2490ef]/20"
+                className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
               />
               {(stageFilter || search) && (
                 <button
@@ -1056,7 +1056,7 @@ export default function WorkflowPage() {
           {/* Active stage filter pill */}
           {stageFilter && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
                 {STAGE_CONFIG[stageFilter]?.icon} {STAGE_CONFIG[stageFilter]?.label ?? stageFilter}
               </span>
               <button onClick={() => setStageFilter(null)} className="text-xs text-gray-400 hover:text-gray-600">
@@ -1068,7 +1068,7 @@ export default function WorkflowPage() {
           {/* Orders grouped by stage */}
           {ordersLoading && orders.length === 0 ? (
             <div className="flex items-center justify-center py-20">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#2490ef]" />
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--primary)]" />
             </div>
           ) : (
             STAGE_ORDER.filter((stage) => !stageFilter || stage === stageFilter).map((stage) => {

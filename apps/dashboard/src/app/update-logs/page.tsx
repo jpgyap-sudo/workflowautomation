@@ -57,8 +57,8 @@ function StatusBadge({ status }: { status: string }) {
 // ── Extension Badge ────────────────────────────────────────────────────
 
 const EXTENSION_COLORS: Record<string, string> = {
-  'Roo': 'bg-blue-50 text-blue-700 border-blue-200',
-  'Roo (Code)': 'bg-blue-50 text-blue-700 border-blue-200',
+  'Roo': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Roo (Code)': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Claude': 'bg-purple-50 text-purple-700 border-purple-200',
   'Claude Sonnet 4.6': 'bg-purple-50 text-purple-700 border-purple-200',
   'Codex': 'bg-cyan-50 text-cyan-700 border-cyan-200',
@@ -182,7 +182,7 @@ export default function UpdateLogsPage() {
       </div>
 
       {/* Access info banner */}
-      <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+      <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
         <ShieldAlert className="h-4 w-4 shrink-0" />
         <span>
           <strong>Admin access only.</strong> These logs contain internal development tracking
@@ -199,7 +199,7 @@ export default function UpdateLogsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search logs..."
-            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-700 placeholder:text-gray-400 focus:border-[#2490ef] focus:outline-none"
+            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-700 placeholder:text-gray-400 focus:border-[var(--primary)] focus:outline-none"
           />
         </div>
 
@@ -208,7 +208,7 @@ export default function UpdateLogsPage() {
           <select
             value={filterExtension}
             onChange={(e) => setFilterExtension(e.target.value)}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#2490ef] focus:outline-none"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[var(--primary)] focus:outline-none"
           >
             <option value="all">All Extensions</option>
             {extensions.map((ext) => (
@@ -219,7 +219,7 @@ export default function UpdateLogsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#2490ef] focus:outline-none"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[var(--primary)] focus:outline-none"
           >
             <option value="all">All Status</option>
             <option value="done">Done</option>
