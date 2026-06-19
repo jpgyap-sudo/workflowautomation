@@ -1055,38 +1055,31 @@ function buildGanttStatusSummary(order: any, clientInfo: string): GanttStatusSum
 }
 
 // ── Smart Order Query — natural language detection ─────────────────────
-// Detects order numbers in free-text messages and auto-responds with status.
-async function trySmartOrderQuery(chatId: string, text: string): Promise<string | null> {
-  // Match QTN patterns: QTN-2026-001, QTN 2026-001, qtn2026001
-  const qtnMatch = text.match(/\b(qtn[-\s]?\d{4}[-\s]?\d+)\b/i);
-  if (!qtnMatch) return null;
-
-  const raw = qtnMatch[1];
-  // Normalize to QTN-YYYY-NNN
-  const normalized = raw
-    .replace(/\s+/g, '-')
-    .replace(/^qtn/i, 'QTN')
-    .replace(/(\d{4})-(\d+)/, '$1-$2');
-
+/**
+ * OpenClaw-powered smart query — replaced old QTN-only trySmartOrderQuery.
+ * Routes ANY natural language query through the OpenClaw engine which:
+ * 1. Searches by client name, quotation number, stage, keywords
+ * 2. Returns formatted order status with ETA + suggested action buttons
+ * 3. Falls back to CentralBrain lessons, then Gemini AI
+ */
+async function trySmartOrderQuery(chatId: string, text: string): Promise<{ text: string; actions?: Array<{ label: string; callback_data: string }> } | null> {
   try {
-    const res = await fetch(`${apiBaseUrl}/orders/${encodeURIComponent(normalized)}`);
+    const res = await fetch(`${apiBaseUrl}/openclaw/query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, username: null, chat_type: 'group' }),
+      signal: AbortSignal.timeout(12_000),
+    });
     if (!res.ok) return null;
-    const order = await res.json();
-
-    // Build client delivery info (Gap 1A fix: add section header)
-    let clientInfo = '';
-    const client = order.client_name ? await lookupClient(order.client_name).catch(() => null) : null;
-    if (client) {
-      const info = formatClientInfo(client);
-      if (info) clientInfo = `🚚 *Delivery Info:*\n${info}`;
-    } else if (order.delivery_address) {
-      clientInfo = `🚚 *Delivery Info:*\n📍 ${escapeMarkdown(order.delivery_address)}`;
-      if (order.contact_number) clientInfo += `\n📞 ${escapeMarkdown(order.contact_number)}`;
-      if (order.authorized_receiver_name) clientInfo += `\n👤 *Auth. Receiver:* ${escapeMarkdown(order.authorized_receiver_name)}`;
-    }
-
-    const summary = buildGanttStatusSummary(order, clientInfo);
-    return summary.text;
+    const data = await res.json() as {
+      formatted_reply?: string;
+      reply: string;
+      suggested_actions?: Array<{ label: string; callback_data: string }>;
+    };
+    return {
+      text: data.formatted_reply ?? data.reply,
+      actions: data.suggested_actions,
+    };
   } catch {
     return null;
   }
@@ -2120,18 +2113,26 @@ bot.on(message('text'), async (ctx) => {
         }
       }
 
-      // Issue 4A+4B fix: Smart order query as fallback in production chat
-      // Only fires if there's an explicit QTN and the production assistant didn't handle it
-      if (hasQtn) {
-        const smartReply = await trySmartOrderQuery(chatId, text);
-        if (smartReply) {
-          await safeReply(ctx, smartReply, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      // OpenClaw fallback: route any query through the intelligence engine
+      // (client names, QTN numbers, natural language — everything)
+      {
+        const smartResult = await trySmartOrderQuery(chatId, text);
+        if (smartResult) {
+          let keyboard;
+          if (smartResult.actions && smartResult.actions.length > 0) {
+            keyboard = Markup.inlineKeyboard(
+              smartResult.actions.map((a) => [Markup.button.callback(a.label, a.callback_data)])
+            );
+          }
+          await safeReply(ctx, smartResult.text, {
+            parse_mode: 'HTML',
+            ...(keyboard ? keyboard : {}),
+          });
           // Still refresh the production panel (Issue 4B fix)
           await showOrUpdatePanel(ctx, chatId);
           return;
         }
       }
-
       // Always show/update the persistent control panel after any message in the production chat
       await showOrUpdatePanel(ctx, chatId);
       return;
@@ -2274,12 +2275,20 @@ Is this correct?`,
         }
       }
 
-      // No date detected — try smart order query if QTN present before asking for date
-      // Issue 4A fix: schedule chat may contain order-related messages too
-      if (hasQtn) {
-        const smartReply = await trySmartOrderQuery(chatId, text);
-        if (smartReply) {
-          await safeReply(ctx, smartReply, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      // No date detected — try OpenClaw for any order/client query before asking for date
+      {
+        const smartResult = await trySmartOrderQuery(chatId, text);
+        if (smartResult) {
+          let keyboard;
+          if (smartResult.actions && smartResult.actions.length > 0) {
+            keyboard = Markup.inlineKeyboard(
+              smartResult.actions.map((a) => [Markup.button.callback(a.label, a.callback_data)])
+            );
+          }
+          await safeReply(ctx, smartResult.text, {
+            parse_mode: 'HTML',
+            ...(keyboard ? keyboard : {}),
+          });
           return;
         }
       }
@@ -2300,12 +2309,21 @@ I'll save this as a schedule. What date should this be on?
       return;
     }
 
-    // ── Smart Order Query: auto-detect QTN in DM / non-specialized groups ──
-    // Issue 4A fix: smart query runs here only for non-production, non-schedule chats
-    if (mentionsBot || hasQtn) {
-      const smartReply = await trySmartOrderQuery(chatId, text);
-      if (smartReply) {
-        await safeReply(ctx, smartReply, { parse_mode: 'Markdown', disable_web_page_preview: true });
+    // ── OpenClaw: universal query for DM / non-specialized groups ──
+    // Routes ALL messages through the intelligence engine
+    {
+      const smartResult = await trySmartOrderQuery(chatId, text);
+      if (smartResult) {
+        let keyboard;
+        if (smartResult.actions && smartResult.actions.length > 0) {
+          keyboard = Markup.inlineKeyboard(
+            smartResult.actions.map((a) => [Markup.button.callback(a.label, a.callback_data)])
+          );
+        }
+        await safeReply(ctx, smartResult.text, {
+          parse_mode: 'HTML',
+          ...(keyboard ? keyboard : {}),
+        });
         return;
       }
     }
