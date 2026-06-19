@@ -548,7 +548,7 @@ export async function bulkDeleteOrders(ids: string[], actionToken: string): Prom
 
 export async function setProduction(
   id: string,
-  data: { production_started: boolean; estimated_production_days?: number; action_token: string }
+  data: { production_started: boolean; estimated_production_days?: number; started_at?: string; action_token: string }
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/set-production`, {
     method: 'POST',
@@ -568,7 +568,7 @@ export async function reportProductionStatus(
 
 export async function finishProduction(
   id: string,
-  data: { delivery_estimated_days: number; updated_by?: string; action_token: string }
+  data: { delivery_estimated_days: number; finished_at?: string; updated_by?: string; action_token: string }
 ): Promise<{ ok: boolean; order: Order }> {
   return fetchJson<{ ok: boolean; order: Order }>(`/orders/${encodeURIComponent(id)}/finish-production`, {
     method: 'POST',

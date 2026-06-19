@@ -204,14 +204,26 @@ function checkAndRunAgents(): void {
     let shouldRun = false;
 
     if (agent.runHours && agent.runHours.length > 0) {
-      // Time-of-day scheduling: calculate next scheduled time
-      const nextRun = getNextRunTime(agent);
-      if (nextRun !== null) {
-        // Allow a 5-minute window after the scheduled time
-        const windowStart = nextRun;
-        const windowEnd = nextRun + 5 * 60 * 1000;
-        if (now >= windowStart && now <= windowEnd && last < windowStart) {
-          shouldRun = true;
+      // Time-of-day scheduling with circuit breaker
+      let effectiveInterval: number | null = null;
+      if (errCount >= CIRCUIT_BREAKER_THRESHOLD) {
+        // Circuit breaker: skip this scheduled slot, try next one
+        effectiveInterval = agent.intervalMs * Math.min(errCount, CIRCUIT_BREAKER_MAX_MULTIPLIER);
+        console.warn(
+          `[AgentScheduler] CIRCUIT BREAKER — ${agent.name} has ${errCount} consecutive errors. ` +
+          `Cooling down for ${Math.round(effectiveInterval / 1000 / 60)} minutes`
+        );
+      }
+
+      if (effectiveInterval === null || now - last >= effectiveInterval) {
+        const nextRun = getNextRunTime(agent);
+        if (nextRun !== null) {
+          // Allow a 5-minute window after the scheduled time
+          const windowStart = nextRun;
+          const windowEnd = nextRun + 5 * 60 * 1000;
+          if (now >= windowStart && now <= windowEnd && last < windowStart) {
+            shouldRun = true;
+          }
         }
       }
     } else {

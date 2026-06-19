@@ -2560,6 +2560,25 @@ export default function ProductionPage() {
   }>({ open: false, order: null, items: [], loadingItems: false });
   const [itemDays, setItemDays] = useState<Record<string, string>>({});
   const [overallProductionDays, setOverallProductionDays] = useState('');
+  const [productionStartDate, setProductionStartDate] = useState('');
+
+  // Sync days <-> calendar: when days changes, auto-calc finish date
+  // When finish date changes, auto-calc days
+  const [productionFinishDate, setProductionFinishDate] = useState('');
+  useEffect(() => {
+    const days = parseInt(overallProductionDays);
+    if (days > 0 && productionStartDate) {
+      const start = new Date(productionStartDate);
+      const finish = new Date(start.getTime() + days * 86_400_000);
+      setProductionFinishDate(finish.toISOString().split('T')[0]);
+    }
+  }, [overallProductionDays, productionStartDate]);
+  useEffect(() => {
+    if (productionFinishDate && productionStartDate) {
+      const diff = Math.round((new Date(productionFinishDate).getTime() - new Date(productionStartDate).getTime()) / 86_400_000);
+      if (diff > 0) setOverallProductionDays(diff.toString());
+    }
+  }, [productionFinishDate]);
 
   // File viewer state
   const { viewingFilesOrder, orderFiles, handleViewFiles, refreshFiles, closeViewer } = useOrderFileViewer();
@@ -2701,7 +2720,15 @@ export default function ProductionPage() {
           )
         );
       }
-      await setProduction(pending.orderId, { production_started: true, estimated_production_days: pending.days, action_token: actionToken });
+      const startedAt = pending.startDate
+        ? new Date(pending.startDate + 'T00:00:00+08:00').toISOString()
+        : undefined;
+      await setProduction(pending.orderId, {
+        production_started: true,
+        estimated_production_days: pending.days,
+        started_at: startedAt,
+        action_token: actionToken,
+      });
       refresh();
     } catch (err: any) { alert('Failed to start production: ' + (err.message ?? 'Unknown error')); }
     finally { (window as any).__pendingStartProductionData = null; }
@@ -2837,6 +2864,11 @@ export default function ProductionPage() {
     setProdDaysModal({ open: true, order, items: [], loadingItems: true });
     setItemDays({});
     setOverallProductionDays(order.estimated_production_days?.toString() ?? '');
+    // Set default start date = production_started_at if exists, else today
+    setProductionStartDate(order.production_started_at
+      ? new Date(order.production_started_at).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0]);
+    setProductionFinishDate('');
     try {
       const res = await getOrderItems(order.id);
       const items = res.items ?? [];
@@ -2872,7 +2904,12 @@ export default function ProductionPage() {
       description: `You are about to start production for order "${order.quotation_number ?? '—'}" with ${days} day(s) overall estimate.`,
       pendingAction: 'setProduction',
     });
-    (window as any).__pendingStartProductionData = { orderId: order.id, days, itemDays: pendingItemDays };
+    (window as any).__pendingStartProductionData = {
+      orderId: order.id,
+      days,
+      itemDays: pendingItemDays,
+      startDate: productionStartDate || undefined,
+    };
   }
 
   async function handleFinishProduction(order: Order) {
@@ -3822,9 +3859,20 @@ export default function ProductionPage() {
                   </div>
                 )}
 
+                {/* Start date picker */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-700">Started on (optional)</label>
+                  <input
+                    type="date"
+                    value={productionStartDate}
+                    onChange={(e) => setProductionStartDate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-gray-700">
-                    Overall estimated production days
+                    Production days
                     {prodDaysModal.items.length > 0 && (
                       <span className="ml-1 font-normal text-gray-400">(auto-set to longest item)</span>
                     )}
@@ -3841,6 +3889,25 @@ export default function ProductionPage() {
                     <span className="shrink-0 text-xs text-gray-500">days</span>
                   </div>
                 </div>
+
+                {/* Target finish date (auto-synced) */}
+                {overallProductionDays && productionStartDate && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-gray-700">
+                      Target finish date
+                      <span className="ml-1 font-normal text-gray-400">(auto-calculated)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={productionFinishDate}
+                      onChange={(e) => setProductionFinishDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      Changing this auto-updates the days above
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-1">
                   <button

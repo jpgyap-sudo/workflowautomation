@@ -13754,6 +13754,11 @@ app.patch('/bug-reports/:id', async (request, reply) => {
 });
 
 // ── Monitor & Error Ingestion ──────────────────────────────────────────
+// Rate limiting state (in-memory, per-IP)
+const ingestRateLimit = new Map<string, { count: number; windowStart: number }>();
+
+const INGEST_RATE_LIMIT_WINDOW_MS = 60_000;
+const INGEST_RATE_LIMIT_PER_IP = 30;
 
 const ingestErrorSchema = z.object({
   error_type: z.string().min(1).max(100),
@@ -13761,16 +13766,31 @@ const ingestErrorSchema = z.object({
   stack: z.string().max(10000).optional(),
   source_url: z.string().max(500).optional(),
   component: z.string().max(200).optional(),
+  screen_size: z.string().max(50).optional(),
   metadata: z.record(z.unknown()).optional(),
   severity: z.enum(['info', 'warning', 'error', 'critical']).optional().default('error'),
 });
 
 app.post('/monitor/ingest', async (request, reply) => {
+  // Per-IP rate limiting
+  const ip = request.ip;
+  const now = Date.now();
+  const rl = ingestRateLimit.get(ip) ?? { count: 0, windowStart: now };
+  if (now - rl.windowStart > INGEST_RATE_LIMIT_WINDOW_MS) {
+    rl.count = 0;
+    rl.windowStart = now;
+  }
+  rl.count++;
+  ingestRateLimit.set(ip, rl);
+  if (rl.count > INGEST_RATE_LIMIT_PER_IP) {
+    return reply.status(429).send({ error: 'Rate limited — too many requests' });
+  }
+
   const body = ingestErrorSchema.parse(request.body);
   const ua = request.headers['user-agent'] ?? null;
   const rows = await query(
-    `INSERT INTO monitor_errors (error_type, message, stack, source_url, component, metadata, user_agent, severity)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    `INSERT INTO monitor_errors (error_type, message, stack, source_url, component, metadata, user_agent, screen_size, severity)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
     [
       body.error_type,
       body.message,
@@ -13779,24 +13799,33 @@ app.post('/monitor/ingest', async (request, reply) => {
       body.component ?? null,
       body.metadata ? JSON.stringify(body.metadata) : '{}',
       ua,
+      body.screen_size ?? null,
       body.severity,
     ]
   );
 
-  // If 10+ errors of same type in last hour, auto-create a bug report
+  // Auto-create bug report if cluster threshold crossed AND no existing report for this type
   const clusterCount = await query<{ cnt: number }>(
     `SELECT COUNT(*)::INT AS cnt FROM monitor_errors
      WHERE error_type = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
     [body.error_type]
   );
-  if (clusterCount[0]?.cnt === 10) {
-    // Threshold crossed — create bug report
+
+  const alreadyReported = await query<{ id: string }>(
+    `SELECT id FROM bug_reports
+     WHERE source = 'monitor' AND title LIKE $1
+       AND created_at > NOW() - INTERVAL '1 hour'
+     LIMIT 1`,
+    [`%${body.error_type}%`]
+  );
+
+  if (clusterCount[0]?.cnt >= 10 && alreadyReported.length === 0) {
     await query(
       `INSERT INTO bug_reports (title, description, source, reporter_name)
        VALUES ($1, $2, 'monitor', 'Auto-Monitor')`,
       [
-        `⚠️ Error cluster detected: "${body.error_type}" × 10+ in 1 hour`,
-        `Auto-detected by System Monitor.\n\nError type "${body.error_type}" reached 10 occurrences in the last hour.\n\nLatest: ${body.message}\n\nComponent: ${body.component ?? 'N/A'}\nURL: ${body.source_url ?? 'N/A'}`,
+        `⚠️ Error cluster detected: "${body.error_type}" × ${clusterCount[0].cnt} in 1 hour`,
+        `Auto-detected by System Monitor.\n\nError type "${body.error_type}" reached ${clusterCount[0].cnt} occurrences in the last hour.\n\nLatest: ${body.message}\n\nComponent: ${body.component ?? 'N/A'}\nURL: ${body.source_url ?? 'N/A'}`,
       ]
     );
     await invalidateCache(['bug-reports:*']);
