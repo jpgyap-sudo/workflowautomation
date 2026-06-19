@@ -16719,3 +16719,41 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: replace Unicode box/block chars with safe ASCII in OpenClaw responses — fixes '?' rendering on Telegram mobile
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a38fd2c07d16b0c59c0b4785f15ce0e7e56c6e80
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** a38fd2c07d16b0c59c0b4785f15ce0e7e56c6e80
+**Files:** apps/api/src/services/openClawService.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+Commit: fix: replace Unicode box/block chars with safe ASCII in OpenClaw responses — fixes '?' rendering on Telegram mobile
+Files: apps/api/src/services/openClawService.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+Project: workflowautomation
+
+---
+*Original commit message: fix: replace Unicode box/block chars with safe ASCII in OpenClaw responses — fixes '?' rendering on Telegram mobile*
+
+#### Lesson Learned
+
+Commit: fix: replace Unicode box/block chars with safe ASCII in OpenClaw responses — fixes '?' rendering on Telegram mobile
+Files: apps/api/src/services/openClawService.ts,apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

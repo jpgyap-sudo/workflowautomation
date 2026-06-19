@@ -10,7 +10,7 @@
  * - Cross-order queries ("what orders are delayed?")
  *
  * Architecture:
- * 1. Parse query → extract intent + entities (order ref, client, stage, date)
+ * 1. Parse query -> extract intent + entities (order ref, client, stage, date)
  * 2. Fetch live data from DB
  * 3. Search CentralBrain for relevant lessons
  * 4. Build context-aware prompt for Gemini/OpenRouter
@@ -28,7 +28,7 @@ const GEMINI_MODEL = process.env.OPENCLAW_MODEL ?? 'gemini-2.0-flash';
 const GEMINI_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}`;
 
 /**
- * Stage → human-readable label with emoji
+ * Stage -> human-readable label with emoji
  */
 const STAGE_EMOJI: Record<string, string> = {
   order_confirmation_received: '📋',
@@ -112,6 +112,8 @@ interface OrderContext {
   finished_item_count?: number;
   stage_updates_count?: number;
   days_in_stage?: number;
+  projected_lead_time?: number | null;
+  projected_lead_time_started_at?: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -130,8 +132,8 @@ function stageProgress(currentStage: string): string {
 }
 
 function formatAmount(amount: number | null): string {
-  if (amount == null) return '—';
-  return `₱${Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+  if (amount == null) return '-';
+  return `PHP ${Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 }
 
 function getStageEmoji(stage: string): string {
@@ -268,64 +270,81 @@ function formatOrderDetail(order: OrderContext, lessonContext?: string): string 
     const remaining = Math.round((estFinish.getTime() - Date.now()) / 86_400_000);
     const daysInProd = daysAgo(order.production_started_at);
     if (remaining > 0) {
-      etaLine = `\n⏱️ Est. production finish: ${estFinish.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} (${remaining} day(s) remaining)`;
+      etaLine = `\nEst. production finish: ${estFinish.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} (${remaining} day(s) remaining)`;
     } else {
-      etaLine = `\n⚠️ Production overdue by ${Math.abs(remaining)} day(s)`;
+      etaLine = `\nProduction overdue by ${Math.abs(remaining)} day(s)`;
     }
     etaLine += ` (${daysInProd} day(s) in production)`;
   }
 
-  // Production finished → delivery ETA
+  // Production finished -> delivery ETA
   let deliveryEtaLine = '';
   if (order.production_finished && order.delivery_estimated_days) {
     const finishedAt = new Date(order.production_finished_at!);
     const estDelivery = new Date(finishedAt.getTime() + order.delivery_estimated_days * 86_400_000);
-    deliveryEtaLine = `\n📦 Est. delivery: ${estDelivery.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} (${order.delivery_estimated_days} day(s) from finish)`;
+    deliveryEtaLine = `\nEst. delivery: ${estDelivery.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} (${order.delivery_estimated_days} day(s) from finish)`;
+  }
+
+  // Gantt projected deadline (from projected_lead_time)
+  let deadlineLine = '';
+  if (order.projected_lead_time && order.projected_lead_time_started_at) {
+    const startedAt = new Date(order.projected_lead_time_started_at);
+    const deadline = new Date(startedAt.getTime() + order.projected_lead_time * 86_400_000);
+    const remainingDays = Math.round((deadline.getTime() - Date.now()) / 86_400_000);
+    const isDelayed = remainingDays < 0;
+    const statusIcon = isDelayed ? '🔴' : remainingDays <= Math.ceil(order.projected_lead_time * 0.15) ? '🟡' : '🟢';
+    deadlineLine = `\n${statusIcon} Gantt deadline: ${deadline.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    if (isDelayed) {
+      deadlineLine += ` (Overdue by ${Math.abs(remainingDays)} day(s))`;
+    } else {
+      deadlineLine += ` (${remainingDays} day(s) remaining)`;
+    }
   }
 
   // Delivery date
   let deliveryDateLine = '';
   if (order.delivery_date) {
-    deliveryDateLine = `\n📅 Scheduled delivery: ${new Date(order.delivery_date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}`;
+    deliveryDateLine = `\nScheduled delivery: ${new Date(order.delivery_date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}`;
   }
 
   // Items
   let itemLine = '';
   if (order.item_count != null && order.item_count > 0) {
-    itemLine = `\n📦 Items: ${order.finished_item_count ?? 0}/${order.item_count} produced`;
+    itemLine = `\nItems: ${order.finished_item_count ?? 0}/${order.item_count} produced`;
   }
 
   // Payment
   let paymentLine = '';
   if (order.deposit_paid) {
-    paymentLine += `\n💳 Downpayment: ${order.deposit_amount ? formatAmount(order.deposit_amount) : 'Yes'}${order.deposit_verified ? ' ✅ Verified' : ' ⏳ Pending verification'}`;
+    paymentLine += `\nDownpayment: ${order.deposit_amount ? formatAmount(order.deposit_amount) : 'Yes'}${order.deposit_verified ? ' (Verified)' : ' (Pending)'}`;
   }
   if (order.balance_paid) {
-    paymentLine += `\n💰 Balance: Paid`;
+    paymentLine += `\nBalance: Paid`;
   }
 
   // Completed
   let completedLine = '';
   if (order.completed_at) {
-    completedLine = `\n🎉 Completed: ${new Date(order.completed_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    completedLine = `\nCompleted: ${new Date(order.completed_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   }
 
   const ref = order.quotation_number ?? order.id.slice(0, 8);
 
   return (
-    `${emoji} <b>${ref}</b> — ${order.client_name ?? 'Unknown'}\n` +
+    `${emoji} <b>${ref}</b> - ${order.client_name ?? 'Unknown'}\n` +
     `──────────────────\n` +
     `📊 Stage: <b>${stageLabel}</b>\n` +
     `${progress}\n` +
-    `👤 Sales: ${order.sales_agent ?? '—'}\n` +
-    `💰 Amount: ${formatAmount(order.total_amount)}\n` +
+    `Sales: ${order.sales_agent ?? '-'}\n` +
+    `Amount: ${formatAmount(order.total_amount)}\n` +
     itemLine +
+    deadlineLine +
     etaLine +
     deliveryEtaLine +
     deliveryDateLine +
     paymentLine +
     completedLine +
-    (lessonContext ? `\n\n🧠 <i>💡 ${lessonContext}</i>` : '')
+    (lessonContext ? `\n\n💡 <i>${lessonContext}</i>` : '')
   );
 }
 
@@ -333,7 +352,7 @@ function formatOrderBrief(order: OrderContext): string {
   const emoji = getStageEmoji(order.current_stage);
   const stageLabel = STAGE_LABELS[order.current_stage] ?? order.current_stage;
   const ref = order.quotation_number ?? order.id.slice(0, 8);
-  return `${emoji} <b>${ref}</b> — ${order.client_name ?? 'Unknown'} → <b>${stageLabel}</b>`;
+  return `${emoji} <b>${ref}</b> - ${order.client_name ?? 'Unknown'} -> <b>${stageLabel}</b>`;
 }
 
 // ── Main Query Handler ────────────────────────────────────────────
@@ -371,7 +390,7 @@ export async function handleOpenClawQuery(
         lessonContext = l.summary ?? l.title;
       }
     } catch {
-      // Non-fatal — lessons are optional
+      // Non-fatal - lessons are optional
     }
 
     const reply = formatOrderDetail(order, lessonContext);
@@ -428,7 +447,7 @@ export async function handleOpenClawQuery(
     const brainResults = await searchLessons(trimmed, { limit: 3 });
     if (brainResults.lessons.length > 0) {
       let reply = '🧠 <b>CentralBrain Knowledge</b>\n\n';
-      reply += `I couldn't find a specific order for "<i>${trimmed.substring(0, 100)}</i>", but here are relevant lessons:\n\n`;
+      reply += `I couldn't find a specific order for "${trimmed.substring(0, 100)}", but here are relevant lessons:\n\n`;
 
       for (let i = 0; i < Math.min(brainResults.lessons.length, 3); i++) {
         const l = brainResults.lessons[i];
@@ -494,7 +513,7 @@ Keep it to 2-3 sentences. Plain text only.`;
 
   // Final fallback
   return {
-    reply: `I couldn't find any order matching "${trimmed.substring(0, 100)}". Try:\n• Checking the quotation number format (e.g., QTN-2026-001)\n• Using /brain for knowledge base queries\n• Typing the client name`,
+    reply: `I couldn't find any order matching "${trimmed.substring(0, 100)}". Try:\n- Checking the quotation number format (e.g., QTN-2026-001)\n- Using /brain for knowledge base queries\n- Typing the client name`,
     confidence: 'low',
     data_source: 'general',
   };

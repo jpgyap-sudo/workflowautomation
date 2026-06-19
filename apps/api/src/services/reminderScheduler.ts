@@ -264,6 +264,35 @@ async function broadcastTodaySchedules(): Promise<void> {
   }
 }
 
+// ── Daily Reminder Cap ─────────────────────────────────────────────
+// Tracks which (order_id, stage) pairs have been sent today.
+// Ensures each reminder fires at most ONCE per calendar day,
+// preventing spam on server restart or rapid scheduler ticks.
+const REMINDER_DAILY_SENT = new Set<string>();
+let REMINDER_CAP_DATE = '';
+
+function getReminderCapKey(orderId: string, stage: string): string {
+  return `${orderId}:${stage}`;
+}
+
+function isReminderAlreadySentToday(orderId: string, stage: string): boolean {
+  // Reset the set at the start of a new day
+  const todayUTC = new Date().toISOString().slice(0, 10);
+  if (REMINDER_CAP_DATE !== todayUTC) {
+    REMINDER_DAILY_SENT.clear();
+    REMINDER_CAP_DATE = todayUTC;
+  }
+  return REMINDER_DAILY_SENT.has(getReminderCapKey(orderId, stage));
+}
+
+function markReminderSentToday(orderId: string, stage: string): void {
+  try {
+    REMINDER_DAILY_SENT.add(getReminderCapKey(orderId, stage));
+  } catch {
+    // Non-fatal — cap is best-effort
+  }
+}
+
 export async function processDueReminders(): Promise<number> {
   const now = new Date().toISOString();
 
@@ -352,6 +381,21 @@ export async function processDueReminders(): Promise<number> {
       await query(
         `UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
         [reminder.id]
+      );
+      continue;
+    }
+
+    // ── Daily cap: skip if this (order, stage) was already sent today ──────
+    // Persists across scheduler ticks via in-memory Set. Resets at UTC midnight.
+    // Prevents spam on server restart when all pending reminders become due.
+    if (isReminderAlreadySentToday(reminder.order_id, reminder.stage)) {
+      // Still update next_run_at so the scheduler advances past this entry
+      await query(
+        `UPDATE reminders
+         SET next_run_at = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [nextPhtReminderTime().toISOString(), reminder.id]
       );
       continue;
     }
@@ -877,6 +921,8 @@ export async function processDueReminders(): Promise<number> {
     }
 
     if (ok) {
+      // Mark sent in daily cap tracker
+      markReminderSentToday(reminder.order_id, reminder.stage);
       sent++;
 
       // For once-frequency timed reminders, mark as completed after sending.
