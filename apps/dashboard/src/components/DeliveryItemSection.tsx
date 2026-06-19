@@ -316,7 +316,7 @@ export default function DeliveryItemSection({
                         </button>
                       )}
                     </div>
-                    {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                    {isExpanded ? <ChevronUp className="h-4 w-4 text-[#2490ef]" /> : <ChevronDown className="h-4 w-4 text-[#2490ef]" />}
                   </div>
                 </button>
 

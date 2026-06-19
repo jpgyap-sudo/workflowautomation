@@ -945,7 +945,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onViewFiles, onStartProdu
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
-          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+          {expanded ? <ChevronUp className="h-4 w-4 text-[#2490ef]" /> : <ChevronDown className="h-4 w-4 text-[#2490ef]" />}
         </div>
       </button>
 
@@ -1473,7 +1473,7 @@ function ProductionItemSection({
                         Complete Partial Verification →
                       </button>
                     )}
-                    {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                    {isExpanded ? <ChevronUp className="h-4 w-4 text-[#2490ef]" /> : <ChevronDown className="h-4 w-4 text-[#2490ef]" />}
                   </div>
                 </button>
 
@@ -2075,7 +2075,7 @@ function ProductionFinishedTrackingSection({
                     >
                       <td className="px-6 py-4 font-medium text-gray-900">
                         <div className="flex items-center gap-2">
-                          {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                          {isExpanded ? <ChevronUp className="h-4 w-4 text-[#2490ef]" /> : <ChevronDown className="h-4 w-4 text-[#2490ef]" />}
                           <QuotationNumberCell order={order} onViewFiles={onViewFiles} />
                         </div>
                       </td>

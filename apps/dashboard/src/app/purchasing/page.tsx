@@ -179,7 +179,7 @@ function OrderRow({ order, onEdit, onDelete, onRevert, onStartProductionWorkflow
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
-          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+          {expanded ? <ChevronUp className="h-4 w-4 text-[#2490ef]" /> : <ChevronDown className="h-4 w-4 text-[#2490ef]" />}
         </div>
       </button>
       {expanded && (

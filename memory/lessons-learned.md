@@ -16795,3 +16795,41 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: missing var() wrappers in Tailwind arbitrary values for CSS variables
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit a26c55c128c291ab72b5c4ed950f17f5239e0406
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** a26c55c128c291ab72b5c4ed950f17f5239e0406
+**Files:** apps/dashboard/src/components/Sidebar.tsx
+
+**Summary:**
+Commit: fix: missing var() wrappers in Tailwind arbitrary values for CSS variables
+Files: apps/dashboard/src/components/Sidebar.tsx
+Project: workflowautomation
+
+---
+*Original commit message: fix: missing var() wrappers in Tailwind arbitrary values for CSS variables*
+
+#### Lesson Learned
+
+Commit: fix: missing var() wrappers in Tailwind arbitrary values for CSS variables
+Files: apps/dashboard/src/components/Sidebar.tsx
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

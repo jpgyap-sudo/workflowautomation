@@ -91,7 +91,7 @@ function LessonCard({
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 px-4 py-3 text-left"
       >
-        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
+        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-[#2490ef]" /> : <ChevronRight className="h-4 w-4 shrink-0 text-[#2490ef]" />}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${conf.bg} ${conf.color}`}>
