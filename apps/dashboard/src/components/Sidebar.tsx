@@ -88,7 +88,7 @@ function SidebarBrand({ collapsed = false, onClose }: { collapsed?: boolean; onC
   return (
     <div className="flex h-14 items-center justify-between border-b border-[var(--sidebar-border)] px-4">
       <div className="flex items-center gap-2.5 overflow-hidden">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[--primary] p-1 shadow-sm">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)] p-1 shadow-sm">
           <img src="/icons/icon.svg" alt="Logo" className="h-full w-full" />
         </div>
         <span
@@ -130,7 +130,7 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
                 onClick={onNavigate}
                 className={`flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${
                   isActive
-                    ? 'bg-[--sidebar-active] font-medium text-white shadow-sm'
+                    ? 'bg-[var(--sidebar-active)] font-medium text-white shadow-sm'
                     : 'text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]'
                 }`}
                 title={collapsed ? item.label : undefined}
