@@ -16681,3 +16681,41 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] fix: remove status/progress/how-long/when keywords from production assistant trigger — route to OpenClaw for richer resp
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 785ea9b61c7dc1cfa81d138f887b58c4643ec89c
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** 785ea9b61c7dc1cfa81d138f887b58c4643ec89c
+**Files:** apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+
+**Summary:**
+Commit: fix: remove status/progress/how-long/when keywords from production assistant trigger — route to OpenClaw for richer responses instead
+Files: apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+Project: workflowautomation
+
+---
+*Original commit message: fix: remove status/progress/how-long/when keywords from production assistant trigger — route to OpenClaw for richer responses instead*
+
+#### Lesson Learned
+
+Commit: fix: remove status/progress/how-long/when keywords from production assistant trigger — route to OpenClaw for richer responses instead
+Files: apps/telegram-bot/src/bot.ts,memory/lesson-index.jsonl,memory/lessons-learned.md
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

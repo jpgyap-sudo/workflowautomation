@@ -126,7 +126,7 @@ function stageProgress(currentStage: string): string {
   if (idx === -1) return '';
   const total = STAGE_ORDER.length;
   const blocks = Math.round((idx / total) * 10);
-  return '█'.repeat(blocks) + '░'.repeat(10 - blocks) + ` ${idx}/${total}`;
+  return '#'.repeat(blocks) + '-'.repeat(10 - blocks) + ` [${idx}/${total}]`;
 }
 
 function formatAmount(amount: number | null): string {
@@ -314,9 +314,9 @@ function formatOrderDetail(order: OrderContext, lessonContext?: string): string 
 
   return (
     `${emoji} <b>${ref}</b> — ${order.client_name ?? 'Unknown'}\n` +
-    `━━━━━━━━━━━━━━━━\n` +
+    `──────────────────\n` +
     `📊 Stage: <b>${stageLabel}</b>\n` +
-    `<code>${progress}</code>\n` +
+    `${progress}\n` +
     `👤 Sales: ${order.sales_agent ?? '—'}\n` +
     `💰 Amount: ${formatAmount(order.total_amount)}\n` +
     itemLine +
@@ -409,7 +409,7 @@ export async function handleOpenClawQuery(
   const orders = await findMultipleOrdersByQuery(trimmed);
 
   if (orders.length > 0) {
-    let reply = '📋 <b>Active Orders</b>\n━━━━━━━━━━━━━━━━\n';
+    let reply = '📋 <b>Active Orders</b>\n──────────────────\n';
     for (const o of orders) {
       reply += formatOrderBrief(o) + '\n';
     }

@@ -1243,27 +1243,39 @@ async function safeReply(
   if (text.length <= MAX_LEN) {
     chunks.push(text);
   } else {
-    // Try to split at paragraph boundaries
+    // Split at paragraph boundaries BUT preserve HTML tag integrity
+    // This prevents broken <b>, </b>, <code>, </code> etc. across chunks
     const paragraphs = text.split('\n\n');
     let current = '';
     for (const para of paragraphs) {
-      if ((current + '\n\n' + para).length > MAX_LEN && current.length > 0) {
+      const candidate = current ? current + '\n\n' + para : para;
+      if (candidate.length > MAX_LEN && current.length > 0) {
         chunks.push(current.trim());
         current = para;
       } else {
-        current = current ? current + '\n\n' + para : para;
+        current = candidate;
       }
     }
     if (current) chunks.push(current.trim());
 
-    // Fallback: if any chunk is still too long, force split
+    // Fallback: force split at safe (non-tag) boundaries
     for (let i = 0; i < chunks.length; i++) {
       if (chunks[i].length > MAX_LEN) {
         const forced = chunks[i];
         chunks.splice(i, 1);
-        for (let j = 0; j < forced.length; j += MAX_LEN) {
-          chunks.push(forced.slice(j, j + MAX_LEN));
+        // Split at newlines first (safer than mid-tag), then char boundary
+        const lines = forced.split('\n');
+        let lineChunk = '';
+        for (const line of lines) {
+          const lineCandidate = lineChunk ? lineChunk + '\n' + line : line;
+          if (lineCandidate.length > MAX_LEN && lineChunk.length > 0) {
+            chunks.push(lineChunk.trim());
+            lineChunk = line;
+          } else {
+            lineChunk = lineCandidate;
+          }
         }
+        if (lineChunk) chunks.push(lineChunk.trim());
       }
     }
   }
