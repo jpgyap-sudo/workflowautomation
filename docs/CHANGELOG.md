@@ -10,6 +10,7 @@
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
 | `31b3c02` | SuperRoo | feat: CentralBrain PostgreSQL learning layer (pgvector) + OpenClaw Universal Order Intelligence Engine — /brain API, dashboard Brain page, Telegram /ask & /brain commands, 4-phase query engine with live ETA + CentralBrain fallback + Gemini AI | ✅ |
+| `HEAD` | SuperRoo | chore: migrate domain from track.abcx124.xyz to track.homeatelier.ph — updated all source (.ts), compiled dist (.js), scripts (.ps1, .mjs), test files, Nginx config, and .env.example | ✅ |
 
 ## 2026-06-02
 
