@@ -437,17 +437,6 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             )}
           </div>
 
-          {/* Order Confirmation File */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
-            <label className="text-xs font-medium text-gray-700">📝 Order Confirmation</label>
-            <div className="flex gap-2">
-              <input ref={orderConfirmFileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={e => setOrderConfirmFile(e.target.files?.[0] ?? null)} />
-              <button type="button" onClick={() => orderConfirmFileRef.current?.click()} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
-                {orderConfirmFile ? orderConfirmFile.name : 'Choose file'}
-              </button>
-            </div>
-          </div>
-
           {/* Payment Proof — multiple slips */}
           <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-3">
             <label className="text-xs font-medium text-gray-700">💰 Payment Before Production</label>
