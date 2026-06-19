@@ -9,8 +9,7 @@
 
 | Commit | Extension | Description | Deployed |
 |--------|-----------|-------------|----------|
-| `pending` | SuperRoo | feat: CentralBrain PostgreSQL learning layer — pgvector-semantic lesson storage, /brain API, Telegram /brain command, dashboard Brain page | ❌ |
-| `pending` | SuperRoo | feat: OpenClaw Universal Order Intelligence Engine — /ask command with live ETA, stage progress bar, CentralBrain fallback, inline action buttons | ❌ |
+| `31b3c02` | SuperRoo | feat: CentralBrain PostgreSQL learning layer (pgvector) + OpenClaw Universal Order Intelligence Engine — /brain API, dashboard Brain page, Telegram /ask & /brain commands, 4-phase query engine with live ETA + CentralBrain fallback + Gemini AI | ❌ |
 
 ## 2026-06-02
 
