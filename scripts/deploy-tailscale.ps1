@@ -1,4 +1,4 @@
-# Deploy Script — builds directly on the VPS via SSH over Tailscale
+﻿# Deploy Script — builds directly on the VPS via SSH over Tailscale
 # Usage:
 #   .\scripts\deploy-tailscale.ps1                    # Full deploy
 #   .\scripts\deploy-tailscale.ps1 -SkipBackup        # Skip DB backup
