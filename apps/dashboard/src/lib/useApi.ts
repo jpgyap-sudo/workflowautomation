@@ -219,8 +219,13 @@ export function useRealtimeSubscription() {
 }
 
 // ── Hook: Monthly Sales ──────────────────────────────────────────────
-export function useMonthlySales() {
-  return useSWR<MonthlySales>('/sales/monthly', fetcher, SWR_CONFIG);
+export function useMonthlySales(range?: { from?: string; to?: string }) {
+  const params = new URLSearchParams();
+  if (range?.from) params.set('from', range.from);
+  if (range?.to) params.set('to', range.to);
+  const qs = params.toString();
+  const key = `/sales/monthly${qs ? `?${qs}` : ''}`;
+  return useSWR<MonthlySales>(key, fetcher, SWR_CONFIG);
 }
 
 export function useSalesByAgent() {

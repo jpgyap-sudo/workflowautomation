@@ -4267,7 +4267,7 @@ app.post('/orders/:id/inventory-verify-item', async (request, reply) => {
   if (INVENTORY_GROUP_CHAT_ID) {
     const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = orderRows[0].client_name ?? 'Unknown';
-    const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
+    const verificationUrl = `https://track.homeatelier.ph/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
     const displayLabel = body.arrived_qty !== undefined
       ? `Arrived ${body.arrived_qty}, Verified ${newVerifiedQty}/${item.quantity}${body.arrived_qty > item.quantity ? ` (excess ${body.arrived_qty - item.quantity} → stock)` : ''}`
       : body.action === 'all' ? 'All verified' : body.action === 'partial' ? `Partial (${newVerifiedQty}/${item.quantity})` : 'Not yet';
@@ -4506,7 +4506,7 @@ app.post('/orders/:id/bulk-inventory-verify', async (request, reply) => {
   if (INVENTORY_GROUP_CHAT_ID && verifiedNames.length > 0) {
     const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = orderRows[0].client_name ?? 'Unknown';
-    const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
+    const verificationUrl = `https://track.homeatelier.ph/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
     setImmediate(() => {
       notifyGroupChat(
         INVENTORY_GROUP_CHAT_ID,
@@ -4662,7 +4662,7 @@ app.post('/orders/:id/bulk-inventory-unverify', async (request, reply) => {
   if (INVENTORY_GROUP_CHAT_ID && unverifiedNames.length > 0) {
     const ref = orderRows[0].quotation_number ?? `Order #${id.slice(0, 8)}`;
     const client = orderRows[0].client_name ?? 'Unknown';
-    const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
+    const verificationUrl = `https://track.homeatelier.ph/inventory/verification/${encodeURIComponent(orderRows[0].quotation_number ?? id.slice(0, 8))}`;
     setImmediate(() => {
       notifyGroupChat(
         INVENTORY_GROUP_CHAT_ID,
@@ -4770,7 +4770,7 @@ app.post('/orders/:id/complete-inventory-verification', async (request, reply) =
     ? verifiedItemRows.map((item) => `- ${item.name}: ${Number(item.verified_qty ?? 0)}/${Number(item.quantity ?? 0)} verified`).join('\n')
     : '- No item quantities recorded';
   const verificationRef = orderRows[0].quotation_number ?? id.slice(0, 8);
-  const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(verificationRef)}`;
+  const verificationUrl = `https://track.homeatelier.ph/inventory/verification/${encodeURIComponent(verificationRef)}`;
 
   // Advance to inventory_arrived
   await query(
@@ -4948,7 +4948,7 @@ app.post('/orders/:id/complete-inventory-verification-partial', async (request, 
     : '- No item quantities recorded';
 
   const verificationRef = orderRows[0].quotation_number ?? id.slice(0, 8);
-  const verificationUrl = `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(verificationRef)}`;
+  const verificationUrl = `https://track.homeatelier.ph/inventory/verification/${encodeURIComponent(verificationRef)}`;
 
   // Reset en_route_status for items that haven't been verified yet
   // This ensures remaining items go through the proper En Route → Arrival → Verification flow
@@ -11048,7 +11048,7 @@ Text to parse: "${text.substring(0, 1000)}"`;
             headers: {
               'Authorization': `Bearer ${openRouterKey}`,
               'Content-Type': 'application/json',
-              'HTTP-Referer': process.env.DASHBOARD_BASE_URL || 'https://track.abcx124.xyz',
+              'HTTP-Referer': process.env.DASHBOARD_BASE_URL || 'https://track.homeatelier.ph',
               'X-Title': 'Quotation Automation System',
             },
             body: JSON.stringify({
@@ -11320,9 +11320,47 @@ app.get('/dashboard/stats', async () => {
 
 // ── Sales: Monthly Summary ────────────────────────────────────────────
 
-app.get('/sales/monthly', async () => {
-  const cached = await cacheGet<object>('sales:monthly');
-  if (cached) return cached;
+app.get('/sales/monthly', async (request) => {
+  const { from, to } = request.query as { from?: string; to?: string };
+  const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+  const fromDate = from && dateSchema.safeParse(from).success ? from : null;
+  const toDate = to && dateSchema.safeParse(to).success ? to : null;
+
+  // No range given — default view (last 24 months), cached
+  if (!fromDate && !toDate) {
+    const cached = await cacheGet<object>('sales:monthly');
+    if (cached) return cached;
+
+    const rows = await query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+        COUNT(*)::int AS order_count,
+        SUM(total_amount)::numeric(14,2) AS total_sales,
+        SUM(computed_amount)::numeric(14,2) AS computed_sales
+      FROM orders
+      WHERE status = 'active'
+        AND total_amount IS NOT NULL
+      GROUP BY DATE_TRUNC('month', created_at)
+      ORDER BY month DESC
+      LIMIT 24
+    `);
+
+    const result = { monthly: rows };
+    await cacheSet('sales:monthly', result);
+    return result;
+  }
+
+  // Custom range — filter by created_at, not cached (varies per request)
+  const params: string[] = [];
+  const conditions = [`status = 'active'`, `total_amount IS NOT NULL`];
+  if (fromDate) {
+    params.push(fromDate);
+    conditions.push(`created_at >= $${params.length}::date`);
+  }
+  if (toDate) {
+    params.push(toDate);
+    conditions.push(`created_at < ($${params.length}::date + interval '1 day')`);
+  }
 
   const rows = await query(`
     SELECT
@@ -11331,17 +11369,12 @@ app.get('/sales/monthly', async () => {
       SUM(total_amount)::numeric(14,2) AS total_sales,
       SUM(computed_amount)::numeric(14,2) AS computed_sales
     FROM orders
-    WHERE status = 'active'
-      AND total_amount IS NOT NULL
+    WHERE ${conditions.join(' AND ')}
     GROUP BY DATE_TRUNC('month', created_at)
     ORDER BY month DESC
-    LIMIT 24
-  `);
+  `, params);
 
-  const result = { monthly: rows };
-
-  await cacheSet('sales:monthly', result);
-  return result;
+  return { monthly: rows };
 });
 
 app.get('/sales/by-agent', async () => {
