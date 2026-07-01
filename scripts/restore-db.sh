@@ -18,9 +18,20 @@ if [ $# -lt 1 ]; then
   exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Load .env if present
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$PROJECT_DIR/.env"
+  set +a
+fi
+
 BACKUP_FILE="$1"
 CONTAINER="${CONTAINER:-qas_postgres}"
-DB_USER="${POSTGRES_USER:-quotation_user}"
+DB_USER="${POSTGRES_USER:-n8n}"
 DB_NAME="${POSTGRES_DB:-quotation_automation}"
 
 if [ ! -f "$BACKUP_FILE" ]; then
