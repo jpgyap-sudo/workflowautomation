@@ -13,7 +13,7 @@
 
 const OPENROUTER_API_KEY   = process.env.OPENROUTER_API_KEY   ?? '';
 const OPENROUTER_API_BASE  = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_SITE_URL  = process.env.DASHBOARD_BASE_URL   ?? 'https://track.abcx124.xyz';
+const OPENROUTER_SITE_URL  = process.env.DASHBOARD_BASE_URL   ?? 'https://track.homeatelier.ph';
 const OPENROUTER_SITE_NAME = 'Quotation Automation System';
 
 // ── OpenAI / ChatGPT Fallback ────────────────────────────────────────────────

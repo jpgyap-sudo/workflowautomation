@@ -11,7 +11,7 @@
 
 import { getActionToken, api } from './test-e2e-helpers.mjs';
 
-const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
+const BASE = process.env.BASE_URL ?? 'https://track.homeatelier.ph/api';
 
 let passed = 0;
 let failed = 0;

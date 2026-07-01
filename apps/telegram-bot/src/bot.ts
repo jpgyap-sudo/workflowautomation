@@ -2676,7 +2676,7 @@ Is this a downpayment or full payment?`,
         );
       } catch (err: any) {
         const errorMsg = err.message ?? String(err);
-        const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
+        const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.homeatelier.ph';
         await ctx.reply(
           `? *Error Recording ${label}*\n\n` +
           `Order: *${quotationNumber}*\n` +
@@ -5957,7 +5957,7 @@ bot.action(/^en_route_verif:yes:(.+)$/, async (ctx) => {
       updated_by: ctx.from?.username ?? `user_${userId}`,
     });
     await logAction({ chatId, userId, username, label: 'All Items Arrived (En Route Verification)', quotationNumber });
-    const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.abcx124.xyz'}/inventory/verification/${encodeURIComponent(quotationNumber)}`;
+    const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.homeatelier.ph'}/inventory/verification/${encodeURIComponent(quotationNumber)}`;
     await ctx.editMessageText(
       `✅ *All Items Arrived!* — ${quotationNumber}\n\nOrder advanced to Inventory Verification stage.\n\nInventory team will now verify the items.\n\n🔍 [Open Inventory Verification](${inventoryVerifLink})`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -6008,7 +6008,7 @@ bot.action(/^en_route_verif:check:(.+)$/, async (ctx) => {
         return `${icon} ${i.name} ×${i.quantity} — ${i.en_route_status ?? 'not_yet'}`;
       })
       .join('\n');
-    const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.abcx124.xyz'}/inventory/verification/${encodeURIComponent(quotationNumber)}`;
+    const inventoryVerifLink = `${process.env.DASHBOARD_URL ?? 'https://track.homeatelier.ph'}/inventory/verification/${encodeURIComponent(quotationNumber)}`;
     await ctx.editMessageText(
       `📋 *Item Arrival Status* — ${quotationNumber}\n\n${itemsList}\n\n💡 Items marked ✅ arrived can be verified early:\n[🔍 Open Inventory Verification](${inventoryVerifLink})\n\nUse the dashboard to update individual item statuses.`,
       { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -7751,7 +7751,7 @@ bot.action('vision:extract_yes', async (ctx) => {
     const token = shareData.token;
 
     // Build dashboard URL
-    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.homeatelier.ph';
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
@@ -8281,7 +8281,7 @@ bot.action(/^deposit:confirm_yes:(.+)$/, async (ctx) => {
     });
     const errorMsg = error.message ?? String(error);
     // Provide a fallback: let the user try manual entry or record via dashboard
-    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.homeatelier.ph';
     await ctx.editMessageText(
       `❌ *Failed to record deposit*\n\n` +
       `Order: *${quotationNumber}*\n` +
@@ -9141,7 +9141,7 @@ bot.action('vision:retry_extract', async (ctx) => {
     const token = shareData.token;
 
     // Build dashboard URL
-    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.abcx124.xyz';
+    const dashboardBase = process.env.DASHBOARD_BASE_URL ?? 'https://track.homeatelier.ph';
     const visionUrl = `${dashboardBase}/vision?token=${token}`;
 
     resetStep(chatId);
@@ -10111,7 +10111,7 @@ bot.command('help', async (ctx) => {
     'Reply directly to the reminder buttons to update status.\n\n' +
     '*📊 Dashboard*\n' +
     'All data syncs to the web dashboard in real-time:\n' +
-    'https://track.abcx124.xyz\n\n' +
+    'https://track.homeatelier.ph\n\n' +
     '*Group Setup Tips:*\n' +
     '• Disable *privacy mode* in @BotFather so the bot can see messages and files in groups.\n' +
     '• Only one user can interact at a time per group. If busy, wait for the current user to finish or tap Cancel.\n' +
@@ -10455,12 +10455,12 @@ async function startWebhook(): Promise<void> {
   await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
 
   // Set webhook to the public HTTPS endpoint
-  // track.abcx124.xyz proxies /api/telegram-webhook -> http://api:8080/telegram-webhook
+  // track.homeatelier.ph proxies /api/telegram-webhook -> http://api:8080/telegram-webhook
   // The API server then forwards to http://telegram-bot:WEBHOOK_PORT/
   const publicWebhookUrl =
     process.env.PUBLIC_WEBHOOK_BASE_URL ??
     process.env.DASHBOARD_BASE_URL ??
-    'https://track.abcx124.xyz';
+    'https://track.homeatelier.ph';
   const webhookUrl = `${publicWebhookUrl.replace(/\/+$/, '')}/api/telegram-webhook`;
 
   await bot.telegram.setWebhook(webhookUrl, {

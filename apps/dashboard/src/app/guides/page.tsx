@@ -1263,9 +1263,9 @@ export default function GuidesPage() {
                       Open <ExternalLink className="h-3 w-3" />
                     </a>
                     {isExpanded ? (
-                      <ChevronUp className="h-5 w-5 text-[#2490ef]" />
+                      <ChevronUp className="arrow-animated h-6 w-6" />
                     ) : (
-                      <ChevronDown className="h-5 w-5 text-[#2490ef]" />
+                      <ChevronDown className="arrow-animated h-6 w-6" />
                     )}
                   </div>
                 </button>
@@ -1303,9 +1303,9 @@ export default function GuidesPage() {
                                 </span>
                               </div>
                               {stepExpanded ? (
-                                <ChevronUp className="h-4 w-4 text-[#2490ef]" />
+                                <ChevronUp className="arrow-animated h-5 w-5" />
                               ) : (
-                                <ChevronDown className="h-4 w-4 text-[#2490ef]" />
+                                <ChevronDown className="arrow-animated h-5 w-5" />
                               )}
                             </button>
 

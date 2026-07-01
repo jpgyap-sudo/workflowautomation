@@ -836,7 +836,7 @@ function MatchingVerificationSection({ onUpdated }: { onUpdated: () => void }) {
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {isExpanded ? <ChevronDown className="h-4 w-4 text-[#2490ef]" /> : <ChevronRight className="h-4 w-4 text-[#2490ef]" />}
+                    {isExpanded ? <ChevronDown className="arrow-animated h-5 w-5" /> : <ChevronRight className="arrow-animated h-5 w-5" />}
                     <div className="text-left">
                       <p className="text-sm font-semibold text-gray-900">{order.quotation_number ?? `#${order.id.slice(0, 8)}`}</p>
                       <p className="text-xs text-gray-500">{order.client_name ?? 'No client'}</p>

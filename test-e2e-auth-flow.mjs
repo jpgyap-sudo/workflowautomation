@@ -12,7 +12,7 @@
  *   TEST_EMAIL=you@example.com node test-e2e-auth-flow.mjs
  */
 
-const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
+const BASE = process.env.BASE_URL ?? 'https://track.homeatelier.ph/api';
 const EMAIL = process.env.TEST_EMAIL ?? 'jpgyap@gmail.com';
 
 let passed = 0;

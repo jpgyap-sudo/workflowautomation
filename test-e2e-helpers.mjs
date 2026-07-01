@@ -7,7 +7,7 @@
 
 import { execSync } from 'child_process';
 
-const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
+const BASE = process.env.BASE_URL ?? 'https://track.homeatelier.ph/api';
 const EMAIL = process.env.TEST_EMAIL ?? 'jpgyap@gmail.com';
 const SSH_KEY = process.env.SSH_KEY ?? 'C:\\Users\\User\\.ssh\\id_ed25519_roo';
 const VPS_HOST = process.env.VPS_HOST ?? 'root@100.86.182.7';

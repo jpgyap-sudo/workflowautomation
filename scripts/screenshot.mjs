@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-const BASE_URL = 'https://track.abcx124.xyz';
+const BASE_URL = 'https://track.homeatelier.ph';
 
 async function capture(url, label) {
   const browser = await chromium.launch({ headless: true });

@@ -152,8 +152,8 @@ Write-Host ""
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host "  ✅ Deployment Complete" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Green
-Write-Host "  Dashboard: https://track.abcx124.xyz" -ForegroundColor Green
-Write-Host "  API:       https://track.abcx124.xyz/api/health" -ForegroundColor Green
+Write-Host "  Dashboard: https://track.homeatelier.ph" -ForegroundColor Green
+Write-Host "  API:       https://track.homeatelier.ph/api/health" -ForegroundColor Green
 Write-Host ""
 Write-Host "Quick status check:" -ForegroundColor Gray
 Write-Host "  .\scripts\deploy-tailscale.ps1 -StatusOnly" -ForegroundColor Gray

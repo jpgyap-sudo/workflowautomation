@@ -411,7 +411,7 @@ Order auto-advanced to En Route. Please verify dispatch item-by-item.`;
 
     // Ask about the next pending item (process of elimination)
     const progressBar = buildProgressBar(prodPct);
-    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+    const dashboardUrl = `https://track.homeatelier.ph/orders/${qn}`;
 
     let message = `⏳ <b>Partial Production Check</b>\n`;
     message += `Order: #${qn} (${client})\n`;
@@ -715,7 +715,7 @@ Order auto-advanced to En Route. Please verify en route status for each item.`;
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(prodPct);
-    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+    const dashboardUrl = `https://track.homeatelier.ph/orders/${qn}`;
 
     let message = `🏗️ <b>Item-Level Production Check</b>\n`;
     message += `Order: #${qn} (${client})\n`;
@@ -904,7 +904,7 @@ async function checkItemLevelEnRoute(order: OrderRow): Promise<AgentResult | nul
 
     // Ask about the next unconfirmed item
     const progressBar = buildProgressBar(enRoutePct);
-    const dashboardUrl = `https://track.abcx124.xyz/production`;
+    const dashboardUrl = `https://track.homeatelier.ph/production`;
     const thresholdMet = enRoutePct > 50;
 
     let message = `🚚 <b>Item-Level En Route Check</b>\n`;

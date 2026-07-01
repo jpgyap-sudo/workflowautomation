@@ -9,7 +9,7 @@
  *   node test-e2e-vision-extraction.mjs
  */
 
-const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
+const BASE = process.env.BASE_URL ?? 'https://track.homeatelier.ph/api';
 
 let passed = 0;
 let failed = 0;

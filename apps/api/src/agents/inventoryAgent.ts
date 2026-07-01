@@ -105,7 +105,7 @@ function buildProgressBar(pct: number, width: number = 10): string {
 
 
 function buildInventoryVerificationUrl(quotationNumber: string): string {
-  return `https://track.abcx124.xyz/inventory/verification/${encodeURIComponent(quotationNumber)}`;
+  return `https://track.homeatelier.ph/inventory/verification/${encodeURIComponent(quotationNumber)}`;
 }
 
 function formatVerificationItemList(items: OrderItemRow[], mode: 'pending' | 'verified' = 'pending'): string {
@@ -563,7 +563,7 @@ async function checkItemLevelInventory(order: OrderRow): Promise<AgentResult | n
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
     const progressBar = buildProgressBar(inventoryPct);
-    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+    const dashboardUrl = `https://track.homeatelier.ph/orders/${qn}`;
 
     // Build Hermes context for smarter messaging
     const hermesCtx: HermesProductionContext = {
@@ -679,7 +679,7 @@ export async function checkInventory(order: OrderRow): Promise<AgentResult> {
     const escalationLevel = await getEscalationLevel(order.id, 'inventory_arrived');
     const qn = order.quotation_number ?? 'unknown';
     const client = order.client_name ?? 'Unknown';
-    const dashboardUrl = `https://track.abcx124.xyz/orders/${qn}`;
+    const dashboardUrl = `https://track.homeatelier.ph/orders/${qn}`;
 
     // No item-level tracking — ask the inventory group to confirm arrival
     if (escalationLevel >= 3) {

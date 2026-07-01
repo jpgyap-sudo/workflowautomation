@@ -171,7 +171,7 @@ async function testDownloadFile() {
   if (listStatus !== 200 || !listData.files?.length) { fail('No files to download'); return; }
 
   const fileId = listData.files[0].id;
-  const res = await fetch(`${process.env.BASE_URL ?? 'https://track.abcx124.xyz/api'}/orders/${testOrderId}/files/${fileId}/download`);
+  const res = await fetch(`${process.env.BASE_URL ?? 'https://track.homeatelier.ph/api'}/orders/${testOrderId}/files/${fileId}/download`);
 
   if (res.status === 200 || res.status === 302) {
     ok(`File download returned ${res.status}`);

@@ -16833,3 +16833,79 @@ Project: workflowautomation
 cross-project, local-fallback
 
 ---
+
+### Lesson: [workflowautomation] refactor: merge Quotation File and Order Confirmation into single file upload in New Order form
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 181026d2e2c8c658f21a15464632bd9e2256bd25
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** 181026d2e2c8c658f21a15464632bd9e2256bd25
+**Files:** apps/dashboard/src/app/orders/page.tsx
+
+**Summary:**
+Commit: refactor: merge Quotation File and Order Confirmation into single file upload in New Order form
+Files: apps/dashboard/src/app/orders/page.tsx
+Project: workflowautomation
+
+---
+*Original commit message: refactor: merge Quotation File and Order Confirmation into single file upload in New Order form*
+
+#### Lesson Learned
+
+Commit: refactor: merge Quotation File and Order Confirmation into single file upload in New Order form
+Files: apps/dashboard/src/app/orders/page.tsx
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---
+
+### Lesson: [workflowautomation] fix: remove leftover Order Confirmation file section that was missed during merge
+
+Date: 2026-06-19
+Source: superroo-learn CLI (local fallback)
+Model/API used: deepseek-chat
+Confidence: high
+Related files:
+Tags:
+
+#### Task Summary
+
+## DeepSeek-Summarized Lesson from commit 48b3a01865318ec03fdee339a30e1b9a18d14db2
+
+**Project:** workflowautomation
+**Author:** Admin
+**Commit:** 48b3a01865318ec03fdee339a30e1b9a18d14db2
+**Files:** apps/dashboard/src/app/orders/page.tsx
+
+**Summary:**
+Commit: fix: remove leftover Order Confirmation file section that was missed during merge
+Files: apps/dashboard/src/app/orders/page.tsx
+Project: workflowautomation
+
+---
+*Original commit message: fix: remove leftover Order Confirmation file section that was missed during merge*
+
+#### Lesson Learned
+
+Commit: fix: remove leftover Order Confirmation file section that was missed during merge
+Files: apps/dashboard/src/app/orders/page.tsx
+Project: workflowautomation
+
+#### Tags
+
+cross-project, local-fallback
+
+---

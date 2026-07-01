@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BASE = process.env.BASE_URL ?? 'https://track.abcx124.xyz/api';
+const BASE = process.env.BASE_URL ?? 'https://track.homeatelier.ph/api';
 
 let passed = 0;
 let failed = 0;

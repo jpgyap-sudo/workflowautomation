@@ -1,7 +1,7 @@
 /**
  * Test that Nginx proxy correctly forwards Content-Type headers.
  */
-const BASE = 'https://track.abcx124.xyz/api';
+const BASE = 'https://track.homeatelier.ph/api';
 const orderId = 'e22d5868-209a-4b5d-a116-5b97d32496ee';
 const token = 'test-' + Date.now();
 
